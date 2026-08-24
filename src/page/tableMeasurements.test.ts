@@ -50,7 +50,9 @@ function mountedTable(): {
   if (!(table instanceof HTMLElement)) throw new Error("table DOM not found");
 
   const rowPositions: number[] = [];
-  tableNode.forEach((_row, offset) => rowPositions.push(1 + offset));
+  tableNode.forEach((_row, offset) => {
+    rowPositions.push(1 + offset);
+  });
   return { live: view, table, rowPositions };
 }
 
