@@ -55,9 +55,9 @@ function spans(node: PMNode): string[] {
   const rows: string[] = [];
   node.forEach((row) => {
     const cells: string[] = [];
-    row.forEach((cell) =>
-      cells.push(`${cell.attrs.colspan}x${cell.attrs.rowspan}`)
-    );
+    row.forEach((cell) => {
+      cells.push(`${cell.attrs.colspan}x${cell.attrs.rowspan}`);
+    });
     rows.push(cells.join(" "));
   });
   return rows;
@@ -67,7 +67,9 @@ function texts(node: PMNode): string[] {
   const rows: string[] = [];
   node.forEach((row) => {
     const cells: string[] = [];
-    row.forEach((cell) => cells.push(cell.textContent));
+    row.forEach((cell) => {
+      cells.push(cell.textContent);
+    });
     rows.push(cells.join("|"));
   });
   return rows;

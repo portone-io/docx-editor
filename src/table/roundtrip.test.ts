@@ -200,7 +200,9 @@ function resizeFirstTable(
 /** The widths recorded by the cells of the first row */
 function firstRowWidths(table: PMNode): unknown[] {
   const widths: unknown[] = [];
-  table.child(0).forEach((cell) => widths.push(cell.attrs.tcW));
+  table.child(0).forEach((cell) => {
+    widths.push(cell.attrs.tcW);
+  });
   return widths;
 }
 

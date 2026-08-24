@@ -406,15 +406,15 @@ function shapeOf(table: PMNode): unknown {
   const rows: unknown[] = [];
   table.forEach((rowNode) => {
     const cells: unknown[] = [];
-    rowNode.forEach((cellNode) =>
+    rowNode.forEach((cellNode) => {
       cells.push({
         colspan: cellNode.attrs.colspan,
         rowspan: cellNode.attrs.rowspan,
         tcW: cellNode.attrs.tcW,
         format: cellNode.attrs.format,
         text: cellNode.textContent,
-      })
-    );
+      });
+    });
     rows.push({ format: rowNode.attrs.format, cells });
   });
   return {

@@ -139,9 +139,9 @@ function repeatedHeader(view: EditorView, rowPos: number): HTMLElement {
   row.setAttribute("aria-hidden", "true");
   row.setAttribute("contenteditable", "false");
   row.removeAttribute("id");
-  row
-    .querySelectorAll("[id]")
-    .forEach((element) => element.removeAttribute("id"));
+  row.querySelectorAll("[id]").forEach((element) => {
+    element.removeAttribute("id");
+  });
   return row;
 }
 

@@ -71,7 +71,9 @@ function insertedTable(state: EditorState, rows: number, cols: number) {
 
 function cellsOf(row: PMNode): PMNode[] {
   const cells: PMNode[] = [];
-  row.forEach((cell) => cells.push(cell));
+  row.forEach((cell) => {
+    cells.push(cell);
+  });
   return cells;
 }
 
