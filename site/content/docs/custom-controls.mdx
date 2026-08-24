@@ -107,6 +107,46 @@ Use `insertTab` to insert the same editable DOCX tab as the built-in Tab binding
 an ordinary paragraph; table cells and list paragraphs keep their navigation and level-changing Tab
 behavior.
 
+## Locked content
+
+A lock is an OOXML content control that shuts its contents, so it is part of the document rather
+than editor state: it survives a round trip and travels with the file.
+A lock the open document already carries is honored in every mode, read-only included, and no prop
+turns it off.
+What `mode: { kind: "edit", locking: true }` adds is the authoring side, the built-in menu entries
+that put a lock on and take one off, since settling part of a document is a template author's act
+rather than something every reader of a form should be handed.
+
+Custom controls read the selection with `selectionLock`, which answers with one of four states
+instead of a pair of booleans a menu has to combine:
+
+```tsx
+import {
+  lockSelection,
+  selectionLock,
+  unlockSelection,
+} from "@portone-io/docx-editor/commands";
+
+const lock = selectionLock(state); // "none" | "lockable" | "locked" | "mixed"
+```
+
+`lockable` means there is text to shut, `locked` that the selection reaches a lock to lift, and
+`mixed` that it does both.
+`lockSelection` and `unlockSelection` are ordinary commands, so each reports whether it applies
+before it is offered.
+
+Locking wraps one control per paragraph the selection runs through, and only a text selection has
+anything to lock: a selected image or a block of table cells is not a stretch of text a control can
+hold.
+Reaching the edge of a control counts as reaching it, so a caret resting against either end of a
+locked field, or anywhere inside a locked cell, is enough to unlock it.
+A lock is lifted whole, and unlocking keeps the control itself, removing only its lock.
+
+`selectionTouchesLocked(state)` answers whether the selection meets locked content at all, which is
+what a control outside this package asks before editing.
+`documentHasLocked(doc)` takes the document rather than the state and reports whether the file
+carries any lock, which is how a screen decides to show its locking affordances at all.
+
 ## Tables
 
 Table-cell controls use `canSetCellFormatting`, `activeCellVerticalAlign`, `setCellVerticalAlign`,
