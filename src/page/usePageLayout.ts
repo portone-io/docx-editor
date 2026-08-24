@@ -99,7 +99,13 @@ function useFrameThrottle(run: () => void, hold: () => boolean): () => void {
 
   useEffect(() => {
     return () => {
-      if (frame.current !== 0) cancelAnimationFrame(frame.current);
+      if (frame.current !== 0) {
+        cancelAnimationFrame(frame.current);
+        // StrictMode reuses this hook instance across its simulated remount, so the handle has to
+        // be cleared as well: a cancelled one left behind reads as a frame already taken and no
+        // further call is ever scheduled
+        frame.current = 0;
+      }
     };
   }, []);
 
