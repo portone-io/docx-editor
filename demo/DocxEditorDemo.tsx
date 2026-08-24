@@ -1,26 +1,29 @@
+import {
+  DocxEditor,
+  type DocxEditorHandle,
+  downloadDocx,
+} from "@portone-io/docx-editor";
 import { useRef, useState } from "react";
-import { createRoot } from "react-dom/client";
-import demoUrl from "../__fixtures__/demo.docx?url";
-import { DocxEditor, type DocxEditorHandle, downloadDocx } from "../src/index";
-import "../src/styles/editor.css";
-import "./styles.css";
+import "@portone-io/docx-editor/styles.css";
+import "./DocxEditorDemo.css";
+
+export interface DocxEditorDemoProps {
+  document: File;
+}
 
 interface OpenDocument {
   file: File;
   revision: number;
 }
 
-const DOCX_MIME_TYPE =
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-
-function Playground({ demoFile }: { demoFile: File }) {
+export function DocxEditorDemo({ document }: DocxEditorDemoProps) {
   const editorRef = useRef<DocxEditorHandle | null>(null);
   const nextRevision = useRef(0);
   const [opened, setOpened] = useState<OpenDocument>({
-    file: demoFile,
+    file: document,
     revision: nextRevision.current,
   });
-  const [message, setMessage] = useState(demoFile.name);
+  const [message, setMessage] = useState(document.name);
 
   const openFile = (file: File) => {
     editorRef.current = null;
@@ -45,14 +48,14 @@ function Playground({ demoFile }: { demoFile: File }) {
   };
 
   return (
-    <div className="playground">
-      <header className="playground-header">
+    <div className="demo">
+      <header className="demo-header">
         <div>
           <h1>docx-editor</h1>
           <p>{message}</p>
         </div>
-        <div className="playground-actions">
-          <label className="playground-button">
+        <div className="demo-actions">
+          <label className="demo-button">
             Open DOCX
             <input
               type="file"
@@ -64,7 +67,7 @@ function Playground({ demoFile }: { demoFile: File }) {
               }}
             />
           </label>
-          <button type="button" onClick={() => openFile(demoFile)}>
+          <button type="button" onClick={() => openFile(document)}>
             Reset demo
           </button>
           <button type="button" onClick={download}>
@@ -73,14 +76,14 @@ function Playground({ demoFile }: { demoFile: File }) {
         </div>
       </header>
 
-      <main className="playground-editor">
+      <main className="demo-editor">
         <DocxEditor
           key={opened.revision}
           ref={editorRef}
           document={opened.file}
           mode={{ kind: "edit", locking: true }}
           renderImportError={(error) => (
-            <div className="playground-error" role="alert">
+            <div className="demo-error" role="alert">
               <strong>This document could not be opened.</strong>
               <span>{error.code}</span>
             </div>
@@ -88,30 +91,5 @@ function Playground({ demoFile }: { demoFile: File }) {
         />
       </main>
     </div>
-  );
-}
-
-async function loadDemoFile(): Promise<File> {
-  const response = await fetch(demoUrl);
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  const blob = await response.blob();
-  return new File([blob], "demo.docx", { type: DOCX_MIME_TYPE });
-}
-
-const root = document.getElementById("root");
-if (root) {
-  const app = createRoot(root);
-  app.render(<div className="playground-loading">Opening the demo…</div>);
-  void loadDemoFile().then(
-    (demoFile) => app.render(<Playground demoFile={demoFile} />),
-    (error: unknown) => {
-      const detail = error instanceof Error ? error.message : String(error);
-      app.render(
-        <div className="playground-error" role="alert">
-          <strong>Could not load demo.docx.</strong>
-          <span>{detail}</span>
-        </div>
-      );
-    }
   );
 }
