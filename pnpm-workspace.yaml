@@ -1,5 +1,6 @@
 packages:
   - demo
+  - site
 
 allowBuilds:
   esbuild: true
