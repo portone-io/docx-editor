@@ -127,7 +127,7 @@ export default function LandingPage() {
           {/* `.demo` fills its container and brings its own header strip, so the
               card is just the bordered box that carries the height */}
           <div
-            className="mx-auto mt-14 h-[540px] w-full max-w-[1020px] overflow-hidden rounded-t-[8px] border border-[var(--brand-border)] border-b-0 bg-[var(--brand-surface)] sm:mt-20 sm:h-[620px] lg:h-[720px]"
+            className="mx-auto mt-14 h-[540px] w-full max-w-[1240px] overflow-hidden rounded-t-[8px] border border-[var(--brand-border)] border-b-0 bg-[var(--brand-surface)] sm:mt-20 sm:h-[620px] lg:h-[720px]"
             id="demo"
           >
             <LiveDemo />

@@ -41,6 +41,9 @@ globalThis.Node = window.Node;
 
 Use a parser configuration that disables external entities and external fetching.
 
+This works without friction on a long-running Node server.
+On serverless functions jsdom adds noticeable bundle weight and cold-start time, and edge runtimes cannot run it at all, so treat those environments as unsupported for now.
+
 ## Errors
 
 `DocxImportError` and `DocxExportError` expose stable `code` values for application handling. Error
