@@ -19,7 +19,7 @@ pnpm install
 pnpm dev
 ```
 
-`pnpm dev` opens a live editor with `demo.docx` and reloads it as the source changes.
+`pnpm dev` serves the `demo/` package with `demo.docx` open and reloads it as the source changes. `pnpm build:demo` produces its static bundle.
 
 ## OOXML changes
 
