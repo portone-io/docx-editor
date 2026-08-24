@@ -17,6 +17,7 @@ import {
   caretBox,
   firstTextParagraph,
   openHarness,
+  pressModKey,
   settle,
   spaces,
 } from "./support/harness";
@@ -53,7 +54,7 @@ test("a page break carries the rest of a list item to the next page, caret and a
   const target = listItem(before);
   await caretAt(page, target.index, AT);
 
-  await page.keyboard.press("Meta+Enter");
+  await pressModKey(page, "Enter");
   await settle(page);
   await settle(page);
 
@@ -83,7 +84,7 @@ test("the space opened at a break stands still once it is applied", async ({
   const target = listItem(await blocks(page));
   await caretAt(page, target.index, AT);
 
-  await page.keyboard.press("Meta+Enter");
+  await pressModKey(page, "Enter");
   await settle(page);
   await settle(page);
   const settled = await spaces(page);
@@ -99,7 +100,7 @@ test("taking the break out again takes its space with it", async ({ page }) => {
   const target = listItem(await blocks(page));
   await caretAt(page, target.index, AT);
 
-  await page.keyboard.press("Meta+Enter");
+  await pressModKey(page, "Enter");
   await settle(page);
   await settle(page);
   expect(await spaces(page)).not.toBe("");
@@ -128,7 +129,7 @@ test("a paragraph holding nothing but a page break is measured and given its spa
   await caretAt(page, target.index, target.docText.length);
 
   await page.keyboard.press("Enter");
-  await page.keyboard.press("Meta+Enter");
+  await pressModKey(page, "Enter");
   await settle(page);
   await settle(page);
 

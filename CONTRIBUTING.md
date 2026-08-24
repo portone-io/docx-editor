@@ -1,6 +1,6 @@
 # Contributing
 
-Thank you for taking the time to improve `@portone/docx-editor`. Bug reports, documentation improvements, fixes, and focused feature proposals are welcome.
+Thank you for taking the time to improve `@portone-io/docx-editor`. Bug reports, documentation improvements, fixes, and focused feature proposals are welcome.
 
 If you use an AI coding tool, also follow the repository guidance in [AGENTS.md](./AGENTS.md).
 

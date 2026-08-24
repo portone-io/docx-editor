@@ -20,7 +20,7 @@ The editor fits the page to its available width by default. Its toolbar offers F
 Use `defaultZoom` when the editor should own the selection, or `zoom` with `onZoomChange` when the host should own it:
 
 ```tsx
-import { DocxEditor, type DocxEditorZoom } from "@portone/docx-editor";
+import { DocxEditor, type DocxEditorZoom } from "@portone-io/docx-editor";
 import { useState } from "react";
 
 function Preview({ file }: { file: File }) {
@@ -40,7 +40,7 @@ Numeric values from `0.25` through `2` are accepted. The root entry exports `DEF
 
 ## Commands and queries
 
-Text and paragraph commands come from `@portone/docx-editor/commands`. Operations on an existing table come from `@portone/docx-editor/table`, while `insertTable` comes from `@portone/docx-editor/commands`.
+Text and paragraph commands come from `@portone-io/docx-editor/commands`. Operations on an existing table come from `@portone-io/docx-editor/table`, while `insertTable` comes from `@portone-io/docx-editor/commands`.
 
 Commands follow the ProseMirror command contract. Calling one with an `EditorState` reports whether it applies, while passing a dispatch function performs the edit.
 
@@ -49,12 +49,12 @@ import type {
   Command,
   EditorState,
   EditorView,
-} from "@portone/docx-editor";
+} from "@portone-io/docx-editor";
 import {
   isBoldActive,
   toggleBold,
   undo,
-} from "@portone/docx-editor/commands";
+} from "@portone-io/docx-editor/commands";
 
 function Toolbar({ view, state }: { view: EditorView; state: EditorState }) {
   const run = (command: Command) => {

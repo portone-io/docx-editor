@@ -41,7 +41,7 @@ const consumerTsconfig = {
   include: ["app.tsx", "env.d.ts"],
 };
 
-const consumerApp = `import "@portone/docx-editor/styles.css";
+const consumerApp = `import "@portone-io/docx-editor/styles.css";
 import {
   type ColorRow,
   DEFAULT_COLORS,
@@ -52,15 +52,15 @@ import {
   docxSchema,
   downloadDocx,
   type DownloadDocxResult,
-} from "@portone/docx-editor";
+} from "@portone-io/docx-editor";
 import {
   canSetLineSpacing,
   increaseListLevel,
   insertTable,
   toggleBold,
-} from "@portone/docx-editor/commands";
-import { exportDocx, importDocx } from "@portone/docx-editor/core";
-import { addRowAfter, canSetCellBorderColor } from "@portone/docx-editor/table";
+} from "@portone-io/docx-editor/commands";
+import { exportDocx, importDocx } from "@portone-io/docx-editor/core";
+import { addRowAfter, canSetCellBorderColor } from "@portone-io/docx-editor/table";
 import { useRef } from "react";
 
 export function Consumer({ document }: { document: DocxSource }) {
@@ -99,10 +99,10 @@ const consumerTypes = `declare module "*.css";
 `;
 
 const consumerSmoke = `import assert from "node:assert/strict";
-import { DEFAULT_COLORS, DocxEditor, docxSchema, downloadDocx } from "@portone/docx-editor";
-import { increaseListLevel, toggleBold } from "@portone/docx-editor/commands";
-import { exportDocx, importDocx } from "@portone/docx-editor/core";
-import { addRowAfter, canSetCellBorderColor } from "@portone/docx-editor/table";
+import { DEFAULT_COLORS, DocxEditor, docxSchema, downloadDocx } from "@portone-io/docx-editor";
+import { increaseListLevel, toggleBold } from "@portone-io/docx-editor/commands";
+import { exportDocx, importDocx } from "@portone-io/docx-editor/core";
+import { addRowAfter, canSetCellBorderColor } from "@portone-io/docx-editor/table";
 
 const surface = {
   DEFAULT_COLORS,
@@ -181,7 +181,7 @@ async function verify() {
           private: true,
           type: "module",
           dependencies: {
-            "@portone/docx-editor": `file:${tarball}`,
+            "@portone-io/docx-editor": `file:${tarball}`,
             ...consumerDependencies,
           },
         },

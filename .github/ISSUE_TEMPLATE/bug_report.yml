@@ -1,5 +1,5 @@
 name: Bug report
-description: Report a problem with @portone/docx-editor
+description: Report a problem with @portone-io/docx-editor
 labels:
   - bug
 body:
