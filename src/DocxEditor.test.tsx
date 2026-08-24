@@ -314,6 +314,32 @@ describe("DocxEditor", () => {
     unmount();
   });
 
+  it("publishes the zoom factor to CSS for the panels beside the paper", () => {
+    const unmount = render(
+      <DocxEditor
+        document={ONE_PARAGRAPH}
+        defaultZoom={0.5}
+        renderImportError={() => null}
+      />
+    );
+    const workspace = host.querySelector<HTMLElement>(
+      `.${editorClassNames.workspace}`
+    );
+    const select = host.querySelector<HTMLSelectElement>(
+      `.${editorClassNames.zoomSelect}`
+    );
+    expect(workspace?.style.getPropertyValue("--docx-editor-zoom")).toBe("0.5");
+
+    act(() => {
+      if (!select) throw new Error("zoom control missing");
+      select.value = "1.5";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    expect(workspace?.style.getPropertyValue("--docx-editor-zoom")).toBe("1.5");
+    unmount();
+  });
+
   it("reports controlled zoom changes without replacing the prop", () => {
     const changed: unknown[] = [];
     const unmount = render(

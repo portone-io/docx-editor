@@ -40,6 +40,31 @@ async function frameSnapshots(page: Page, count: number) {
   );
 }
 
+/** The zoom the comment panel reads, beside the zoom the paper itself is drawn at. */
+async function commentTypography(page: Page) {
+  return page.evaluate((classes) => {
+    const workspace = document.querySelector(`.${classes.workspace}`);
+    const layer = document.querySelector(`.${classes.pageLayer}`);
+    const meta = document.querySelector(`.${classes.commentMeta}`);
+    const body = document.querySelector(`.${classes.commentBody}`);
+    if (
+      !(workspace instanceof HTMLElement) ||
+      !(layer instanceof HTMLElement) ||
+      !(meta instanceof HTMLElement) ||
+      !(body instanceof HTMLElement)
+    ) {
+      throw new Error("comment typography sample missing");
+    }
+    const styles = getComputedStyle(workspace);
+    return {
+      zoom: Number.parseFloat(styles.getPropertyValue("--docx-editor-zoom")),
+      pageZoom: Number.parseFloat(getComputedStyle(layer).zoom),
+      meta: Number.parseFloat(getComputedStyle(meta).fontSize),
+      body: Number.parseFloat(getComputedStyle(body).fontSize),
+    };
+  }, editorClassNames);
+}
+
 test("the demo keeps its pagination stable in narrow layouts", async ({
   page,
 }) => {
@@ -60,32 +85,32 @@ test("the demo keeps its pagination stable in narrow layouts", async ({
       commentWidth: 240,
       canvasPadding: "10px 12px",
       cardPadding: 10,
-      metaFontSize: 11,
-      bodyFontSize: 13,
+      metaLadder: 11,
+      bodyLadder: 13,
     },
     {
       width: 719,
       commentWidth: 200,
       canvasPadding: "8px",
       cardPadding: 8,
-      metaFontSize: 10,
-      bodyFontSize: 12,
+      metaLadder: 10,
+      bodyLadder: 11,
     },
     {
       width: 559,
       commentWidth: 180,
       canvasPadding: "6px",
       cardPadding: 6,
-      metaFontSize: 10,
-      bodyFontSize: 12,
+      metaLadder: 10,
+      bodyLadder: 11,
     },
     {
       width: 419,
       commentWidth: 180,
       canvasPadding: "6px",
       cardPadding: 6,
-      metaFontSize: 10,
-      bodyFontSize: 12,
+      metaLadder: 10,
+      bodyLadder: 11,
     },
   ]) {
     await page.setViewportSize({ width: size.width, height: 900 });
@@ -128,12 +153,16 @@ test("the demo keeps its pagination stable in narrow layouts", async ({
     expect(editorBox.x + editorBox.width).toBeLessThanOrEqual(
       commentsBox.x + 1
     );
-    await expect(
-      page.locator(`.${editorClassNames.commentMeta}`).first()
-    ).toHaveCSS("font-size", `${size.metaFontSize}px`);
-    await expect(
-      page.locator(`.${editorClassNames.commentBody}`).first()
-    ).toHaveCSS("font-size", `${size.bodyFontSize}px`);
+    const typography = await commentTypography(page);
+    expect(typography.zoom).toBeCloseTo(typography.pageZoom, 5);
+    expect(typography.meta).toBeCloseTo(
+      Math.max(9, size.metaLadder * typography.zoom),
+      1
+    );
+    expect(typography.body).toBeCloseTo(
+      Math.max(10, size.bodyLadder * typography.zoom),
+      1
+    );
   }
 
   await zoom.selectOption("1");
@@ -254,4 +283,22 @@ test("opening and resizing a narrow comment rail preserves left scroll", async (
   await expect
     .poll(() => editor.evaluate((element) => element.scrollLeft))
     .toBe(0);
+});
+
+test("comment typography follows the editor zoom", async ({ page }) => {
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await openHarness(page, "demo");
+  await page.getByRole("button", { name: "Show comments" }).click();
+  await settle(page);
+  const zoom = page.getByLabel("Zoom");
+  for (const factor of [0.5, 0.75, 1, 1.25, 1.5]) {
+    await zoom.selectOption(String(factor));
+    await settle(page);
+    const typography = await commentTypography(page);
+    expect(typography.zoom).toBeCloseTo(factor, 5);
+    expect(typography.pageZoom).toBeCloseTo(factor, 5);
+    // The floor keeps the smaller metas readable while the paper shrinks
+    expect(typography.meta).toBeCloseTo(Math.max(9, 12 * factor), 1);
+    expect(typography.body).toBeCloseTo(Math.max(10, 14 * factor), 1);
+  }
 });
