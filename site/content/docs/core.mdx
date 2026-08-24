@@ -59,6 +59,48 @@ try {
 }
 ```
 
+Both classes are exported from the root entry as well, so a React screen can switch on the same
+codes without importing the core entry.
+
+### Import codes
+
+| Code | Why the document was refused |
+| --- | --- |
+| `not-a-docx` | The bytes are not a readable zip container, its entry names are not a package's, or an entry does not hold what it claims to. |
+| `too-large` | The package asks to inflate beyond the limits below. |
+| `missing-part` | The package carries no main document part. |
+| `missing-body` | The main part carries no body. |
+| `malformed-xml` | The XML cannot be parsed, declares a DTD, or its markup is inconsistent. |
+| `unsupported-content` | The document holds markup that could not be written back out unchanged. |
+
+A file a person picked can fail with any of these, so the code is worth showing: `not-a-docx` and
+`too-large` are usually the person's to fix, while the rest describe the file itself.
+
+### Export codes
+
+| Code | Why the document could not be written |
+| --- | --- |
+| `missing-numbering-part` | A new list needs a numbering part the document does not have. |
+| `missing-content-types` | A new image needs a content types part the package does not have. |
+| `unsupported-content` | The document holds a node kind with no way to serialize it. |
+| `lost-original` | A node that carries only its original XML has lost it. |
+| `malformed-xml` | An original XML fragment cannot be read well enough to rewrite. |
+| `invalid-table` | The table grid is inconsistent, such as a vertical merge outliving its rows. |
+
+An export failure leaves the editor state untouched, so a screen can report the reason and let the
+person carry on editing.
+`missing-numbering-part` is the one an ordinary edit can reach: a document with no numbering part
+cannot take a new list, and the built-in list controls report that they do not apply for exactly
+that reason.
+
+### In the React component
+
+The component renders a refusal in place of the editor when import fails, either through
+`renderImportError` or through the built-in panel, which turns each import code into a sentence.
+Only `DocxImportError` becomes a rendered refusal; anything else, a `Blob` that could not be read
+included, is thrown for an error boundary above to take.
+On the way out, `downloadDocx` and `exportBytes` rethrow `DocxExportError` as it is.
+
 ## Import limits
 
 - A single inflated part is limited to 32 MiB and the package total to 64 MiB.
