@@ -13,10 +13,11 @@ Keep one source of truth for each concern and link to it instead of repeating it
 - Read [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md) when adding or replacing redistributed material or its attribution.
 - Read [docs/architecture.md](./docs/architecture.md) before moving code, changing folder dependencies, or adding an entry point.
 - Read [docs/testing.md](./docs/testing.md) before changing test structure, packaging checks, or the release gate.
-- Read [docs/features.md](./docs/features.md) for a support claim or a behavior change.
-- Read [docs/core.md](./docs/core.md) for programmatic DOCX import and export.
-- Read [docs/custom-controls.md](./docs/custom-controls.md) for commands, queries, plugins, or custom controls.
-- Read [site/README.md](./site/README.md) for the documentation and landing site.
+- The user-facing documentation lives in the site's MDX pages, which the site serves; edit them there rather than mirroring them elsewhere.
+  - Read [site/content/docs/features.mdx](./site/content/docs/features.mdx) for a support claim or a behavior change.
+  - Read [site/content/docs/core.mdx](./site/content/docs/core.mdx) for programmatic DOCX import and export.
+  - Read [site/content/docs/custom-controls.mdx](./site/content/docs/custom-controls.mdx) for commands, queries, plugins, or custom controls.
+- Read [site/README.md](./site/README.md) for how the documentation and landing site is built and run.
 - Read [e2e/README.md](./e2e/README.md) only for a real-browser, IME, focus, or keyboard task.
 - Read [__fixtures__/README.md](./__fixtures__/README.md) only when adding, replacing, or interpreting a fixture document.
 
@@ -36,4 +37,4 @@ Prefer precise types over `any` and broad type assertions. Use narrowing, type g
 
 ### Naming
 
-Follow the [public API vocabulary](./docs/custom-controls.md#commands-and-queries) when adding or renaming an export.
+Follow the [public API vocabulary](./site/content/docs/custom-controls.mdx#commands-and-queries) when adding or renaming an export.

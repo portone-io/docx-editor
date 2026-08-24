@@ -2,7 +2,10 @@
 
 Thank you for taking the time to improve `@portone-io/docx-editor`. Bug reports, documentation improvements, fixes, and focused feature proposals are welcome.
 
-If you use an AI coding tool, also follow the repository guidance in [AGENTS.md](./AGENTS.md).
+<!-- This file is published to npm while the documents it points at are not, so those links are
+     absolute rather than repository-relative. -->
+
+If you use an AI coding tool, also follow the repository guidance in [AGENTS.md](https://github.com/portone-io/docx-editor/blob/main/AGENTS.md).
 
 ## Reporting bugs
 
@@ -21,11 +24,11 @@ pnpm dev
 
 `pnpm dev` serves the `demo/` package with `demo.docx` open and reloads it as the source changes. `pnpm build:demo` produces its static bundle.
 
-`pnpm dev:site` serves the [documentation and landing site](./site/README.md), and `pnpm build:site` produces its build.
+`pnpm dev:site` serves the [documentation and landing site](https://github.com/portone-io/docx-editor/blob/main/site/README.md), and `pnpm build:site` produces its build.
 
 ## OOXML changes
 
-For changes that interpret or write OOXML, follow the [specification workflow](./spec/README.md#working-with-the-specification).
+For changes that interpret or write OOXML, follow the [specification workflow](https://github.com/portone-io/docx-editor/blob/main/spec/README.md#working-with-the-specification).
 
 ## Tests
 
@@ -43,6 +46,6 @@ pnpm verify:package
 pnpm test:e2e
 ```
 
-[Testing](./docs/testing.md) explains the scope and prerequisites of every check.
+[Testing](https://github.com/portone-io/docx-editor/blob/main/docs/testing.md) explains the scope and prerequisites of every check.
 
 By contributing, you agree that your contribution is licensed under the Apache License 2.0 used by this project.

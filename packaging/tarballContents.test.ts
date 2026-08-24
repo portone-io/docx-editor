@@ -12,7 +12,8 @@ const packageDir = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 /**
  * Every path the published `exports` map resolves to, plus the files a consumer
- * reads before installing.
+ * reads before installing. The documentation itself is not among them: the site
+ * serves it, and the README links there.
  */
 const requiredEntries = [
   "package/package.json",
@@ -20,11 +21,6 @@ const requiredEntries = [
   "package/README.md",
   "package/CONTRIBUTING.md",
   "package/assets/editor.png",
-  "package/docs/core.md",
-  "package/docs/custom-controls.md",
-  "package/docs/features.md",
-  "package/docs/architecture.md",
-  "package/docs/testing.md",
   "package/dist/styles.css",
   "package/dist/index.js",
   "package/dist/index.d.ts",
@@ -50,6 +46,8 @@ const forbiddenEntries = [
   { what: "the browser specs", pattern: /^package\/e2e\// },
   { what: "the development demo", pattern: /^package\/demo\// },
   { what: "the documentation site", pattern: /^package\/site\// },
+  // The user-facing documentation is the site's pages; `docs/` holds contributor guides only
+  { what: "the contributor guides", pattern: /^package\/docs\// },
   { what: "the OOXML schemas", pattern: /^package\/spec\// },
   { what: "the internal notes", pattern: /\/(PROVENANCE|PLAN)\.md$/ },
   {
