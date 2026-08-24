@@ -41,7 +41,7 @@ The schema test requires `xmllint`, rejects a missing validator or an empty fixt
 
 `pnpm test:package` runs two isolated checks against a clean build:
 
-- `packaging/tarballContents.test.ts` packs the project and verifies exported files, declarations, public documents, excluded development files, and resolved dependency ranges.
+- `packaging/tarballContents.test.ts` packs the project and verifies exported files, declarations, the documents a consumer reads before installing, excluded development files, and resolved dependency ranges.
 - `packaging/leafImportSize.test.ts` rebuilds the output and protects small leaf imports from accidentally pulling in a large shared bundle.
 
 `pnpm verify:package` installs the tarball and its peers in a temporary project outside the repository. It typechecks and bundles a consumer, loads every JavaScript entry, and verifies the published stylesheet. This is the check that catches declarations or imports that work only inside the source workspace.

@@ -61,7 +61,7 @@ It is allowed to look like a test document rather than a product demo.
 
 This fixture is a readable capability overview for the live editor. The shared round-trip, validation, and live-editor layout suites exercise it.
 
-Keep its claims consistent with the document itself. Detailed support claims belong in [Feature support](../docs/features.md), not in the fixture.
+Keep its claims consistent with the document itself. Detailed support claims belong in [Feature support](../site/content/docs/features.mdx), not in the fixture.
 
 ### `size-fallback.docx`
 

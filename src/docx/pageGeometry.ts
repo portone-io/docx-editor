@@ -165,7 +165,7 @@ export const A4_BODY_WIDTH: BodyWidth = bodyWidth(A4_PORTRAIT);
  * A document may hold a `w:sectPr` per section, each with a paper of its own. The screen draws
  * one paper for the whole document, so the first section decides it; the rest ride out
  * untouched in their preserved blocks and are drawn on the first section's paper.
- * `docs/features.md` records that limit.
+ * `site/content/docs/features.mdx` records that limit.
  *
  * The reading is deliberately forgiving: this runs against a document already opened, and a
  * `w:sectPr` we cannot read is a reason to draw A4, never a reason to refuse the file.

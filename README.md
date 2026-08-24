@@ -35,7 +35,10 @@ export function Editor({ file }: { file: File }) {
 - Preserves document structures and package parts across edits.
 - Reads document styles, theme fonts, page layout, and CJK font information for display.
 
-See [Feature support](./docs/features.md) for the support matrix. Build [custom controls](./docs/custom-controls.md) or use [programmatic DOCX import and export](./docs/core.md).
+<!-- This file is published to npm, so the documentation links have to be absolute. They point at the
+     MDX sources on GitHub until the documentation site has a public domain, and become site URLs then. -->
+
+See [Feature support](https://github.com/portone-io/docx-editor/blob/main/site/content/docs/features.mdx) for the support matrix. Build [custom controls](https://github.com/portone-io/docx-editor/blob/main/site/content/docs/custom-controls.mdx) or use [programmatic DOCX import and export](https://github.com/portone-io/docx-editor/blob/main/site/content/docs/core.mdx).
 
 ## Contributing
 

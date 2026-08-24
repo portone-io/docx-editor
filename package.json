@@ -61,8 +61,7 @@
     "LICENSE",
     "README.md",
     "CONTRIBUTING.md",
-    "assets",
-    "docs"
+    "assets"
   ],
   "scripts": {
     "build": "node scripts/build.mjs && tsc -p tsconfig.build.json",
