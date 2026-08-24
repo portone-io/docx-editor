@@ -1,0 +1,36 @@
+{
+  "name": "@portone-io/docx-editor-site",
+  "version": "0.0.0",
+  "description": "The documentation and landing site for the DOCX editor.",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "predev": "node scripts/copy-demo-fixture.mjs",
+    "dev": "next dev",
+    "prebuild": "node scripts/copy-demo-fixture.mjs",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "next typegen && tsc --noEmit"
+  },
+  "dependencies": {
+    "@portone-io/docx-editor": "workspace:*",
+    "@portone-io/docx-editor-demo": "workspace:*",
+    "fumadocs-core": "16.15.1",
+    "fumadocs-mdx": "15.3.1",
+    "fumadocs-ui": "16.15.1",
+    "next": "^16.3.2",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/mdx": "^2.0.14",
+    "@types/node": "^26.2.0",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.4",
+    "postcss": "^8.5.26",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2"
+  }
+}

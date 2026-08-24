@@ -49,6 +49,7 @@ const forbiddenEntries = [
   { what: "the test helpers", pattern: /__testing__/ },
   { what: "the browser specs", pattern: /^package\/e2e\// },
   { what: "the development demo", pattern: /^package\/demo\// },
+  { what: "the documentation site", pattern: /^package\/site\// },
   { what: "the OOXML schemas", pattern: /^package\/spec\// },
   { what: "the internal notes", pattern: /\/(PROVENANCE|PLAN)\.md$/ },
   {
