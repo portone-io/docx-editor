@@ -459,28 +459,9 @@ button.docx-editor-comment-body {
   .docx-editor-workspace {
     --docx-editor-comments-width: 280px;
   }
-}
-
-@media (max-width: 720px) {
-  .docx-editor-workspace {
-    --docx-editor-comments-width: 240px;
-  }
 
   .docx-editor-comments-heading {
     padding: 0 12px;
-  }
-
-  .docx-editor-comments[data-view="all"] .docx-editor-comments-canvas {
-    padding: 10px 12px;
-  }
-
-  .docx-editor-comment-card,
-  .docx-editor-comment-composer {
-    padding: 10px;
-  }
-
-  .docx-editor-comments-heading {
-    font-size: 13px;
   }
 
   .docx-editor-comment-meta {
@@ -501,13 +482,49 @@ button.docx-editor-comment-body {
   }
 }
 
-@media (max-width: 560px) {
+@media (max-width: 720px) {
   .docx-editor-workspace {
-    --docx-editor-comments-width: 200px;
+    --docx-editor-comments-width: 240px;
+  }
+
+  .docx-editor-comments[data-view="all"] .docx-editor-comments-canvas {
+    padding: 10px 12px;
+  }
+
+  .docx-editor-comment-card,
+  .docx-editor-comment-composer {
+    padding: 10px;
+  }
+
+  .docx-editor-comments-heading {
+    font-size: 13px;
   }
 
   .docx-editor-comments-heading {
     padding: 0 10px;
+  }
+
+  .docx-editor-comment-meta {
+    font-size: 10px;
+  }
+
+  .docx-editor-comment-body,
+  button.docx-editor-comment-body {
+    font-size: 12px;
+  }
+
+  .docx-editor-comment-input {
+    font-size: 12px;
+  }
+
+  .docx-editor-comment-actions button {
+    font-size: 10px;
+  }
+}
+
+@media (max-width: 560px) {
+  .docx-editor-workspace {
+    --docx-editor-comments-width: 200px;
   }
 
   .docx-editor-comments[data-view="all"] .docx-editor-comments-canvas {
@@ -545,23 +562,6 @@ button.docx-editor-comment-body {
 
   .docx-editor-comments-heading {
     font-size: 12px;
-  }
-
-  .docx-editor-comment-meta {
-    font-size: 10px;
-  }
-
-  .docx-editor-comment-body,
-  button.docx-editor-comment-body {
-    font-size: 12px;
-  }
-
-  .docx-editor-comment-input {
-    font-size: 12px;
-  }
-
-  .docx-editor-comment-actions button {
-    font-size: 10px;
   }
 }
 
