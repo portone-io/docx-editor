@@ -1,0 +1,101 @@
+---
+title: Getting started
+description: Install the package, mount the editor, and export the edited document.
+---
+
+## Install
+
+```sh
+npm i @portone-io/docx-editor
+```
+
+React 19 or newer and the ProseMirror packages are peer dependencies, so they are installed
+alongside it:
+
+```sh
+npm i react prosemirror-commands prosemirror-dropcursor prosemirror-history prosemirror-inputrules prosemirror-keymap prosemirror-model prosemirror-state prosemirror-tables prosemirror-transform prosemirror-view
+```
+
+They are peers because objects such as `PluginKey` and `Decoration` depend on module identity: a
+second copy of ProseMirror would make your own plugins incompatible with the editor's.
+
+## Mount the editor
+
+Import the stylesheet once, then render `DocxEditor` with the document to open. `document` accepts
+a `File`, `Blob`, `ArrayBuffer`, or `Uint8Array`.
+
+```tsx
+import "@portone-io/docx-editor/styles.css";
+
+import { DocxEditor, type DocxEditorHandle } from "@portone-io/docx-editor";
+import { useRef } from "react";
+
+export function Editor({ file }: { file: File }) {
+  const editorRef = useRef<DocxEditorHandle | null>(null);
+
+  return <DocxEditor ref={editorRef} document={file} />;
+}
+```
+
+The editor builds a ProseMirror view against the DOM, so it cannot render on the server. In a
+framework that prerenders, load it through a client-only dynamic import.
+
+## Export the edited document
+
+`downloadDocx` takes the handle from the ref and saves the current editor state as a file. It
+reports `unavailable` while the editor has not opened a document yet and `empty` when there is
+nothing worth exporting.
+
+```tsx
+import {
+  DocxEditor,
+  type DocxEditorHandle,
+  downloadDocx,
+} from "@portone-io/docx-editor";
+import { useRef } from "react";
+
+export function Editor({ file }: { file: File }) {
+  const editorRef = useRef<DocxEditorHandle | null>(null);
+
+  const download = () => {
+    const result = downloadDocx(editorRef.current, { fileName: file.name });
+    if (result.status === "exported") console.log(result.byteLength);
+  };
+
+  return (
+    <>
+      <button onClick={download} type="button">
+        Export .docx
+      </button>
+      <DocxEditor ref={editorRef} document={file} />
+    </>
+  );
+}
+```
+
+`downloadDocx` throws `DocxExportError` when the document cannot be written back safely, so wrap
+the call when the surrounding screen should show the reason. For the bytes without a browser
+download, call `editorRef.current.exportBytes()`.
+
+## Choose what the editor is for
+
+`mode` decides what the editor offers. `{ kind: "readOnly" }` takes no edits and therefore has no
+toolbar or context menus; `{ kind: "edit" }` is the default, and its `locking` option adds the
+controls for settling part of a document.
+
+```tsx
+<DocxEditor
+  document={file}
+  mode={{ kind: "edit", locking: true }}
+  renderImportError={(error) => <p role="alert">{error.code}</p>}
+/>
+```
+
+Without `renderImportError`, a built-in panel naming the reason is drawn, so a refused document is
+never silent either way.
+
+## Next
+
+Read [Features](/docs/features) for what the editor edits and preserves,
+[Custom controls](/docs/custom-controls) to replace the built-in toolbar, and
+[Core API](/docs/core) for import and export without an editor.

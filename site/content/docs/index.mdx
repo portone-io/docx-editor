@@ -1,6 +1,35 @@
 ---
 title: Documentation
-description: Where the DOCX editor documentation lives while this site is being built.
+description: A DOCX editor for React that reads and writes OOXML directly.
 ---
 
-The guides still live in the [`docs/` directory of the repository](https://github.com/portone-io/docx-editor/tree/main/docs); moving them onto this site is a separate change.
+`@portone-io/docx-editor` opens a Word document in the browser, lets a person edit it, and writes
+the file back out as DOCX.
+It reads and writes OOXML directly instead of converting to HTML and back, so text, formatting,
+lists, tables, images, links, and content controls are edited in place while the structures around
+each edit are preserved.
+Anything the editor does not model is written back from its original XML, and a round trip that
+cannot be made safely fails with a stable error code rather than returning a damaged document.
+
+<Cards>
+  <Card
+    href="/docs/getting-started"
+    title="Getting started"
+    description="Install the package, mount the editor, and export the edited document."
+  />
+  <Card
+    href="/docs/features"
+    title="Features"
+    description="What you can edit, what is preserved untouched, and the current limitations."
+  />
+  <Card
+    href="/docs/custom-controls"
+    title="Custom controls"
+    description="Commands, queries, presets, and plugins for a toolbar of your own."
+  />
+  <Card
+    href="/docs/core"
+    title="Core API"
+    description="Programmatic DOCX import and export without mounting an editor."
+  />
+</Cards>
