@@ -1,6 +1,6 @@
 # Features
 
-`@portone/docx-editor` edits common DOCX body content while preserving document structures outside its editing surface.
+`@portone-io/docx-editor` edits common DOCX body content while preserving document structures outside its editing surface.
 
 This page is the user-facing support summary. Add a claim only when implemented behavior and tests support it, classify it as editable, preserved, or limited, and describe the most important constraint once. Keep API details in [Custom controls](./custom-controls.md) or [programmatic DOCX import and export](./core.md), and OOXML rationale in [specification notes](../spec/notes/README.md).
 

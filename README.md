@@ -1,4 +1,4 @@
-# @portone/docx-editor
+# @portone-io/docx-editor
 
 A simple DOCX editor for the browser that reads and writes OOXML directly while preserving the document structure around each edit. Edit text, formatting, lists, tables, images, links, and locked content controls without an HTML conversion step.
 
@@ -9,13 +9,13 @@ A simple DOCX editor for the browser that reads and writes OOXML directly while 
 ## Quick start
 
 ```sh
-npm install @portone/docx-editor
+npm install @portone-io/docx-editor
 ```
 
 ```tsx
-import "@portone/docx-editor/styles.css";
+import "@portone-io/docx-editor/styles.css";
 
-import { DocxEditor, type DocxEditorHandle } from "@portone/docx-editor";
+import { DocxEditor, type DocxEditorHandle } from "@portone-io/docx-editor";
 import { useRef } from "react";
 
 export function Editor({ file }: { file: File }) {
