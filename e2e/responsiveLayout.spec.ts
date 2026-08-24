@@ -56,7 +56,7 @@ test("the demo keeps its pagination stable in narrow layouts", async ({
   await expect(font).toHaveCSS("white-space", "nowrap");
   for (const size of [
     {
-      width: 719,
+      width: 839,
       commentWidth: 240,
       canvasPadding: "10px 12px",
       cardPadding: 10,
@@ -64,10 +64,18 @@ test("the demo keeps its pagination stable in narrow layouts", async ({
       bodyFontSize: 13,
     },
     {
-      width: 559,
+      width: 719,
       commentWidth: 200,
       canvasPadding: "8px",
       cardPadding: 8,
+      metaFontSize: 10,
+      bodyFontSize: 12,
+    },
+    {
+      width: 559,
+      commentWidth: 180,
+      canvasPadding: "6px",
+      cardPadding: 6,
       metaFontSize: 10,
       bodyFontSize: 12,
     },
