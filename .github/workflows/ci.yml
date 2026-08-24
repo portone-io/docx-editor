@@ -10,9 +10,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  checks:
+  check:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -29,6 +29,30 @@ jobs:
             || { sudo apt-get update && sudo apt-get install -y --no-install-recommends libxml2-utils; }
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
+
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
       - run: pnpm test:package
       - run: pnpm verify:package
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
       - run: pnpm test:e2e
