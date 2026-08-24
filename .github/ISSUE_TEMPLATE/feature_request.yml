@@ -1,0 +1,12 @@
+name: Feature request
+description: Suggest an improvement to @portone/docx-editor
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: request
+    attributes:
+      label: What would you like to improve?
+      description: Tell us what you are trying to do, what is getting in the way, and what you would like added or changed.
+    validations:
+      required: true

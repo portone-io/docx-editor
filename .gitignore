@@ -1,0 +1,8 @@
+spec/pdf/
+dist/
+node_modules/
+.turbo/
+coverage/
+playwright-report/
+test-results/
+*.tsbuildinfo

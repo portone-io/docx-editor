@@ -1,0 +1,1657 @@
+/*
+ * The base appearance of the editing surface.
+ *
+ * The class names pair with src/styles/classNames.ts. If the prefix changes, change
+ * it in both.
+ * Text flows on one continuous sheet that is not divided into pages.
+ * The A4 boundaries are only approximate lines drawn over that sheet, so they never
+ * push the flow of the text.
+ */
+
+@import "prosemirror-view/style/prosemirror.css";
+
+/* The height is usually decided by the host UI, so this is written to let the app's own class win */
+:where(.docx-editor-frame) {
+  height: 100%;
+}
+
+/*
+ * Stacks the toolbar and the paper vertically, and carries the editor's own frame:
+ * a neutral border and rounded corners so a bare `<DocxEditor />` looks finished with
+ * no wrapper. Both are driven by variables, so an app restyles them without a wrapper
+ * (`--docx-editor-border: none` removes the frame; a themed colour replaces it).
+ * The corners are clipped here; scrolling is still owned by the inner box, and the
+ * panels that open from the toolbar and the table menu are placed against the screen,
+ * so the clip never reaches them.
+ */
+.docx-editor-frame {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  background: #f1f1f1;
+  font-family: system-ui, sans-serif;
+  border: var(--docx-editor-border, 1px solid rgb(0 0 0 / 12%));
+  border-radius: var(--docx-editor-radius, 12px);
+  overflow: hidden;
+}
+
+.docx-editor-workspace {
+  --docx-editor-comments-width: 320px;
+  --docx-editor-horizontal-scrollbar-size: 10px;
+
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.docx-editor-editor {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 24px 0;
+  background: #f1f1f1;
+}
+
+.docx-editor-comment-marker {
+  display: inline;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+/* A body-level bookmark occupies a document-model position but draws no placeholder. */
+.docx-editor-bookmark-block {
+  display: none;
+}
+
+.docx-editor-comment-range {
+  background: #fff2a8;
+  box-shadow: inset 0 -2px #e2b714;
+}
+
+/* Keep a tab's comment paint on an inline text box while its slot retains the full selection box. */
+.docx-editor-tab:has(> .docx-editor-tab-slot.docx-editor-comment-range) {
+  background: #fff2a8;
+  box-shadow: inset 0 -2px #e2b714;
+}
+
+.docx-editor-tab-slot.docx-editor-comment-range {
+  background: transparent;
+  box-shadow: none;
+}
+
+.docx-editor-comments {
+  box-sizing: border-box;
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  bottom: var(--docx-editor-horizontal-scrollbar-size);
+  width: var(--docx-editor-comments-width);
+  overflow: auto;
+  border-left: 1px solid rgb(0 0 0 / 10%);
+  background: #fafafa;
+  color: #242424;
+}
+
+.docx-editor-editor,
+.docx-editor-comments {
+  scrollbar-width: thin;
+  scrollbar-color: #9ba3af #e7e9ed;
+}
+
+.docx-editor-editor {
+  scrollbar-gutter: stable;
+}
+
+.docx-editor-comments[data-view="rail"] {
+  bottom: auto;
+  overflow: visible;
+  border-left: 0;
+  background: transparent;
+}
+
+.docx-editor-comments[data-view="all"] {
+  position: relative;
+  top: auto;
+  bottom: auto;
+  left: auto !important;
+  flex: none;
+  overflow: auto;
+}
+
+.docx-editor-comments-toggle {
+  position: absolute;
+  z-index: 4;
+  top: 12px;
+  right: 16px;
+  padding: 4px 8px;
+  border: 1px solid rgb(0 0 0 / 12%);
+  border-radius: 6px;
+  background: #ffffff;
+  color: #4b5563;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+}
+
+.docx-editor-comments-heading {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 52px;
+  padding: 0 16px;
+  background: #fafafa;
+  border-bottom: 1px solid rgb(0 0 0 / 8%);
+  font-size: 14px;
+}
+
+.docx-editor-comments-heading h2 {
+  margin: 0;
+  font-size: inherit;
+}
+
+.docx-editor-comments-heading button {
+  padding: 4px 7px;
+  color: #555555;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+}
+
+.docx-editor-comments-canvas {
+  position: relative;
+  min-height: 100%;
+}
+
+.docx-editor-comments[data-view="rail"] .docx-editor-comment-position {
+  position: absolute;
+  right: 0;
+  left: 0;
+}
+
+.docx-editor-comments[data-view="all"] .docx-editor-comments-canvas {
+  min-height: auto;
+  padding: 12px 16px;
+}
+
+.docx-editor-comments[data-view="all"] .docx-editor-comment-position {
+  margin-bottom: 12px;
+}
+
+.docx-editor-comment-card,
+.docx-editor-comment-composer {
+  padding: 12px;
+  border: 1px solid rgb(0 0 0 / 12%);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.docx-editor-comment-reply {
+  padding: 10px 0 0;
+  margin-top: 10px;
+  border-top: 1px solid rgb(0 0 0 / 8%);
+}
+
+.docx-editor-comment-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.docx-editor-comment-icon-actions {
+  display: flex;
+  flex: none;
+  gap: 2px;
+}
+
+.docx-editor-comment-icon-actions button,
+.docx-editor-color-apply {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #666666;
+  cursor: pointer;
+}
+
+.docx-editor-comment-icon-actions button:hover,
+.docx-editor-color-apply:hover:not(:disabled) {
+  background: rgb(0 0 0 / 6%);
+}
+
+.docx-editor-comment-card > .docx-editor-comment-composer {
+  padding: 10px 0 0;
+  margin-top: 10px;
+  border: 0;
+  border-top: 1px solid rgb(0 0 0 / 8%);
+  border-radius: 0;
+}
+
+.docx-editor-comments-empty {
+  margin: 0;
+  padding: 72px 20px 0;
+  color: #777777;
+  font-size: 13px;
+  text-align: center;
+}
+
+.docx-editor-comment-meta {
+  display: block;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  margin-bottom: 6px;
+  color: #666666;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+}
+
+.docx-editor-comment-author,
+.docx-editor-comment-date {
+  display: block;
+}
+
+.docx-editor-comment-author {
+  color: #242424;
+  font-weight: 600;
+}
+
+.docx-editor-comment-date {
+  margin-top: 2px;
+}
+
+button.docx-editor-comment-meta {
+  cursor: pointer;
+}
+
+button.docx-editor-comment-meta:disabled {
+  cursor: default;
+}
+
+.docx-editor-comment-body {
+  margin: 0;
+  color: #1f2937;
+  font-size: 14px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+button.docx-editor-comment-body {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #1f2937;
+  cursor: text;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: inherit;
+  text-align: left;
+}
+
+.docx-editor-comment-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.docx-editor-comment-actions button {
+  padding: 2px 4px;
+  border: 0;
+  background: transparent;
+  color: #667085;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.docx-editor-comment-actions .docx-editor-comment-primary-action {
+  color: #2563eb;
+  font-weight: 600;
+}
+
+.docx-editor-comment-composer .docx-editor-comment-actions {
+  justify-content: flex-end;
+}
+
+.docx-editor-comment-composer .docx-editor-comment-actions button {
+  color: #667085;
+}
+
+.docx-editor-comment-composer
+  .docx-editor-comment-actions
+  .docx-editor-comment-primary-action {
+  color: #2563eb;
+  font-weight: 600;
+}
+
+.docx-editor-comment-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 72px;
+  resize: vertical;
+  padding: 8px;
+  border: 1px solid rgb(0 0 0 / 20%);
+  border-radius: 5px;
+  color: inherit;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.15;
+}
+
+.docx-editor-note-reference {
+  padding: 0 1px;
+  color: #315da8;
+  font-size: 0.72em;
+  line-height: 0;
+  cursor: help;
+}
+
+.docx-editor-notes {
+  box-sizing: border-box;
+  margin: 16px auto 24px;
+  padding: 18px 24px;
+  border-top: 1px solid rgb(0 0 0 / 18%);
+  background: #ffffff;
+  box-shadow: 0 1px 6px rgb(0 0 0 / 18%);
+  color: #242424;
+}
+
+.docx-editor-notes-heading {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+
+.docx-editor-notes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.docx-editor-notes-list li {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.docx-editor-note-label {
+  color: #315da8;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.docx-editor-note-body {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* The fallback for browsers that do not know the two properties above (Safari) */
+.docx-editor-editor::-webkit-scrollbar,
+.docx-editor-comments::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.docx-editor-editor::-webkit-scrollbar-thumb,
+.docx-editor-comments::-webkit-scrollbar-thumb {
+  background: #9ba3af;
+  background-clip: padding-box;
+  border-radius: 5px;
+  border: 2px solid transparent;
+}
+
+.docx-editor-editor::-webkit-scrollbar-thumb:hover,
+.docx-editor-comments::-webkit-scrollbar-thumb:hover {
+  background: #737d8c;
+  background-clip: padding-box;
+}
+
+.docx-editor-editor::-webkit-scrollbar-track,
+.docx-editor-comments::-webkit-scrollbar-track {
+  background: #e7e9ed;
+  border-radius: 5px;
+}
+
+.docx-editor-editor::-webkit-scrollbar-corner,
+.docx-editor-comments::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/*
+ * The paper and the boundary guides overlaid on it share one positioning origin.
+ *
+ * The side padding lives here rather than on the scroll box, because Chromium does not
+ * draw a scroll box's own padding past the right edge of sideways-scrolled content.
+ * Shrink-wrapping puts the padding beyond the paper even then, and min-width keeps the
+ * layer filling the box on wide screens so the paper stays centered.
+ */
+.docx-editor-page-layer {
+  position: relative;
+  width: fit-content;
+  min-width: 100%;
+  box-sizing: border-box;
+  padding: 0 16px;
+}
+
+@media (max-width: 840px) {
+  .docx-editor-workspace {
+    --docx-editor-comments-width: 280px;
+  }
+}
+
+@media (max-width: 720px) {
+  .docx-editor-workspace {
+    --docx-editor-comments-width: 240px;
+  }
+
+  .docx-editor-comments-heading {
+    padding: 0 12px;
+  }
+
+  .docx-editor-comments[data-view="all"] .docx-editor-comments-canvas {
+    padding: 10px 12px;
+  }
+
+  .docx-editor-comment-card,
+  .docx-editor-comment-composer {
+    padding: 10px;
+  }
+
+  .docx-editor-comments-heading {
+    font-size: 13px;
+  }
+
+  .docx-editor-comment-meta {
+    font-size: 11px;
+  }
+
+  .docx-editor-comment-body,
+  button.docx-editor-comment-body {
+    font-size: 13px;
+  }
+
+  .docx-editor-comment-input {
+    font-size: 13px;
+  }
+
+  .docx-editor-comment-actions button {
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 560px) {
+  .docx-editor-workspace {
+    --docx-editor-comments-width: 200px;
+  }
+
+  .docx-editor-comments-heading {
+    padding: 0 10px;
+  }
+
+  .docx-editor-comments[data-view="all"] .docx-editor-comments-canvas {
+    padding: 8px;
+  }
+
+  .docx-editor-comment-card,
+  .docx-editor-comment-composer {
+    padding: 8px;
+  }
+
+  .docx-editor-comment-header {
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .docx-editor-comment-header > .docx-editor-comment-meta {
+    margin-bottom: 0;
+  }
+
+  .docx-editor-comment-icon-actions {
+    align-self: flex-start;
+    gap: 0;
+  }
+
+  .docx-editor-comment-icon-actions button {
+    width: 24px;
+    height: 24px;
+  }
+
+  .docx-editor-comment-icon-actions svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  .docx-editor-comments-heading {
+    font-size: 12px;
+  }
+
+  .docx-editor-comment-meta {
+    font-size: 10px;
+  }
+
+  .docx-editor-comment-body,
+  button.docx-editor-comment-body {
+    font-size: 12px;
+  }
+
+  .docx-editor-comment-input {
+    font-size: 12px;
+  }
+
+  .docx-editor-comment-actions button {
+    font-size: 10px;
+  }
+}
+
+@media (max-width: 420px) {
+  .docx-editor-workspace {
+    --docx-editor-comments-width: 180px;
+  }
+
+  .docx-editor-comments-heading {
+    padding: 0 8px;
+  }
+
+  .docx-editor-comments[data-view="all"] .docx-editor-comments-canvas {
+    padding: 6px;
+  }
+
+  .docx-editor-comment-card,
+  .docx-editor-comment-composer {
+    padding: 6px;
+  }
+}
+
+.docx-editor-sheet {
+  /*
+   * The paper size, and the margins printed inside it.
+   *
+   * The editor writes all six over these the moment a document is opened, from the
+   * `w:pgSz` and `w:pgMar` of its first section (`docx/pageGeometry.ts`), so a Letter
+   * document is drawn on Letter. What stands here is the paper a document that names
+   * none is drawn on, A4 portrait with the margins this editor has always used, and it
+   * is the same paper `A4_PORTRAIT` names in `docx/pageGeometry.ts`.
+   *
+   * The height is used only as a minimum, so that even short text feels like a full
+   * sheet and longer text simply grows it.
+   * The body left inside these margins is the width of a new table and the height
+   * between page boundaries; `page/pageLayout.ts` works both out from the very same
+   * geometry, so the divider on screen lands where the sheet actually ends.
+   */
+  --docx-editor-page-width: 21cm;
+  --docx-editor-page-height: 29.7cm;
+  --docx-editor-page-margin-top: 2cm;
+  --docx-editor-page-margin-right: 2.2cm;
+  --docx-editor-page-margin-bottom: 2cm;
+  --docx-editor-page-margin-left: 2.2cm;
+
+  box-sizing: border-box;
+  /*
+   * The paper is never reflowed to fit the editor. Narrow screens may visually scale
+   * the whole page layer, which keeps its print line breaks and page boundaries intact.
+   */
+  width: var(--docx-editor-page-width);
+  /*
+   * With the page marks on, the editor supplies a height grown to the number of pages.
+   * That way the last page also reads as one whole sheet rather than half of one.
+   */
+  min-height: var(--docx-editor-sheet-height, var(--docx-editor-page-height));
+  /* Centered while there is room to spare, and flush left once the paper outgrows the box */
+  margin: 0 auto;
+  padding: var(--docx-editor-page-margin-top)
+    var(--docx-editor-page-margin-right) var(--docx-editor-page-margin-bottom)
+    var(--docx-editor-page-margin-left);
+  background: #ffffff;
+  box-shadow: 0 1px 6px rgb(0 0 0 / 18%);
+  color: #000000;
+  /*
+   * These three values are supplied by the editor as CSS variables when a document
+   * is opened.
+   * What is written here is the bare minimum, used only when those variables are
+   * absent.
+   * The font list actually laid down is decided by `styles/fontStack.ts`, and the
+   * line height multiplier is 1.3 (SINGLE_LINE_RATIO in `styles/inlineStyle.ts`.
+   * If one of the two changes, change the other).
+   */
+  font-family: var(--docx-editor-font-family, sans-serif);
+  font-size: var(--docx-editor-font-size, 10pt);
+  line-height: var(--docx-editor-line-height, 1.3);
+  outline: none;
+}
+
+.docx-editor-p {
+  margin: 0;
+}
+
+/*
+ * The marks that suggest separate A4 sheets.
+ *
+ * The text flows straight down one continuous sheet, and only the space between one
+ * page and the next is covered by this band so it reads as separate sheets.
+ * A block that would straddle the gap has already been pushed to the next page by
+ * the editor, so there is no text underneath the band.
+ * The mouse passes through this box and reaches the text below.
+ */
+.docx-editor-page-guides {
+  position: absolute;
+  pointer-events: none;
+  user-select: none;
+}
+
+/*
+ * The space between one page and the next.
+ * It only breaks the paper with the editor's background color and draws nothing
+ * else on top.
+ */
+.docx-editor-page-split {
+  position: absolute;
+  left: 0;
+  right: 0;
+  background: #f1f1f1;
+}
+
+/*
+ * A block taller than one page cannot be pushed down, so it crosses the page.
+ * At that spot only a faint dotted line is drawn instead of the band, so the text
+ * stays uncovered.
+ */
+.docx-editor-page-crossed {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px dotted rgb(26 79 208 / 40%);
+}
+
+/* The page number. Laid on the top right corner of every page */
+.docx-editor-page-badge {
+  position: absolute;
+  right: 10px;
+  min-width: 18px;
+  padding: 0 6px;
+  border-radius: 9px;
+  background: rgb(0 0 0 / 6%);
+  color: #808080;
+  font-family: system-ui, sans-serif;
+  font-size: 10px;
+  line-height: 18px;
+  text-align: center;
+  letter-spacing: 0.02em;
+}
+
+/* Display-only projections of the first section's header and footer stories. */
+.docx-editor-page-header,
+.docx-editor-page-footer {
+  position: absolute;
+  overflow: hidden;
+  color: #4d4d4d;
+  font-family: var(--docx-editor-font-family, sans-serif);
+  font-size: 9pt;
+  line-height: 1.2;
+  text-align: center;
+  white-space: pre-wrap;
+  transform: translateY(-50%);
+}
+
+/*
+ * The list number. Drawn purely from the attribute the decoration supplies.
+ * It sits in the paragraph's hanging indent, so the body text lines up against the
+ * hanging indent width just as it does in Word.
+ *
+ * As in Word, the number is flush with the left end of that space, and the body
+ * starts where the space ends.
+ * The gap between the number and the body therefore opens up as wide as the hanging
+ * indent width minus the length of the number.
+ * The right padding is the minimum gap, visible only when the number is longer than
+ * the space.
+ * Because box-sizing is border-box, as long as the number fits inside the space it
+ * does not push where the body starts.
+ */
+.docx-editor-p[data-marker]::before {
+  content: attr(data-marker);
+  display: inline-block;
+  box-sizing: border-box;
+  min-width: var(--docx-editor-marker-width, 18pt);
+  padding-right: 4pt;
+  text-align: left;
+  /* Keeps the paragraph's hanging indent (text-indent) from being inherited and shifting the number again inside its own box */
+  text-indent: 0;
+  user-select: none;
+}
+
+/*
+ * Tables.
+ * Column widths are set by a colgroup transcribed straight from the document's
+ * w:tblGrid, and table-layout holds to those values.
+ * Borders are drawn collapsed so that touching edges merge into one.
+ *
+ * max-width is a safety net for tables that were already saved wider than the body.
+ * When the width overruns the paper, the fixed layout shrinks the column widths
+ * proportionally to fit them inside it.
+ * Growth caused by editing a table is prevented on the model side (the grid and the
+ * dxa widths).
+ */
+.docx-editor-tbl {
+  border-collapse: collapse;
+  table-layout: fixed;
+  max-width: 100%;
+  margin: 0;
+}
+
+.docx-editor-tbl [data-table-page-space],
+.docx-editor-tbl [data-table-repeated-header] {
+  pointer-events: none;
+  user-select: none;
+}
+
+.docx-editor-tbl [data-table-page-space] > td {
+  padding: 0;
+  border: 0;
+  line-height: 0;
+}
+
+.docx-editor-tc {
+  /*
+   * Word's default cell padding (0.08 inch), for a document that writes none of its own.
+   * A margin the cell (tcMar), the table (tblCellMar) or its table style declares wins over it.
+   */
+  padding: 0 5.4pt;
+  vertical-align: top;
+  /*
+   * No clipping.
+   * A word longer than the cell wraps instead of overflowing and being cut off.
+   * The hanging indent where a list number sits also stays visible inside the cell.
+   */
+  overflow-wrap: anywhere;
+  overflow: visible;
+}
+
+/*
+ * Over a column boundary the cursor takes the column-resize shape.
+ * cursor is inherited, so setting it once on the sheet keeps it showing even over
+ * the text inside a cell.
+ * The same mark stays attached while dragging, so the cursor does not waver even
+ * when the pointer strays off the boundary.
+ */
+.docx-editor-sheet.docx-editor-col-resize {
+  cursor: col-resize;
+}
+
+.docx-editor-sheet.docx-editor-row-resize {
+  cursor: row-resize;
+}
+
+/*
+ * The vertical line that shows where the boundary stands while it is being dragged.
+ * It is floated fixed to the viewport so neither the paper nor the scroll box can
+ * clip it, and it is drawn above everything on screen.
+ * It must not intercept mouse events, so it is a box that only draws.
+ */
+.docx-editor-col-guide {
+  position: fixed;
+  z-index: 10;
+  width: 0;
+  border-left: 1px dashed #1a4fd0;
+  pointer-events: none;
+}
+
+.docx-editor-row-guide {
+  position: fixed;
+  z-index: 10;
+  height: 0;
+  border-top: 1px dashed #1a4fd0;
+  pointer-events: none;
+}
+
+/* Selecting a cell lays a faint color over it. The text color is left untouched */
+.docx-editor-tc.selectedCell {
+  position: relative;
+}
+
+.docx-editor-tc.selectedCell::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgb(120 150 255 / 22%);
+  pointer-events: none;
+}
+
+.docx-editor-tab {
+  display: inline;
+}
+
+.docx-editor-tab-slot[data-tab-layout] {
+  display: inline-block;
+  width: var(--docx-editor-tab-width);
+  /* The tab glyph must not paint its selection beyond the resolved OOXML slot. */
+  overflow: clip;
+  white-space: pre;
+  vertical-align: baseline;
+}
+
+.docx-editor-sheet.docx-editor-tab-caret-active,
+.docx-editor-sheet.docx-editor-tab-caret-active * {
+  caret-color: transparent;
+}
+
+.docx-editor-tab-caret {
+  position: fixed;
+  z-index: 20;
+  width: 1px;
+  background: currentcolor;
+  pointer-events: none;
+}
+
+/*
+ * An inline image. It is drawn at the size the drawing records, carried on the width and
+ * height attributes, but never wider than the paper it sits on.
+ */
+.docx-editor-img {
+  max-width: 100%;
+}
+
+/*
+ * The box the image is drawn inside (`editor/imageResize.ts`).
+ * It is the origin the corner handles are positioned against, and it takes up exactly as
+ * much room as the image: no line box of its own opens up underneath it.
+ */
+.docx-editor-img-box {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  line-height: 0;
+}
+
+/* The image is the selection. The frame stands in for ProseMirror's own selected-node mark */
+.docx-editor-img-selected .docx-editor-img {
+  outline: 2px solid #1a4fd0;
+  outline-offset: 1px;
+}
+
+/*
+ * The corner handles.
+ * They show only while the image is selected, and they straddle the corner so that even a
+ * small image can be grabbed.
+ */
+.docx-editor-img-handle {
+  position: absolute;
+  display: none;
+  width: 9px;
+  height: 9px;
+  border: 1px solid #ffffff;
+  border-radius: 2px;
+  background: #1a4fd0;
+}
+
+.docx-editor-img-selected .docx-editor-img-handle {
+  display: block;
+}
+
+.docx-editor-img-handle[data-corner="nw"] {
+  top: -5px;
+  left: -5px;
+  cursor: nwse-resize;
+}
+
+.docx-editor-img-handle[data-corner="ne"] {
+  top: -5px;
+  right: -5px;
+  cursor: nesw-resize;
+}
+
+.docx-editor-img-handle[data-corner="sw"] {
+  bottom: -5px;
+  left: -5px;
+  cursor: nesw-resize;
+}
+
+.docx-editor-img-handle[data-corner="se"] {
+  bottom: -5px;
+  right: -5px;
+  cursor: nwse-resize;
+}
+
+/*
+ * A stretch of text a hyperlink covers. It is drawn as a link and nothing more: the address is
+ * held as data rather than as an `href`, so a click here places the caret the way a click on any
+ * other text does, and opening the address is the link panel's business.
+ * A color the run itself carries paints over this one, the same as any other run formatting.
+ */
+.docx-editor-link {
+  color: #1a56db;
+  border-bottom: 1px solid currentcolor;
+}
+
+/*
+ * A content control that says its contents may not be edited (`editor/plugins/lockedContent` refuses
+ * the edits). Yellow is what the contract templates already paint their settled parts with.
+ * A background the run itself carries (`w:shd`, a highlight) paints over this one, so the
+ * outline is drawn as well: outlines go on last, whatever the content paints.
+ */
+.docx-editor-sdt-locked {
+  background: #fff59d;
+  outline: 1px solid #f9a825;
+  cursor: not-allowed;
+}
+
+/*
+ * A whole cell shut by the control around it. The same yellow, outlined just inside the cell
+ * border so the mark follows the cell rather than the text standing in it.
+ */
+.docx-editor-tc-locked {
+  background: #fff59d;
+  outline: 1px solid #f9a825;
+  outline-offset: -1px;
+  cursor: not-allowed;
+}
+
+/* Elements that, like bookmarks, must not be visible */
+.docx-editor-raw-inline {
+  display: inline-block;
+  width: 0;
+  overflow: hidden;
+  vertical-align: baseline;
+}
+
+.docx-editor-table,
+.docx-editor-raw-block {
+  margin: 8pt 0;
+  padding: 10pt 12pt;
+  border: 1px dashed #9a9a9a;
+  border-radius: 4px;
+  background: #fafafa;
+  color: #595959;
+  font-size: 9pt;
+  font-family: system-ui, sans-serif;
+  user-select: none;
+}
+
+/*
+ * The toolbar.
+ *
+ * It is fixed in place in the frame's first slot, and only the paper box below it
+ * scrolls.
+ * sticky is applied as well so that it stays at the top even on screens where the
+ * frame has no height and the page scrolls instead.
+ *
+ * The whole toolbar is one stacking layer, so a panel opened from it can never rise
+ * above what the toolbar itself is under. That is why the value here, and not the one
+ * on the panel, is what decides whether an open palette covers the paper.
+ * The order across the editor is: paper and its page marks, then the toolbar, then the
+ * boundary being dragged, and the table menu on top of everything.
+ * Inside the toolbar's own layer, a tooltip (15) rises over the rows of controls and an
+ * open panel (20) rises over the tooltip.
+ */
+.docx-editor-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  /* Wrapped rows get a touch more air than the buttons within one */
+  gap: 4px 2px;
+  flex: none;
+  padding: 6px 8px;
+  border-bottom: 1px solid #d8d8d8;
+  background: #ffffff;
+  font-size: 13px;
+  color: #1f1f1f;
+}
+
+.docx-editor-toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.docx-editor-toolbar-sep {
+  width: 1px;
+  height: 20px;
+  margin: 0 6px;
+  background: #dcdcdc;
+}
+
+.docx-editor-toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.docx-editor-toolbar-btn:hover:not(:disabled) {
+  background: #f0f0f0;
+}
+
+.docx-editor-toolbar-btn[aria-pressed="true"],
+.docx-editor-toolbar-btn[aria-expanded="true"] {
+  border-color: #c3d4f5;
+  background: #e4ecfd;
+  color: #1a4fd0;
+}
+
+.docx-editor-toolbar-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.docx-editor-toolbar-color-icon {
+  position: relative;
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+}
+
+.docx-editor-toolbar-color-indicator {
+  position: absolute;
+  right: 1px;
+  bottom: 0;
+  left: 1px;
+  height: 4px;
+  border-radius: 1px;
+}
+
+.docx-editor-toolbar-select {
+  height: 28px;
+  padding: 0 4px;
+  border: 1px solid #dcdcdc;
+  border-radius: 4px;
+  background: #ffffff;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.docx-editor-font-family-select {
+  box-sizing: border-box;
+  flex: 0 0 112px;
+  width: 112px;
+  min-width: 0;
+  max-width: 112px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * The tooltip a control shows on hover.
+ *
+ * The text is carried by the attribute (`tooltip` in `styles/classNames.ts`) and drawn
+ * from it by this pseudo-element, so no script runs and nothing is measured: the box
+ * simply hangs under the middle of the control.
+ * The native `title` attribute is not used, because how long it waits belongs to the
+ * browser (about a second) and cannot be shortened.
+ *
+ * Nothing on the way out clips it. The toolbar and the panels never hide their overflow,
+ * and the box that scrolls is the paper's, which no tooltip is inside; the tooltip only
+ * hangs over the paper.
+ * Inside the toolbar's layer it is drawn under an open panel (20), because a panel opens
+ * over the very spot the tooltip hangs in.
+ */
+[data-docx-editor-tooltip] {
+  position: relative;
+}
+
+[data-docx-editor-tooltip]::after {
+  content: attr(data-docx-editor-tooltip);
+  position: absolute;
+  z-index: 15;
+  top: calc(100% + 6px);
+  left: 50%;
+  width: max-content;
+  max-width: 220px;
+  /* An address has no space to break at, so it may break anywhere rather than run out of the box */
+  overflow-wrap: anywhere;
+  padding: 4px 7px;
+  border-radius: 4px;
+  background: #3c4043;
+  color: #ffffff;
+  font-family: system-ui, sans-serif;
+  font-size: 11px;
+  line-height: 1.45;
+  text-align: center;
+  transform: translateX(-50%);
+  opacity: 0;
+  visibility: hidden;
+  /* The hidden state carries no delay, so leaving the control takes the tooltip away at once */
+  transition:
+    opacity 0s,
+    visibility 0s;
+  pointer-events: none;
+}
+
+/*
+ * The wait before it shows. The delay lives here, on the shown state alone.
+ * Keyboard focus waits the same 300ms as the pointer: `:focus-visible` for a control that
+ * carries its own tooltip, and the `:has` line for a select, whose tooltip is on the box
+ * around it. Focus taken by a click does not count, so clicking a button does not leave a
+ * tooltip standing behind the panel it just opened.
+ */
+[data-docx-editor-tooltip]:hover::after,
+[data-docx-editor-tooltip]:focus-visible::after,
+[data-docx-editor-tooltip]:has(:focus-visible)::after {
+  opacity: 1;
+  visibility: visible;
+  transition:
+    opacity 90ms linear 300ms,
+    visibility 0s linear 300ms;
+}
+
+/*
+ * A control holding its panel open shows no tooltip at all.
+ * The panel opens in the same place the tooltip hangs, and the pointer is still resting on
+ * the control that opened it, so the tooltip would otherwise sit right against the panel it
+ * has just been made redundant by. Being drawn under the panel is not enough: the tooltip is
+ * centered on the control while the panel lines up with the control's edge, so a sliver of it
+ * would stick out.
+ */
+[data-docx-editor-tooltip][aria-expanded="true"]::after {
+  content: none;
+}
+
+/*
+ * Escape takes away the tooltip standing in the way, without the pointer having to be moved off
+ * the control it belongs to (WCAG 1.4.13). The mark is put on the box the tooltips are drawn
+ * inside and taken off again by the next move of the pointer or of the focus
+ * (`ui/Tooltip.tsx`), so nothing stays hushed beyond the moment it was in the way.
+ */
+[data-docx-editor-tooltips-off] [data-docx-editor-tooltip]::after {
+  content: none;
+}
+
+/* The box around a control that draws no pseudo-elements of its own. It takes up no more room than the control inside it */
+.docx-editor-tooltip-wrap {
+  display: inline-flex;
+}
+
+/*
+ * The small panel that opens below a button.
+ *
+ * It hangs out of the toolbar over the paper, so it has to cover the toolbar's own rows
+ * as well as the buttons beside it. How it stands against the paper is decided by the
+ * toolbar's own layer.
+ *
+ * The panel is laid out against the screen rather than against the button, and
+ * `ui/panelPlacement.ts` writes the place onto it. Being positioned inside the editor was
+ * not enough: the boxes around the editor belong to the host app, and any one of them
+ * hiding its overflow - which a library cannot forbid - cut off every panel that reached
+ * past its edge, however high the panel was stacked. Nothing but the screen clips a fixed
+ * box.
+ * That is also why the box holding the button and the panel needs no style of its own: it
+ * is only what tells a click apart from a click outside the panel.
+ * The values here are only where the panel sits for the one render it spends being
+ * measured, and they keep it away from the right edge of the screen so that the width it
+ * measures is the width it wants.
+ */
+.docx-editor-popover {
+  position: fixed;
+  z-index: 20;
+  top: 0;
+  left: 0;
+  box-sizing: border-box;
+  max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 16px);
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid #d8d8d8;
+  border-radius: 6px;
+  background: #ffffff;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 16%);
+}
+
+/* The clear entry at the top of the palette. Set a little apart from the swatches */
+.docx-editor-color-clear-row {
+  margin-bottom: 6px;
+}
+
+/*
+ * The two grids are laid out row by row rather than as one run of cells, because the rows are in
+ * the markup: a grid says what it is to a screen reader and to the arrow keys that walk it
+ * (`ui/useGridKeyboard.ts`), and a row of it has to be a box of its own to be one.
+ */
+.docx-editor-size-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.docx-editor-size-row {
+  display: grid;
+  grid-template-columns: repeat(6, 18px);
+  gap: 2px;
+}
+
+.docx-editor-size-cell {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid #cfcfcf;
+  border-radius: 2px;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.docx-editor-size-cell[data-on] {
+  border-color: #1a4fd0;
+  background: #dbe6fd;
+}
+
+.docx-editor-size-label {
+  margin: 6px 0 0;
+  text-align: center;
+  font-size: 12px;
+  color: #5a5a5a;
+}
+
+.docx-editor-color-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.docx-editor-color-picker {
+  min-width: 207px;
+}
+
+/* The text color palette. The same position down a column is the same family, so the column count has to be kept for the layout to mean anything */
+.docx-editor-color-row {
+  display: grid;
+  grid-template-columns: repeat(10, 18px);
+  gap: 3px;
+}
+
+.docx-editor-swatch {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid rgb(0 0 0 / 25%);
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+/* One color is in force at a time, so the swatch holding it is the selected cell of the grid */
+.docx-editor-swatch[aria-selected="true"] {
+  outline: 2px solid #1a4fd0;
+  outline-offset: 1px;
+}
+
+.docx-editor-color-custom {
+  display: grid;
+  grid-template-columns: 30px 82px 28px;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #e2e2e2;
+}
+
+.docx-editor-color-native-input {
+  box-sizing: border-box;
+  width: 30px;
+  height: 28px;
+  padding: 2px;
+  border: 1px solid #c8c8c8;
+  border-radius: 4px;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.docx-editor-color-hex-input {
+  box-sizing: border-box;
+  min-width: 0;
+  height: 28px;
+  padding: 4px 6px;
+  border: 1px solid #c8c8c8;
+  border-radius: 4px;
+  font: inherit;
+  font-size: 12px;
+  color: #1f1f1f;
+}
+
+.docx-editor-color-hex-input[aria-invalid="true"] {
+  border-color: #c5221f;
+}
+
+.docx-editor-color-apply:disabled {
+  color: #9a9a9a;
+  cursor: default;
+}
+
+/*
+ * The table menu opened with the right button. Where it overlaps the toolbar or an open
+ * panel, the menu is on top.
+ * Like the toolbar panels it is laid out against the screen, so that no box the host app
+ * wraps the editor in can cut it off; `ui/panelPlacement.ts` writes the place onto it.
+ */
+.docx-editor-menu {
+  position: fixed;
+  z-index: 30;
+  top: 0;
+  left: 0;
+  box-sizing: border-box;
+  min-width: min(180px, calc(100vw - 16px));
+  max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 16px);
+  overflow: auto;
+  padding: 4px;
+  border: 1px solid #d8d8d8;
+  border-radius: 6px;
+  background: #ffffff;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 18%);
+  font-family: system-ui, sans-serif;
+  font-size: 13px;
+  color: #1f1f1f;
+}
+
+/*
+ * The link panel. Laid out against the screen like the menus, since it opens over the selection
+ * rather than inside any box of the editor's (`ui/panelPlacement.ts`).
+ */
+.docx-editor-link-panel {
+  position: fixed;
+  z-index: 30;
+  top: 0;
+  left: 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 260px;
+  max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 16px);
+  overflow: auto;
+  padding: 6px;
+  border: 1px solid #d8d8d8;
+  border-radius: 6px;
+  background: #ffffff;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 18%);
+  font-family: system-ui, sans-serif;
+  font-size: 13px;
+  color: #1f1f1f;
+}
+
+.docx-editor-link-address {
+  width: 100%;
+  /* Sits no taller than the 28px buttons beside it, so the row is as low as they allow */
+  padding: 4px 8px;
+  border: 1px solid #c4c4c4;
+  border-radius: 4px;
+  font: inherit;
+  color: inherit;
+}
+
+.docx-editor-link-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* Says what the field is for, since the panel has no title of its own */
+.docx-editor-link-icon {
+  flex: none;
+  color: #5f6368;
+}
+
+.docx-editor-link-row .docx-editor-link-address {
+  flex: 1;
+  min-width: 0;
+}
+
+/*
+ * The card that says where the link under the cursor points. Laid out against the screen like the
+ * link panel, and hung under the first line of the link itself (`ui/LinkCard.tsx`).
+ */
+.docx-editor-link-card {
+  position: fixed;
+  z-index: 30;
+  top: 0;
+  left: 0;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: min(540px, calc(100vw - 16px));
+  overflow: visible;
+  padding: 5px 6px;
+  border: 1px solid #d8d8d8;
+  border-radius: 6px;
+  background: #ffffff;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 18%);
+  font-family: system-ui, sans-serif;
+  font-size: 13px;
+  color: #1f1f1f;
+}
+
+/* The whole of the address is in the tooltip, so the visible end of a long one is cut off */
+.docx-editor-link-card-address {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  padding: 0 2px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.docx-editor-link-card > .docx-editor-tooltip-wrap {
+  flex: 0 1 160px;
+  min-width: 0;
+}
+
+.docx-editor-link-card > .docx-editor-toolbar-btn {
+  flex: none;
+}
+
+.docx-editor-link-card-note {
+  max-width: 260px;
+  padding: 0 2px;
+  color: #5f6368;
+}
+
+/*
+ * A menu of choices inside a toolbar panel (line spacing, alignment).
+ * The rows carry the width; the panel is only the box drawn around them.
+ */
+.docx-editor-menu-list {
+  min-width: 190px;
+}
+
+/*
+ * A menu row. The check slot and an icon sit in front of the label, so the row is laid out
+ * in a line rather than as a block of text.
+ */
+.docx-editor-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.docx-editor-menu-item:hover:not([aria-disabled="true"]) {
+  background: #f0f4ff;
+}
+
+/*
+ * A row with nothing to do. It says so in ARIA rather than being disabled outright, so that it
+ * stays focusable and a keyboard walking the menu is told what is there and why it is dead
+ * instead of walking past a row it never hears about.
+ */
+.docx-editor-menu-item[aria-disabled="true"] {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* The check mark of the current choice. The slot is always there, so the labels line up whether a row is checked or not */
+.docx-editor-menu-check {
+  display: inline-flex;
+  flex: none;
+  width: 16px;
+  color: #1a4fd0;
+}
+
+/*
+ * The shortcut written on the right of a menu row. It pushes itself to the far edge, so the
+ * labels on the left stay lined up however long a shortcut is.
+ */
+.docx-editor-menu-hint {
+  margin-left: auto;
+  padding-left: 16px;
+  color: #757575;
+}
+
+.docx-editor-menu-sep {
+  height: 0;
+  margin: 4px 6px;
+  border: none;
+  border-top: 1px solid #e6e6e6;
+}
+
+@media (max-width: 720px) {
+  .docx-editor-popover,
+  .docx-editor-menu,
+  .docx-editor-link-panel,
+  .docx-editor-link-card {
+    font-size: 12px;
+  }
+
+  .docx-editor-popover {
+    padding: 6px;
+  }
+
+  .docx-editor-menu {
+    min-width: min(168px, calc(100vw - 16px));
+    padding: 3px;
+  }
+
+  .docx-editor-menu-list {
+    min-width: 168px;
+  }
+
+  .docx-editor-menu-item {
+    min-height: 26px;
+    gap: 6px;
+    padding: 5px 8px;
+  }
+
+  .docx-editor-menu-item > svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  .docx-editor-menu-check {
+    width: 14px;
+  }
+
+  .docx-editor-menu-hint {
+    padding-left: 10px;
+  }
+}
+
+@media (max-width: 560px) {
+  .docx-editor-popover,
+  .docx-editor-menu,
+  .docx-editor-link-panel,
+  .docx-editor-link-card {
+    font-size: 11px;
+  }
+
+  .docx-editor-menu {
+    min-width: min(152px, calc(100vw - 16px));
+  }
+
+  .docx-editor-menu-list {
+    min-width: 152px;
+  }
+
+  .docx-editor-menu-item {
+    min-height: 24px;
+    gap: 5px;
+    padding: 4px 6px;
+  }
+
+  .docx-editor-menu-item > svg {
+    width: 13px;
+    height: 13px;
+  }
+
+  .docx-editor-menu-check {
+    width: 13px;
+  }
+
+  .docx-editor-menu-hint {
+    padding-left: 8px;
+  }
+
+  .docx-editor-link-panel {
+    gap: 6px;
+    width: 220px;
+    padding: 5px;
+  }
+
+  .docx-editor-link-card {
+    gap: 4px;
+  }
+}
+
+/*
+ * The panel that stands where the editor would have been, for a document that was refused
+ * and a consumer that wrote no panel of its own.
+ * Plain and quiet on purpose: it carries a reason, not a design.
+ */
+.docx-editor-rejection {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px;
+  border: 1px solid #e6c9c9;
+  border-radius: 6px;
+  background: #fdf6f6;
+  color: #7a2b2b;
+  font-family: system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.docx-editor-rejection-title {
+  font-weight: 600;
+}
+
+/* The panel writes its own spacing, so the paragraph margins of the host stand down */
+.docx-editor-rejection p {
+  margin: 0;
+}

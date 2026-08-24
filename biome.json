@@ -1,0 +1,87 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.1.1/schema.json",
+  "assist": { "actions": { "source": { "organizeImports": "on" } } },
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "json": { "formatter": { "enabled": false } },
+  "javascript": {
+    "globals": [
+      "expect",
+      "vi",
+      "global",
+      "process",
+      "describe",
+      "it",
+      "beforeEach",
+      "afterEach",
+      "beforeAll",
+      "afterAll",
+      "JSX",
+      "test"
+    ],
+    "formatter": {
+      "trailingCommas": "es5"
+    }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+      "style": {
+        "noNonNullAssertion": "warn",
+        "useAsConstAssertion": "error",
+        "useTemplate": "off",
+        "noUselessElse": "off"
+      },
+      "correctness": {
+        "useExhaustiveDependencies": "warn",
+        "noUndeclaredVariables": "error",
+        "noEmptyCharacterClassInRegex": "warn",
+        "noUnusedVariables": "error",
+        "noUnusedImports": "error",
+        "useHookAtTopLevel": "error"
+      },
+      "performance": {
+        "noAccumulatingSpread": "warn",
+        "noDelete": "off"
+      },
+      "suspicious": {
+        "noArrayIndexKey": "warn",
+        "noExplicitAny": "warn",
+        "noRedeclare": "warn",
+        "noFallthroughSwitchClause": "error",
+        "noImplicitAnyLet": "warn"
+      },
+      "a11y": {
+        "noNoninteractiveTabindex": "off",
+        "useKeyWithClickEvents": "off",
+        "useButtonType": "warn",
+        "noSvgWithoutTitle": "off",
+        "useValidAnchor": "off",
+        "useKeyWithMouseEvents": "off",
+        "useAltText": "warn",
+        "noRedundantAlt": "off",
+        "useSemanticElements": "warn",
+        "noStaticElementInteractions": "warn",
+        "noLabelWithoutControl": "off",
+        "noNoninteractiveElementToInteractiveRole": "warn",
+        "noRedundantRoles": "warn",
+        "useFocusableInteractive": "warn",
+        "useAriaPropsSupportedByRole": "warn"
+      },
+      "complexity": {
+        "noForEach": "off",
+        "noUselessFragments": "off",
+        "useLiteralKeys": "off",
+        "useArrowFunction": "off"
+      }
+    }
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space"
+  }
+}

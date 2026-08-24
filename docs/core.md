@@ -1,0 +1,62 @@
+# Programmatic DOCX import and export
+
+`@portone/docx-editor/core` provides programmatic DOCX import and export without mounting an editor. It returns a ProseMirror document together with an opaque session that retains the rest of the DOCX package.
+
+## Import and export
+
+Keep the session returned by `importDocx` and pass it back to `exportDocx` with the original or transformed document:
+
+```ts
+import { exportDocx, importDocx } from "@portone/docx-editor/core";
+
+const { doc, session } = importDocx(source);
+const bytes = exportDocx(doc, session);
+```
+
+The core functions accept an `ArrayBuffer` or `Uint8Array`. The React component also accepts a `Blob` or `File` and reads it before import.
+
+The session belongs to the imported document and must not be constructed or modified by consumers. Use `documentNumbering(session)` and `documentPartPath(session)` for the package information exposed by the public API.
+
+## Server environments
+
+Browsers provide the `DOMParser` and `Node` globals used during import. A server must install compatible implementations before calling `importDocx`:
+
+```ts
+import { JSDOM } from "jsdom";
+
+const { window } = new JSDOM();
+globalThis.DOMParser = window.DOMParser;
+globalThis.Node = window.Node;
+```
+
+Use a parser configuration that disables external entities and external fetching.
+
+## Errors
+
+`DocxImportError` and `DocxExportError` expose stable `code` values for application handling. Error messages are intended for developers and may be reworded.
+
+```ts
+import {
+  DocxImportError,
+  importDocx,
+} from "@portone/docx-editor/core";
+
+try {
+  importDocx(source);
+} catch (error) {
+  if (error instanceof DocxImportError) {
+    console.error(error.code);
+  }
+  throw error;
+}
+```
+
+## Import limits
+
+- A single inflated part is limited to 32 MiB and the package total to 64 MiB.
+- Package paths that escape the archive and XML containing a DTD are rejected.
+- An image over 16 MiB is retained in the package without being rendered by the editor.
+
+## Utilities
+
+The core entry exports the document schema, numbering readers, typed format readers, and unit conversions used for programmatic transforms. The published TypeScript declarations describe the complete surface, while [Architecture](./architecture.md#preservation-model) explains how unchanged OOXML is retained.

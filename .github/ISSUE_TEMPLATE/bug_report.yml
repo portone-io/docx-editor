@@ -1,0 +1,30 @@
+name: Bug report
+description: Report a problem with @portone/docx-editor
+labels:
+  - bug
+body:
+  - type: textarea
+    id: behavior
+    attributes:
+      label: What happened?
+      description: Describe what happened and what you expected instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: How can we reproduce it?
+      description: Share the clearest steps, code, or sanitized DOCX you can provide.
+      placeholder: |
+        1. Open ...
+        2. Select ...
+        3. Observe ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Add the package version, environment, sanitized files, screenshots, or related links when useful.
