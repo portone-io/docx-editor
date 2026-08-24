@@ -1,3 +1,57 @@
 @import "tailwindcss";
 @import "fumadocs-ui/css/neutral.css";
 @import "fumadocs-ui/css/preset.css";
+
+/* The single source of truth for the landing's design tokens */
+:root {
+  --brand-primary: #f2673c;
+  --brand-primary-hover: #e1552b;
+  --brand-secondary: #8b5cf6;
+  --brand-surface: #ffffff;
+  --brand-text: #111827;
+  --brand-text-muted: #4b5563;
+  --brand-text-subtle: #6b7280;
+  --brand-border: #e5e7eb;
+}
+
+/* Unlayered, so it overrides Tailwind's theme default for the mono utility */
+:root {
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, monospace;
+}
+
+/* Dot grid under two pastel glows. Kept in CSS because the layer lists read
+   better here than as three arbitrary Tailwind values. */
+.hero-backdrop {
+  background-color: var(--brand-surface);
+  background-image:
+    radial-gradient(
+      ellipse clamp(640px, 82vw, 1050px) clamp(400px, 50vw, 640px) at 50% 35%,
+      rgb(242 103 60 / 0.14) 0%,
+      rgb(242 103 60 / 0.05) 55%,
+      transparent 78%
+    ),
+    radial-gradient(
+      ellipse 560px 320px at 84% 6%,
+      rgb(139 92 246 / 0.04) 0%,
+      transparent 68%
+    ),
+    radial-gradient(
+      ellipse 380px 220px at 10% 40%,
+      rgb(139 92 246 / 0.04) 0%,
+      transparent 68%
+    ),
+    radial-gradient(var(--brand-border) 1.2px, transparent 1.2px);
+  background-repeat: no-repeat, no-repeat, no-repeat, repeat;
+  background-size:
+    100% 100%,
+    100% 100%,
+    100% 100%,
+    22px 22px;
+}
+
+/* Inter carries no Hangul, so Korean text falls through to Pretendard */
+body {
+  font-family:
+    var(--font-inter), var(--font-pretendard), ui-sans-serif, system-ui,
+    sans-serif;
+}

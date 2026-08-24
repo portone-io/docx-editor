@@ -456,33 +456,6 @@ button.docx-editor-comment-body {
 }
 
 @media (max-width: 840px) {
-  .docx-editor-workspace {
-    --docx-editor-comments-width: 280px;
-  }
-}
-
-@media (max-width: 720px) {
-  .docx-editor-workspace {
-    --docx-editor-comments-width: 240px;
-  }
-
-  .docx-editor-comments-heading {
-    padding: 0 12px;
-  }
-
-  .docx-editor-comments[data-view="all"] .docx-editor-comments-canvas {
-    padding: 10px 12px;
-  }
-
-  .docx-editor-comment-card,
-  .docx-editor-comment-composer {
-    padding: 10px;
-  }
-
-  .docx-editor-comments-heading {
-    font-size: 13px;
-  }
-
   .docx-editor-comment-meta {
     font-size: 11px;
   }
@@ -499,15 +472,45 @@ button.docx-editor-comment-body {
   .docx-editor-comment-actions button {
     font-size: 11px;
   }
-}
 
-@media (max-width: 560px) {
-  .docx-editor-workspace {
-    --docx-editor-comments-width: 200px;
+  .docx-editor-comments-heading {
+    font-size: 13px;
   }
 
   .docx-editor-comments-heading {
     padding: 0 10px;
+  }
+
+  .docx-editor-comments[data-view="all"] .docx-editor-comments-canvas {
+    padding: 10px 12px;
+  }
+
+  .docx-editor-comment-card,
+  .docx-editor-comment-composer {
+    padding: 10px;
+  }
+
+  .docx-editor-workspace {
+    --docx-editor-comments-width: 240px;
+  }
+}
+
+@media (max-width: 720px) {
+  .docx-editor-comment-meta {
+    font-size: 10px;
+  }
+
+  .docx-editor-comment-body,
+  button.docx-editor-comment-body {
+    font-size: 12px;
+  }
+
+  .docx-editor-comment-input {
+    font-size: 12px;
+  }
+
+  .docx-editor-comment-actions button {
+    font-size: 10px;
   }
 
   .docx-editor-comments[data-view="all"] .docx-editor-comments-canvas {
@@ -519,11 +522,21 @@ button.docx-editor-comment-body {
     padding: 8px;
   }
 
+  .docx-editor-workspace {
+    --docx-editor-comments-width: 200px;
+  }
+
   .docx-editor-comment-header {
     flex-direction: column;
     gap: 2px;
   }
 
+  .docx-editor-comments-heading {
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 560px) {
   .docx-editor-comment-header > .docx-editor-comment-meta {
     margin-bottom: 0;
   }
@@ -544,33 +557,6 @@ button.docx-editor-comment-body {
   }
 
   .docx-editor-comments-heading {
-    font-size: 12px;
-  }
-
-  .docx-editor-comment-meta {
-    font-size: 10px;
-  }
-
-  .docx-editor-comment-body,
-  button.docx-editor-comment-body {
-    font-size: 12px;
-  }
-
-  .docx-editor-comment-input {
-    font-size: 12px;
-  }
-
-  .docx-editor-comment-actions button {
-    font-size: 10px;
-  }
-}
-
-@media (max-width: 420px) {
-  .docx-editor-workspace {
-    --docx-editor-comments-width: 180px;
-  }
-
-  .docx-editor-comments-heading {
     padding: 0 8px;
   }
 
@@ -582,6 +568,13 @@ button.docx-editor-comment-body {
   .docx-editor-comment-composer {
     padding: 6px;
   }
+
+  .docx-editor-workspace {
+    --docx-editor-comments-width: 180px;
+  }
+}
+
+@media (max-width: 420px) {
 }
 
 .docx-editor-sheet {

@@ -50,13 +50,10 @@ export function DocxEditorDemo({ document }: DocxEditorDemoProps) {
   return (
     <div className="demo">
       <header className="demo-header">
-        <div>
-          <h1>docx-editor</h1>
-          <p>{message}</p>
-        </div>
+        <p className="demo-status">Live demo - {message}</p>
         <div className="demo-actions">
           <label className="demo-button">
-            Open DOCX
+            Open .docx
             <input
               type="file"
               accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -67,11 +64,12 @@ export function DocxEditorDemo({ document }: DocxEditorDemoProps) {
               }}
             />
           </label>
-          <button type="button" onClick={() => openFile(document)}>
-            Reset demo
-          </button>
-          <button type="button" onClick={download}>
-            Download
+          <button
+            className="demo-button-primary"
+            type="button"
+            onClick={download}
+          >
+            Export .docx
           </button>
         </div>
       </header>

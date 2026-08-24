@@ -25,61 +25,67 @@
 
 .demo-header {
   display: flex;
-  min-height: 72px;
+  min-height: 40px;
   flex: none;
   align-items: center;
   justify-content: space-between;
-  gap: 24px;
-  padding: 12px 20px;
+  gap: 16px;
+  padding: 6px 14px;
   background: #ffffff;
-  border-bottom: 1px solid #dce1e8;
+  border-bottom: 1px solid #e5e7eb;
 }
 
-.demo-header h1,
-.demo-header p {
+/* The host may load JetBrains Mono and publish it as --font-mono; standalone
+   this falls back to the platform monospace face */
+.demo-status {
+  min-width: 0;
+  flex: 1;
   margin: 0;
-}
-
-.demo-header h1 {
-  font-size: 18px;
-  line-height: 1.4;
-}
-
-.demo-header p {
-  margin-top: 2px;
   overflow: hidden;
-  color: #667085;
-  font-size: 13px;
+  color: #6b7280;
+  font-family: "JetBrains Mono", var(--font-mono, ui-monospace), monospace;
+  font-size: 11px;
+  letter-spacing: 0.08em;
   text-overflow: ellipsis;
+  text-transform: uppercase;
   white-space: nowrap;
 }
 
 .demo-actions {
   display: flex;
   flex: none;
-  flex-wrap: wrap;
   gap: 8px;
 }
 
 .demo-actions button,
 .demo-button {
   display: inline-flex;
-  min-height: 36px;
+  min-height: 28px;
   align-items: center;
   justify-content: center;
-  padding: 7px 12px;
-  color: #172033;
+  padding: 4px 12px;
+  color: #111827;
   background: #ffffff;
-  border: 1px solid #cbd2dc;
+  border: 1px solid #d1d5db;
   border-radius: 8px;
   cursor: pointer;
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 500;
 }
 
 .demo-actions button:hover:not(:disabled),
 .demo-button:hover {
-  background: #f7f8fa;
+  background: #f9fafb;
+}
+
+.demo-actions button.demo-button-primary {
+  color: #ffffff;
+  background: #f2673c;
+  border-color: transparent;
+}
+
+.demo-actions button.demo-button-primary:hover:not(:disabled) {
+  background: #e1552b;
 }
 
 .demo-actions button:disabled {
@@ -98,9 +104,13 @@
 }
 
 .demo-editor {
+  /* Flush against the host card: the frame chrome comes from the card, not the editor */
+  --docx-editor-border: none;
+  --docx-editor-radius: 0;
+
   min-height: 0;
   flex: 1;
-  padding: 16px;
+  padding: 0;
 }
 
 .demo-loading,
@@ -109,10 +119,10 @@
   height: 100%;
   align-items: center;
   justify-content: center;
-  color: #667085;
+  color: #6b7280;
   background: #ffffff;
-  border: 1px solid #dce1e8;
-  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
 }
 
 .demo-error {
@@ -121,14 +131,40 @@
   color: #b42318;
 }
 
+/*
+ * The demo card caps the editor at ~1020px, but the library's comment type steps
+ * are viewport-based and never fire on a desktop viewport. Inside the demo the
+ * one-step-down sizes are therefore the base, and the next step keeps pace with
+ * the library's ladder on narrow viewports.
+ */
+.demo .docx-editor-comments-heading {
+  font-size: 13px;
+}
+
+.demo .docx-editor-comment-body,
+.demo button.docx-editor-comment-body,
+.demo .docx-editor-comment-input {
+  font-size: 13px;
+}
+
+.demo .docx-editor-comment-meta,
+.demo .docx-editor-comment-actions button {
+  font-size: 11px;
+}
+
 @media (max-width: 720px) {
-  .demo-header {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 10px;
+  .demo .docx-editor-comments-heading {
+    font-size: 12px;
   }
 
-  .demo-editor {
-    padding: 8px;
+  .demo .docx-editor-comment-body,
+  .demo button.docx-editor-comment-body,
+  .demo .docx-editor-comment-input {
+    font-size: 12px;
+  }
+
+  .demo .docx-editor-comment-meta,
+  .demo .docx-editor-comment-actions button {
+    font-size: 10px;
   }
 }

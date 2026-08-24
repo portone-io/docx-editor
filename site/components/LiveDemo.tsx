@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 
 // The editor builds a ProseMirror view against the DOM, so it cannot render on the server
 const DocxEditorDemo = dynamic(
@@ -29,6 +29,30 @@ async function loadDemoFile(): Promise<File> {
   return new File([blob], DEMO_FILE_NAME, { type: DOCX_MIME_TYPE });
 }
 
+// Mirrors the demo's own header strip, so mounting the editor does not shift
+// the card's contents
+function DemoPlaceholder({
+  children,
+  role,
+}: {
+  children: ReactNode;
+  role?: "alert";
+}) {
+  return (
+    <div className="flex h-full flex-col bg-[var(--brand-surface)]">
+      <p className="min-h-[44px] border-[var(--brand-border)] border-b px-3.5 py-2.5 font-mono text-[11px] text-[var(--brand-text-subtle)] uppercase tracking-[0.08em]">
+        Live demo
+      </p>
+      <p
+        className="flex flex-1 items-center justify-center px-6 text-center text-[14px] text-[var(--brand-text-subtle)]"
+        role={role}
+      >
+        {children}
+      </p>
+    </div>
+  );
+}
+
 export function LiveDemo() {
   const [state, setState] = useState<DemoState>({ status: "loading" });
 
@@ -51,12 +75,14 @@ export function LiveDemo() {
     };
   }, []);
 
-  if (state.status === "loading") return <p>Opening the demo…</p>;
+  if (state.status === "loading") {
+    return <DemoPlaceholder>Opening the demo…</DemoPlaceholder>;
+  }
   if (state.status === "failed") {
     return (
-      <p role="alert">
+      <DemoPlaceholder role="alert">
         Could not load {DEMO_FILE_NAME}. {state.detail}
-      </p>
+      </DemoPlaceholder>
     );
   }
 
