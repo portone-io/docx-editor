@@ -94,19 +94,13 @@ export default function LandingPage() {
             </Link>
             <a
               className={`${navLinkClassName} hidden sm:inline-block`}
-              href="#features"
-            >
-              Features
-            </a>
-            <a
-              className={`${navLinkClassName} hidden sm:inline-block`}
               href={repositoryUrl}
             >
               GitHub
             </a>
             <Link
               className="rounded-[8px] bg-[var(--brand-primary)] px-[18px] py-[9px] font-medium text-[14px] text-white transition-colors hover:bg-[var(--brand-primary-hover)]"
-              href={docsRoute}
+              href={`${docsRoute}/getting-started`}
             >
               Get started
             </Link>
