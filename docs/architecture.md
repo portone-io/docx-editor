@@ -48,7 +48,11 @@ For example, `docx/formatting` separates direct-format parsing from style layeri
 
 The root entry adds the React editor to the same import and export engine exposed through `./core`. Code reachable from `./core` stays below the editor and UI layers so programmatic document processing does not load a view.
 
-The repository is a pnpm workspace whose root package is the library itself. `demo/` is the one other package: it depends on the library as `workspace:*` and imports `@portone-io/docx-editor` and `@portone-io/docx-editor/styles.css`, so the demo exercises the same entry points a consumer resolves. It exports the `DocxEditorDemo` component, and `demo/main.tsx` holds the Vite-only shell that loads the fixture and mounts it. The component module stays free of Vite-specific syntax because a Next.js site imports it too.
+The repository is a pnpm workspace whose root package is the library itself. `demo/` and `site/` are the other two packages, and both consume the library through the same entry points a consumer resolves.
+
+`demo/` depends on the library as `workspace:*` and imports `@portone-io/docx-editor` and `@portone-io/docx-editor/styles.css`. It exports the `DocxEditorDemo` component, and `demo/main.tsx` holds the Vite-only shell that loads the fixture and mounts it. The component module stays free of Vite-specific syntax because the site imports it too.
+
+`site/` is the Next.js documentation and landing site, built on Fumadocs. Its docs pages come from `site/content/docs`, and its landing page mounts `DocxEditorDemo` from `demo/`. Both workspace packages resolve to TypeScript sources through the workspace link, so `next.config.mjs` lists them in `transpilePackages`. The editor builds a ProseMirror view against the DOM, so the landing page loads the demo through a client-only dynamic import and fetches `demo.docx` at runtime; `site/scripts/copy-demo-fixture.mjs` copies that fixture from `__fixtures__/` into `site/public/` before `dev` and `build` rather than the repository keeping a second copy of it.
 
 `insertTable` belongs to `./commands` rather than `./table` because a new table uses page geometry stored by the editor layer. Other table commands operate on a table that already exists and do not need that dependency.
 

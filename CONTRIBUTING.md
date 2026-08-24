@@ -21,6 +21,8 @@ pnpm dev
 
 `pnpm dev` serves the `demo/` package with `demo.docx` open and reloads it as the source changes. `pnpm build:demo` produces its static bundle.
 
+`pnpm dev:site` serves the `site/` package, the Next.js documentation and landing site, and `pnpm build:site` produces its build. Its landing page mounts the same demo component.
+
 ## OOXML changes
 
 For changes that interpret or write OOXML, follow the [specification workflow](./spec/README.md#working-with-the-specification).
