@@ -1,5 +1,5 @@
 {
-  "name": "@portone/docx-editor",
+  "name": "@portone-io/docx-editor",
   "version": "0.1.0",
   "description": "A React DOCX editor that reads and writes OOXML directly.",
   "private": true,

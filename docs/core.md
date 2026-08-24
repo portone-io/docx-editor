@@ -1,13 +1,13 @@
 # Programmatic DOCX import and export
 
-`@portone/docx-editor/core` provides programmatic DOCX import and export without mounting an editor. It returns a ProseMirror document together with an opaque session that retains the rest of the DOCX package.
+`@portone-io/docx-editor/core` provides programmatic DOCX import and export without mounting an editor. It returns a ProseMirror document together with an opaque session that retains the rest of the DOCX package.
 
 ## Import and export
 
 Keep the session returned by `importDocx` and pass it back to `exportDocx` with the original or transformed document:
 
 ```ts
-import { exportDocx, importDocx } from "@portone/docx-editor/core";
+import { exportDocx, importDocx } from "@portone-io/docx-editor/core";
 
 const { doc, session } = importDocx(source);
 const bytes = exportDocx(doc, session);
@@ -39,7 +39,7 @@ Use a parser configuration that disables external entities and external fetching
 import {
   DocxImportError,
   importDocx,
-} from "@portone/docx-editor/core";
+} from "@portone-io/docx-editor/core";
 
 try {
   importDocx(source);
