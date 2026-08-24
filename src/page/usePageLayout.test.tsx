@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { EditorView } from "prosemirror-view";
-import { act, type RefObject } from "react";
+import { act, type RefObject, StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createEditorState } from "../editor/createEditor";
@@ -99,6 +99,19 @@ function render(props: HostProps) {
   return (next: HostProps) => act(() => live.render(<Host {...next} />));
 }
 
+/** StrictMode mounts, unmounts, and mounts again, running every effect's cleanup in between */
+function renderStrict(props: HostProps) {
+  root = createRoot(host);
+  const live = root;
+  act(() =>
+    live.render(
+      <StrictMode>
+        <Host {...props} />
+      </StrictMode>
+    )
+  );
+}
+
 describe("the page measurement", () => {
   it("is taken while nothing is being composed", async () => {
     const live = editor();
@@ -128,6 +141,15 @@ describe("the page measurement", () => {
     expect(taken()).toBe(0);
 
     composition(live, false);
+    await untilTaken(taken, 1);
+  });
+
+  it("is still taken after StrictMode's simulated remount", async () => {
+    const live = editor();
+    const layer: RefObject<HTMLElement | null> = { current: host };
+    const taken = measurements(host);
+    renderStrict({ view: live, layer, revision: live.state.doc });
+
     await untilTaken(taken, 1);
   });
 });
