@@ -16,6 +16,12 @@ import type {
 
 export type { BlockReport, CaretBox, CompositionCounts };
 
+/** Presses the platform's primary application shortcut. */
+export function pressModKey(page: Page, key: string): Promise<void> {
+  const modifier = process.platform === "darwin" ? "Meta" : "Control";
+  return page.keyboard.press(`${modifier}+${key}`);
+}
+
 /** Opens the page over one fixture and waits until the editor has drawn it */
 export async function openHarness(page: Page, fixture: string): Promise<void> {
   await page.goto(`/?fixture=${fixture}`);

@@ -22,6 +22,7 @@ import {
   firstTextParagraph,
   focused,
   openHarness,
+  pressModKey,
   rightClick,
   settle,
   tableRows,
@@ -113,7 +114,7 @@ test("the link panel takes the focus as it opens, and hands it back on escape", 
   // The scroll that follows the caret would take the panel away, so it is waited out first
   await settle(page);
 
-  await page.keyboard.press("Meta+k");
+  await pressModKey(page, "k");
   const panel = page.locator('[role="dialog"][aria-label="Link"]');
   await expect(panel).toBeVisible();
   expect(await focused(page)).toBe("Address");

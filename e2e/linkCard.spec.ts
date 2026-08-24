@@ -15,6 +15,7 @@ import {
   blocks,
   caretAt,
   openHarness,
+  pressModKey,
   settle,
 } from "./support/harness";
 
@@ -45,7 +46,7 @@ test("the card hangs under the first line of the link it is about", async ({
   // The scroll that follows the caret would take an open panel away, so it is waited out first
   await settle(page);
 
-  await page.keyboard.press("Meta+k");
+  await pressModKey(page, "k");
   const field = page.locator('[role="dialog"][aria-label="Link"] input');
   await expect(field).toBeFocused();
   await page.keyboard.type(ADDRESS);
@@ -81,7 +82,7 @@ test("the card stays where it is while text is typed inside the link", async ({
     await page.keyboard.press("Shift+ArrowRight");
   }
   await settle(page);
-  await page.keyboard.press("Meta+k");
+  await pressModKey(page, "k");
   await page.keyboard.type(ADDRESS);
   await page.keyboard.press("Enter");
   await settle(page);
@@ -106,7 +107,7 @@ test("the card is reached by Tab and returns focus to the paper on Escape", asyn
     await page.keyboard.press("Shift+ArrowRight");
   }
   await settle(page);
-  await page.keyboard.press("Meta+k");
+  await pressModKey(page, "k");
   await page.keyboard.type(ADDRESS);
   await page.keyboard.press("Enter");
   await settle(page);
