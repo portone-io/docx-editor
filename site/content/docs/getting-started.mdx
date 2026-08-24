@@ -1,32 +1,71 @@
 ---
 title: Getting started
-description: Install the package, mount the editor, and export the edited document.
+description: Install the package, mount the editor, and export the edited document, one step at a time.
 ---
 
-## Install
+Six steps from an empty React project to a document a person can edit and download.
+
+<Steps>
+
+<Step>
+
+## Install the package
 
 ```sh
 npm i @portone-io/docx-editor
 ```
 
-React 19 or newer and the ProseMirror packages are peer dependencies, so they are installed
-alongside it:
+</Step>
 
-```sh
-npm i react prosemirror-commands prosemirror-dropcursor prosemirror-history prosemirror-inputrules prosemirror-keymap prosemirror-model prosemirror-state prosemirror-tables prosemirror-transform prosemirror-view
+<Step>
+
+## Import the stylesheet
+
+```ts
+import "@portone-io/docx-editor/styles.css";
 ```
 
-They are peers because objects such as `PluginKey` and `Decoration` depend on module identity: a
-second copy of ProseMirror would make your own plugins incompatible with the editor's.
+Once per application is enough, and the import carries the ProseMirror base styles the editor
+needs.
+[Styling](/docs/styling) covers the custom properties that restyle the frame around the paper.
+
+</Step>
+
+<Step>
+
+## Get a document to open
+
+`document` takes a `File`, a `Blob`, an `ArrayBuffer`, or a `Uint8Array`, so the file arrives
+however your application already holds it.
+A file input hands over a `File` directly:
+
+```tsx
+<input
+  type="file"
+  accept=".docx"
+  onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+/>
+```
+
+A document fetched from a server needs no more than its response body:
+
+```ts
+const response = await fetch("/agreement.docx");
+const file = new File([await response.blob()], "agreement.docx");
+```
+
+Bytes open immediately; a `Blob` or a `File` is read first, so the editor stands empty for that
+moment.
+
+</Step>
+
+<Step>
 
 ## Mount the editor
 
-Import the stylesheet once, then render `DocxEditor` with the document to open. `document` accepts
-a `File`, `Blob`, `ArrayBuffer`, or `Uint8Array`.
+Render `DocxEditor` with the document, and keep a ref if the surrounding screen will export it:
 
 ```tsx
-import "@portone-io/docx-editor/styles.css";
-
 import { DocxEditor, type DocxEditorHandle } from "@portone-io/docx-editor";
 import { useRef } from "react";
 
@@ -37,14 +76,17 @@ export function Editor({ file }: { file: File }) {
 }
 ```
 
-The editor builds a ProseMirror view against the DOM, so it cannot render on the server. In a
-framework that prerenders, load it through a client-only dynamic import.
+The editor fills the height it is given, so put it in a box with one.
+
+</Step>
+
+<Step>
 
 ## Export the edited document
 
-`downloadDocx` takes the handle from the ref and saves the current editor state as a file. It
-reports `unavailable` while the editor has not opened a document yet and `empty` when there is
-nothing worth exporting.
+`downloadDocx` takes the handle from the ref and saves the current editor state as a file.
+It reports `unavailable` while no document is open yet and `empty` when there is nothing worth
+exporting.
 
 ```tsx
 import {
@@ -74,14 +116,34 @@ export function Editor({ file }: { file: File }) {
 ```
 
 `downloadDocx` throws `DocxExportError` when the document cannot be written back safely, so wrap
-the call when the surrounding screen should show the reason. For the bytes without a browser
-download, call `editorRef.current.exportBytes()`.
+the call when the surrounding screen should show the reason.
+For the bytes without a browser download, call `editorRef.current.exportBytes()`.
+
+</Step>
+
+<Step>
+
+## Check what you see
+
+An opened document shows its own paper: the page size and margins it declares, its fonts, and its
+own styles, with approximate page boundaries drawn over the text and the built-in toolbar above it.
+Exporting and reopening the file in Word is the real check, since the round trip is what the editor
+is for.
+
+If a refusal panel appears in place of the editor, the document was not opened, and the panel names
+the reason.
+[Core API](/docs/core#errors) lists the codes behind those refusals.
+
+</Step>
+
+</Steps>
 
 ## Choose what the editor is for
 
-`mode` decides what the editor offers. `{ kind: "readOnly" }` takes no edits and therefore has no
-toolbar or context menus; `{ kind: "edit" }` is the default, and its `locking` option adds the
-controls for settling part of a document.
+`mode` decides what the editor offers.
+`{ kind: "readOnly" }` takes no edits and therefore has no toolbar or context menus;
+`{ kind: "edit" }` is the default, and its `locking` option adds the controls for settling part of
+a document.
 
 ```tsx
 <DocxEditor
@@ -93,9 +155,32 @@ controls for settling part of a document.
 
 Without `renderImportError`, a built-in panel naming the reason is drawn, so a refused document is
 never silent either way.
+[Props](/docs/props) lists the rest of the component's surface.
+
+## Next.js and other prerendering frameworks
+
+The editor builds a ProseMirror view against the DOM, so it cannot render on the server.
+In a framework that prerenders, load it from a client component through a dynamic import with
+server rendering turned off, which is how this site mounts its own demo:
+
+```tsx
+"use client";
+
+import dynamic from "next/dynamic";
+
+const Editor = dynamic(() => import("./Editor").then((m) => m.Editor), {
+  ssr: false,
+});
+```
+
+Fetch the document from inside that client component too, in an effect, and wrap the response in a
+`File` as in the third step above.
+The App Router also wants `@portone-io/docx-editor` in `transpilePackages` when it resolves to
+TypeScript sources rather than to built output, which is the case for a workspace link.
 
 ## Next
 
 Read [Features](/docs/features) for what the editor edits and preserves,
+[Props](/docs/props) for the component's full surface,
 [Custom controls](/docs/custom-controls) to replace the built-in toolbar, and
 [Core API](/docs/core) for import and export without an editor.

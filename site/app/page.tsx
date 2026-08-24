@@ -1,10 +1,14 @@
 import {
+  BookOpen,
   FileText,
   Image,
   Languages,
+  List,
   type LucideIcon,
   MessageSquare,
+  ShieldCheck,
   Table,
+  Type,
 } from "lucide-react";
 import Link from "next/link";
 import { InstallCommand } from "@/components/InstallCommand";
@@ -15,6 +19,24 @@ import { docsRoute, libraryName, repositoryUrl } from "@/lib/library";
 const ICON_STROKE_WIDTH = 1.6;
 
 const features: { title: string; description: string; icon: LucideIcon }[] = [
+  {
+    title: "Lossless round trip",
+    description:
+      "What you never touch is written back from its original XML, not rebuilt.",
+    icon: ShieldCheck,
+  },
+  {
+    title: "Text formatting",
+    description:
+      "Bold, italic, underline, colors, highlights, fonts, and font sizes.",
+    icon: Type,
+  },
+  {
+    title: "Paragraphs and lists",
+    description:
+      "Styles, alignment, indentation, spacing, and nested bullet or numbered lists.",
+    icon: List,
+  },
   {
     title: "Tables",
     description: "Merge, split, resize, and paginate long tables across pages.",
@@ -29,6 +51,12 @@ const features: { title: string; description: string; icon: LucideIcon }[] = [
     title: "Images and links",
     description: "Insert, paste, resize images; create and edit hyperlinks.",
     icon: Image,
+  },
+  {
+    title: "Notes and page furniture",
+    description:
+      "View footnotes and endnotes, and preview headers, footers, and page numbers.",
+    icon: BookOpen,
   },
   {
     title: "IME composition",
@@ -66,19 +94,13 @@ export default function LandingPage() {
             </Link>
             <a
               className={`${navLinkClassName} hidden sm:inline-block`}
-              href="#features"
-            >
-              Features
-            </a>
-            <a
-              className={`${navLinkClassName} hidden sm:inline-block`}
               href={repositoryUrl}
             >
               GitHub
             </a>
             <Link
               className="rounded-[8px] bg-[var(--brand-primary)] px-[18px] py-[9px] font-medium text-[14px] text-white transition-colors hover:bg-[var(--brand-primary-hover)]"
-              href={docsRoute}
+              href={`${docsRoute}/getting-started`}
             >
               Get started
             </Link>
@@ -105,7 +127,7 @@ export default function LandingPage() {
           {/* `.demo` fills its container and brings its own header strip, so the
               card is just the bordered box that carries the height */}
           <div
-            className="mx-auto mt-14 h-[540px] w-full max-w-[1020px] overflow-hidden rounded-t-[8px] border border-[var(--brand-border)] border-b-0 bg-[var(--brand-surface)] sm:mt-20 sm:h-[620px] lg:h-[720px]"
+            className="mx-auto mt-14 h-[540px] w-full max-w-[1240px] overflow-hidden rounded-t-[8px] border border-[var(--brand-border)] border-b-0 bg-[var(--brand-surface)] sm:mt-20 sm:h-[620px] lg:h-[720px]"
             id="demo"
           >
             <LiveDemo />
