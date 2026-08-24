@@ -53,9 +53,9 @@ function buildDocumentXml(
   refs: ExportRefs
 ): string {
   const pieces: string[] = [session.documentPrefix];
-  withUniqueControls(doc).forEach((child) =>
-    pieces.push(blockXml(child, session, refs))
-  );
+  withUniqueControls(doc).forEach((child) => {
+    pieces.push(blockXml(child, session, refs));
+  });
   pieces.push(session.documentSuffix);
   return pieces.join("");
 }

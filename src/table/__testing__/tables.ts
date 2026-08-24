@@ -277,12 +277,16 @@ export function cellWithText(table: PMNode, text: string): PMNode | undefined {
 
 export function rowsOf(table: PMNode): PMNode[] {
   const rows: PMNode[] = [];
-  table.forEach((current) => rows.push(current));
+  table.forEach((current) => {
+    rows.push(current);
+  });
   return rows;
 }
 
 export function cellsOf(rowNode: PMNode): PMNode[] {
   const cells: PMNode[] = [];
-  rowNode.forEach((current) => cells.push(current));
+  rowNode.forEach((current) => {
+    cells.push(current);
+  });
   return cells;
 }
