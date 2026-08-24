@@ -130,3 +130,41 @@
   gap: 6px;
   color: #b42318;
 }
+
+/*
+ * The demo card caps the editor at ~1020px, but the library's comment type steps
+ * are viewport-based and never fire on a desktop viewport. Inside the demo the
+ * one-step-down sizes are therefore the base, and the next step keeps pace with
+ * the library's ladder on narrow viewports.
+ */
+.demo .docx-editor-comments-heading {
+  font-size: 13px;
+}
+
+.demo .docx-editor-comment-body,
+.demo button.docx-editor-comment-body,
+.demo .docx-editor-comment-input {
+  font-size: 13px;
+}
+
+.demo .docx-editor-comment-meta,
+.demo .docx-editor-comment-actions button {
+  font-size: 11px;
+}
+
+@media (max-width: 720px) {
+  .demo .docx-editor-comments-heading {
+    font-size: 12px;
+  }
+
+  .demo .docx-editor-comment-body,
+  .demo button.docx-editor-comment-body,
+  .demo .docx-editor-comment-input {
+    font-size: 12px;
+  }
+
+  .demo .docx-editor-comment-meta,
+  .demo .docx-editor-comment-actions button {
+    font-size: 10px;
+  }
+}
