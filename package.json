@@ -1,8 +1,7 @@
 {
   "name": "@portone-io/docx-editor",
   "version": "0.1.0",
-  "description": "A React DOCX editor that reads and writes OOXML directly.",
-  "private": true,
+  "description": "A simple DOCX editor for React, built directly on OOXML.",
   "license": "Apache-2.0",
   "type": "module",
   "packageManager": "pnpm@11.1.3",
