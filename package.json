@@ -69,6 +69,7 @@
     "build": "node scripts/build.mjs && tsc -p tsconfig.build.json",
     "prepack": "pnpm build",
     "dev": "vite --config playground/vite.config.ts --open",
+    "build:playground": "vite build --config playground/vite.config.ts",
     "check": "pnpm lint && pnpm typecheck && pnpm test",
     "typecheck": "tsc --noEmit && tsc --noEmit -p e2e && tsc --noEmit -p playground",
     "lint": "pnpm biome check . --diagnostic-level=error",
