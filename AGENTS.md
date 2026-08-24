@@ -16,6 +16,7 @@ Keep one source of truth for each concern and link to it instead of repeating it
 - Read [docs/features.md](./docs/features.md) for a support claim or a behavior change.
 - Read [docs/core.md](./docs/core.md) for programmatic DOCX import and export.
 - Read [docs/custom-controls.md](./docs/custom-controls.md) for commands, queries, plugins, or custom controls.
+- Read [site/README.md](./site/README.md) for the documentation and landing site.
 - Read [e2e/README.md](./e2e/README.md) only for a real-browser, IME, focus, or keyboard task.
 - Read [__fixtures__/README.md](./__fixtures__/README.md) only when adding, replacing, or interpreting a fixture document.
 
