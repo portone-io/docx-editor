@@ -27,6 +27,30 @@ This page is the user-facing support summary. API details live in
 | Clipboard | Paste supported character formatting, paragraphs, destination-matched heading styles, line breaks, links, and common lists. Unsupported web styling is reduced to readable text. |
 | Editor | Use built-in controls, selectable document zoom, read-only mode, undo and redo, keyboard navigation, and IME composition. |
 
+## Keyboard shortcuts
+
+`Mod` is Command on macOS and Control elsewhere.
+
+| Keys | What happens |
+| --- | --- |
+| `Enter` | Splits the paragraph, and the new paragraph keeps the original's formatting, as Word does. In an empty list item it leaves the list instead. |
+| `Shift+Enter` | Inserts a line break. |
+| `Mod+Enter` | Inserts a page break. |
+| `Mod+B`, `Mod+I`, `Mod+U` | Toggles bold, italic, and underline. |
+| `Mod+Shift+X` | Toggles strikethrough. |
+| `Mod+K` | Opens the link panel over the selection. With nothing to link it reports that it did nothing, so the browser keeps its own binding. |
+| `Mod+Z` | Undo. |
+| `Mod+Shift+Z`, `Mod+Y` | Redo. |
+| `Tab` | Inside a table it moves to the next cell; in a list paragraph it increases the level; in an ordinary paragraph it inserts a document tab. |
+| `Shift+Tab` | Moves to the previous cell, or decreases the list level. |
+| `ArrowLeft`, `ArrowRight` | Moves the caret across a laid-out tab as one step. Holding `Shift` extends the selection instead. |
+| `Escape` | Closes an open panel, menu, or link card and hands focus back to the paper. It also hides tooltips until the pointer or focus moves. |
+
+Keys not listed here fall through to ProseMirror's base keymap, which covers ordinary caret
+movement, selection, and deletion.
+A keymap passed through the `plugins` prop sees events first, so an application can take over a
+binding such as `Mod+K` without replacing the editor.
+
 ## Preserved content
 
 | Content | Behavior |
