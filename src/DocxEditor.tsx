@@ -271,6 +271,16 @@ function ImportRejection({ error }: { error: DocxImportError }) {
   );
 }
 
+/**
+ * Publishes the zoom factor to CSS so panels outside the zoomed page layer can
+ * scale with the paper. `zoom` on the layer does not reach its siblings.
+ */
+function zoomVariable(
+  factor: number
+): CSSProperties & Record<"--docx-editor-zoom", number> {
+  return { "--docx-editor-zoom": factor };
+}
+
 export function DocxEditor({
   document: source,
   renderImportError,
@@ -481,6 +491,7 @@ export function DocxEditor({
       <div
         className={editorClassNames.workspace}
         data-comments={showComments ? "visible" : undefined}
+        style={zoomVariable(effectiveZoom)}
       >
         {live && readOnly && comments.length > 0 && (
           <button

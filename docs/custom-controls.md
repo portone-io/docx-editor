@@ -38,6 +38,8 @@ function Preview({ file }: { file: File }) {
 
 Numeric values from `0.25` through `2` are accepted. The root entry exports `DEFAULT_ZOOM_LEVELS` for a custom toolbar. A read-only editor has no built-in toolbar, but a host can still set `zoom`. Zoom changes only the browser presentation; it does not change pagination measurements, the document model, or exported OOXML. Persisting a reader's choice belongs to the host application.
 
+The comment panel reads the same factor from the `--docx-editor-zoom` custom property, set on the editor workspace, so comment text scales with the paper instead of standing apart from it. Its font sizes stop shrinking at a readable floor, and the panel keeps its width at every zoom level.
+
 ## Commands and queries
 
 Text and paragraph commands come from `@portone-io/docx-editor/commands`. Operations on an existing table come from `@portone-io/docx-editor/table`, while `insertTable` comes from `@portone-io/docx-editor/commands`.

@@ -135,36 +135,37 @@
  * The demo card caps the editor at ~1020px, but the library's comment type steps
  * are viewport-based and never fire on a desktop viewport. Inside the demo the
  * one-step-down sizes are therefore the base, and the next step keeps pace with
- * the library's ladder on narrow viewports.
+ * the library's ladder on narrow viewports. Each size keeps the library's zoom
+ * factor and readability floor, since these rules shadow the library's own.
  */
 .demo .docx-editor-comments-heading {
-  font-size: 13px;
+  font-size: max(10px, calc(13px * var(--docx-editor-zoom, 1)));
 }
 
 .demo .docx-editor-comment-body,
 .demo button.docx-editor-comment-body,
 .demo .docx-editor-comment-input {
-  font-size: 13px;
+  font-size: max(10px, calc(13px * var(--docx-editor-zoom, 1)));
 }
 
 .demo .docx-editor-comment-meta,
 .demo .docx-editor-comment-actions button {
-  font-size: 11px;
+  font-size: max(9px, calc(11px * var(--docx-editor-zoom, 1)));
 }
 
 @media (max-width: 720px) {
   .demo .docx-editor-comments-heading {
-    font-size: 12px;
+    font-size: max(10px, calc(12px * var(--docx-editor-zoom, 1)));
   }
 
   .demo .docx-editor-comment-body,
   .demo button.docx-editor-comment-body,
   .demo .docx-editor-comment-input {
-    font-size: 12px;
+    font-size: max(10px, calc(11px * var(--docx-editor-zoom, 1)));
   }
 
   .demo .docx-editor-comment-meta,
   .demo .docx-editor-comment-actions button {
-    font-size: 10px;
+    font-size: max(9px, calc(10px * var(--docx-editor-zoom, 1)));
   }
 }
