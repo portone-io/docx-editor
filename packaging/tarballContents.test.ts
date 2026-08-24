@@ -48,7 +48,7 @@ const forbiddenEntries = [
   // A declaration emitted for a test helper would put `__testing__` in the public type surface
   { what: "the test helpers", pattern: /__testing__/ },
   { what: "the browser specs", pattern: /^package\/e2e\// },
-  { what: "the development playground", pattern: /^package\/playground\// },
+  { what: "the development demo", pattern: /^package\/demo\// },
   { what: "the OOXML schemas", pattern: /^package\/spec\// },
   { what: "the internal notes", pattern: /\/(PROVENANCE|PLAN)\.md$/ },
   {
