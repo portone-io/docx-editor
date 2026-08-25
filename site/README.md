@@ -17,6 +17,8 @@ pnpm build:site
 
 Canonical URLs are set per page rather than in the root layout, because metadata inherits down the route tree and a canonical declared once at the root would point every page at `/`.
 
+The layout also carries `googleSiteVerification`, the token Google Search Console issued for this property. Verification is checked again over time, so the tag has to keep being served rather than being removed once the property turns green.
+
 ## The demo fixture
 
 The landing page needs the same `demo.docx` the editor is developed against, and the repository keeps one copy of it under `__fixtures__/`. `scripts/copy-demo-fixture.mjs` copies it to `public/demo.docx` from `predev` and `prebuild`, and that destination is gitignored, so the binary is never committed twice. The page fetches `/demo.docx` at runtime and wraps the response in a `File`.
