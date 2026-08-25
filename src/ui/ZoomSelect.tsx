@@ -1,3 +1,4 @@
+import type { ReactElement } from "react";
 import { editorClassNames } from "../styles/classNames";
 import { Tooltip } from "./Tooltip";
 import {
@@ -19,7 +20,10 @@ export interface ZoomSelectProps {
   onZoomChange: (zoom: DocxEditorZoom) => void;
 }
 
-export function ZoomSelect({ zoom, onZoomChange }: ZoomSelectProps) {
+export function ZoomSelect({
+  zoom,
+  onZoomChange,
+}: ZoomSelectProps): ReactElement {
   const normalized = normalizeZoom(zoom);
   const levels =
     typeof normalized === "number" &&

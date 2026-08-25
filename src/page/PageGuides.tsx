@@ -8,6 +8,7 @@
  * The box only paints, so the mouse still reaches the text beneath it.
  */
 
+import type { ReactElement } from "react";
 import {
   displayPageNumber,
   type HeadersFooters,
@@ -30,7 +31,7 @@ export function PageGuides({
 }: {
   overlay: PageOverlay;
   headersFooters?: HeadersFooters;
-}) {
+}): ReactElement {
   const totalPages = overlay.pages.length;
   return (
     <div

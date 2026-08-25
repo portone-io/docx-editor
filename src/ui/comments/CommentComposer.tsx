@@ -1,4 +1,10 @@
-import { type FormEvent, useLayoutEffect, useRef, useState } from "react";
+import {
+  type FormEvent,
+  type ReactElement,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import type { CommentAuthor } from "../../editor/commands/commentCommands";
 import { editorClassNames } from "../../styles/classNames";
 
@@ -12,7 +18,7 @@ export function FocusedTextarea({
   label,
   value,
   onChange,
-}: FocusedTextareaProps) {
+}: FocusedTextareaProps): ReactElement {
   const input = useRef<HTMLTextAreaElement | null>(null);
   useLayoutEffect(() => input.current?.focus(), []);
   return (
@@ -40,7 +46,7 @@ export function CommentComposer({
   submitLabel,
   onSubmit,
   onClose,
-}: CommentComposerProps) {
+}: CommentComposerProps): ReactElement {
   const [text, setText] = useState("");
   const submit = (event: FormEvent) => {
     event.preventDefault();

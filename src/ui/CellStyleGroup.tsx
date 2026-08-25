@@ -12,7 +12,7 @@ import {
   SquareDashed,
 } from "lucide-react";
 import type { EditorState } from "prosemirror-state";
-import { useRef } from "react";
+import { type ReactElement, useRef } from "react";
 import type { CellVerticalAlign } from "../model/format";
 import { editorClassNames } from "../styles/classNames";
 import type { ColorRow } from "../styles/colors";
@@ -180,7 +180,7 @@ export function CellStyleGroup({
   cellBorders = DEFAULT_CELL_BORDERS,
   colors,
   run,
-}: CellStyleGroupProps) {
+}: CellStyleGroupProps): ReactElement {
   const activeAlignment = activeCellVerticalAlign(state);
   const layoutEditable = canSetCellFormatting(state);
 

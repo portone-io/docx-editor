@@ -1,6 +1,6 @@
 /** Grid for choosing the dimensions of a table to insert. */
 
-import { useRef, useState } from "react";
+import { type ReactElement, useRef, useState } from "react";
 import { insertTable } from "../editor/insertTable";
 import { editorClassNames } from "../styles/classNames";
 import type { RunCommand } from "./runCommand";
@@ -27,7 +27,7 @@ export function TableSizePicker({
   run,
   close,
   takeFocus,
-}: TableSizePickerProps) {
+}: TableSizePickerProps): ReactElement {
   const [size, setSize] = useState<Size>(NO_SIZE);
   const grid = useRef<HTMLDivElement | null>(null);
   const keys = useGridKeyboard({ grid, onClose: close, takeFocus });

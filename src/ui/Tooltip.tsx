@@ -1,6 +1,6 @@
 /** CSS-rendered tooltip shown on hover or keyboard focus. */
 
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactElement, type ReactNode, useEffect, useState } from "react";
 import { editorAttributes, editorClassNames } from "../styles/classNames";
 
 /** Adds tooltip text to an element that can render its own pseudo-element. */
@@ -44,7 +44,7 @@ export interface TooltipProps {
   children: ReactNode;
 }
 
-export function Tooltip({ label, children }: TooltipProps) {
+export function Tooltip({ label, children }: TooltipProps): ReactElement {
   return (
     <span
       className={editorClassNames.tooltipWrapper}

@@ -3,7 +3,7 @@
 import { Image } from "lucide-react";
 import type { EditorState } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
-import { useRef } from "react";
+import { type ReactElement, useRef } from "react";
 import {
   IMAGE_FILE_ACCEPT,
   imageFilesIn,
@@ -17,7 +17,10 @@ export interface InsertImageButtonProps {
   state: EditorState;
 }
 
-export function InsertImageButton({ view, state }: InsertImageButtonProps) {
+export function InsertImageButton({
+  view,
+  state,
+}: InsertImageButtonProps): ReactElement {
   const pickerRef = useRef<HTMLInputElement | null>(null);
 
   return (

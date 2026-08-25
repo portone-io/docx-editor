@@ -1,5 +1,6 @@
 /** Selects document-defined paragraph styles and clears explicit styles through the default entry. */
 
+import type { ReactElement } from "react";
 import type { ParagraphStyleOption } from "../docx/formatting";
 import {
   type ActiveParagraphStyle,
@@ -55,7 +56,7 @@ export function ParagraphStyleSelect({
   current,
   styles,
   run,
-}: ParagraphStyleSelectProps) {
+}: ParagraphStyleSelectProps): ReactElement {
   const value = selectedValue(styles, current);
   return (
     <Tooltip label={LABEL}>

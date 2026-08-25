@@ -1,5 +1,6 @@
 /** Shows the resolved font, leaves mixed selections blank, and clears explicit fonts via Default. */
 
+import type { ReactElement } from "react";
 import {
   type ActiveFontFamily,
   setFontFamily,
@@ -46,7 +47,7 @@ export function FontFamilySelect({
   fontFallbacks,
   disabled,
   run,
-}: FontFamilySelectProps) {
+}: FontFamilySelectProps): ReactElement {
   const value = current.kind === "mixed" ? MIXED : current.name;
 
   return (

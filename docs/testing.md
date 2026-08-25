@@ -44,7 +44,9 @@ The schema test requires `xmllint`, rejects a missing validator or an empty fixt
 - `packaging/tarballContents.test.ts` packs the project and verifies exported files, declarations, the documents a consumer reads before installing, excluded development files, and resolved dependency ranges.
 - `packaging/leafImportSize.test.ts` rebuilds the output and protects small leaf imports from accidentally pulling in a large shared bundle.
 
-`pnpm verify:package` installs the tarball and its peers in a temporary project outside the repository. It typechecks and bundles a consumer, loads every JavaScript entry, and verifies the published stylesheet. This is the check that catches declarations or imports that work only inside the source workspace.
+`pnpm verify:package` installs the tarball and its peers in a temporary project outside the repository. It typechecks and bundles a consumer, loads every JavaScript entry, mounts `DocxEditor` over a fixture document in jsdom, and verifies the published stylesheet. This is the check that catches declarations or imports that work only inside the source workspace.
+
+The mount reads `DOCX_EDITOR_REACT_RANGE` to install a different React range in the consumer project, and asserts that a consumer's own ref reaches the handle by exporting the opened document through `downloadDocx`. CI runs the `package` job once per supported React major.
 
 Neither package command is part of `pnpm test`. `verify:package` is kept separate from `pnpm check` because it is slower and needs the network.
 
@@ -60,6 +62,7 @@ Before a release, run:
 pnpm check
 pnpm test:package
 pnpm verify:package
+DOCX_EDITOR_REACT_RANGE=^18 pnpm verify:package
 pnpm test:e2e
 ```
 

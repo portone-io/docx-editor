@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import type { Command, EditorState } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
-import { type KeyboardEvent, useMemo, useRef } from "react";
+import { type KeyboardEvent, type ReactElement, useMemo, useRef } from "react";
 import {
   activeFontFamily,
   activeFontSize,
@@ -372,7 +372,7 @@ export function Toolbar({
   commentsOpen = false,
   zoom,
   onZoomChange,
-}: ToolbarProps) {
+}: ToolbarProps): ReactElement {
   const run = commandRunner(view);
   const bar = useRef<HTMLDivElement | null>(null);
   const keys = useLinearWalk({

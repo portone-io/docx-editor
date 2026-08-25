@@ -1,7 +1,7 @@
 import { Check, Pencil, RotateCcw, Trash2 } from "lucide-react";
 import type { Command, EditorState } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
-import { useMemo, useRef, useState } from "react";
+import { type ReactElement, useMemo, useRef, useState } from "react";
 import {
   addComment,
   addCommentReply,
@@ -69,7 +69,7 @@ export function CommentsPanel({
   closeComposer,
   scrollContainer,
   allCommentsOpen,
-}: CommentsPanelProps) {
+}: CommentsPanelProps): ReactElement {
   // biome-ignore lint/correctness/useExhaustiveDependencies: comment data changes with the document, not with selection-only transactions
   const comments = useMemo(() => documentComments(state), [state.doc]);
   const panel = useRef<HTMLElement | null>(null);

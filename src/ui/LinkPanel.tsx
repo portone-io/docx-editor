@@ -5,6 +5,7 @@ import type { EditorState } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 import {
   type KeyboardEvent,
+  type ReactElement,
   useCallback,
   useEffect,
   useRef,
@@ -30,7 +31,7 @@ export interface LinkPanelProps {
   state: EditorState;
 }
 
-export function LinkPanel({ view, state }: LinkPanelProps) {
+export function LinkPanel({ view, state }: LinkPanelProps): ReactElement {
   const box = useRef<HTMLDivElement | null>(null);
   const field = useRef<HTMLInputElement | null>(null);
   const current = activeLink(state);

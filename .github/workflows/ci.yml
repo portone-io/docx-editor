@@ -31,8 +31,18 @@ jobs:
       - run: pnpm check
 
   package:
+    name: package (React ${{ matrix.react }})
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # An empty range leaves verify:package on the range the manifest declares
+          - react: 19
+            range: ""
+          - react: 18
+            range: "^18"
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -41,8 +51,12 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm test:package
+      # The tarball holds no React of its own, so its contents are checked once
+      - if: matrix.react == 19
+        run: pnpm test:package
       - run: pnpm verify:package
+        env:
+          DOCX_EDITOR_REACT_RANGE: ${{ matrix.range }}
 
   e2e:
     runs-on: ubuntu-latest

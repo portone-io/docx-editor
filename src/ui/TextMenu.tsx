@@ -13,7 +13,7 @@ import {
 import { deleteSelection } from "prosemirror-commands";
 import type { EditorState } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
-import { Fragment, useCallback, useRef } from "react";
+import { Fragment, type ReactElement, useCallback, useRef } from "react";
 import { canAddComment } from "../editor/commands/commentCommands";
 import {
   lockSelection,
@@ -136,7 +136,7 @@ export function TextMenu({
   anchor,
   allowLocking = false,
   onAddComment,
-}: TextMenuProps) {
+}: TextMenuProps): ReactElement {
   const box = useRef<HTMLDivElement | null>(null);
   const placement = usePanelAtPoint(box, anchor);
   const run = commandRunner(view);
