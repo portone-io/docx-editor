@@ -41,13 +41,10 @@ pnpm check
 Run a specialized check when your change affects its area:
 
 ```sh
-pnpm check:react18
 pnpm test:package
 pnpm verify:package
 pnpm test:e2e
 ```
-
-`pnpm check` runs on React 19 and `pnpm check:react18` runs the same typecheck and tests on React 18, the other supported major.
 
 [Testing](https://github.com/portone-io/docx-editor/blob/main/docs/testing.md) explains the scope and prerequisites of every check.
 

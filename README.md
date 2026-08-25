@@ -27,8 +27,6 @@ export function Editor({ file }: { file: File }) {
 
 `document` accepts a `File`, `Blob`, `ArrayBuffer`, or `Uint8Array`; use the ref to export the edited document as bytes.
 
-The package runs on React 18 and React 19, and takes `react` as a peer dependency so your application picks the one it runs.
-
 ## What it does
 
 - Provides browser editing with built-in controls, read-only mode, and document locking.

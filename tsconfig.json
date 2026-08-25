@@ -10,12 +10,11 @@
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "allowImportingTsExtensions": true,
     "forceConsistentCasingInFileNames": true,
     "jsx": "react-jsx",
     "ignoreDeprecations": "6.0",
     "incremental": true,
     "types": ["node"]
   },
-  "include": ["src", "packaging", "vitest.config.ts", "vitest.react18.config.ts"]
+  "include": ["src", "packaging", "vitest.config.ts"]
 }
