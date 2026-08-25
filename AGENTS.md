@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Working rules for `@portone-io/docx-editor`, a DOCX editor built on ProseMirror.
+Working rules for `@portone/docx-editor`, a DOCX editor built on ProseMirror.
 
 ## Context routing
 

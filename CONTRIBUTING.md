@@ -1,6 +1,6 @@
 # Contributing
 
-Thank you for taking the time to improve `@portone-io/docx-editor`. Bug reports, documentation improvements, fixes, and focused feature proposals are welcome.
+Thank you for taking the time to improve `@portone/docx-editor`. Bug reports, documentation improvements, fixes, and focused feature proposals are welcome.
 
 <!-- This file is published to npm while the documents it points at are not, so those links are
      absolute rather than repository-relative. -->

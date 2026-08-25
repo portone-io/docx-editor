@@ -12,7 +12,7 @@ Six steps from an empty React project to a document a person can edit and downlo
 ## Install the package
 
 ```sh
-npm i @portone-io/docx-editor
+npm i @portone/docx-editor
 ```
 
 </Step>
@@ -22,7 +22,7 @@ npm i @portone-io/docx-editor
 ## Import the stylesheet
 
 ```ts
-import "@portone-io/docx-editor/styles.css";
+import "@portone/docx-editor/styles.css";
 ```
 
 Once per application is enough, and the import carries the ProseMirror base styles the editor
@@ -66,7 +66,7 @@ moment.
 Render `DocxEditor` with the document, and keep a ref if the surrounding screen will export it:
 
 ```tsx
-import { DocxEditor, type DocxEditorHandle } from "@portone-io/docx-editor";
+import { DocxEditor, type DocxEditorHandle } from "@portone/docx-editor";
 import { useRef } from "react";
 
 export function Editor({ file }: { file: File }) {
@@ -93,7 +93,7 @@ import {
   DocxEditor,
   type DocxEditorHandle,
   downloadDocx,
-} from "@portone-io/docx-editor";
+} from "@portone/docx-editor";
 import { useRef } from "react";
 
 export function Editor({ file }: { file: File }) {
@@ -175,7 +175,7 @@ const Editor = dynamic(() => import("./Editor").then((m) => m.Editor), {
 
 Fetch the document from inside that client component too, in an effect, and wrap the response in a
 `File` as in the third step above.
-The App Router also wants `@portone-io/docx-editor` in `transpilePackages` when it resolves to
+The App Router also wants `@portone/docx-editor` in `transpilePackages` when it resolves to
 TypeScript sources rather than to built output, which is the case for a workspace link.
 
 ## Next
