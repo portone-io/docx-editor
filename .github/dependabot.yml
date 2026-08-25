@@ -4,3 +4,14 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    # A compromised release is usually yanked within days of publication, so
+    # holding new versions back leaves that window to someone else.
+    cooldown:
+      default-days: 7
+  # Keeps the commit-pinned actions in .github/workflows/ moving.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
