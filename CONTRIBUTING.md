@@ -49,3 +49,8 @@ pnpm test:e2e
 [Testing](https://github.com/portone-io/docx-editor/blob/main/docs/testing.md) explains the scope and prerequisites of every check.
 
 By contributing, you agree that your contribution is licensed under the Apache License 2.0 used by this project.
+
+## Commit messages
+
+Write the package name as a code span (`@portone/docx-editor`) in commit messages, pull request bodies, and comments, and leave the scope out of pull request titles.
+Written bare, the scope reads as a mention of the unrelated GitHub user who holds that handle.
