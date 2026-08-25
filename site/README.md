@@ -1,6 +1,6 @@
 # Site
 
-`@portone-io/docx-editor-site` is the documentation and landing site for `@portone-io/docx-editor`: a Next.js App Router application whose docs pages are rendered by Fumadocs from `content/docs`, and whose landing page mounts the live demo.
+`@portone/docx-editor-site` is the documentation and landing site for `@portone/docx-editor`: a Next.js App Router application whose docs pages are rendered by Fumadocs from `content/docs`, and whose landing page mounts the live demo.
 
 Run it from the repository root:
 
@@ -17,4 +17,4 @@ The landing page needs the same `demo.docx` the editor is developed against, and
 
 The demo arrives through a client-only dynamic import. The editor builds a ProseMirror view against the DOM, so it cannot render on the server.
 
-`next.config.mjs` lists `@portone-io/docx-editor` and `@portone-io/docx-editor-demo` in `transpilePackages`: both resolve to TypeScript sources through the workspace link rather than to built output.
+`next.config.mjs` lists `@portone/docx-editor` and `@portone/docx-editor-demo` in `transpilePackages`: both resolve to TypeScript sources through the workspace link rather than to built output.

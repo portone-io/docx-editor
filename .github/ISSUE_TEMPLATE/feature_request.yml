@@ -1,5 +1,5 @@
 name: Feature request
-description: Suggest an improvement to @portone-io/docx-editor
+description: Suggest an improvement to @portone/docx-editor
 labels:
   - enhancement
 body:

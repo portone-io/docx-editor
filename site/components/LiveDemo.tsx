@@ -6,9 +6,7 @@ import { type ReactNode, useEffect, useState } from "react";
 // The editor builds a ProseMirror view against the DOM, so it cannot render on the server
 const DocxEditorDemo = dynamic(
   () =>
-    import("@portone-io/docx-editor-demo").then(
-      (module) => module.DocxEditorDemo
-    ),
+    import("@portone/docx-editor-demo").then((module) => module.DocxEditorDemo),
   { ssr: false }
 );
 

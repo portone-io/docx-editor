@@ -9,10 +9,7 @@ const config = {
   // repository keeps that guidance at its root
   agentRules: false,
   // Both workspace packages resolve to TypeScript sources through the workspace link
-  transpilePackages: [
-    "@portone-io/docx-editor",
-    "@portone-io/docx-editor-demo",
-  ],
+  transpilePackages: ["@portone/docx-editor", "@portone/docx-editor-demo"],
 };
 
 export default withMDX(config);

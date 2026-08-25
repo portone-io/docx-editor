@@ -1,5 +1,5 @@
 {
-  "name": "@portone-io/docx-editor-site",
+  "name": "@portone/docx-editor-site",
   "version": "0.0.0",
   "description": "The documentation and landing site for the DOCX editor.",
   "private": true,
@@ -14,8 +14,8 @@
     "typecheck": "next typegen && tsc --noEmit"
   },
   "dependencies": {
-    "@portone-io/docx-editor": "workspace:*",
-    "@portone-io/docx-editor-demo": "workspace:*",
+    "@portone/docx-editor": "workspace:*",
+    "@portone/docx-editor-demo": "workspace:*",
     "fumadocs-core": "16.15.1",
     "fumadocs-mdx": "15.3.1",
     "fumadocs-ui": "16.15.1",

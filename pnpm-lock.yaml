@@ -87,7 +87,7 @@ importers:
 
   demo:
     dependencies:
-      '@portone-io/docx-editor':
+      '@portone/docx-editor':
         specifier: workspace:*
         version: link:..
       react:
@@ -112,10 +112,10 @@ importers:
 
   site:
     dependencies:
-      '@portone-io/docx-editor':
+      '@portone/docx-editor':
         specifier: workspace:*
         version: link:..
-      '@portone-io/docx-editor-demo':
+      '@portone/docx-editor-demo':
         specifier: workspace:*
         version: link:../demo
       fumadocs-core:

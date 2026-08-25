@@ -2,9 +2,9 @@ import {
   DocxEditor,
   type DocxEditorHandle,
   downloadDocx,
-} from "@portone-io/docx-editor";
+} from "@portone/docx-editor";
 import { useRef, useState } from "react";
-import "@portone-io/docx-editor/styles.css";
+import "@portone/docx-editor/styles.css";
 import "./DocxEditorDemo.css";
 
 export interface DocxEditorDemoProps {

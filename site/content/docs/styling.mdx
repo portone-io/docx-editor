@@ -6,7 +6,7 @@ description: The stylesheet, the CSS custom properties an application may set, a
 The editor ships one stylesheet and expects it to be imported once:
 
 ```ts
-import "@portone-io/docx-editor/styles.css";
+import "@portone/docx-editor/styles.css";
 ```
 
 It carries the ProseMirror base styles it needs, so there is nothing else to import.
@@ -72,7 +72,7 @@ import {
   DEFAULT_FONT_FALLBACKS,
   DocxEditor,
   type FontFallbacks,
-} from "@portone-io/docx-editor";
+} from "@portone/docx-editor";
 
 const fallbacks: FontFallbacks = {
   groups: [{ stack: '"Inter", sans-serif', names: ["arial", "helvetica"] }],
