@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import localFont from "next/font/local";
 import type { ReactNode } from "react";
-import { libraryDescription } from "@/lib/library";
+import { libraryDescription, siteUrl } from "@/lib/library";
 import "./global.css";
 
 const inter = Inter({
@@ -33,11 +33,25 @@ const pretendard = localFont({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(siteUrl),
   title: {
     default: "docx-editor",
     template: "%s - docx-editor",
   },
   description: libraryDescription,
+  openGraph: {
+    title: "docx-editor",
+    description: libraryDescription,
+    url: siteUrl,
+    siteName: "docx-editor",
+    type: "website",
+  },
+  // No Open Graph image exists yet, so the card stays text-only
+  twitter: {
+    card: "summary",
+    title: "docx-editor",
+    description: libraryDescription,
+  },
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

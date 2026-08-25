@@ -6,12 +6,17 @@ import {
   ShieldCheck,
   Type,
 } from "lucide-react";
+import type { Metadata } from "next";
 import NextImage from "next/image";
 import Link from "next/link";
 import { InstallCommand } from "@/components/InstallCommand";
 import { LiveDemo } from "@/components/LiveDemo";
 import { PortOneWordmark } from "@/components/PortOneWordmark";
 import { docsRoute, libraryName, repositoryUrl } from "@/lib/library";
+
+export const metadata: Metadata = {
+  alternates: { canonical: "/" },
+};
 
 const ICON_STROKE_WIDTH = 1.6;
 
