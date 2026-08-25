@@ -1,15 +1,12 @@
 import {
-  BookOpen,
-  FileText,
-  Image,
   Languages,
-  List,
+  Lock,
   type LucideIcon,
-  MessageSquare,
+  Scale,
   ShieldCheck,
-  Table,
   Type,
 } from "lucide-react";
+import NextImage from "next/image";
 import Link from "next/link";
 import { InstallCommand } from "@/components/InstallCommand";
 import { LiveDemo } from "@/components/LiveDemo";
@@ -20,48 +17,34 @@ const ICON_STROKE_WIDTH = 1.6;
 
 const features: { title: string; description: string; icon: LucideIcon }[] = [
   {
-    title: "Lossless round trip",
+    title: "The editing surface",
     description:
-      "What you never touch is written back from its original XML, not rebuilt.",
-    icon: ShieldCheck,
-  },
-  {
-    title: "Text formatting",
-    description:
-      "Bold, italic, underline, colors, highlights, fonts, and font sizes.",
+      "Format text, build lists and tables, place images and links, and comment in anchored threads - the everyday edits, applied in place.",
     icon: Type,
   },
   {
-    title: "Paragraphs and lists",
+    title: "Open source, all of it",
     description:
-      "Styles, alignment, indentation, spacing, and nested bullet or numbered lists.",
-    icon: List,
+      "Every feature ships in one package under Apache-2.0 - no paid tier.",
+    icon: Scale,
   },
   {
-    title: "Tables",
-    description: "Merge, split, resize, and paginate long tables across pages.",
-    icon: Table,
-  },
-  {
-    title: "Comments",
-    description: "Anchored threads with replies, resolution, and reopening.",
-    icon: MessageSquare,
-  },
-  {
-    title: "Images and links",
-    description: "Insert, paste, resize images; create and edit hyperlinks.",
-    icon: Image,
-  },
-  {
-    title: "Notes and page furniture",
+    title: "CJK input",
     description:
-      "View footnotes and endnotes, and preview headers, footers, and page numbers.",
-    icon: BookOpen,
-  },
-  {
-    title: "IME composition",
-    description: "First-class Korean and CJK text input.",
+      "IME composition is tested against a real browser on every change, so input never drops or doubles.",
     icon: Languages,
+  },
+  {
+    title: "Documents stay in the browser",
+    description:
+      "Files are opened, edited, and saved entirely on the page - nothing is uploaded to a server or handed to a third party.",
+    icon: Lock,
+  },
+  {
+    title: "No silent rewrites",
+    description:
+      "The editor writes the same OOXML it read, so a document is never converted, rebuilt, or quietly reformatted on the way through.",
+    icon: ShieldCheck,
   },
 ];
 
@@ -70,11 +53,12 @@ const navLinkClassName =
 
 function BrandMark() {
   return (
-    <FileText
-      aria-hidden="true"
-      className="flex-none text-[var(--brand-primary)]"
-      size={22}
-      strokeWidth={ICON_STROKE_WIDTH}
+    <NextImage
+      alt=""
+      className="flex-none"
+      height={20}
+      src="/icon.png"
+      width={20}
     />
   );
 }
@@ -95,6 +79,8 @@ export default function LandingPage() {
             <a
               className={`${navLinkClassName} hidden sm:inline-block`}
               href={repositoryUrl}
+              rel="noreferrer"
+              target="_blank"
             >
               GitHub
             </a>
@@ -135,32 +121,45 @@ export default function LandingPage() {
         </section>
 
         <section
-          className="mx-auto w-full max-w-[1280px] scroll-mt-8 px-4 py-16 sm:px-6 sm:py-24"
+          className="mx-auto w-full max-w-[1280px] scroll-mt-8 px-6 py-16 sm:px-12 sm:py-24 lg:px-20"
           id="features"
         >
-          <p className="text-center font-mono text-[12px] text-[var(--brand-primary)] tracking-[0.12em]">
-            FEATURES
-          </p>
-          <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {features.map(({ icon: FeatureIcon, ...feature }) => (
-              <div
-                className="rounded-[8px] border border-[var(--brand-border)] bg-[var(--brand-surface)] p-6"
-                key={feature.title}
-              >
-                <FeatureIcon
-                  aria-hidden="true"
-                  className="text-[var(--brand-primary)]"
-                  size={22}
-                  strokeWidth={ICON_STROKE_WIDTH}
-                />
-                <h2 className="mt-4 font-semibold text-[15px]">
-                  {feature.title}
-                </h2>
-                <p className="mt-2 text-[13.5px] text-[var(--brand-text-subtle)] leading-[1.55]">
-                  {feature.description}
-                </p>
-              </div>
-            ))}
+          <div className="flex flex-col gap-10 lg:flex-row lg:gap-12">
+            <div className="lg:w-[340px] lg:flex-none">
+              <p className="font-mono text-[12px] text-[var(--brand-primary)] tracking-[0.12em]">
+                FEATURES
+              </p>
+              <h2 className="mt-3 font-bold text-[30px] leading-[1.2] tracking-[-0.02em]">
+                Simple on purpose
+              </h2>
+              <p className="mt-3 text-[14.5px] text-[var(--brand-text-subtle)] leading-[1.6]">
+                It doesn&apos;t do everything Word does. The features it has
+                work without surprises.
+              </p>
+            </div>
+            <div className="flex flex-1 flex-col">
+              {features.map(({ icon: FeatureIcon, ...feature }) => (
+                <div
+                  className="flex items-start gap-3 border-[var(--brand-border)] border-b py-5"
+                  key={feature.title}
+                >
+                  <FeatureIcon
+                    aria-hidden="true"
+                    className="mt-0.5 flex-none text-[var(--brand-primary)]"
+                    size={20}
+                    strokeWidth={ICON_STROKE_WIDTH}
+                  />
+                  <div>
+                    <h3 className="font-semibold text-[15px]">
+                      {feature.title}
+                    </h3>
+                    <p className="mt-1 max-w-[68ch] text-[14px] text-[var(--brand-text-subtle)] leading-[1.6]">
+                      {feature.description}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </section>
       </main>
