@@ -16,6 +16,8 @@ Use `pnpm check` for the default local gate. Run the specialized checks when a c
 
 The unit suite requires `xmllint` for OOXML schema validation. `verify:package` also needs network access to install the packed package and its peer dependencies in a temporary project.
 
+`pnpm spec 17.5.2.23` looks up an OOXML specification section. It is a utility, not a test.
+
 ## Unit and integration tests
 
 Place a test beside the source it covers, such as `src/docx/importDocx.test.ts` beside `src/docx/importDocx.ts`. Vitest scans `src/` only.
@@ -61,18 +63,9 @@ Every action is pinned to a commit SHA with the version in a trailing comment, a
 
 Run the same audit locally with `docker run --rm -v "$PWD:/workspace:ro" -w /workspace ghcr.io/zizmorcore/zizmor:1.29.0 .`, matching the version the action pins.
 
-## Release gate
+## Keeping the suite honest
 
-Before a release, run:
+Do not weaken or remove a test only to make a change pass.
+When behavior changes intentionally, update the expectation and explain the decision.
 
-```sh
-pnpm check
-pnpm test:package
-pnpm verify:package
-DOCX_EDITOR_REACT_RANGE=^18 pnpm verify:package
-pnpm test:e2e
-```
-
-The development server does not replace `pnpm typecheck`. `pnpm spec 17.5.2.23` is a separate utility for finding an OOXML specification section and is not a test.
-
-Do not weaken or remove a test only to make a change pass. When behavior changes intentionally, update the expectation and explain the decision.
+Every check above runs on a pull request, and [releasing](./releasing.md) re-runs the package ones before anything reaches npm.
