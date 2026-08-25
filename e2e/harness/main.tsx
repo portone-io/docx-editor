@@ -231,6 +231,7 @@ function install(view: EditorView): void {
         )
       );
       view.focus();
+      return from;
     },
     lock: (blockIndex, offset, length) => {
       const from = blockStart(view, blockIndex) + 1 + offset;

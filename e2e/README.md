@@ -43,5 +43,6 @@ IME tests drive Chrome's real composition pipeline through CDP `Input.imeSetComp
 
 - Chrome stalls when `Input.dispatchKeyEvent` is interleaved with `Input.imeSetComposition`, so swallowed IME key events and hangul Backspace keys are represented through composition-buffer changes instead.
 - CDP does not produce a `contextmenu` event for the context-menu key or Shift+F10, so the harness raises the same browser event before the test follows the real menu path.
+- Chrome loses some native selection extensions when the main thread is busy, so a run of Shift+Arrow presses selects a shorter stretch than it asked for and sometimes nothing at all. A selection a test needs as a precondition is set through `selectText`, which dispatches it in one transaction and then waits for the editor to hold both that selection and the focus.
 - Canceling a composition with Escape is not covered yet.
 - The suite supplies composed IME buffers rather than deriving them from operating-system keystrokes. It verifies the editor's handling of composition, not the operating system's IME implementation.

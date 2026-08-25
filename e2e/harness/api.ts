@@ -62,8 +62,11 @@ export interface DocxHarness {
   blockHeight(blockIndex: number): number;
   /** Puts the caret `offset` characters into a block's content, and answers the position used */
   caretAt(blockIndex: number, offset: number): number;
-  /** Selects `length` characters `offset` characters into one top-level block */
-  selectText(blockIndex: number, offset: number, length: number): void;
+  /**
+   * Selects `length` characters `offset` characters into one top-level block, and answers the
+   * position the stretch starts at
+   */
+  selectText(blockIndex: number, offset: number, length: number): number;
   /** Puts the caret in the first cell of the first table, and answers the text that cell holds */
   caretInCell(): string;
   /**
