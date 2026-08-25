@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import {
   googleSiteVerification,
   libraryDescription,
+  openGraphImage,
   siteUrl,
 } from "@/lib/library";
 import "./global.css";
@@ -49,12 +50,13 @@ export const metadata: Metadata = {
     url: siteUrl,
     siteName: "docx-editor",
     type: "website",
+    images: [openGraphImage],
   },
-  // No Open Graph image exists yet, so the card stays text-only
   twitter: {
-    card: "summary",
+    card: "summary_large_image",
     title: "docx-editor",
     description: libraryDescription,
+    images: [openGraphImage],
   },
   verification: { google: googleSiteVerification },
 };
