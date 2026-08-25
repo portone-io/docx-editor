@@ -16,6 +16,7 @@
   "dependencies": {
     "@portone-io/docx-editor": "workspace:*",
     "@portone-io/docx-editor-demo": "workspace:*",
+    "@vercel/analytics": "^2.0.1",
     "fumadocs-core": "16.15.1",
     "fumadocs-mdx": "15.3.1",
     "fumadocs-ui": "16.15.1",
