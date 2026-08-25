@@ -8,6 +8,7 @@ import { createRelativeLink } from "fumadocs-ui/mdx";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getMDXComponents } from "@/components/mdx";
+import { openGraphImage } from "@/lib/library";
 import { source } from "@/lib/source";
 
 interface DocsPageProps {
@@ -57,6 +58,7 @@ export async function generateMetadata({
       url: page.url,
       siteName: "docx-editor",
       type: "website",
+      images: [openGraphImage],
     },
   };
 }
