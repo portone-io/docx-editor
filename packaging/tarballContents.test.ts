@@ -19,6 +19,7 @@ const requiredEntries = [
   "package/package.json",
   "package/LICENSE",
   "package/README.md",
+  "package/CHANGELOG.md",
   "package/CONTRIBUTING.md",
   "package/assets/editor.png",
   "package/dist/styles.css",

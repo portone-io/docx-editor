@@ -12,7 +12,8 @@ Keep one source of truth for each concern and link to it instead of repeating it
 - For an OOXML decision, check [the existing specification notes](./spec/notes/README.md), then follow [the specification guide](./spec/README.md) when no note covers it. Do not load specification prose or schemas for unrelated work.
 - Read [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md) when adding or replacing redistributed material or its attribution.
 - Read [docs/architecture.md](./docs/architecture.md) before moving code, changing folder dependencies, or adding an entry point.
-- Read [docs/testing.md](./docs/testing.md) before changing test structure, packaging checks, or the release gate.
+- Read [docs/testing.md](./docs/testing.md) before changing test structure or packaging checks.
+- Read [docs/releasing.md](./docs/releasing.md) before changing how a version is decided, published, or announced.
 - The user-facing documentation lives in the site's MDX pages, which the site serves; edit them there rather than mirroring them elsewhere.
   - Read [site/content/docs/features.mdx](./site/content/docs/features.mdx) for a support claim or a behavior change.
   - Read [site/content/docs/core.mdx](./site/content/docs/core.mdx) for programmatic DOCX import and export.

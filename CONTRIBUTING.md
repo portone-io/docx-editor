@@ -48,6 +48,13 @@ pnpm test:e2e
 
 [Testing](https://github.com/portone-io/docx-editor/blob/main/docs/testing.md) explains the scope and prerequisites of every check.
 
+## Changesets
+
+If you changed anything under `src/`, run `pnpm changeset` and commit the file it writes.
+It becomes the CHANGELOG entry, so write it for someone reading release notes rather than the diff.
+Choose `patch` unless the change adds to or breaks the public API.
+Those are `minor` while the package is below 1.0.
+
 By contributing, you agree that your contribution is licensed under the Apache License 2.0 used by this project.
 
 ## Commit messages

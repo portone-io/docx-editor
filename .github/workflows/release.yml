@@ -1,0 +1,91 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Two runs would race to rewrite the release pull request, and on the publish
+# path to claim the same version.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  # A pending changeset means this run assembles the release pull request; none
+  # means the version bump has already been merged and this run publishes it.
+  mode:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      publishing: ${{ steps.pending.outputs.publishing }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: pending
+        run: |
+          pending=$(find .changeset -maxdepth 1 -name '*.md' ! -name 'README.md' | wc -l | tr -d ' ')
+          echo "pending changesets: ${pending}"
+          test "${pending}" -eq 0 && echo "publishing=true" >>"${GITHUB_OUTPUT}" \
+            || echo "publishing=false" >>"${GITHUB_OUTPUT}"
+
+  # Nothing downstream can catch a bad tarball once npm has it.
+  gate:
+    needs: mode
+    if: needs.mode.outputs.publishing == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      # Deliberately uncached: a cache entry written by an earlier run is
+      # attacker-reachable input, and this workflow's output is what gets signed.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - run: pnpm test:package
+
+  release:
+    needs: [mode, gate]
+    # The gate is skipped by design on the release-pull-request path.
+    if: >-
+      !cancelled() && needs.mode.result == 'success'
+      && contains(fromJSON('["success", "skipped"]'), needs.gate.result)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write # the version commit, its tag, and the GitHub release
+      pull-requests: write # the release pull request
+      id-token: write # OIDC, which is how npm authenticates the publish
+    steps:
+      # The action pushes through the token it is given, not through the
+      # checkout credentials. Changesets needs the history to tell released
+      # versions from pending ones.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - run: pnpm install --frozen-lockfile
+      - uses: changesets/action@8488615a623b1b9c987934bb89eae8af6a946ac1 # v2.1.1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          version-script: pnpm changeset:version
+          publish-script: pnpm changeset publish
+          pr-title: "chore: release"
+          commit-message: "chore: release"
