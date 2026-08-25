@@ -12,7 +12,7 @@
     "type": "git",
     "url": "git+https://github.com/portone-io/docx-editor.git"
   },
-  "homepage": "https://github.com/portone-io/docx-editor#readme",
+  "homepage": "https://docx-editor.portone.io",
   "bugs": {
     "url": "https://github.com/portone-io/docx-editor/issues"
   },

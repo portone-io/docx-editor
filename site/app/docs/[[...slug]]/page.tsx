@@ -45,5 +45,18 @@ export async function generateMetadata({
   const page = source.getPage(slug);
   if (!page) notFound();
 
-  return { title: page.data.title, description: page.data.description };
+  return {
+    title: page.data.title,
+    description: page.data.description,
+    alternates: { canonical: page.url },
+    // Next.js replaces the parent openGraph object rather than merging into it,
+    // so the site-wide fields are restated here
+    openGraph: {
+      title: page.data.title,
+      description: page.data.description,
+      url: page.url,
+      siteName: "docx-editor",
+      type: "website",
+    },
+  };
 }
