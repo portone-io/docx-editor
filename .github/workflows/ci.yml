@@ -36,18 +36,8 @@ jobs:
       - run: pnpm check
 
   package:
-    name: package (React ${{ matrix.react }})
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # An empty range leaves verify:package on the range the manifest declares
-          - react: 19
-            range: ""
-          - react: 18
-            range: "^18"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -59,11 +49,34 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       # The tarball holds no React of its own, so its contents are checked once
-      - if: matrix.react == 19
-        run: pnpm test:package
-      - run: pnpm verify:package
-        env:
-          DOCX_EDITOR_REACT_RANGE: ${{ matrix.range }}
+      - run: pnpm test:package
+      - run: |
+          pnpm build
+          pnpm pack --pack-destination "${RUNNER_TEMP}"
+          echo "DOCX_EDITOR_TARBALL=$(echo "${RUNNER_TEMP}"/*.tgz)" >> "${GITHUB_ENV}"
+      # Both majors are verified on this one runner so the suite reads as a
+      # single check. Their output would interleave, so each run keeps its own
+      # log and both are replayed once they have finished.
+      - name: verify the package against each supported React major
+        run: |
+          verify() {
+            DOCX_EDITOR_REACT_RANGE="${2}" pnpm verify:package \
+              >"${RUNNER_TEMP}/react-${1}.log" 2>&1
+          }
+          # An empty range leaves verify:package on the range the manifest declares
+          verify 19 "" &
+          nineteen=$!
+          verify 18 "^18" &
+          eighteen=$!
+          status=0
+          wait "${nineteen}" || status=1
+          wait "${eighteen}" || status=1
+          for major in 19 18; do
+            echo "::group::React ${major}"
+            cat "${RUNNER_TEMP}/react-${major}.log"
+            echo "::endgroup::"
+          done
+          exit "${status}"
 
   e2e:
     runs-on: ubuntu-latest

@@ -24,6 +24,13 @@ const packageRoot = fileURLToPath(new URL("..", import.meta.url));
  */
 const REACT_RANGE = process.env.DOCX_EDITOR_REACT_RANGE;
 
+/**
+ * A tarball to verify instead of building one. Two runs checking different React majors
+ * share the same artifact, and building it twice over the same `dist/` would have them
+ * race, so CI packs it once and points both runs at it.
+ */
+const TARBALL = process.env.DOCX_EDITOR_TARBALL;
+
 /** What `REACT_RANGE` stands in for. `@types/react-dom` is not among them: no consumer file needs it */
 const REACT_PACKAGES = new Set(["react", "react-dom", "@types/react"]);
 
@@ -225,20 +232,26 @@ async function verify() {
       (REACT_RANGE ? `  against react@${REACT_RANGE}\n` : "")
   );
 
-  await step("building the package", () =>
-    run("pnpm", ["build"], { cwd: packageRoot })
-  );
-
-  const tarball = await step("packing the package", async () => {
-    await run("pnpm", ["pack", "--pack-destination", workDir], {
-      cwd: packageRoot,
-    });
-    const packed = (await readdir(workDir)).find((name) =>
-      name.endsWith(".tgz")
+  if (!TARBALL)
+    await step("building the package", () =>
+      run("pnpm", ["build"], { cwd: packageRoot })
     );
-    if (!packed) throw new Error("pnpm pack left no tarball behind");
-    return join(workDir, packed);
-  });
+
+  const tarball = TARBALL
+    ? await step("taking the tarball it was given", async () => {
+        await stat(TARBALL);
+        return TARBALL;
+      })
+    : await step("packing the package", async () => {
+        await run("pnpm", ["pack", "--pack-destination", workDir], {
+          cwd: packageRoot,
+        });
+        const packed = (await readdir(workDir)).find((name) =>
+          name.endsWith(".tgz")
+        );
+        if (!packed) throw new Error("pnpm pack left no tarball behind");
+        return join(workDir, packed);
+      });
 
   const manifest = await step("reading the packed manifest", async () => {
     const { stdout } = await run("tar", [
