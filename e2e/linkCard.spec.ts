@@ -14,8 +14,10 @@ import {
   type BlockReport,
   blocks,
   caretAt,
+  editorFocused,
   openHarness,
   pressModKey,
+  selectText,
   settle,
 } from "./support/harness";
 
@@ -39,10 +41,7 @@ test("the card hangs under the first line of the link it is about", async ({
 }) => {
   await openHarness(page, "kitchen-sink");
   const target = longParagraph(await blocks(page));
-  await caretAt(page, target.index, AT);
-  for (let step = 0; step < LENGTH; step += 1) {
-    await page.keyboard.press("Shift+ArrowRight");
-  }
+  await selectText(page, target.index, AT, LENGTH);
   // The scroll that follows the caret would take an open panel away, so it is waited out first
   await settle(page);
 
@@ -77,10 +76,7 @@ test("the card stays where it is while text is typed inside the link", async ({
 }) => {
   await openHarness(page, "kitchen-sink");
   const target = longParagraph(await blocks(page));
-  await caretAt(page, target.index, AT);
-  for (let step = 0; step < LENGTH; step += 1) {
-    await page.keyboard.press("Shift+ArrowRight");
-  }
+  await selectText(page, target.index, AT, LENGTH);
   await settle(page);
   await pressModKey(page, "k");
   await page.keyboard.type(ADDRESS);
@@ -102,10 +98,7 @@ test("the card is reached by Tab and returns focus to the paper on Escape", asyn
 }) => {
   await openHarness(page, "kitchen-sink");
   const target = longParagraph(await blocks(page));
-  await caretAt(page, target.index, AT);
-  for (let step = 0; step < LENGTH; step += 1) {
-    await page.keyboard.press("Shift+ArrowRight");
-  }
+  await selectText(page, target.index, AT, LENGTH);
   await settle(page);
   await pressModKey(page, "k");
   await page.keyboard.type(ADDRESS);
@@ -119,12 +112,7 @@ test("the card is reached by Tab and returns focus to the paper on Escape", asyn
 
   await page.keyboard.press("Escape");
   await expect(card).toHaveCount(0);
-  expect(
-    await page.evaluate(
-      (sheet) => document.activeElement?.classList.contains(sheet),
-      editorClassNames.sheet
-    )
-  ).toBe(true);
+  expect(await editorFocused(page)).toBe(true);
 });
 
 test("the card shrinks without introducing its own scrollbars", async ({

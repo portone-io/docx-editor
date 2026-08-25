@@ -19,11 +19,13 @@ import {
   blocks,
   caretAt,
   caretInCell,
+  editorFocused,
   firstTextParagraph,
   focused,
   openHarness,
   pressModKey,
   rightClick,
+  selectText,
   settle,
   tableRows,
 } from "./support/harness";
@@ -89,12 +91,7 @@ test("escape closes the menu and hands the focus back to the paper", async ({
   await expect(
     page.locator('[role="menu"][aria-label="Table actions"]')
   ).toHaveCount(0);
-  expect(
-    await page.evaluate(
-      (sheet) => document.activeElement?.classList.contains(sheet),
-      editorClassNames.sheet
-    )
-  ).toBe(true);
+  expect(await editorFocused(page)).toBe(true);
 });
 
 /**
@@ -107,10 +104,8 @@ test("the link panel takes the focus as it opens, and hands it back on escape", 
 }) => {
   await openHarness(page, "kitchen-sink");
   const target = firstTextParagraph(await blocks(page));
-  await caretAt(page, target.index, 0);
-  for (let step = 0; step < 4; step += 1) {
-    await page.keyboard.press("Shift+ArrowRight");
-  }
+  // A link needs a stretch to go on: over an empty selection Cmd+K reports it did nothing
+  await selectText(page, target.index, 0, 4);
   // The scroll that follows the caret would take the panel away, so it is waited out first
   await settle(page);
 
@@ -121,12 +116,7 @@ test("the link panel takes the focus as it opens, and hands it back on escape", 
 
   await page.keyboard.press("Escape");
   await expect(panel).toHaveCount(0);
-  expect(
-    await page.evaluate(
-      (sheet) => document.activeElement?.classList.contains(sheet),
-      editorClassNames.sheet
-    )
-  ).toBe(true);
+  expect(await editorFocused(page)).toBe(true);
 });
 
 test("the toolbar is one stop on the way to the paper, walked with the arrows", async ({
@@ -150,12 +140,7 @@ test("the toolbar is one stop on the way to the paper, walked with the arrows", 
 
   // One stop for the whole row: the next Tab is out of it and onto the paper
   await page.keyboard.press("Tab");
-  expect(
-    await page.evaluate(
-      (sheet) => document.activeElement?.classList.contains(sheet),
-      editorClassNames.sheet
-    )
-  ).toBe(true);
+  expect(await editorFocused(page)).toBe(true);
 });
 
 test("a toolbar panel is opened, walked and chosen from with the keyboard", async ({

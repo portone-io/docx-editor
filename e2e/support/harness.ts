@@ -99,16 +99,39 @@ export function caretAt(
   );
 }
 
-export function selectText(
+/**
+ * Selects a stretch of one block and waits until the editor holds that exact selection and the
+ * focus, which is the precondition every command reading the selection is run against.
+ *
+ * The stretch is set through one transaction rather than through a run of Shift+ArrowRight presses.
+ * An arrow key is left to the browser's own selection extension and read back into the editor state
+ * asynchronously, and a busy main thread loses some of those extensions, so a run of presses leaves
+ * a shorter stretch selected than it asked for and sometimes none at all. A command that reports it
+ * did nothing over an empty selection - Cmd+K, where no link can go on a caret standing in none -
+ * then quietly does nothing, and the test waits for a panel that was never asked to open.
+ */
+export async function selectText(
   page: Page,
   blockIndex: number,
   offset: number,
   length: number
 ): Promise<void> {
-  return page.evaluate(
+  const from = await page.evaluate(
     ([block, at, span]) => window.docxHarness.selectText(block, at, span),
     [blockIndex, offset, length]
   );
+  await expect
+    .poll(async () => ({
+      ...(await selection(page)),
+      focused: await editorFocused(page),
+    }))
+    .toEqual({
+      from,
+      to: from + length,
+      anchor: from,
+      head: from + length,
+      focused: true,
+    });
 }
 
 export function caretInCell(page: Page): Promise<string> {
@@ -123,6 +146,14 @@ export function rightClick(page: Page): Promise<void> {
 
 export function tableRows(page: Page): Promise<number> {
   return page.evaluate(() => window.docxHarness.tableRows());
+}
+
+/** Whether the paper itself holds the focus, rather than a panel or a menu drawn over it */
+export function editorFocused(page: Page): Promise<boolean> {
+  return page.evaluate(
+    (sheet) => document.activeElement?.classList.contains(sheet) === true,
+    editorClassNames.sheet
+  );
 }
 
 /** What the focus is on, by its accessible name or the text written on it */
