@@ -13,6 +13,21 @@ Merging that pull request publishes, and everything on `main` ships with it: a f
 Its Actions runs wait for approval, since the workflow opened the pull request rather than a person.
 **Approve workflows to run**, in the merge box, starts them; every rewrite re-arms it.
 
+## What the workflow decides
+
+Every push to `main` runs the workflow, which first works out which of three things this push is.
+A pending changeset means a release is being proposed, so it writes the release pull request.
+No changeset, and a version the registry has never seen, means that pull request has been merged, so it publishes.
+Anything else is an ordinary commit and the run stops there.
+
+The publish path passes through a gate that runs the full `pnpm check` and `pnpm test:package` before anything reaches npm, because nothing downstream can catch a bad tarball once the registry has it.
+A gate failure blocks the release, and the version bump stays on `main` until the next push retries it.
+
+## Tags and GitHub releases
+
+Publishing tags the commit and opens a GitHub release from the CHANGELOG entry for that version.
+The tag is `@portone/docx-editor@<version>`, the name Changesets builds for a package inside a workspace.
+
 ## npm
 
 Publishing authenticates through npm [trusted publishing](https://docs.npmjs.com/trusted-publishers), so there is no npm token here to look for.

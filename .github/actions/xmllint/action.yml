@@ -1,0 +1,13 @@
+name: Install xmllint
+description: Put xmllint on PATH for exportSchemaValidation.test.ts.
+
+runs:
+  using: composite
+  steps:
+    # The runner image usually ships it; apt-get update alone costs ~50s, so
+    # it only runs as the last resort.
+    - shell: bash
+      run: |
+        xmllint --version >/dev/null 2>&1 && exit 0
+        sudo apt-get install -y --no-install-recommends libxml2-utils \
+          || { sudo apt-get update && sudo apt-get install -y --no-install-recommends libxml2-utils; }
