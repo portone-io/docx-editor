@@ -3,7 +3,11 @@ import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import localFont from "next/font/local";
 import type { ReactNode } from "react";
-import { libraryDescription, siteUrl } from "@/lib/library";
+import {
+  googleSiteVerification,
+  libraryDescription,
+  siteUrl,
+} from "@/lib/library";
 import "./global.css";
 
 const inter = Inter({
@@ -52,6 +56,7 @@ export const metadata: Metadata = {
     title: "docx-editor",
     description: libraryDescription,
   },
+  verification: { google: googleSiteVerification },
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
