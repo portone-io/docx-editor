@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import localFont from "next/font/local";
 import type { ReactNode } from "react";
-import { libraryDescription, libraryName } from "@/lib/library";
+import { libraryDescription } from "@/lib/library";
 import "./global.css";
 
 const inter = Inter({
@@ -33,7 +33,10 @@ const pretendard = localFont({
 });
 
 export const metadata: Metadata = {
-  title: libraryName,
+  title: {
+    default: "docx-editor",
+    template: "%s - docx-editor",
+  },
   description: libraryDescription,
 };
 
