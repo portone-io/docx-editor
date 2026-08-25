@@ -54,6 +54,12 @@ Neither package command is part of `pnpm test`. `verify:package` is kept separat
 
 `pnpm test:e2e` covers IME composition, focus, keyboard interaction, and layout behavior that jsdom cannot verify. See the [real-browser test guide](../e2e/README.md) for its prerequisites, suite layout, and known limits.
 
+## Workflow audit
+
+CI runs the release gate as the `check`, `package`, and `e2e` jobs, plus a `workflows` job that audits `.github/workflows/` with [zizmor](https://docs.zizmor.sh) under `--persona=regular` and fails on any finding.
+Every action is pinned to a commit SHA with the version in a trailing comment, and Dependabot's `github-actions` entry bumps those pins.
+Run the same audit locally with `pipx run zizmor --persona=regular .github/workflows/`.
+
 ## Release gate
 
 Before a release, run:
