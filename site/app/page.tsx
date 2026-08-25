@@ -101,6 +101,7 @@ export default function LandingPage() {
               A simple DOCX editor
               <br />
               for your React app
+              <span aria-hidden="true" className="hero-caret" />
             </h1>
             <p className="mt-5 max-w-[560px] text-[16px] text-[var(--brand-text-muted)] leading-[1.6]">
               Open, edit, and save Word documents in the browser. Built directly

@@ -92,3 +92,30 @@ body {
     var(--font-inter), var(--font-pretendard), ui-sans-serif, system-ui,
     sans-serif;
 }
+
+/* The editor's caret, blinking at the end of the headline */
+.hero-caret {
+  display: inline-block;
+  width: 0.06em;
+  height: 0.82em;
+  margin-left: 0.08em;
+  background: var(--brand-primary);
+  vertical-align: -0.06em;
+  animation: hero-caret-blink 1.1s steps(2, jump-none) infinite;
+}
+
+@keyframes hero-caret-blink {
+  0% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-caret {
+    animation: none;
+  }
+}
