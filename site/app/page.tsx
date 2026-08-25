@@ -75,14 +75,18 @@ export default function LandingPage() {
         <div className="mx-auto flex w-full max-w-[1280px] items-center justify-between gap-4 px-4 py-3 sm:px-6">
           <Link className="flex items-center gap-2.5" href="/">
             <BrandMark />
-            <span className="font-bold text-[17px]">docx-editor</span>
+            {/* The nav items and the wordmark together do not fit a phone, so
+                the mark carries the brand until there is room for both */}
+            <span className="hidden font-bold text-[17px] min-[375px]:inline">
+              docx-editor
+            </span>
           </Link>
-          <nav className="flex items-center gap-4 sm:gap-6">
+          <nav className="flex items-center gap-3.5 sm:gap-6">
             <Link className={navLinkClassName} href={docsRoute}>
               Docs
             </Link>
             <a
-              className={`${navLinkClassName} hidden sm:inline-block`}
+              className={navLinkClassName}
               href={repositoryUrl}
               rel="noreferrer"
               target="_blank"
@@ -90,7 +94,7 @@ export default function LandingPage() {
               GitHub
             </a>
             <Link
-              className="rounded-[8px] bg-[var(--brand-primary)] px-[18px] py-[9px] font-medium text-[14px] text-white transition-colors hover:bg-[var(--brand-primary-hover)]"
+              className="whitespace-nowrap rounded-[8px] bg-[var(--brand-primary)] px-3.5 py-2 font-medium text-[14px] text-white transition-colors hover:bg-[var(--brand-primary-hover)] sm:px-[18px] sm:py-[9px]"
               href={`${docsRoute}/getting-started`}
             >
               Get started
