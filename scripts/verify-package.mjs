@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import {
+  copyFile,
   mkdir,
   mkdtemp,
   readdir,
@@ -15,6 +16,19 @@ import { promisify } from "node:util";
 
 const run = promisify(execFile);
 const packageRoot = fileURLToPath(new URL("..", import.meta.url));
+
+/**
+ * The React the consumer installs, overriding the range the manifest declares.
+ * The package supports more than one React major, and a single verification run can only
+ * install one of them, so CI sets this to check each supported major in turn.
+ */
+const REACT_RANGE = process.env.DOCX_EDITOR_REACT_RANGE;
+
+/** What `REACT_RANGE` stands in for. `@types/react-dom` is not among them: no consumer file needs it */
+const REACT_PACKAGES = new Set(["react", "react-dom", "@types/react"]);
+
+/** The document the render smoke opens, small enough to carry into the consumer project */
+const RENDER_FIXTURE = "demo.docx";
 
 async function step(what, action) {
   process.stdout.write(`  ${what}\n`);
@@ -122,10 +136,94 @@ for (const [name, value] of Object.entries(surface)) {
 }
 `;
 
+const consumerRender = `import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { JSDOM } from "jsdom";
+
+const dom = new JSDOM("<!doctype html><html><body></body></html>", {
+  // An origin of its own, without which the window refuses to hand out storage
+  url: "https://consumer.test/",
+  pretendToBeVisual: true,
+});
+
+// The package is imported only once the DOM globals are in place, the way a browser has them.
+// Only what node has no answer for is taken over, which leaves the language builtins, the
+// timers, and the clock as node's. Each one is read off the window rather than copied as a
+// descriptor, because several are accessors that only answer to the window itself.
+globalThis.window = dom.window;
+for (const key of Object.getOwnPropertyNames(dom.window)) {
+  if (key in globalThis) continue;
+  globalThis[key] = dom.window[key];
+}
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+/** The download needs an object URL that comes back out again, which jsdom does not hand out */
+const objectURLs = [];
+globalThis.URL.createObjectURL = (blob) => {
+  const url = "blob:consumer/" + objectURLs.length + "#" + blob.size;
+  objectURLs.push(url);
+  return url;
+};
+globalThis.URL.revokeObjectURL = () => {};
+
+/** The download holds its object URL for a minute before revoking it; that timer must not hold the run open */
+const schedule = globalThis.setTimeout;
+globalThis.setTimeout = (handler, delay, ...rest) => {
+  const timer = schedule(handler, delay, ...rest);
+  timer.unref();
+  return timer;
+};
+
+const { act, createElement } = await import("react");
+const { createRoot } = await import("react-dom/client");
+const { DocxEditor, downloadDocx } = await import("@portone-io/docx-editor");
+
+const bytes = new Uint8Array(await readFile("${RENDER_FIXTURE}"));
+const host = document.createElement("div");
+document.body.append(host);
+
+const editor = { current: null };
+const root = createRoot(host);
+await act(async () => {
+  root.render(createElement(DocxEditor, { document: bytes, ref: editor }));
+});
+
+const handle = editor.current;
+assert.ok(handle, "the editor handed the consumer's ref no handle");
+assert.equal(
+  typeof handle.exportBytes,
+  "function",
+  "the handle exposes no exportBytes"
+);
+assert.ok(
+  handle.exportBytes().length > 0,
+  "the mounted editor exported an empty document"
+);
+
+const download = downloadDocx(handle, { fileName: "contract" });
+assert.notEqual(
+  download.status,
+  "unavailable",
+  "downloadDocx could not reach the mounted editor"
+);
+assert.deepEqual(download, {
+  status: "exported",
+  fileName: "contract.docx",
+  byteLength: handle.exportBytes().length,
+});
+assert.equal(objectURLs.length, 1, "the download made no file");
+
+await act(async () => root.unmount());
+dom.window.close();
+`;
+
 async function verify() {
   const workDir = await mkdtemp(join(tmpdir(), "docx-editor-verify-"));
   const consumerDir = join(workDir, "consumer");
-  process.stdout.write(`verifying the package in ${workDir}\n`);
+  process.stdout.write(
+    `verifying the package in ${workDir}\n` +
+      (REACT_RANGE ? `  against react@${REACT_RANGE}\n` : "")
+  );
 
   await step("building the package", () =>
     run("pnpm", ["build"], { cwd: packageRoot })
@@ -163,7 +261,9 @@ async function verify() {
       "@types/react",
       "typescript",
       "esbuild",
+      "jsdom",
     ].map((name) => {
+      if (REACT_RANGE && REACT_PACKAGES.has(name)) return [name, REACT_RANGE];
       const range = declared[name];
       if (!range) throw new Error(`the packed manifest names no ${name}`);
       return [name, range];
@@ -201,6 +301,11 @@ async function verify() {
     await writeFile(join(consumerDir, "app.tsx"), consumerApp);
     await writeFile(join(consumerDir, "env.d.ts"), consumerTypes);
     await writeFile(join(consumerDir, "smoke.mjs"), consumerSmoke);
+    await writeFile(join(consumerDir, "render.mjs"), consumerRender);
+    await copyFile(
+      join(packageRoot, "__fixtures__", RENDER_FIXTURE),
+      join(consumerDir, RENDER_FIXTURE)
+    );
   });
 
   await step("installing the tarball and its peers", () =>
@@ -229,6 +334,10 @@ async function verify() {
 
   await step("loading the entries in node", () =>
     run(process.execPath, ["smoke.mjs"], { cwd: consumerDir })
+  );
+
+  await step("rendering the editor over a fixture document", () =>
+    run(process.execPath, ["render.mjs"], { cwd: consumerDir })
   );
 
   const sizes = await step("checking what the bundle came to", async () => {

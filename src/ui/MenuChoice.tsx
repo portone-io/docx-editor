@@ -1,6 +1,7 @@
 /** Choice row with a fixed check slot for stable label alignment. */
 
 import { Check, type LucideIcon } from "lucide-react";
+import type { ReactElement } from "react";
 import { editorClassNames } from "../styles/classNames";
 import { ICON_SIZE } from "./ToolbarButton";
 
@@ -18,7 +19,7 @@ export function MenuChoice({
   role,
   checked,
   onChoose,
-}: MenuChoiceProps) {
+}: MenuChoiceProps): ReactElement {
   return (
     <button
       type="button"

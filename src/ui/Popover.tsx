@@ -4,7 +4,13 @@
  */
 
 import type { LucideIcon } from "lucide-react";
-import { type ReactNode, useCallback, useRef, useState } from "react";
+import {
+  type ReactElement,
+  type ReactNode,
+  useCallback,
+  useRef,
+  useState,
+} from "react";
 import { editorClassNames } from "../styles/classNames";
 import { usePanelUnderControl } from "./panelPlacement";
 import { type RunSource, ToolbarButton } from "./ToolbarButton";
@@ -35,7 +41,7 @@ export function Popover({
   panel: kind,
   disabled,
   children,
-}: PopoverProps) {
+}: PopoverProps): ReactElement {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement | null>(null);
   const button = useRef<HTMLButtonElement | null>(null);

@@ -3,7 +3,13 @@
 import { ExternalLink, Link2Off, Pencil } from "lucide-react";
 import type { EditorState } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  type ReactElement,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   type ActiveLinkSpan,
   removeLink,
@@ -66,7 +72,7 @@ export function LinkCard({
   state,
   link,
   readOnly = false,
-}: LinkCardProps) {
+}: LinkCardProps): ReactElement | null {
   const box = useRef<HTMLDivElement | null>(null);
   const [hidden, setHidden] = useState(false);
   const placement = usePanelAtPoint(box, useLinkPoint(view, link.from));

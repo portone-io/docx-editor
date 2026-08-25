@@ -13,8 +13,10 @@ import type { EditorState, Plugin } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 import {
   type CSSProperties,
+  type ForwardedRef,
+  forwardRef,
+  type ReactElement,
   type ReactNode,
-  type Ref,
   useEffect,
   useImperativeHandle,
   useLayoutEffect,
@@ -96,7 +98,6 @@ export interface DocxEditorProps {
    * never silent either way. Hand one in to write the refusal in your own words.
    */
   renderImportError?: (error: DocxImportError) => ReactNode;
-  ref?: Ref<DocxEditorHandle | null>;
   /** What the editor is for. Editing with the toolbar shown and no locking when none is given */
   mode?: DocxEditorMode;
   /** Whether to draw approximate page boundaries over the document's own paper. Drawn when read only too */
@@ -260,7 +261,7 @@ const IMPORT_REJECTION_REASON: Record<DocxImportErrorCode, string> = {
  * The document is not opened either way; this is what makes that visible rather
  * than leaving an empty box behind.
  */
-function ImportRejection({ error }: { error: DocxImportError }) {
+function ImportRejection({ error }: { error: DocxImportError }): ReactElement {
   return (
     <div className={editorClassNames.rejection} role="alert">
       <p className={editorClassNames.rejectionTitle}>
@@ -281,24 +282,26 @@ function zoomVariable(
   return { "--docx-editor-zoom": factor };
 }
 
-export function DocxEditor({
-  document: source,
-  renderImportError,
-  ref,
-  mode = { kind: "edit" },
-  showPageGuides = true,
-  zoom,
-  defaultZoom = "fit-width",
-  onZoomChange,
-  fontFallbacks,
-  presets,
-  commentAuthor = { name: "Anonymous" },
-  plugins,
-  className,
-  style,
-  onReady,
-  onChange,
-}: DocxEditorProps) {
+function DocxEditorSurface(
+  {
+    document: source,
+    renderImportError,
+    mode = { kind: "edit" },
+    showPageGuides = true,
+    zoom,
+    defaultZoom = "fit-width",
+    onZoomChange,
+    fontFallbacks,
+    presets,
+    commentAuthor = { name: "Anonymous" },
+    plugins,
+    className,
+    style,
+    onReady,
+    onChange,
+  }: DocxEditorProps,
+  ref: ForwardedRef<DocxEditorHandle | null>
+): ReactNode {
   const readOnly = mode.kind === "readOnly";
   const showToolbar = mode.kind === "edit" && (mode.toolbar ?? true);
   const allowLocking = mode.kind === "edit" && (mode.locking ?? false);
@@ -564,3 +567,9 @@ export function DocxEditor({
     </div>
   );
 }
+
+/**
+ * `forwardRef` rather than a `ref` prop: React 18 hands a function component no `ref`
+ * in its props, so the handle would never be built there.
+ */
+export const DocxEditor = forwardRef(DocxEditorSurface);

@@ -8,7 +8,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { EditorState } from "prosemirror-state";
-import { useRef } from "react";
+import { type ReactElement, useRef } from "react";
 import {
   type ActiveParagraphAlign,
   activeParagraphAlign,
@@ -46,7 +46,12 @@ export interface AlignMenuProps {
   takeFocus: boolean;
 }
 
-export function AlignMenu({ state, run, close, takeFocus }: AlignMenuProps) {
+export function AlignMenu({
+  state,
+  run,
+  close,
+  takeFocus,
+}: AlignMenuProps): ReactElement {
   const current = activeParagraphAlign(state);
   const menu = useRef<HTMLDivElement | null>(null);
   const keys = useMenuKeyboard({ menu, onClose: close, takeFocus });

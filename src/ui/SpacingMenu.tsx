@@ -1,5 +1,5 @@
 import type { Command, EditorState } from "prosemirror-state";
-import { useRef } from "react";
+import { type ReactElement, useRef } from "react";
 import {
   activeLineSpacing,
   setLineSpacing,
@@ -39,7 +39,7 @@ export function SpacingMenu({
   run,
   close,
   takeFocus,
-}: SpacingMenuProps) {
+}: SpacingMenuProps): ReactElement {
   const current = activeLineSpacing(state);
   const menu = useRef<HTMLDivElement | null>(null);
   const keys = useMenuKeyboard({ menu, onClose: close, takeFocus });

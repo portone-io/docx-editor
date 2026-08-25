@@ -1,7 +1,7 @@
 /** Preset and custom colors shared by text, background, border, and cell formatting. */
 
 import { Check } from "lucide-react";
-import { type KeyboardEvent, useRef, useState } from "react";
+import { type KeyboardEvent, type ReactElement, useRef, useState } from "react";
 import { editorClassNames } from "../styles/classNames";
 import { type ColorRow, DEFAULT_COLORS } from "../styles/colors";
 import { useGridKeyboard } from "./useGridKeyboard";
@@ -39,7 +39,7 @@ export function ColorPicker({
   close,
   takeFocus,
   onPick,
-}: ColorPickerProps) {
+}: ColorPickerProps): ReactElement {
   const grid = useRef<HTMLDivElement | null>(null);
   const nativePicker = useRef<HTMLInputElement | null>(null);
   const applyButton = useRef<HTMLButtonElement | null>(null);

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { makeDocx } from "./__testing__/docx";
 import { renderInto } from "./__testing__/react";
@@ -7,6 +7,7 @@ import { DocxEditor, type DocxEditorHandle } from "./DocxEditor";
 import {
   createDocxBlob,
   DOCX_MIME_TYPE,
+  type DownloadDocxResult,
   downloadBlob,
   downloadDocx,
   hasExportableContent,
@@ -205,6 +206,40 @@ describe("downloadDocx", () => {
       byteLength: handle.exportBytes().length,
     });
     expect(lastClick().anchor.download).toBe("standard-contract.docx");
+    unmount();
+  });
+
+  /**
+   * The handle taken the way a screen takes it: `useRef` on the element, read from the
+   * consumer's own effect. React 18 hands a function component no `ref` among its props,
+   * so a handle reached this way is what proves the ref survives the React the consumer runs.
+   */
+  it("exports through the handle a consumer took with a ref", () => {
+    const results: DownloadDocxResult[] = [];
+
+    function Screen() {
+      const editorRef = useRef<DocxEditorHandle | null>(null);
+      useEffect(() => {
+        results.push(downloadDocx(editorRef.current, { fileName: "contract" }));
+      }, []);
+      return (
+        <DocxEditor
+          document={PARAGRAPH}
+          ref={editorRef}
+          renderImportError={() => null}
+        />
+      );
+    }
+
+    const unmount = render(<Screen />);
+    expect(results).toEqual([
+      {
+        status: "exported",
+        fileName: "contract.docx",
+        byteLength: expect.any(Number),
+      },
+    ]);
+    expect(lastClick().anchor.download).toBe("contract.docx");
     unmount();
   });
 });

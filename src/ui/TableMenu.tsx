@@ -2,7 +2,7 @@
 
 import type { Command, EditorState } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
-import { Fragment, useCallback, useRef } from "react";
+import { Fragment, type ReactElement, useCallback, useRef } from "react";
 import { unlockSelection } from "../editor/commands/lockCommands";
 import {
   closeTableMenu,
@@ -82,7 +82,7 @@ export function TableMenu({
   state,
   anchor,
   allowLocking = false,
-}: TableMenuProps) {
+}: TableMenuProps): ReactElement {
   const box = useRef<HTMLDivElement | null>(null);
   const placement = usePanelAtPoint(box, anchor);
   const run = commandRunner(view);

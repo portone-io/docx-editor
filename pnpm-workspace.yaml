@@ -1,5 +1,6 @@
 packages:
   - demo
+  - react18
   - site
 
 allowBuilds:

@@ -1,4 +1,5 @@
 import type { EditorState } from "prosemirror-state";
+import type { ReactElement } from "react";
 import { documentNotes } from "../editor/commands/noteQueries";
 import { editorClassNames } from "../styles/classNames";
 
@@ -8,7 +9,7 @@ export function NotesPanel({
 }: {
   state: EditorState;
   pageWidth: number;
-}) {
+}): ReactElement | null {
   const notes = documentNotes(state);
   if (notes.length === 0) return null;
 

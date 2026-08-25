@@ -1,5 +1,6 @@
 /** Shows the resolved size, leaves mixed selections blank, and clears explicit sizes via Default. */
 
+import type { ReactElement } from "react";
 import {
   type ActiveFontSize,
   setFontSize,
@@ -27,7 +28,7 @@ export function FontSizeSelect({
   fontSizes = DEFAULT_FONT_SIZES,
   disabled,
   run,
-}: FontSizeSelectProps) {
+}: FontSizeSelectProps): ReactElement {
   const value = current.kind === "mixed" ? MIXED : `${current.pt}`;
   // If the document uses a size that is not in the list, show it too so it stays selectable
   const extra =

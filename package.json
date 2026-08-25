@@ -71,9 +71,12 @@
     "dev:site": "pnpm --filter @portone-io/docx-editor-site dev",
     "build:site": "pnpm --filter @portone-io/docx-editor-site build",
     "check": "pnpm lint && pnpm typecheck && pnpm test",
+    "check:react18": "pnpm typecheck:react18 && pnpm test:react18",
     "typecheck": "tsc --noEmit && tsc --noEmit -p e2e && tsc --noEmit -p demo && pnpm --filter @portone-io/docx-editor-site typecheck",
+    "typecheck:react18": "tsc --noEmit -p tsconfig.react18.json",
     "lint": "pnpm biome check . --diagnostic-level=error",
     "test": "vitest run",
+    "test:react18": "vitest run --config vitest.react18.config.ts",
     "test:package": "vitest run --dir packaging --no-file-parallelism",
     "verify:package": "node scripts/verify-package.mjs",
     "spec": "node scripts/index-ooxml-spec.mjs",
@@ -94,7 +97,7 @@
     "prosemirror-tables": "^1.8.5",
     "prosemirror-transform": "^1.12.0",
     "prosemirror-view": "^1.41.6",
-    "react": ">=19"
+    "react": ">=18"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.10",
