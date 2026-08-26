@@ -16,6 +16,8 @@ import {
   docsRoute,
   libraryDescription,
   libraryName,
+  libraryVersion,
+  npmUrl,
   repositoryUrl,
   siteUrl,
 } from "@/lib/library";
@@ -95,14 +97,24 @@ export default function LandingPage() {
       />
       <header className="border-[var(--brand-border)] border-b bg-[var(--brand-surface)]">
         <div className="mx-auto flex w-full max-w-[1280px] items-center justify-between gap-4 px-4 py-3 sm:px-6">
-          <Link className="flex items-center gap-2.5" href="/">
-            <BrandMark />
-            {/* The nav items and the wordmark together do not fit a phone, so
-                the mark carries the brand until there is room for both */}
-            <span className="hidden font-bold text-[17px] min-[375px]:inline">
-              docx-editor
-            </span>
-          </Link>
+          <div className="flex items-center gap-2.5">
+            <Link className="flex items-center gap-2.5" href="/">
+              <BrandMark />
+              {/* The nav items and the wordmark together do not fit a phone, so
+                  the mark carries the brand until there is room for both */}
+              <span className="hidden font-bold text-[17px] min-[375px]:inline">
+                docx-editor
+              </span>
+            </Link>
+            <a
+              className="hidden rounded-full bg-[#f2673c1a] px-2 py-0.5 font-mono text-[11px] text-[var(--brand-primary)] leading-[1.6] transition-colors hover:bg-[#f2673c2e] sm:inline-block"
+              href={npmUrl}
+              rel="noreferrer"
+              target="_blank"
+            >
+              v{libraryVersion}
+            </a>
+          </div>
           <nav className="flex items-center gap-3.5 sm:gap-6">
             <Link className={navLinkClassName} href={docsRoute}>
               Docs
