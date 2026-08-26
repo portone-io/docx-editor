@@ -12,10 +12,27 @@ import Link from "next/link";
 import { InstallCommand } from "@/components/InstallCommand";
 import { LiveDemo } from "@/components/LiveDemo";
 import { PortOneWordmark } from "@/components/PortOneWordmark";
-import { docsRoute, libraryName, repositoryUrl } from "@/lib/library";
+import {
+  docsRoute,
+  libraryDescription,
+  libraryName,
+  repositoryUrl,
+  siteUrl,
+} from "@/lib/library";
 
 export const metadata: Metadata = {
   alternates: { canonical: "/" },
+};
+
+// Google reads the site name from the home page alone, and without this it
+// inherits the one portone.io publishes.
+const websiteSchema = {
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  name: "docx-editor",
+  alternateName: libraryName,
+  url: siteUrl,
+  description: libraryDescription,
 };
 
 const ICON_STROKE_WIDTH = 1.6;
@@ -71,6 +88,11 @@ function BrandMark() {
 export default function LandingPage() {
   return (
     <div className="flex flex-1 flex-col bg-[var(--brand-surface)] text-[var(--brand-text)]">
+      <script
+        // biome-ignore lint/security/noDangerouslySetInnerHtml: the only way to emit JSON-LD
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteSchema) }}
+        type="application/ld+json"
+      />
       <header className="border-[var(--brand-border)] border-b bg-[var(--brand-surface)]">
         <div className="mx-auto flex w-full max-w-[1280px] items-center justify-between gap-4 px-4 py-3 sm:px-6">
           <Link className="flex items-center gap-2.5" href="/">
