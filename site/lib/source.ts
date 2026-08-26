@@ -5,7 +5,10 @@ import { docsRoute } from "./library";
 
 const docs = defineDocs({
   dir: "content/docs",
-  docs: { schema: pageSchema },
+  docs: {
+    schema: pageSchema,
+    postprocess: { includeProcessedMarkdown: true },
+  },
   meta: { schema: metaSchema },
 });
 
