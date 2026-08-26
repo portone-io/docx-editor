@@ -20,3 +20,10 @@ The landing page needs the same `demo.docx` the editor is developed against, and
 The demo arrives through a client-only dynamic import. The editor builds a ProseMirror view against the DOM, so it cannot render on the server.
 
 `next.config.mjs` lists `@portone/docx-editor` and `@portone/docx-editor-demo` in `transpilePackages`: both resolve to TypeScript sources through the workspace link rather than to built output.
+
+## Markdown for AI agents
+
+Every docs page is also served as Markdown, under `/llms.mdx/docs`, so an agent can read the documentation without recovering prose from markup.
+`/llms.txt` indexes those Markdown pages in navigation order, which is how an agent finds them.
+The Markdown body comes from Fumadocs' `includeProcessedMarkdown` postprocess option, which `lib/source.ts` enables so a page can return its processed body.
+Each Markdown response carries an HTTP `Link` canonical naming its HTML page, because the two URLs serve the same content and only the HTML one should be indexed.
