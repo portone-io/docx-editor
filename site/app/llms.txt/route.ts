@@ -12,7 +12,7 @@ export function GET() {
   const body = [
     "# docx-editor",
     `> ${libraryDescription}`,
-    "`@portone/docx-editor` opens a Word document in the browser, lets a person edit it, and writes the same OOXML back. Every link below serves a page as Markdown, and names the HTML page it came from.",
+    "`@portone/docx-editor` opens a Word document in the browser, lets a person edit it, and writes the same OOXML back. Every link below serves a page as Markdown; drop the `.md` suffix for the HTML version.",
     "## Docs",
     entries.join("\n"),
     "## Optional",

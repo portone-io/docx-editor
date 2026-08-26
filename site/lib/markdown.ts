@@ -5,12 +5,9 @@ import { source } from "@/lib/source";
 
 export type DocsPage = InferPageType<typeof source>;
 
-const markdownRoute = "/llms.mdx/docs";
-
 const absolute = (path: string) => new URL(path, siteUrl).toString();
 
-export const markdownPath = (page: DocsPage) =>
-  [markdownRoute, ...page.slugs].join("/");
+export const markdownPath = (page: DocsPage) => `${page.url}.md`;
 
 export const absoluteHtmlUrl = (page: DocsPage) => absolute(page.url);
 

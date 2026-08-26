@@ -9,6 +9,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getMDXComponents } from "@/components/mdx";
 import { openGraphImage } from "@/lib/library";
+import { markdownPath } from "@/lib/markdown";
 import { source } from "@/lib/source";
 
 interface DocsPageProps {
@@ -49,7 +50,10 @@ export async function generateMetadata({
   return {
     title: page.data.title,
     description: page.data.description,
-    alternates: { canonical: page.url },
+    alternates: {
+      canonical: page.url,
+      types: { "text/markdown": markdownPath(page) },
+    },
     // Next.js replaces the parent openGraph object rather than merging into it,
     // so the site-wide fields are restated here
     openGraph: {
