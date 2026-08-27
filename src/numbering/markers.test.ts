@@ -189,6 +189,33 @@ describe("a level text longer than a marker is ever drawn", () => {
     );
   });
 
+  it("is cut between characters, never through one", () => {
+    // A code-unit cut lands in the middle of the surrogate pair after the leading letter
+    const shape = `x${"\u{1f642}".repeat(20_000)}`;
+    const numbering = oneList([{ format: "bullet", text: shape }]);
+    const marker = computeMarkers(items(0), numbering)[0];
+
+    expect(marker?.text).toBe(`x${"\u{1f642}".repeat(31)}`);
+    expect(marker?.text.length).toBeLessThanOrEqual(MARKER_CHARS);
+  });
+
+  it("keeps a sequence that draws as one character whole", () => {
+    const family = "\u{1f468}\u200d\u{1f469}\u200d\u{1f467}";
+    const numbering = oneList([{ format: "bullet", text: family.repeat(100) }]);
+    const marker = computeMarkers(items(0), numbering)[0];
+
+    expect(marker?.text).toBe(family.repeat(8));
+    expect(marker?.text.length).toBeLessThanOrEqual(MARKER_CHARS);
+  });
+
+  it("draws no marker at all where not even one character fits the cap", () => {
+    // A single base letter carrying thousands of combining marks is one character to cut at
+    const numbering = oneList([
+      { format: "bullet", text: `a${"\u0301".repeat(20_000)}` },
+    ]);
+    expect(computeMarkers(items(0), numbering)[0]).toBeNull();
+  });
+
   it("leaves the shapes a real list writes as they are", () => {
     const numbering = oneList([{ format: "decimal", text: "Article %1." }]);
     expect(texts(items(0), numbering)).toEqual(["Article 1."]);

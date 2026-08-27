@@ -381,6 +381,57 @@ describe("font", () => {
     ]);
   });
 
+  /**
+   * A name a document declares may be normalized differently than the same name elsewhere in
+   * the document or in the toolbar's presets. The forms are written as escapes so that saving
+   * this file in one normal form cannot make these tests vacuous.
+   */
+  describe("a name normalized differently than the same name elsewhere", () => {
+    // "맑은 고딕", composed and decomposed
+    const MALGUN_NFC = "\ub9d1\uc740 \uace0\ub515";
+    const MALGUN_NFD =
+      "\u1106\u1161\u11b0\u110b\u1173\u11ab \u1100\u1169\u1103\u1175\u11a8";
+
+    it("does not make a uniform selection read as a mixed one", () => {
+      const body =
+        "<w:p>" +
+        paragraph(rFonts(MALGUN_NFC), "ab") +
+        paragraph(rFonts(MALGUN_NFD), "cd") +
+        "</w:p>";
+      const { state } = opened(body);
+
+      // The spelling reported is the one the first run wrote down, untouched
+      expect(activeFontFamily(select(state, 1, 5))).toEqual({
+        kind: "font",
+        name: MALGUN_NFC,
+      });
+    });
+
+    it("is listed once, in the spelling the document first wrote", () => {
+      const body =
+        "<w:p>" +
+        paragraph(rFonts(MALGUN_NFD), "ab") +
+        paragraph(rFonts("Arial"), "cd") +
+        paragraph(rFonts(MALGUN_NFC), "ef") +
+        "</w:p>";
+      const { state } = opened(body);
+
+      expect(documentFontNames(state.doc, documentDefaults(state))).toEqual([
+        "Arial",
+        MALGUN_NFD,
+      ]);
+    });
+
+    it("is written back out exactly as the document spelled it", () => {
+      const { state, session } = opened(
+        "<w:p>" + paragraph(rFonts(MALGUN_NFD), "ab") + "</w:p>"
+      );
+      expect(documentXmlOf(state.doc, session)).toContain(
+        `w:ascii="${MALGUN_NFD}"`
+      );
+    });
+  });
+
   it("answers that it has nothing to do for a name that cannot be written to the document", () => {
     const { state } = opened("<w:p>" + paragraph("", "ab") + "</w:p>");
     const range = select(state, 1, 3);

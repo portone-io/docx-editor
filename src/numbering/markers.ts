@@ -128,6 +128,27 @@ function advance(
   }
 }
 
+const MARKER_SEGMENTER = new Intl.Segmenter();
+
+/**
+ * The cap applied without cutting a character in half: a plain code-unit slice can split a
+ * surrogate pair or a combining sequence and render U+FFFD.
+ * The shape may be megabytes long, so only a prefix that can possibly survive the cap is
+ * segmented, and a cluster that would carry the marker past the cap is dropped whole.
+ */
+function capped(shape: string): string {
+  if (shape.length <= MAX_MARKER_CHARS) return shape;
+
+  let text = "";
+  for (const { segment } of MARKER_SEGMENTER.segment(
+    shape.slice(0, MAX_MARKER_CHARS * 2)
+  )) {
+    if (text.length + segment.length > MAX_MARKER_CHARS) break;
+    text += segment;
+  }
+  return text;
+}
+
 /**
  * A slot is null for a paragraph that is not a list item, or whose level shape could not
  * be found.
@@ -157,7 +178,7 @@ export function computeMarkers(
       level.format === "bullet"
         ? level.text
         : fillLevels(level.text, list, counters);
-    const text = shape.slice(0, MAX_MARKER_CHARS);
+    const text = capped(shape);
     return text ? { text, indent: levelIndentPt(level.indent) } : null;
   });
 }

@@ -546,6 +546,23 @@ const MIXED_FONTS = makeDocx(
     "</w:p>"
 );
 
+/**
+ * "맑은 고딕" composed, and a document declaring the decomposed spelling of the same name.
+ * The forms are written as escapes so that saving this file in one normal form cannot make the
+ * test that compares them vacuous.
+ */
+const MALGUN_NFC = "\ub9d1\uc740 \uace0\ub515";
+const MALGUN_NFD =
+  "\u1106\u1161\u11b0\u110b\u1173\u11ab \u1100\u1169\u1103\u1175\u11a8";
+
+const DECOMPOSED_FONT = makeDocx(
+  "<w:p><w:r>" +
+    `<w:rPr><w:rFonts w:ascii="${MALGUN_NFD}" w:hAnsi="${MALGUN_NFD}" ` +
+    `w:eastAsia="${MALGUN_NFD}"/></w:rPr>` +
+    '<w:t xml:space="preserve">source</w:t>' +
+    "</w:r></w:p>"
+);
+
 describe("the font picker", () => {
   const fontSelect = () => selectBox("Font");
 
@@ -627,6 +644,24 @@ describe("the font picker", () => {
 
     expect(labels()).toContain("Custom Serif");
     expect(fontSelect().value).toBe("Custom Serif");
+    unmount();
+  });
+
+  it("a font the presets spell in another normal form stays selected and is listed once", () => {
+    const { handle, unmount } = mount(DECOMPOSED_FONT, {
+      presets: { fonts: [MALGUN_NFC, "Arial"] },
+    });
+    selectFirstParagraph(handle);
+
+    // A value matching no option selects none of them, and the picker falls back to showing
+    // Default or nothing at all instead of the font the run actually carries
+    expect(fontSelect().value.normalize("NFC")).toBe(MALGUN_NFC);
+    expect(Array.from(fontSelect().options).map((one) => one.value)).toContain(
+      fontSelect().value
+    );
+    expect(
+      labels().filter((label) => label?.normalize("NFC") === MALGUN_NFC)
+    ).toHaveLength(1);
     unmount();
   });
 
