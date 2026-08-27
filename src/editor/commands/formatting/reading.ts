@@ -10,6 +10,7 @@ import {
   toRunFormat,
 } from "../../../model/format";
 import {
+  comparableFontName,
   DEFAULT_FONT_FALLBACKS,
   type FontFallbacks,
 } from "../../../styles/fontStack";
@@ -96,7 +97,11 @@ export function activeFontFamily(
 ): ActiveFontFamily {
   const names = activePieces(state).map((target) => fontNameOf(target.format));
   const first = names[0] ?? null;
-  if (names.some((name) => name !== first)) return { kind: "mixed" };
+  // Two spellings of one name are the same font, so the comparison runs on the comparable form
+  const keys = names.map((name) =>
+    name === null ? null : comparableFontName(name)
+  );
+  if (keys.some((key) => key !== keys[0])) return { kind: "mixed" };
   if (first !== null) return { kind: "font", name: first };
   return { kind: "default", name: defaultFontName(state, fontFallbacks) };
 }
@@ -110,17 +115,23 @@ export function documentFontNames(
   doc: PMNode,
   defaults: DocumentDefaults
 ): string[] {
-  const names = new Set(fontNamesOf(defaults.fontFamily));
+  const names = new Map<string, string>();
+  const collect = (name: string): void => {
+    const comparable = comparableFontName(name);
+    if (!names.has(comparable)) names.set(comparable, name);
+  };
+
+  for (const name of fontNamesOf(defaults.fontFamily)) collect(name);
   doc.descendants((node) => {
     const mark = runMarkOf(node.marks);
     for (const name of fontNamesOf(
       toRunFormat(mark?.attrs.format)?.fontFamily
     )) {
-      names.add(name);
+      collect(name);
     }
     return true;
   });
-  return Array.from(names).sort((a, b) => a.localeCompare(b));
+  return Array.from(names.values()).sort((a, b) => a.localeCompare(b));
 }
 
 export function activeTextColor(state: EditorState): string | null {

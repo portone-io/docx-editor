@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import {
+  comparableFontName,
   DEFAULT_FONT_FALLBACKS,
   type FontFallbacks,
   isEastAsianFontName,
@@ -231,5 +232,84 @@ describe("isEastAsianFontName", () => {
     expect(isEastAsianFontName("Courier New")).toBe(false);
     // An unlisted Latin name too, since nothing about it says otherwise
     expect(isEastAsianFontName("Unlisted Display")).toBe(false);
+  });
+});
+
+/**
+ * A name a document declares is an untrusted string and may be normalized differently than the
+ * built-in names it is compared against.
+ * The forms are written as escapes so that saving this file in one normal form cannot quietly
+ * turn these tests into comparisons of a name with itself.
+ */
+describe("a name written in a different Unicode normal form", () => {
+  // "맑은 고딕", composed and decomposed
+  const MALGUN_NFC = "\ub9d1\uc740 \uace0\ub515";
+  const MALGUN_NFD =
+    "\u1106\u1161\u11b0\u110b\u1173\u11ab \u1100\u1169\u1103\u1175\u11a8";
+  // "Málaga", composed and decomposed
+  const MALAGA_NFC = "M\u00e1laga";
+  const MALAGA_NFD = "Ma\u0301laga";
+
+  it("is the same name to compare against", () => {
+    expect(MALGUN_NFD).not.toBe(MALGUN_NFC);
+    expect(MALAGA_NFD).not.toBe(MALAGA_NFC);
+    expect(comparableFontName(MALGUN_NFD)).toBe(comparableFontName(MALGUN_NFC));
+    expect(comparableFontName(MALAGA_NFD)).toBe(comparableFontName(MALAGA_NFC));
+  });
+
+  it("still reaches the family the composed name belongs to", () => {
+    expect(withFontFallback(`"${MALGUN_NFD}"`)).toBe(
+      `"${MALGUN_NFD}",${KOREAN_GOTHIC_STACK}`
+    );
+  });
+
+  it("is drawn under the spelling the document wrote, not a rewritten one", () => {
+    const stack = withFontFallback(`"${MALGUN_NFD}"`);
+    expect(lead(stack, `"${MALGUN_NFD}"`)).toBe(`"${MALGUN_NFD}"`);
+    expect(stack).not.toContain(MALGUN_NFC);
+  });
+
+  it("is folded no further than NFC", () => {
+    // NFKC would fold these onto their ASCII and halfwidth counterparts and lose the
+    // distinction between two genuinely different names
+    expect(
+      comparableFontName("\uff24\uff26\uff2b\uff41\uff49\uff33\uff48\uff55")
+    ).not.toBe(comparableFontName("DFKaiShu"));
+    expect(comparableFontName("\u3231")).not.toBe(
+      comparableFontName("(\u682a)")
+    );
+  });
+});
+
+/**
+ * `isEastAsianFontName` picks the `w:rFonts` slots a font is written into, so its answer is
+ * part of what a round trip exports. It must not depend on the normal form a name arrives in.
+ */
+describe("the slot selection a name drives", () => {
+  const NAMES = [
+    "\ub9d1\uc740 \uace0\ub515",
+    "\ubc14\ud0d5\uccb4",
+    "\uff2d\uff33 \u660e\u671d",
+    "\u6e38\u30b4\u30b7\u30c3\u30af",
+    "\u5fae\u8f6f\u96c5\u9ed1",
+    "Malgun Gothic",
+    "DFKai-SB",
+    "M\u00e1laga",
+    "Arial",
+  ];
+
+  it("is the same whichever normal form the document wrote the name in", () => {
+    for (const name of NAMES) {
+      expect(isEastAsianFontName(name.normalize("NFD"))).toBe(
+        isEastAsianFontName(name.normalize("NFC"))
+      );
+    }
+  });
+
+  it("still reads a fullwidth Latin name as East Asian", () => {
+    // NFKC would turn this into ASCII and write it into the Latin slots instead
+    const fullwidth = "\uff24\uff26\uff2b\uff41\uff49\uff33\uff48\uff55";
+    expect(isEastAsianFontName(fullwidth)).toBe(true);
+    expect(isEastAsianFontName(fullwidth.normalize("NFD"))).toBe(true);
   });
 });

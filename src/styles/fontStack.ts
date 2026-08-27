@@ -264,12 +264,20 @@ export const DEFAULT_FONT_FALLBACKS: FontFallbacks = {
   defaultFontName: "Arial",
 };
 
-/** The form a name is compared in. Quotes and letter case vary from document to document */
-function comparableName(name: string): string {
+/**
+ * The form a name is compared in. Quotes, letter case, and Unicode normalization all vary
+ * from document to document, so two spellings of one name have to compare equal.
+ *
+ * NFC only. An NFK* form is lossy and would fold the fullwidth Latin of a name such as
+ * `ＤＦＫａｉＳｈｕ` into ASCII. The result is a comparison key and is never
+ * written into a document or shown: the original spelling is what gets stored and exported.
+ */
+export function comparableFontName(name: string): string {
   return name
     .trim()
     .replace(/^["']|["']$/g, "")
-    .toLowerCase();
+    .toLowerCase()
+    .normalize("NFC");
 }
 
 /**
@@ -281,7 +289,7 @@ const EAST_ASIAN_CHARACTER =
   /[\u1100-\u11ff\u3000-\u30ff\u3130-\u318f\u31f0-\u31ff\u3400-\u4dbf\u4e00-\u9fff\ua960-\ua97f\uac00-\ud7ff\uf900-\ufaff\uff00-\uffef\u{20000}-\u{2fa1f}]/u;
 
 const eastAsianNames: ReadonlySet<string> = new Set(
-  EAST_ASIAN_GROUPS.flatMap((group) => group.names.map(comparableName))
+  EAST_ASIAN_GROUPS.flatMap((group) => group.names.map(comparableFontName))
 );
 
 /**
@@ -294,7 +302,8 @@ const eastAsianNames: ReadonlySet<string> = new Set(
  */
 export function isEastAsianFontName(name: string): boolean {
   return (
-    EAST_ASIAN_CHARACTER.test(name) || eastAsianNames.has(comparableName(name))
+    EAST_ASIAN_CHARACTER.test(name) ||
+    eastAsianNames.has(comparableFontName(name))
   );
 }
 
@@ -311,7 +320,7 @@ function stackByName(fallbacks: FontFallbacks): Map<string, string> {
   const stacks = new Map<string, string>();
   for (const group of fallbacks.groups) {
     for (const name of group.names)
-      stacks.set(comparableName(name), group.stack);
+      stacks.set(comparableFontName(name), group.stack);
   }
   stacksByFallbacks.set(fallbacks, stacks);
   return stacks;
@@ -325,7 +334,7 @@ function matchedStacks(
   const stacks = stackByName(fallbacks);
   const matched: string[] = [];
   for (const name of cssNames.split(",")) {
-    const stack = stacks.get(comparableName(name));
+    const stack = stacks.get(comparableFontName(name));
     if (stack !== undefined && !matched.includes(stack)) matched.push(stack);
   }
   return matched;
@@ -352,14 +361,14 @@ const GENERIC_FAMILIES: ReadonlySet<string> = new Set([
 ]);
 
 function isGenericFamily(name: string): boolean {
-  return GENERIC_FAMILIES.has(comparableName(name));
+  return GENERIC_FAMILIES.has(comparableFontName(name));
 }
 
 /** Naming one font twice draws no differently than naming it once, so the repeat goes */
 function distinctNames(names: readonly string[]): readonly string[] {
   const seen = new Set<string>();
   return names.filter((name) => {
-    const comparable = comparableName(name);
+    const comparable = comparableFontName(name);
     if (seen.has(comparable)) return false;
     seen.add(comparable);
     return true;
