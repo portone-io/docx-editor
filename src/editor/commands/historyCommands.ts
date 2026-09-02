@@ -8,17 +8,30 @@
  */
 
 import { redo as historyRedo, undo as historyUndo } from "prosemirror-history";
-import type { Command } from "prosemirror-state";
-import { historyReplay } from "../../schema/locks";
+import type { Command, Transaction } from "prosemirror-state";
+import { historyReplay, transactionAllowed } from "../../schema/locks";
 
-/** The same command, with every transaction it dispatches carrying the pass */
+/**
+ * The same command, with every transaction it dispatches carrying the pass.
+ *
+ * The pass takes a replay past the locks and not past the protection (`schema/protection`), so
+ * the replay is built first and asked of the guard, and the command answers false where the guard
+ * would refuse it: a reader has nothing to take back, and a commenter takes back comments alone.
+ */
 function replaying(command: Command): Command {
-  return (state, dispatch, view) =>
-    command(
+  return (state, dispatch, view) => {
+    const built: Transaction[] = [];
+    const answered = command(
       state,
-      dispatch && ((tr) => dispatch(tr.setMeta(historyReplay, true))),
+      (tr) => built.push(tr.setMeta(historyReplay, true)),
       view
     );
+    if (!answered || !built.every((tr) => transactionAllowed(tr, state))) {
+      return false;
+    }
+    if (dispatch) for (const tr of built) dispatch(tr);
+    return true;
+  };
 }
 
 export const undo = replaying(historyUndo);

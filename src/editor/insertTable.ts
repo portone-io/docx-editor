@@ -11,6 +11,7 @@ import {
   TextSelection,
 } from "prosemirror-state";
 import { createTableNode, isTableSide } from "../docx/tableTemplate";
+import { editsShut } from "../schema/protectionState";
 import { documentGeometry } from "./documentStyles";
 
 /** Whether this position is inside a table */
@@ -24,11 +25,11 @@ function isInTable($pos: ResolvedPos): boolean {
 /**
  * Where the new table goes.
  * Right after the body block the caret sits in, so the text being written is not split in two
- * by the table. Null when the table cannot be inserted here.
+ * by the table. Null when the table cannot be inserted here, a protection shutting the body included.
  */
 function insertPosition(state: EditorState): number | null {
   const $from = state.selection.$from;
-  if ($from.depth === 0 || isInTable($from)) return null;
+  if (editsShut(state) || $from.depth === 0 || isInTable($from)) return null;
   return $from.after(1);
 }
 

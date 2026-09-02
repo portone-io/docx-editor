@@ -14,6 +14,7 @@ import {
   insertionInsideLocked,
   rangeTouchesLocked,
 } from "../../../schema/locks";
+import { editsShut } from "../../../schema/protectionState";
 import {
   activePieces,
   caretPiece,
@@ -99,10 +100,12 @@ function applyToCaret(
 }
 
 function runEditCommand(edit: RunEdit): Command {
-  return (state, dispatch) =>
-    state.selection.empty
+  return (state, dispatch) => {
+    if (editsShut(state)) return false;
+    return state.selection.empty
       ? applyToCaret(state, dispatch, edit)
       : applyToSelection(state, dispatch, edit);
+  };
 }
 
 /**
@@ -115,6 +118,7 @@ function runEditCommand(edit: RunEdit): Command {
  * settles it is whether that text could go in at all.
  */
 export function canFormatText(state: EditorState): boolean {
+  if (editsShut(state)) return false;
   if (state.selection.empty) {
     return !insertionInsideLocked(state.doc, state.selection.from);
   }

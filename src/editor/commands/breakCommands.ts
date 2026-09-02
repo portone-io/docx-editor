@@ -1,16 +1,20 @@
 import type { Command } from "prosemirror-state";
 import { docxSchema } from "../../schema";
 import { replacementShut } from "../../schema/locks";
+import { editsShut } from "../../schema/protectionState";
 
 /**
  * Puts in a `w:br` of the kind its attributes name, or answers that it cannot.
- * A lock covering the selection has to answer false: the break goes in in place of whatever is
- * selected, so the guard would refuse the transaction (`schema/locks`), and a command that reports
- * it went in and did nothing draws a live control that swallows the click.
+ * A lock covering the selection, or a protection shutting the body, has to answer false: the break
+ * goes in in place of whatever is selected, so the guard would refuse the transaction
+ * (`schema/locks`), and a command that reports it went in and did nothing draws a live control
+ * that swallows the click.
  */
 function insertBreak(brAttrs: string | null): Command {
   return (state, dispatch) => {
-    if (replacementShut(state.selection, state.doc)) return false;
+    if (editsShut(state) || replacementShut(state.selection, state.doc)) {
+      return false;
+    }
     if (dispatch) {
       const br = docxSchema.nodes.hardBreak.create({ brAttrs });
       dispatch(state.tr.replaceSelectionWith(br).scrollIntoView());

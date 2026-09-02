@@ -2,6 +2,7 @@ import { isHistoryTransaction } from "prosemirror-history";
 import { Plugin, PluginKey, type Transaction } from "prosemirror-state";
 import { Decoration, DecorationSet, type EditorView } from "prosemirror-view";
 import { replacementShut } from "../../schema/locks";
+import { editsShut } from "../../schema/protectionState";
 import {
   hasResolvableClipboardImages,
   type ResolvedClipboardImages,
@@ -286,7 +287,12 @@ export function imagePaste(): Plugin<ImagePasteState> {
     props: {
       decorations: (state) => imagePasteKey.getState(state)?.decorations,
       handlePaste(view, event) {
-        if (replacementShut(view.state.selection, view.state.doc)) return false;
+        if (
+          editsShut(view.state) ||
+          replacementShut(view.state.selection, view.state.doc)
+        ) {
+          return false;
+        }
         if (view.state.selection.ranges.length > 1) return false;
         const html = event.clipboardData?.getData("text/html") ?? "";
         if (!hasResolvableClipboardImages(view.dom.ownerDocument, html)) {

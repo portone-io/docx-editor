@@ -1,6 +1,8 @@
 /**
- * Rejects transactions disallowed by `schema/locks`. A rejected IME edit also ends the browser
- * composition on the next frame so ProseMirror cannot remain stuck in composing state.
+ * Rejects transactions disallowed by the guard in `schema/locks`, which answers for the locks the
+ * document carries and for the protection the editor runs under (`schema/protection`) alike. A
+ * rejected IME edit also ends the browser composition on the next frame so ProseMirror cannot
+ * remain stuck in composing state.
  */
 
 import { Plugin } from "prosemirror-state";
@@ -48,7 +50,7 @@ export function lockedContent(): Plugin {
       };
     },
     filterTransaction(tr, state) {
-      const allowed = transactionAllowed(tr, state.doc);
+      const allowed = transactionAllowed(tr, state);
       if (!allowed) afterRefusal();
       return allowed;
     },

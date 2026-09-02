@@ -60,7 +60,7 @@ function cellAt(rect: TableRect, row: number, col: number): PMNode | null {
  */
 export function canMergeCells(state: EditorState): boolean {
   const tr = buildMergeCellsTransaction(state);
-  return tr !== null && transactionAllowed(tr, state.doc);
+  return tr !== null && transactionAllowed(tr, state);
 }
 
 /**
@@ -70,7 +70,7 @@ export function canMergeCells(state: EditorState): boolean {
  */
 export function canSplitCell(state: EditorState): boolean {
   const tr = buildSplitCellTransaction(state);
-  return tr !== null && transactionAllowed(tr, state.doc);
+  return tr !== null && transactionAllowed(tr, state);
 }
 
 /**

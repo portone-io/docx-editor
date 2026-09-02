@@ -24,6 +24,7 @@ import {
   toCellFormat,
 } from "../model/format";
 import { isLockedCell, transactionAllowed } from "../schema/locks";
+import { editsShut } from "../schema/protectionState";
 import type { TableCommand } from "./commands";
 import type { NodeAttrs, TableRect } from "./format";
 import { cellDefaultsAt, tableCellSources } from "./gridBorders";
@@ -114,7 +115,7 @@ function cellFormatCommand(
     const changes = planChanges(rect, edit);
     if (changes.length === 0) return false;
     const transaction = applyChanges(state.tr, rect.tableStart, changes);
-    if (!transactionAllowed(transaction, state.doc)) return false;
+    if (!transactionAllowed(transaction, state)) return false;
     dispatch?.(transaction);
     return true;
   };
@@ -214,6 +215,7 @@ function cellFormats(state: EditorState): (CellFormat | null)[] {
 
 /** Whether direct cell formatting can act on the whole current cell selection. */
 export function canSetCellFormatting(state: EditorState): boolean {
+  if (editsShut(state)) return false;
   const cells = selectedCells(state);
   return cells.length > 0 && cells.every((cell) => !isLockedCell(cell));
 }

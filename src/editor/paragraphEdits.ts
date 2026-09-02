@@ -13,6 +13,7 @@ import { effectiveParagraphFormat, type StyleTable } from "../docx/formatting";
 import type { ParagraphProps } from "../docx/paraProps";
 import { docxSchema } from "../schema";
 import { insideLockedCell } from "../schema/locks";
+import { editsShut } from "../schema/protectionState";
 import {
   defaultParagraphStyleId,
   documentParagraphFormatting,
@@ -49,8 +50,11 @@ export function selectedParagraphs(state: EditorState): ParagraphSpot[] {
  * Only the paragraphs of a locked cell are shut. A paragraph merely holding a locked control keeps
  * its own alignment, indent and style, which is what `insideLockedCell` says and
  * `rangeTouchesLocked` would not (`schema/locks`).
+ *
+ * A protection that shuts the body leaves no paragraph editable (`schema/protection`).
  */
 export function editableParagraphs(state: EditorState): ParagraphSpot[] {
+  if (editsShut(state)) return [];
   return selectedParagraphs(state).filter(
     (spot) => !insideLockedCell(state.doc, spot.pos)
   );

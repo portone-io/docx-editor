@@ -50,7 +50,7 @@ function toCommand(
 ): TableCommand {
   return (state, dispatch) => {
     const tr = build(state);
-    if (!tr || !transactionAllowed(tr, state.doc)) return false;
+    if (!tr || !transactionAllowed(tr, state)) return false;
     dispatch?.(tr);
     return true;
   };

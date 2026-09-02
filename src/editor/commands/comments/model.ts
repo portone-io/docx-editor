@@ -1,6 +1,11 @@
 /** Public comment values and shared attribute readers. */
 
 export interface CommentAuthor {
+  /**
+   * The identity behind the name, an opaque string the host application chooses. Recorded in the
+   * document's people part, and what decides whose comment a comment is (`schema/protection`).
+   */
+  id?: string;
   name: string;
   initials?: string;
 }
