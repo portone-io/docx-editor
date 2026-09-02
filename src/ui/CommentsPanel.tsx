@@ -79,7 +79,7 @@ export function CommentsPanel({
   // list already carries, rather than of `canEditComment`, which walks the whole document again
   // for every comment and reply on screen
   const writer =
-    author !== null && rules.protection !== "readOnly" ? author : null;
+    author != null && rules.protection !== "readOnly" ? author : null;
   const owned = (authorId: string | null) =>
     writer !== null && commentOwned(rules, authorId);
   const panel = useRef<HTMLElement | null>(null);

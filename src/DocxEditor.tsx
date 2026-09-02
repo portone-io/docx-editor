@@ -101,15 +101,55 @@ export type DocxEditorMode =
       locking?: boolean;
     };
 
-/** The protection (`schema/protection`) each kind puts the editor under */
-function protectionOfMode(mode: DocxEditorMode): EditingProtection {
+/** What a mode hands the reader, which is everything the component reads off the kind */
+interface ModeAffordances {
+  /** The protection (`schema/protection`) the editor state is put under */
+  protection: EditingProtection;
+  /** The identity comments are written under. Null for a reader, who writes none */
+  author: CommentAuthor | null;
+  editableComments: EditableComments;
+  toolbar: boolean;
+  locking: boolean;
+}
+
+/**
+ * Every kind answered in one exhaustive place, so that a kind added later - a suggester, a form to
+ * fill in - is a compile error here rather than a silent `false` at each `kind === "edit"` the
+ * component would otherwise ask.
+ *
+ * An author is read through `?? null` because a consumer writing no TypeScript can leave it out,
+ * and a composer offered to nobody is a better answer than one that reads a name off nothing.
+ */
+function affordancesOf(mode: DocxEditorMode): ModeAffordances {
   switch (mode.kind) {
     case "readOnly":
-      return "readOnly";
+      return {
+        protection: "readOnly",
+        author: null,
+        editableComments: "own",
+        toolbar: false,
+        locking: false,
+      };
     case "comment":
-      return "comments";
+      return {
+        protection: "comments",
+        author: mode.author ?? null,
+        editableComments: mode.editableComments ?? "own",
+        toolbar: false,
+        locking: false,
+      };
     case "edit":
-      return "none";
+      return {
+        protection: "none",
+        author: mode.author ?? null,
+        editableComments: mode.editableComments ?? "own",
+        toolbar: mode.toolbar ?? true,
+        locking: mode.locking ?? false,
+      };
+    default: {
+      const unmodelled: never = mode;
+      return unmodelled;
+    }
   }
 }
 
@@ -341,12 +381,8 @@ function DocxEditorSurface(
   }: DocxEditorProps,
   ref: ForwardedRef<DocxEditorHandle | null>
 ): ReactNode {
-  const protection = protectionOfMode(mode);
-  const author = mode.kind === "readOnly" ? null : mode.author;
-  const editableComments =
-    mode.kind === "readOnly" ? "own" : (mode.editableComments ?? "own");
-  const showToolbar = mode.kind === "edit" && (mode.toolbar ?? true);
-  const allowLocking = mode.kind === "edit" && (mode.locking ?? false);
+  const { protection, author, editableComments, toolbar, locking } =
+    affordancesOf(mode);
   const bytes = useDocumentBytes(source);
   const opened = useMemo(
     () => (bytes === null ? null : openDocument(bytes)),
@@ -548,7 +584,7 @@ function DocxEditorSurface(
       className={[editorClassNames.frame, className].filter(Boolean).join(" ")}
       style={style}
     >
-      {live && showToolbar && (
+      {live && toolbar && (
         <Toolbar
           view={live.view}
           state={live.state}
@@ -624,7 +660,7 @@ function DocxEditorSurface(
           view={live.view}
           state={live.state}
           anchor={textAnchor}
-          allowLocking={allowLocking}
+          allowLocking={locking}
           onAddComment={() => {
             setCommentComposerOpen(true);
           }}
@@ -635,7 +671,7 @@ function DocxEditorSurface(
           view={live.view}
           state={live.state}
           anchor={tableAnchor}
-          allowLocking={allowLocking}
+          allowLocking={locking}
         />
       )}
     </div>

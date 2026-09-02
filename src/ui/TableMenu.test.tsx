@@ -99,15 +99,17 @@ const AUTHORING: DocxEditorMode = {
 
 const render = (element: ReactNode) => renderInto(host, element);
 
-function mount(bytes: Uint8Array, props: { mode?: DocxEditorMode } = {}) {
+function mount(
+  bytes: Uint8Array,
+  { mode = EDITING }: { mode?: DocxEditorMode } = {}
+) {
   const box: { current: DocxEditorHandle | null } = { current: null };
   const unmount = render(
     <DocxEditor
       document={bytes}
       ref={box}
       renderImportError={() => null}
-      mode={EDITING}
-      {...props}
+      mode={mode}
     />
   );
   const handle = box.current;
