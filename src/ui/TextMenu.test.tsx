@@ -364,3 +364,18 @@ describe("the lock entries", () => {
     unmount();
   });
 });
+
+describe("the menu a commenter gets", () => {
+  it("offers copying and commenting on the selected text, and nothing that changes the body", () => {
+    const { handle, unmount } = mount(WITH_LOCK, {
+      mode: { kind: "comment", author: AUTHOR },
+    });
+    select(handle, 1, 4);
+    rightClickText();
+
+    expect(labels()).toEqual(["CopyCtrl+C", "Add comment"]);
+    expect(blocked("Copy")).toBe(false);
+    expect(blocked("Add comment")).toBe(false);
+    unmount();
+  });
+});

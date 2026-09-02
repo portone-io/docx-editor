@@ -103,6 +103,16 @@ describe("right clicking the text", () => {
     expect(textMenuAnchor(view.state)).toBeNull();
   });
 
+  /** A commenter is offered the comment entry, so the menu is worth taking the click for */
+  it("opens for a commenter, and takes a cell click too since the table menu has nothing to offer", () => {
+    const view = openEditor("comments");
+    expect(rightClickAt(view, bodyParagraph(view), 2)).toBe(true);
+    expect(textMenuAnchor(view.state)).not.toBeNull();
+    rightClickAt(view, cellWithText(view, "Left"), textStartIn(view, "Left"));
+    expect(textMenuAnchor(view.state)).not.toBeNull();
+    expect(tableMenuAnchor(view.state)).toBeNull();
+  });
+
   /** With nothing selected, a cell is right clicked to reach the row and column actions */
   it("leaves a cell with nothing selected to the table menu", () => {
     const view = openEditor();

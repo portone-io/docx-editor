@@ -19,6 +19,7 @@ import {
   type Transaction,
 } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
+import { editsShut } from "../../schema/protectionState";
 
 /** Where the menu should stand (viewport coordinates) */
 export interface TableMenuAnchor {
@@ -117,8 +118,9 @@ export function tableContextMenu(): Plugin<TableMenuAnchor | null> {
     props: {
       handleDOMEvents: {
         contextmenu(view, event) {
-          // In read-only mode there is nothing to edit, so the browser menu is the better choice
-          if (!view.editable) return false;
+          // Where the body may not be edited there is nothing here to offer, so the click goes on
+          // to the text menu or the browser
+          if (editsShut(view.state)) return false;
           const cellPos = cellAtEvent(view, event.target);
           if (cellPos === null) return false;
           event.preventDefault();

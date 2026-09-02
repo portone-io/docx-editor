@@ -27,6 +27,7 @@ import {
   closeTextMenu,
   type TextMenuAnchor,
 } from "../editor/plugins/textContextMenu";
+import { editsShut } from "../schema/protectionState";
 import { editorClassNames } from "../styles/classNames";
 import { usePanelAtPoint } from "./panelPlacement";
 import { commandRunner, type RunCommand } from "./runCommand";
@@ -150,38 +151,44 @@ export function TextMenu({
 
   const selected = !state.selection.empty;
   const shut = selectionTouchesLocked(state);
+  // A commenter gets what a reader of the text may do with it - copy it, and comment on it - while
+  // the entries that change the body wait for a mode that lets the body be changed
+  const bodyOpen = !editsShut(state);
+  const copy: MenuItem = {
+    label: "Copy",
+    icon: Copy,
+    hint: `${MOD}C`,
+    enabled: selected,
+    run: () => clipboardCommand(view, "copy"),
+  };
   const groups: MenuItem[][] = [
-    [
-      {
-        label: "Cut",
-        icon: Scissors,
-        hint: `${MOD}X`,
-        enabled: selected && !shut,
-        run: () => clipboardCommand(view, "cut"),
-      },
-      {
-        label: "Copy",
-        icon: Copy,
-        hint: `${MOD}C`,
-        enabled: selected,
-        run: () => clipboardCommand(view, "copy"),
-      },
-      {
-        label: "Paste",
-        icon: ClipboardPaste,
-        hint: `${MOD}V`,
-        enabled: !shut,
-        run: () => {
-          void pasteFromClipboard(view);
-        },
-      },
-      {
-        label: "Delete",
-        icon: Trash2,
-        enabled: selected && !shut,
-        run: () => run(deleteSelection),
-      },
-    ],
+    bodyOpen
+      ? [
+          {
+            label: "Cut",
+            icon: Scissors,
+            hint: `${MOD}X`,
+            enabled: selected && !shut,
+            run: () => clipboardCommand(view, "cut"),
+          },
+          copy,
+          {
+            label: "Paste",
+            icon: ClipboardPaste,
+            hint: `${MOD}V`,
+            enabled: !shut,
+            run: () => {
+              void pasteFromClipboard(view);
+            },
+          },
+          {
+            label: "Delete",
+            icon: Trash2,
+            enabled: selected && !shut,
+            run: () => run(deleteSelection),
+          },
+        ]
+      : [copy],
   ];
   groups.push([
     {
@@ -191,7 +198,9 @@ export function TextMenu({
       run: () => onAddComment?.(),
     },
   ]);
-  if (allowLocking) groups.push([lockItem(selectionLock(state), run)]);
+  if (allowLocking && bodyOpen) {
+    groups.push([lockItem(selectionLock(state), run)]);
+  }
 
   const choose = (item: MenuItem) => {
     // aria-disabled keeps the row focusable, so enforce it in the handler.

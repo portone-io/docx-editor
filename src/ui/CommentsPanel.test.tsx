@@ -435,3 +435,36 @@ describe("whose comments the panel offers to edit", () => {
     unmount();
   });
 });
+
+describe("a commenter", () => {
+  const COMMENTING: DocxEditorMode = { kind: "comment", author: GRACE };
+
+  it("writes a comment on the selected text under its own identity, and changes nothing else", () => {
+    const { handle, unmount } = mount(commentReadyDocument(), COMMENTING);
+    selectText(handle, "source");
+    rightClickText();
+    click(button("Add comment"));
+    type(textarea("Comment text"), "Please check");
+    click(button("Comment"));
+
+    expect(host.textContent).toContain("Please check");
+    expect(handle.view.state.doc.textContent).toBe("source");
+    expect(exportedPart(handle, "word/comments.xml")).toContain(
+      'w:author="Grace"'
+    );
+    expect(exportedPart(handle, "word/people.xml")).toContain(
+      'w15:userId="grace"'
+    );
+    unmount();
+  });
+
+  it("is offered no composer as a reader", () => {
+    const { handle, unmount } = mount(commentReadyDocument(), {
+      kind: "readOnly",
+    });
+    selectText(handle, "source");
+    rightClickText();
+    expect(host.querySelector('button[role="menuitem"]')).toBeNull();
+    unmount();
+  });
+});

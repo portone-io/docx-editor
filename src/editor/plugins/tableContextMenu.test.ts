@@ -99,6 +99,13 @@ describe("right clicking a table cell", () => {
     expect(tableMenuAnchor(view.state)).toBeNull();
   });
 
+  /** The text menu takes the click instead, which `textContextMenu.test.ts` covers */
+  it("stays shut for a commenter, who may do nothing to a table", () => {
+    const view = openEditor("comments");
+    rightClick(view, cellWithText(view, "Left"), textStartIn(view, "Left"));
+    expect(tableMenuAnchor(view.state)).toBeNull();
+  });
+
   it("moves the selection into the cell when clicking a cell that did not hold the cursor", () => {
     const view = openEditor();
     rightClick(view, cellWithText(view, "Right"), textStartIn(view, "Right"));
