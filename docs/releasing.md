@@ -13,6 +13,8 @@ Merging that pull request publishes, and everything on `main` ships with it: a f
 Its Actions runs wait for approval, since the workflow opened the pull request rather than a person.
 **Approve workflows to run**, in the merge box, starts them; every rewrite re-arms it.
 
+An entry names its author with `By`, the way GitHub's own generated release notes do, rather than thanking them: [`.changeset/changelog.cjs`](../.changeset/changelog.cjs) wraps the changelog generator for that.
+
 ## What the workflow decides
 
 Every push to `main` runs the workflow, which first works out which of three things this push is.
