@@ -12,9 +12,9 @@ the longer explanation.
 | Prop | Type | Default | What it does |
 | --- | --- | --- | --- |
 | `document` | `ArrayBuffer \| Uint8Array \| Blob` | required | The document to open. Bytes open immediately; a `Blob` or `File` is read first, and whichever document arrived last is the one opened. |
-| `mode` | `DocxEditorMode` | required | What the editor is for. See [Mode](#mode). |
+| `mode` | `DocxEditorMode` | required | What the editor is for, and whose comments it writes. See [Mode](#mode). |
 | `renderImportError` | `(error: DocxImportError) => ReactNode` | built-in panel | What to render in place of the editor when the document was refused. |
-| `showPageGuides` | `boolean` | `true` | Whether to draw approximate page boundaries over the document's paper. Drawn in read-only mode too. |
+| `showPageGuides` | `boolean` | `true` | Whether to draw approximate page boundaries over the document's paper. Drawn in every mode. |
 | `zoom` | `DocxEditorZoom` | uncontrolled | The visual scale, when the host owns the selection. |
 | `defaultZoom` | `DocxEditorZoom` | `"fit-width"` | The initial scale when the editor owns the selection. |
 | `onZoomChange` | `(zoom: DocxEditorZoom) => void` | — | Receives toolbar requests. A controlled host must update `zoom` for one to take effect. |
@@ -33,8 +33,9 @@ can name them without restating their shapes.
 
 ## Mode
 
-`mode` is a union rather than a set of independent booleans, because a read-only editor accepts no
-edits and therefore has no toolbar and no context menus to offer.
+`mode` is a union of three kinds: a reader's surface, a commenter's, and an editor's.
+Whether the right button opens the editor's own menus is the `contextMenus` prop rather than part
+of a kind, because the plugins behind it are read when the editor mounts.
 
 ```ts
 type DocxEditorMode =
@@ -51,17 +52,44 @@ type DocxEditorMode =
       toolbar?: boolean;
       locking?: boolean;
     };
+
+interface CommentAuthor {
+  id: string;
+  name: string;
+  initials?: string;
+}
+
+type EditableComments = "own" | "all";
 ```
 
-The kind, the `author` comments are written under, and `editableComments` are read on every render
-and take effect on the open document.
-Whether the right button opens the editor's own menus is the `contextMenus` prop rather than part
-of a kind, because the plugins behind it are read when the editor mounts.
+`readOnly` takes no edits and no comments.
+`comment` lets the text be selected and copied but not changed, while comments may be written,
+answered, resolved, and reopened.
+`edit` takes everything.
+[Modes and protection](/docs/custom-controls#modes-and-protection) explains what each kind enforces
+and how a custom control reads it.
+
+`author` is the identity the built-in comment and reply composers write.
+`id` is an opaque string the host application chooses, such as its own user id, and is recorded in
+the document beside the display name; `name` is what the comment shows; `initials` is the short
+form Word uses where a name does not fit, and is optional.
+
+Within one file a display name stands for one identity, so give each `id` a distinct `name`; a
+name two ids share, or one a Word user recorded first, resolves to no identity and its comments
+become everyone's to edit.
+
+`editableComments` is whose comments the panel offers to edit or delete.
+`"own"`, the default, is a comment carrying this `id` or no recorded identity at all; `"all"` is
+every comment.
+Replying, resolving, and reopening are open to every commenter either way.
 
 `toolbar` defaults to `true`.
 `locking` defaults to `false` and adds the controls for settling part of a document; a lock the
 document already carries is honored in every mode.
 See [Locked content](/docs/custom-controls#locked-content) for the commands behind it.
+
+The kind, `author`, and `editableComments` may change on an open document: the editor switches
+in place and keeps the view, its history, and the host's plugins.
 
 ## The handle
 
@@ -81,9 +109,9 @@ wraps the handle for the ordinary browser download.
 
 ## Props read once
 
-Most props take effect on the render that changes them.
-Four are read when the editor mounts, because they go into the ProseMirror state and the view built
-around it:
+Most props take effect on the render that changes them, `mode` included.
+Four values are read when the editor mounts, because they go into the ProseMirror state and the
+view built around it:
 
 - `plugins`
 - `fontFallbacks`
