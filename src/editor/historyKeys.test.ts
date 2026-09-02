@@ -33,7 +33,6 @@ function openView(protection: EditingProtection): EditorView {
     mount,
     state,
     defaults: documentDefaults(state),
-    readOnly: false,
     onStateChange: () => {},
   });
   mounted.push(() => {

@@ -15,6 +15,7 @@ import {
 } from "../../__testing__/docx";
 import { importDocx } from "../../docx/importDocx";
 import { pxToEmu } from "../../ooxml/image";
+import type { EditingProtection } from "../../schema/protection";
 import { editorClassNames } from "../../styles/classNames";
 import { createEditorState, createEditorView } from "../createEditor";
 import {
@@ -160,15 +161,14 @@ afterEach(() => {
   mounted = [];
 });
 
-function openEditor(readOnly = false): EditorView {
+function openEditor(protection: EditingProtection = "none"): EditorView {
   const mount = document.createElement("div");
   document.body.appendChild(mount);
   const { doc, session } = importDocx(makeImageDocx(SEAL));
   const view = createEditorView({
     mount,
-    state: createEditorState(doc),
+    state: createEditorState(doc, { protection }),
     defaults: session.defaults,
-    readOnly,
     onStateChange: () => undefined,
   });
   mounted.push(() => {
@@ -318,7 +318,7 @@ describe("dragging a corner of a selected image", () => {
   });
 
   it("neither shows handles nor resizes in a read-only editor", () => {
-    const view = openEditor(true);
+    const view = openEditor("readOnly");
     selectImage(view);
     expect(box(view).classList.contains(editorClassNames.imageSelected)).toBe(
       false

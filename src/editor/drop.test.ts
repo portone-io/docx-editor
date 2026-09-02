@@ -27,7 +27,6 @@ function openEditor(): EditorView {
     mount,
     state: createEditorState(doc),
     defaults: session.defaults,
-    readOnly: false,
     onStateChange: () => undefined,
   });
   view.dispatch(

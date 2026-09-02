@@ -5,6 +5,7 @@ import type { EditorView } from "prosemirror-view";
 import { afterEach, describe, expect, it } from "vitest";
 import { makeDocx } from "../../__testing__/docx";
 import { importDocx } from "../../docx/importDocx";
+import type { EditingProtection } from "../../schema/protection";
 import { createEditorState, createEditorView } from "../createEditor";
 import { tableMenuAnchor } from "./tableContextMenu";
 import { closeTextMenu, textMenuAnchor } from "./textContextMenu";
@@ -26,15 +27,14 @@ afterEach(() => {
   mounted = [];
 });
 
-function openEditor(readOnly = false): EditorView {
+function openEditor(protection: EditingProtection = "none"): EditorView {
   const mount = document.createElement("div");
   document.body.appendChild(mount);
   const { doc, session } = importDocx(makeDocx(BODY));
   const view = createEditorView({
     mount,
-    state: createEditorState(doc),
+    state: createEditorState(doc, { protection }),
     defaults: session.defaults,
-    readOnly,
     onStateChange: () => undefined,
   });
   mounted.push(() => {
@@ -98,9 +98,46 @@ describe("right clicking the text", () => {
   });
 
   it("does not block when readOnly", () => {
-    const view = openEditor(true);
+    const view = openEditor("readOnly");
     expect(rightClickAt(view, bodyParagraph(view), 2)).toBe(false);
     expect(textMenuAnchor(view.state)).toBeNull();
+  });
+
+  /** A commenter is offered copying and the comment entry, so the click is worth taking */
+  it("opens for a commenter where the click lands in the selected text", () => {
+    const view = openEditor("comments");
+    selectText(view, 1, 3);
+
+    expect(rightClickAt(view, bodyParagraph(view), 2)).toBe(true);
+    expect(textMenuAnchor(view.state)).not.toBeNull();
+  });
+
+  /** Every entry a shut body leaves is about the selected text, so a menu over none stands dead */
+  it("does not block for a commenter with nothing selected", () => {
+    const view = openEditor("comments");
+    expect(rightClickAt(view, bodyParagraph(view), 2)).toBe(false);
+    expect(textMenuAnchor(view.state)).toBeNull();
+  });
+
+  it("does not block for a commenter clicking outside the selected text", () => {
+    const view = openEditor("comments");
+    selectText(view, 1, 3);
+
+    expect(rightClickAt(view, bodyParagraph(view), 5)).toBe(false);
+    expect(textMenuAnchor(view.state)).toBeNull();
+    // The click left the selection where it was, the way the browser's own menu does
+    expect(view.state.selection.from).toBe(1);
+    expect(view.state.selection.to).toBe(3);
+  });
+
+  it("takes a commenter's cell click over the selected text, since the table menu has nothing to offer", () => {
+    const view = openEditor("comments");
+    const at = textStartIn(view, "Left");
+    selectText(view, at, at + 2);
+
+    expect(rightClickAt(view, cellWithText(view, "Left"), at + 1)).toBe(true);
+    expect(textMenuAnchor(view.state)).not.toBeNull();
+    expect(tableMenuAnchor(view.state)).toBeNull();
   });
 
   /** With nothing selected, a cell is right clicked to reach the row and column actions */

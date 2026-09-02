@@ -13,6 +13,7 @@ import {
 } from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
 import type { EditorView } from "prosemirror-view";
+import { editingProtection, editsShut } from "../../schema/protectionState";
 
 /** Where the menu should stand (viewport coordinates) */
 export interface TextMenuAnchor {
@@ -85,13 +86,15 @@ function isInSelection(state: EditorState, spot: number): boolean {
  * Whether this click is the one the table menu is for.
  * Either it landed outside the selected text, so there is no stretch of text it is about, or
  * whole cells are selected: both are about the table, and a block of selected cells is how
- * merging is reached.
+ * merging is reached. Where the body may not be edited the table menu has nothing to offer, so
+ * every click stays with this menu.
  */
 function forTableMenu(
   view: EditorView,
   target: EventTarget | null,
   spot: number
 ): boolean {
+  if (editsShut(view.state)) return false;
   const aboutCells =
     view.state.selection instanceof CellSelection ||
     !isInSelection(view.state, spot);
@@ -129,10 +132,17 @@ export function textContextMenu(): Plugin<TextMenuAnchor | null> {
     props: {
       handleDOMEvents: {
         contextmenu(view, event) {
-          // In read-only mode there is nothing to edit, so the browser menu is the better choice
-          if (!view.editable) return false;
+          // A reader has nothing this menu offers, so the browser menu is the better choice; a
+          // commenter has the comment entry, which is why editability is not what decides
+          if (editingProtection(view.state) === "readOnly") return false;
           if (!isInEditor(view, event.target)) return false;
           const spot = clickedSpot(view, event);
+          // Under a shut body the entries left are the ones about the selected text: copying it
+          // and commenting on it. A click landing anywhere else would open a menu with nothing to
+          // do at all, so the browser's own menu is what that click is worth
+          if (editsShut(view.state) && !isInSelection(view.state, spot)) {
+            return false;
+          }
           if (forTableMenu(view, event.target, spot)) return false;
           event.preventDefault();
           view.dispatch(openMenu(view.state, event, spot));

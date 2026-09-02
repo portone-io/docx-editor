@@ -222,7 +222,6 @@ describe("the editor view under protection", () => {
       mount,
       state,
       defaults: documentDefaults(state),
-      readOnly: false,
       onStateChange: () => {},
     });
     expect(view.editable).toBe(editable);

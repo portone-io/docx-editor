@@ -79,7 +79,11 @@ export function DocxEditorDemo({ document }: DocxEditorDemoProps) {
           key={opened.revision}
           ref={editorRef}
           document={opened.file}
-          mode={{ kind: "edit", locking: true }}
+          mode={{
+            kind: "edit",
+            author: { id: "demo", name: "Demo" },
+            locking: true,
+          }}
           renderImportError={(error) => (
             <div className="demo-error" role="alert">
               <strong>This document could not be opened.</strong>

@@ -22,9 +22,13 @@ export function pressModKey(page: Page, key: string): Promise<void> {
   return page.keyboard.press(`${modifier}+${key}`);
 }
 
-/** Opens the page over one fixture and waits until the editor has drawn it */
-export async function openHarness(page: Page, fixture: string): Promise<void> {
-  await page.goto(`/?fixture=${fixture}`);
+/** Opens the page over one fixture, in the asked mode, and waits until the editor has drawn it */
+export async function openHarness(
+  page: Page,
+  fixture: string,
+  mode: "edit" | "comment" | "readOnly" = "edit"
+): Promise<void> {
+  await page.goto(`/?fixture=${fixture}&mode=${mode}`);
   await page.waitForFunction(() => Boolean(window.docxHarness));
   await expect(page.locator(`.${editorClassNames.sheet}`)).toBeVisible();
   // The page overlay finds its positions on the frames after the first paint

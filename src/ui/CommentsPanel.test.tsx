@@ -10,6 +10,7 @@ import {
   type DocxEditorHandle,
   type DocxEditorMode,
 } from "../DocxEditor";
+import type { CommentAuthor } from "../editor/commands/commentCommands";
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -106,14 +107,21 @@ afterEach(() => host.remove());
 
 const render = (element: ReactNode) => renderInto(host, element);
 
-function mount(bytes: Uint8Array, mode?: DocxEditorMode) {
+/** The identity the tests write under */
+const GRACE: CommentAuthor = { id: "grace", name: "Grace", initials: "GH" };
+
+/** A second identity, for whose comments Grace is not the author */
+const ADA: CommentAuthor = { id: "ada", name: "Ada" };
+
+const EDITING: DocxEditorMode = { kind: "edit", author: GRACE };
+
+function mount(bytes: Uint8Array, mode: DocxEditorMode = EDITING) {
   const box: { current: DocxEditorHandle | null } = { current: null };
   const unmount = render(
     <DocxEditor
       document={bytes}
       ref={box}
       mode={mode}
-      commentAuthor={{ name: "Grace", initials: "GH" }}
       renderImportError={() => null}
     />
   );
@@ -343,6 +351,120 @@ describe("the comments panel", () => {
     expect(exportedPart(handle, "word/commentsExtended.xml")).toContain(
       'w15:done="0"'
     );
+    unmount();
+  });
+});
+
+describe("whose comments the panel offers to edit", () => {
+  /** A document holding one comment Ada wrote, made the way the panel makes one */
+  function adaCommented(): Uint8Array {
+    const { handle, unmount } = mount(commentReadyDocument(), {
+      kind: "edit",
+      author: ADA,
+    });
+    selectText(handle, "source");
+    rightClickText();
+    click(button("Add comment"));
+    type(textarea("Comment text"), "Ada's note");
+    click(button("Comment"));
+    const bytes = handle.exportBytes();
+    unmount();
+    return bytes;
+  }
+
+  const editButtons = () =>
+    Array.from(host.querySelectorAll("button[aria-label]"))
+      .map((element) => element.getAttribute("aria-label"))
+      .filter((label) => label === "Edit" || label === "Delete");
+
+  it("records the identity the comment was written under", () => {
+    const { handle, unmount } = mount(adaCommented(), {
+      kind: "edit",
+      author: ADA,
+    });
+    expect(exportedPart(handle, "word/people.xml")).toContain(
+      'w15:userId="ada"'
+    );
+    unmount();
+  });
+
+  it("offers one's own comment for editing and deleting", () => {
+    const { unmount } = mount(adaCommented(), { kind: "edit", author: ADA });
+    click(button("Show comments"));
+    expect(editButtons()).toEqual(["Edit", "Delete"]);
+    unmount();
+  });
+
+  it("offers another author's comment for replying and settling, not for editing", () => {
+    const { handle, unmount } = mount(adaCommented());
+    click(button("Show comments"));
+    expect(editButtons()).toEqual([]);
+
+    click(button("Reply to comment: Ada's note"));
+    type(textarea("Reply text"), "Seen, thanks");
+    click(button("Reply"));
+    expect(host.textContent).toContain("Seen, thanks");
+    // The reply is Grace's own, so it is hers to edit
+    expect(
+      host.querySelector('button[aria-label="Edit reply"]')
+    ).not.toBeNull();
+
+    click(button("Resolve"));
+    expect(exportedPart(handle, "word/commentsExtended.xml")).toContain(
+      'w15:done="1"'
+    );
+    unmount();
+  });
+
+  it("opens every comment to a moderator", () => {
+    const { unmount } = mount(adaCommented(), {
+      kind: "edit",
+      author: GRACE,
+      editableComments: "all",
+    });
+    click(button("Show comments"));
+    expect(editButtons()).toEqual(["Edit", "Delete"]);
+    unmount();
+  });
+
+  /** `commentDocument` holds a comment by an Ada no people part vouches for, which is everyone's */
+  it("leaves a comment carrying no identity open to everyone", () => {
+    const { unmount } = mount(commentDocument());
+    click(button("Show comments"));
+    expect(editButtons()).toEqual(["Edit", "Delete"]);
+    unmount();
+  });
+});
+
+describe("a commenter", () => {
+  const COMMENTING: DocxEditorMode = { kind: "comment", author: GRACE };
+
+  it("writes a comment on the selected text under its own identity, and changes nothing else", () => {
+    const { handle, unmount } = mount(commentReadyDocument(), COMMENTING);
+    selectText(handle, "source");
+    rightClickText();
+    click(button("Add comment"));
+    type(textarea("Comment text"), "Please check");
+    click(button("Comment"));
+
+    expect(host.textContent).toContain("Please check");
+    expect(handle.view.state.doc.textContent).toBe("source");
+    expect(exportedPart(handle, "word/comments.xml")).toContain(
+      'w:author="Grace"'
+    );
+    expect(exportedPart(handle, "word/people.xml")).toContain(
+      'w15:userId="grace"'
+    );
+    unmount();
+  });
+
+  it("is offered no composer as a reader", () => {
+    const { handle, unmount } = mount(commentReadyDocument(), {
+      kind: "readOnly",
+    });
+    selectText(handle, "source");
+    rightClickText();
+    expect(host.querySelector('button[role="menuitem"]')).toBeNull();
     unmount();
   });
 });

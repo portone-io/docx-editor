@@ -33,6 +33,7 @@ import {
 } from "./editor/commands/commentCommands";
 import { activeLinkSpan } from "./editor/commands/linkCommands";
 import { createEditorState, createEditorView } from "./editor/createEditor";
+import { setProtection } from "./editor/plugins/documentProtection";
 import { isLinkPanelOpen } from "./editor/plugins/linkPanel";
 import { tableMenuAnchor } from "./editor/plugins/tableContextMenu";
 import { textMenuAnchor } from "./editor/plugins/textContextMenu";
@@ -41,6 +42,8 @@ import { DocxImportError, type DocxImportErrorCode } from "./ooxml/errors";
 import { PageGuides } from "./page/PageGuides";
 import { A4_PAGE_PIXELS, pagePixels } from "./page/pageLayout";
 import { usePageLayout } from "./page/usePageLayout";
+import type { EditableComments, EditingProtection } from "./schema/protection";
+import { editingProtection, protectionOf } from "./schema/protectionState";
 import { editorClassNames } from "./styles/classNames";
 import type { FontFallbacks } from "./styles/fontStack";
 import { CommentsPanel } from "./ui/CommentsPanel";
@@ -63,24 +66,92 @@ export interface DocxEditorHandle {
 /**
  * What the editor is for, which decides what it offers.
  *
- * A read-only editor takes no edits, so it has no toolbar and no right click menus either: what
- * used to be three booleans of which one silently emptied the other two is one choice here.
+ * The three kinds are the standings OOXML document protection names (`ST_DocProtect`) and the
+ * ones a shared document gives its readers: a reader, a commenter, an editor. A read-only editor
+ * takes no edits, so it has no toolbar and no right click menus either: what used to be three
+ * booleans of which one silently emptied the other two is one choice here. A `comment` editor is
+ * the `comments` protection - the body may not be changed, comments may be written, answered and
+ * settled - which is what a reviewer who must not touch the text is handed. Both kinds that write
+ * comments name whose they are, so a reader is never asked for an identity it has no use for.
+ *
+ * `editableComments` is whose comments the panel offers to edit or delete: one's own, which is a
+ * comment carrying no recognised identity or the very identity given here, or every one, which
+ * is a moderator's standing. Replying and resolving are open to every commenter either way.
+ *
  * `locking` is what a screen where a template is written gets: settling a part of a document is
  * an authoring act, not something every reader of a form should be handed. A lock the document
  * already carries holds whichever mode is chosen.
  *
- * `contextMenus: false` leaves the right click to the browser, for a consumer drawing menus of
- * its own. The plugins that take the browser's menu away go into the editor state, which is built
- * when the editor mounts, so this is read once there like `plugins`.
+ * The kind, the author and `editableComments` are read on every render and take effect on the
+ * open document. Whether the right click opens the editor's own menus is `contextMenus`, a prop
+ * of its own, since the plugins behind it are read when the editor mounts rather than per render.
  */
 export type DocxEditorMode =
   | { kind: "readOnly" }
   | {
+      kind: "comment";
+      author: CommentAuthor;
+      editableComments?: EditableComments;
+    }
+  | {
       kind: "edit";
+      author: CommentAuthor;
+      editableComments?: EditableComments;
       toolbar?: boolean;
-      contextMenus?: boolean;
       locking?: boolean;
     };
+
+/** What a mode hands the reader, which is everything the component reads off the kind */
+interface ModeAffordances {
+  /** The protection (`schema/protection`) the editor state is put under */
+  protection: EditingProtection;
+  /** The identity comments are written under. Null for a reader, who writes none */
+  author: CommentAuthor | null;
+  editableComments: EditableComments;
+  toolbar: boolean;
+  locking: boolean;
+}
+
+/**
+ * Every kind answered in one exhaustive place, so that a kind added later - a suggester, a form to
+ * fill in - is a compile error here rather than a silent `false` at each `kind === "edit"` the
+ * component would otherwise ask.
+ *
+ * An author is read through `?? null` because a consumer writing no TypeScript can leave it out,
+ * and a composer offered to nobody is a better answer than one that reads a name off nothing.
+ */
+function affordancesOf(mode: DocxEditorMode): ModeAffordances {
+  switch (mode.kind) {
+    case "readOnly":
+      return {
+        protection: "readOnly",
+        author: null,
+        editableComments: "own",
+        toolbar: false,
+        locking: false,
+      };
+    case "comment":
+      return {
+        protection: "comments",
+        author: mode.author ?? null,
+        editableComments: mode.editableComments ?? "own",
+        toolbar: false,
+        locking: false,
+      };
+    case "edit":
+      return {
+        protection: "none",
+        author: mode.author ?? null,
+        editableComments: mode.editableComments ?? "own",
+        toolbar: mode.toolbar ?? true,
+        locking: mode.locking ?? false,
+      };
+    default: {
+      const unmodelled: never = mode;
+      return unmodelled;
+    }
+  }
+}
 
 export interface DocxEditorProps {
   /**
@@ -98,8 +169,8 @@ export interface DocxEditorProps {
    * never silent either way. Hand one in to write the refusal in your own words.
    */
   renderImportError?: (error: DocxImportError) => ReactNode;
-  /** What the editor is for. Editing with the toolbar shown and no locking when none is given */
-  mode?: DocxEditorMode;
+  /** What the editor is for: a reader's, a commenter's or an editor's surface */
+  mode: DocxEditorMode;
   /** Whether to draw approximate page boundaries over the document's own paper. Drawn when read only too */
   showPageGuides?: boolean;
   /**
@@ -136,8 +207,6 @@ export interface DocxEditorProps {
    * takes effect without a remount.
    */
   presets?: DocxEditorPresets;
-  /** The identity written by the built-in comment and reply composers */
-  commentAuthor?: CommentAuthor;
   /**
    * ProseMirror plugins handed in by the consumer, which is how mentions, highlights,
    * autocomplete and the like are added from outside the package.
@@ -150,6 +219,16 @@ export interface DocxEditorProps {
    * `key` and remount.
    */
   plugins?: readonly Plugin[];
+  /**
+   * Whether the right click opens the editor's own menus. `false` leaves it to the browser,
+   * which is what a consumer drawing menus of its own wants. Defaults to `true`.
+   *
+   * Read once, when the editor mounts, like `plugins`: the plugins that take the browser's menu
+   * away go into the editor state, which is built there. A menu the protection has nothing to
+   * offer from stands down by itself, so a mode change needs nothing here. Later changes are
+   * ignored; to turn the menus around, change the `key` and remount.
+   */
+  contextMenus?: boolean;
   className?: string;
   style?: CSSProperties;
   onReady?: (view: EditorView) => void;
@@ -286,15 +365,15 @@ function DocxEditorSurface(
   {
     document: source,
     renderImportError,
-    mode = { kind: "edit" },
+    mode,
     showPageGuides = true,
     zoom,
     defaultZoom = "fit-width",
     onZoomChange,
     fontFallbacks,
     presets,
-    commentAuthor = { name: "Anonymous" },
     plugins,
+    contextMenus,
     className,
     style,
     onReady,
@@ -302,9 +381,8 @@ function DocxEditorSurface(
   }: DocxEditorProps,
   ref: ForwardedRef<DocxEditorHandle | null>
 ): ReactNode {
-  const readOnly = mode.kind === "readOnly";
-  const showToolbar = mode.kind === "edit" && (mode.toolbar ?? true);
-  const allowLocking = mode.kind === "edit" && (mode.locking ?? false);
+  const { protection, author, editableComments, toolbar, locking } =
+    affordancesOf(mode);
   const bytes = useDocumentBytes(source);
   const opened = useMemo(
     () => (bytes === null ? null : openDocument(bytes)),
@@ -312,11 +390,9 @@ function DocxEditorSurface(
   );
   // Held from the first render on, so a value rebuilt on every render does not rebuild the editor
   const mountedPlugins = useRef(plugins).current;
-  // A read-only editor keeps the menu plugins, which stand down while the view is not editable,
-  // so that turning editing back on brings the menus back with it
-  const mountedContextMenus = useRef(
-    mode.kind !== "edit" || (mode.contextMenus ?? true)
-  ).current;
+  // The plugins are mounted whatever the mode is, and stand down while the protection shuts what
+  // they offer, so that opening the document up again brings the menus back with it
+  const mountedContextMenus = useRef(contextMenus ?? true).current;
   const mountedFontFallbacks = useRef(fontFallbacks).current;
   const layerRef = useRef<HTMLDivElement | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -346,7 +422,8 @@ function DocxEditorSurface(
     onZoomChange?.(normalized);
   };
 
-  // Mounted right after render, so a consumer can read the ref straight from its own effect
+  // Mounted right after render, so a consumer can read the ref straight from its own effect.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the protection is read when the state is first built; a later mode goes in through the effect below rather than through a new view
   useLayoutEffect(() => {
     const mount = mountRef.current;
     if (!mount || opened?.status !== "opened") return;
@@ -377,10 +454,12 @@ function DocxEditorSurface(
                   (extension) => extension.paraId
                 ),
               ],
+              protection,
+              author,
+              editableComments,
             }),
       defaults: opened.session.defaults,
       geometry: opened.session.geometry,
-      readOnly,
       fontFallbacks: mountedFontFallbacks,
       onStateChange: (state) => {
         keptState.current = { of: opened, state };
@@ -400,7 +479,6 @@ function DocxEditorSurface(
     };
   }, [
     opened,
-    readOnly,
     mountedContextMenus,
     mountedFontFallbacks,
     mountedPlugins,
@@ -408,7 +486,34 @@ function DocxEditorSurface(
     latestOnChange,
   ]);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: when readOnly changes the effect above builds a new view, and the handle has to be rebuilt around that new view
+  // A mode changed on an open document is put into the state it already holds, so the view, its
+  // history and the consumer's plugins all stay: `reconfigure` would keep the protection plugin's
+  // state too, which is why it goes in as a transaction.
+  //
+  // It goes in from a layout effect, so the dispatch and the render it leaves behind both close
+  // before the browser paints: no frame is drawn with the state under one protection and the
+  // controls around it under another.
+  const authorId = author?.id ?? null;
+  const mounted = live !== null;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a mode written inline is a new object on every render, so the author is watched through `authorId`, the part of it the protection holds
+  useLayoutEffect(() => {
+    // A composer the mode before left open has nothing to write into a document that takes no comment
+    if (protection === "readOnly") setCommentComposerOpen(false);
+    const view = viewRef.current;
+    if (!view || !mounted) return;
+    const held = protectionOf(view.state);
+    if (
+      held.protection === protection &&
+      held.authorId === authorId &&
+      held.editableComments === editableComments
+    ) {
+      return;
+    }
+    view.dispatch(
+      setProtection(view.state.tr, { protection, author, editableComments })
+    );
+  }, [mounted, protection, authorId, editableComments]);
+
   useImperativeHandle<
     DocxEditorHandle | null,
     DocxEditorHandle | null
@@ -417,7 +522,7 @@ function DocxEditorSurface(
     if (!view || opened?.status !== "opened") return null;
     const session = opened.session;
     return { view, exportBytes: () => exportDocx(view.state.doc, session) };
-  }, [opened, readOnly]);
+  }, [opened]);
 
   const overlay = usePageLayout({
     view: live?.view ?? null,
@@ -435,12 +540,18 @@ function DocxEditorSurface(
     );
   }
 
+  // What the state on screen lets through, which is what every control below asks rather than
+  // the mode itself. The protection goes in from a layout effect above, so the state a control
+  // reads and the mode it was drawn for are the same on every frame the reader sees
+  const bodyOpen = live !== null && editingProtection(live.state) === "none";
+  const commentsOpenToWrite =
+    live !== null && editingProtection(live.state) !== "readOnly";
+
   // Only ever one menu at a time. Where both plugins hold a point, the text menu is the one the
   // last right click opened, so it is the one drawn.
   // Where the menu plugins were left out, no point is ever held and neither menu is drawn.
-  const textAnchor = live && !readOnly ? textMenuAnchor(live.state) : null;
-  const tableAnchor =
-    live && !readOnly && !textAnchor ? tableMenuAnchor(live.state) : null;
+  const textAnchor = live ? textMenuAnchor(live.state) : null;
+  const tableAnchor = live && !textAnchor ? tableMenuAnchor(live.state) : null;
 
   // The card that says where a link points stands down while the panel that changes one is open, and
   // while an IME is composing: a box appearing and moving under a composition is the churn the page
@@ -452,7 +563,7 @@ function DocxEditorSurface(
   const comments =
     live?.state === undefined ? [] : documentComments(live.state);
   const hasUnresolvedComments = comments.some((comment) => !comment.resolved);
-  const effectiveComposerOpen = commentComposerOpen && !readOnly;
+  const effectiveComposerOpen = commentComposerOpen && commentsOpenToWrite;
   const showComments =
     live !== null &&
     (commentsOpen || effectiveComposerOpen || hasUnresolvedComments);
@@ -460,9 +571,8 @@ function DocxEditorSurface(
     <CommentsPanel
       view={live.view}
       state={live.state}
-      readOnly={readOnly}
       composerOpen={effectiveComposerOpen}
-      author={commentAuthor}
+      author={author}
       closeComposer={() => setCommentComposerOpen(false)}
       scrollContainer={rootRef.current}
       allCommentsOpen={commentsOpen}
@@ -474,7 +584,7 @@ function DocxEditorSurface(
       className={[editorClassNames.frame, className].filter(Boolean).join(" ")}
       style={style}
     >
-      {live && showToolbar && (
+      {live && toolbar && (
         <Toolbar
           view={live.view}
           state={live.state}
@@ -496,7 +606,8 @@ function DocxEditorSurface(
         data-comments={showComments ? "visible" : undefined}
         style={zoomVariable(effectiveZoom)}
       >
-        {live && readOnly && comments.length > 0 && (
+        {/* Where the body is shut there is no toolbar, so the comments are reached from here */}
+        {live && !bodyOpen && comments.length > 0 && (
           <button
             type="button"
             className={editorClassNames.commentsToggle}
@@ -532,7 +643,7 @@ function DocxEditorSurface(
         </div>
         {commentsOpen && commentsPanel}
       </div>
-      {live && !readOnly && isLinkPanelOpen(live.state) && (
+      {live && bodyOpen && isLinkPanelOpen(live.state) && (
         <LinkPanel view={live.view} state={live.state} />
       )}
       {live && linkAtCursor && (
@@ -542,7 +653,6 @@ function DocxEditorSurface(
           view={live.view}
           state={live.state}
           link={linkAtCursor}
-          readOnly={readOnly}
         />
       )}
       {live && textAnchor && (
@@ -550,7 +660,7 @@ function DocxEditorSurface(
           view={live.view}
           state={live.state}
           anchor={textAnchor}
-          allowLocking={allowLocking}
+          allowLocking={locking}
           onAddComment={() => {
             setCommentComposerOpen(true);
           }}
@@ -561,7 +671,7 @@ function DocxEditorSurface(
           view={live.view}
           state={live.state}
           anchor={tableAnchor}
-          allowLocking={allowLocking}
+          allowLocking={locking}
         />
       )}
     </div>

@@ -9,6 +9,7 @@ import {
   makeNumberedDocx,
   makeStyledDocx,
 } from "../__testing__/docx";
+import { AUTHOR, EDITING } from "../__testing__/mode";
 import { renderInto } from "../__testing__/react";
 import {
   DocxEditor,
@@ -81,6 +82,7 @@ function mount(
       document={bytes}
       ref={box}
       renderImportError={() => null}
+      mode={EDITING}
       {...props}
     />
   );
@@ -189,7 +191,7 @@ describe("the built in toolbar", () => {
     shown.unmount();
 
     const off = mount(PARAGRAPH, {
-      mode: { kind: "edit", toolbar: false },
+      mode: { kind: "edit", author: AUTHOR, toolbar: false },
     });
     expect(host.querySelector('[role="toolbar"]')).toBeNull();
     off.unmount();

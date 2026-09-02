@@ -4,6 +4,7 @@ import { TextSelection } from "prosemirror-state";
 import { act, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { decode, makeDocx } from "../__testing__/docx";
+import { AUTHOR, EDITING } from "../__testing__/mode";
 import { renderInto } from "../__testing__/react";
 import {
   DocxEditor,
@@ -72,19 +73,23 @@ const WITH_TABLE = makeDocx(
 /** The mode a screen where a template is authored mounts the editor in */
 const AUTHORING: DocxEditorMode = {
   kind: "edit",
+  author: AUTHOR,
   locking: true,
 };
 
 const render = (element: ReactNode) => renderInto(host, element);
 
-function mount(bytes: Uint8Array, props: { mode?: DocxEditorMode } = {}) {
+function mount(
+  bytes: Uint8Array,
+  { mode = EDITING }: { mode?: DocxEditorMode } = {}
+) {
   const box: { current: DocxEditorHandle | null } = { current: null };
   const unmount = render(
     <DocxEditor
       document={bytes}
       ref={box}
       renderImportError={() => null}
-      {...props}
+      mode={mode}
     />
   );
   const handle = box.current;
@@ -358,6 +363,21 @@ describe("the lock entries", () => {
     expect(blocked("Cut")).toBe(true);
     expect(blocked("Delete")).toBe(true);
     expect(blocked("Copy")).toBe(false);
+    unmount();
+  });
+});
+
+describe("the menu a commenter gets", () => {
+  it("offers copying and commenting on the selected text, and nothing that changes the body", () => {
+    const { handle, unmount } = mount(WITH_LOCK, {
+      mode: { kind: "comment", author: AUTHOR },
+    });
+    select(handle, 1, 4);
+    rightClickText();
+
+    expect(labels()).toEqual(["CopyCtrl+C", "Add comment"]);
+    expect(blocked("Copy")).toBe(false);
+    expect(blocked("Add comment")).toBe(false);
     unmount();
   });
 });

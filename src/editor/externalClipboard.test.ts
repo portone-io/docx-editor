@@ -33,7 +33,6 @@ function openEditor(canStartNewList = true): {
       canStartNewList,
     }),
     defaults: NO_DOCUMENT_DEFAULTS,
-    readOnly: false,
     onStateChange: () => {},
   });
   view.dispatch(
@@ -60,7 +59,6 @@ function openStyledEditor(): { view: EditorView; session: SessionStore } {
       canStartNewList: false,
     }),
     defaults: session.defaults,
-    readOnly: false,
     onStateChange: () => {},
   });
   view.dispatch(

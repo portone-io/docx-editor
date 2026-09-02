@@ -10,11 +10,12 @@ import { exportDocx } from "../docx/exportDocx";
 import { NO_DOCUMENT_DEFAULTS } from "../docx/formatting";
 import { importDocx } from "../docx/importDocx";
 import type { SessionStore } from "../docx/session";
+import type { EditingProtection } from "../schema/protection";
 import { documentHasLocked } from "./commands/lockCommands";
 import { createEditorState, createEditorView } from "./createEditor";
 import { insertPlainText, insertPlainTextAt } from "./plainText";
 
-function openEditor(readOnly = false): {
+function openEditor(protection: EditingProtection = "none"): {
   view: EditorView;
   session: SessionStore;
 } {
@@ -23,9 +24,8 @@ function openEditor(readOnly = false): {
   );
   const view = createEditorView({
     mount: document.createElement("div"),
-    state: createEditorState(doc),
+    state: createEditorState(doc, { protection }),
     defaults: session.defaults,
-    readOnly,
     onStateChange: () => {},
   });
   view.dispatch(
@@ -123,7 +123,7 @@ describe("inserting plain text", () => {
   });
 
   it("is not editable when readOnly", () => {
-    const { view } = openEditor(true);
+    const { view } = openEditor("readOnly");
     expect(view.editable).toBe(false);
     view.destroy();
   });
@@ -176,7 +176,6 @@ describe("pasting what was copied out of a locked cell", () => {
       mount: document.createElement("div"),
       state: createEditorState(doc),
       defaults: NO_DOCUMENT_DEFAULTS,
-      readOnly: false,
       onStateChange: () => {},
     });
 

@@ -13,6 +13,7 @@ import { TextSelection } from "prosemirror-state";
 import { act, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { decode, makeDocx, makeLinkedDocx } from "../__testing__/docx";
+import { AUTHOR, EDITING } from "../__testing__/mode";
 import { renderInto } from "../__testing__/react";
 import {
   DocxEditor,
@@ -70,7 +71,7 @@ afterEach(() => {
 
 const render = (element: ReactNode) => renderInto(host, element);
 
-function mount(bytes: Uint8Array, mode?: DocxEditorMode) {
+function mount(bytes: Uint8Array, mode: DocxEditorMode = EDITING) {
   const box: { current: DocxEditorHandle | null } = { current: null };
   const unmount = render(
     <DocxEditor
@@ -341,14 +342,20 @@ describe("the card and the focus", () => {
 });
 
 describe("the card where nothing may be edited", () => {
-  it("offers a reader the address and the opening of it, and nothing else", () => {
-    const { handle, unmount } = mount(LINKED, { kind: "readOnly" });
-    caretIn(handle, "our terms");
+  it.each<DocxEditorMode>([
+    { kind: "readOnly" },
+    { kind: "comment", author: AUTHOR },
+  ])(
+    "offers a $kind editor the address and the opening of it, and nothing else",
+    (mode) => {
+      const { handle, unmount } = mount(LINKED, mode);
+      caretIn(handle, "our terms");
 
-    expect(shown()).toBe(TERMS);
-    expect(cardButtons()).toEqual(["Open"]);
-    unmount();
-  });
+      expect(shown()).toBe(TERMS);
+      expect(cardButtons()).toEqual(["Open"]);
+      unmount();
+    }
+  );
 
   it("shows the address of a link inside a settled part and offers no editing", () => {
     const { handle, unmount } = mount(LOCKED);

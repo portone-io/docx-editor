@@ -17,6 +17,7 @@ import { fileURLToPath } from "node:url";
 import { act, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { makeDocx } from "../__testing__/docx";
+import { EDITING } from "../__testing__/mode";
 import { renderInto } from "../__testing__/react";
 import { DocxEditor } from "../DocxEditor";
 import { editorAttributes } from "../styles/classNames";
@@ -47,7 +48,11 @@ const render = (element: ReactNode) => renderInto(host, element);
 
 function mount() {
   return render(
-    <DocxEditor document={DOCUMENT} renderImportError={() => null} />
+    <DocxEditor
+      document={DOCUMENT}
+      mode={EDITING}
+      renderImportError={() => null}
+    />
   );
 }
 
