@@ -42,7 +42,7 @@ import { commentDecorations } from "./plugins/commentDecorations";
 import { commentReservations } from "./plugins/commentReservations";
 import { documentProtection } from "./plugins/documentProtection";
 import { imagePaste } from "./plugins/imagePaste";
-import { docxKeymap } from "./plugins/keymap";
+import { docxKeymap, historyKeys } from "./plugins/keymap";
 import { linkPanel } from "./plugins/linkPanel";
 import { listInputRules } from "./plugins/listInputRules";
 import { lockedContent } from "./plugins/lockedContent";
@@ -144,6 +144,7 @@ export function createEditorState(
       commentReservations(reservedCommentIds, reservedCommentParaIds),
       history(),
       keymap(docxKeymap),
+      historyKeys(),
       keymap(baseKeymap),
       // Holds whether the link panel is open, which Cmd+K above and the toolbar button both set
       linkPanel(),
