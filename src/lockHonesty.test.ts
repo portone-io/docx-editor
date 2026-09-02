@@ -8,10 +8,13 @@ import { select } from "./__testing__/editing";
 import { importDocx } from "./docx/importDocx";
 import * as commands from "./editor/commands/index";
 import { createEditorState } from "./editor/createEditor";
+import { setProtection } from "./editor/plugins/documentProtection";
+import type { EditingProtection } from "./schema/protection";
 import * as table from "./table";
 
 /**
- * Every command the package exports answers truthfully over locked content.
+ * Every command the package exports answers truthfully over locked content, and under every
+ * protection the editor can run under (`schema/protection`).
  *
  * The invariant: a command reporting false must change nothing when it is dispatched, and one
  * reporting true must change something. A command that reports true and is then refused by the
@@ -71,9 +74,19 @@ const BODY =
   `<w:tr>${cellXml(runXml("Under1"))}${cellXml(runXml("Under2"))}${cellXml(runXml("Under3"))}</w:tr>` +
   "</w:tbl>";
 
-function opened(): EditorState {
-  return createEditorState(importDocx(makeDocx(BODY)).doc);
+function opened(protection: EditingProtection): EditorState {
+  return createEditorState(importDocx(makeDocx(BODY)).doc, {
+    protection,
+    author: { id: "me", name: "Me" },
+  });
 }
+
+/** The three standings a state can be built with, each of which every command is put to */
+const PROTECTIONS: readonly EditingProtection[] = [
+  "none",
+  "comments",
+  "readOnly",
+];
 
 const COMMENTED_RUN =
   '<w:commentRangeStart w:id="0"/>' +
@@ -81,9 +94,15 @@ const COMMENTED_RUN =
   '<w:commentRangeEnd w:id="0"/>' +
   '<w:r><w:commentReference w:id="0"/></w:r>';
 
-function commentState(locked: boolean): EditorState {
+function commentState(
+  locked: boolean,
+  protection: EditingProtection = "none"
+): EditorState {
   const content = locked ? control(COMMENTED_RUN) : COMMENTED_RUN;
-  return createEditorState(importDocx(makeDocx(`<w:p>${content}</w:p>`)).doc);
+  return createEditorState(importDocx(makeDocx(`<w:p>${content}</w:p>`)).doc, {
+    protection,
+    author: { id: "me", name: "Me" },
+  });
 }
 
 /** The position just inside the first text node reading exactly this */
@@ -113,20 +132,24 @@ function cellPos(doc: PMNode, needle: string): number {
   return found;
 }
 
-function caretIn(needle: string): EditorState {
-  const state = opened();
+function caretIn(needle: string, protection: EditingProtection): EditorState {
+  const state = opened(protection);
   return select(state, insideText(state.doc, needle));
 }
 
 /** The selection covering exactly this text, which is the whole of the control wrapping it */
-function overText(needle: string): EditorState {
-  const state = opened();
+function overText(needle: string, protection: EditingProtection): EditorState {
+  const state = opened(protection);
   const inside = insideText(state.doc, needle);
   return select(state, inside - 1, inside - 1 + needle.length);
 }
 
-function cellsSelected(anchor: string, head: string): EditorState {
-  const state = opened();
+function cellsSelected(
+  anchor: string,
+  head: string,
+  protection: EditingProtection
+): EditorState {
+  const state = opened(protection);
   return state.apply(
     state.tr.setSelection(
       CellSelection.create(
@@ -141,73 +164,88 @@ function cellsSelected(anchor: string, head: string): EditorState {
 /** Where the selection stands, which is what decides whether a lock is in the way */
 interface Place {
   name: string;
-  state: () => EditorState;
+  state: (protection: EditingProtection) => EditorState;
 }
 
 const PLACES: readonly Place[] = [
-  { name: "a caret in body text no control covers", state: () => caretIn("a") },
+  {
+    name: "a caret in body text no control covers",
+    state: (protection) => caretIn("a", protection),
+  },
   {
     name: "a caret inside a locked control",
-    state: () => caretIn("bc"),
+    state: (protection) => caretIn("bc", protection),
   },
   {
     name: "a selection running across a locked control",
-    state: () => {
-      const state = opened();
+    state: (protection) => {
+      const state = opened(protection);
       return select(state, 1, state.doc.child(0).content.size + 1);
     },
   },
   {
     name: "a caret inside a locked cell",
-    state: () => caretIn("TopLeft"),
+    state: (protection) => caretIn("TopLeft", protection),
   },
   {
     name: "a caret in a cell no lock stands in",
-    state: () => caretIn("BottomRight"),
+    state: (protection) => caretIn("BottomRight", protection),
   },
   {
     name: "a block of cells one of which is locked",
-    state: () => cellsSelected("TopLeft", "TopRight"),
+    state: (protection) => cellsSelected("TopLeft", "TopRight", protection),
   },
   {
     name: "a block of cells no lock stands in",
-    state: () => cellsSelected("BottomLeft", "BottomRight"),
+    state: (protection) =>
+      cellsSelected("BottomLeft", "BottomRight", protection),
   },
   {
     name: "a caret inside a control whose contents alone are locked",
-    state: () => caretIn("ef"),
+    state: (protection) => caretIn("ef", protection),
   },
   {
     name: "a selection covering such a control whole, which may still be deleted",
-    state: () => overText("ef"),
+    state: (protection) => overText("ef", protection),
   },
   {
     name: "a caret inside a control locked against deletion alone",
-    state: () => caretIn("gh"),
+    state: (protection) => caretIn("gh", protection),
   },
   {
     name: "a selection covering a control locked against deletion alone whole",
-    state: () => overText("gh"),
+    state: (protection) => overText("gh", protection),
   },
   {
     name: "a caret inside a cell whose contents alone are locked",
-    state: () => caretIn("ShutCell"),
+    state: (protection) => caretIn("ShutCell", protection),
   },
   {
     name: "a caret inside a cell locked against deletion alone",
-    state: () => caretIn("KeptCell"),
+    state: (protection) => caretIn("KeptCell", protection),
   },
   {
     name: "a block of cells one of which is locked against deletion alone",
-    state: () => cellsSelected("KeptCell", "PlainCell"),
+    state: (protection) => cellsSelected("KeptCell", "PlainCell", protection),
   },
   {
     // The history is empty in a freshly opened document, so undo and redo have nothing to take
     // back anywhere else, and this is where their answering true is put to the test
     name: "a caret after an edit, so the history holds something",
-    state: () => {
-      const state = caretIn("a");
-      return state.apply(state.tr.insertText("x", state.selection.from));
+    state: (protection) => {
+      // The edit is made with nothing shut and the protection put on after, the way a mode is
+      // switched on a document already worked on, so the history holds something under each
+      const edited = caretIn("a", "none");
+      const state = edited.apply(
+        edited.tr.insertText("x", edited.selection.from)
+      );
+      return state.apply(
+        setProtection(state.tr, {
+          protection,
+          author: { id: "me", name: "Me" },
+          editableComments: "own",
+        })
+      );
     },
   },
 ];
@@ -350,6 +388,8 @@ const NOT_A_COMMAND: Readonly<Record<string, string>> = {
   activeTextColor: "a query about the selection",
   canDecreaseIndent: "the query the decrease-indent button is drawn from",
   canAddComment: "the query the add-comment button is drawn from",
+  canEditComment:
+    "the query the edit and delete buttons of a comment are drawn from",
   canFormatText: "the query the character formatting controls are drawn from",
   canIncreaseIndent: "the query the increase-indent button is drawn from",
   canInsertImage: "the query the image button is drawn from",
@@ -369,6 +409,7 @@ const NOT_A_COMMAND: Readonly<Record<string, string>> = {
   documentHasLocked: "a query about the document",
   documentNotes: "the notes displayed after the document",
   documentParagraphStyles: "the styles the document defines",
+  editingProtection: "a query about what the editor as a whole may receive",
   fittedExtent: "the rule an oversized image is shrunk by",
   imageFilesIn: "picks the image files out of a picker, clipboard or drag",
   insertImageFiles: "reads the files first, then runs `insertImage`",
@@ -417,20 +458,23 @@ function attempt(
   return { answered, changed: !unchanged(state, after) };
 }
 
-describe("every exported command over locked content", () => {
-  describe.each(PLACES)("with $name", ({ state }) => {
-    it.each(CASES)("$name says what dispatching it does", ({ command }) => {
-      const before = state();
-      const { answered, changed } = attempt(before, command);
-      expect(
-        changed,
-        answered
-          ? "the command reported that it applies, and dispatching it changed nothing"
-          : "the command reported that it does not apply, and dispatching it changed something"
-      ).toBe(answered);
+describe.each(PROTECTIONS)(
+  "every exported command over locked content under %s",
+  (protection) => {
+    describe.each(PLACES)("with $name", ({ state }) => {
+      it.each(CASES)("$name says what dispatching it does", ({ command }) => {
+        const before = state(protection);
+        const { answered, changed } = attempt(before, command);
+        expect(
+          changed,
+          answered
+            ? "the command reported that it applies, and dispatching it changed nothing"
+            : "the command reported that it does not apply, and dispatching it changed something"
+        ).toBe(answered);
+      });
     });
-  });
-});
+  }
+);
 
 describe("comment commands over a real comment anchor", () => {
   it.each([
@@ -469,6 +513,36 @@ describe("comment commands over a real comment anchor", () => {
       changed: true,
     });
   });
+
+  it.each([
+    [
+      "add reply",
+      commands.addCommentReply("0", { text: "reply", author: "A" }),
+    ],
+    ["update", commands.updateComment("0", "updated")],
+    ["resolve", commands.setCommentResolved("0", true)],
+    ["remove", commands.removeComment("0")],
+  ] as const)("can %s under the comments protection", (_name, command) => {
+    expect(attempt(commentState(false, "comments"), command)).toEqual({
+      answered: true,
+      changed: true,
+    });
+  });
+
+  it.each([
+    [
+      "add reply",
+      commands.addCommentReply("0", { text: "reply", author: "A" }),
+    ],
+    ["update", commands.updateComment("0", "updated")],
+    ["resolve", commands.setCommentResolved("0", true)],
+    ["remove", commands.removeComment("0")],
+  ] as const)("refuses to %s under readOnly", (_name, command) => {
+    expect(attempt(commentState(false, "readOnly"), command)).toEqual({
+      answered: false,
+      changed: false,
+    });
+  });
 });
 
 /**
@@ -498,7 +572,7 @@ function afterRunning(state: EditorState, command: Command): EditorState {
 describe("every toggle over locked content", () => {
   describe.each(PLACES)("with $name", ({ state }) => {
     it.each(TOGGLES)("$name takes back what it put on", ({ command }) => {
-      const before = state();
+      const before = state("none");
       const once = afterRunning(before, command);
       // A toggle with nothing to reach here says so by changing nothing, which is its own business
       if (before.doc.eq(once.doc)) return;

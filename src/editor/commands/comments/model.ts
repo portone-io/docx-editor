@@ -1,6 +1,11 @@
 /** Public comment values and shared attribute readers. */
 
 export interface CommentAuthor {
+  /**
+   * The identity behind the name, an opaque string the host application chooses. Recorded in the
+   * document's people part, and what decides whose comment a comment is (`schema/protection`).
+   */
+  id?: string;
   name: string;
   initials?: string;
 }
@@ -8,6 +13,8 @@ export interface CommentAuthor {
 export interface NewComment {
   text: string;
   author: string;
+  /** The identity behind `author`. A comment written without one belongs to nobody in particular */
+  authorId?: string;
   initials?: string;
   /** ISO 8601 timestamp. The current time is used when omitted. */
   date?: string;
@@ -16,6 +23,7 @@ export interface NewComment {
 export interface DocumentComment {
   id: string;
   author: string | null;
+  authorId: string | null;
   initials: string | null;
   date: string | null;
   text: string;
@@ -29,6 +37,7 @@ export interface DocumentComment {
 export interface DocumentCommentReply {
   id: string;
   author: string | null;
+  authorId: string | null;
   initials: string | null;
   date: string | null;
   text: string;

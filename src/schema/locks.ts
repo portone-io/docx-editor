@@ -1,6 +1,9 @@
 /**
  * Evaluates OOXML content and deletion locks for inline controls and whole table cells. Commands
  * query these predicates before editing; `editor/plugins/lockedContent` enforces them at runtime.
+ *
+ * `transactionAllowed` is the one guard, and it answers for the protection the editor runs under
+ * (`./protection`) as well as for the locks, so that a command asking it asks both.
  */
 
 import type {
@@ -9,7 +12,12 @@ import type {
   Node as PMNode,
   ResolvedPos,
 } from "prosemirror-model";
-import { PluginKey, type Selection, type Transaction } from "prosemirror-state";
+import {
+  type EditorState,
+  PluginKey,
+  type Selection,
+  type Transaction,
+} from "prosemirror-state";
 import {
   AddMarkStep,
   AddNodeMarkStep,
@@ -21,6 +29,12 @@ import {
   type Step,
 } from "prosemirror-transform";
 import { docxSchema } from "./index";
+import {
+  isCommentNode,
+  type ProtectionState,
+  protectionAllows,
+} from "./protection";
+import { protectionOf } from "./protectionState";
 
 /**
  * The pass that lets a transaction through the guard, which is how a lock can be lifted at all.
@@ -426,6 +440,91 @@ function carriesPass(tr: Transaction): boolean {
   );
 }
 
+function rangeHoldsComment(doc: PMNode, from: number, to: number): boolean {
+  let found = false;
+  doc.nodesBetween(from, to, (node) => {
+    if (found) return false;
+    if (isCommentNode(node)) found = true;
+    return !found;
+  });
+  return found;
+}
+
+/**
+ * Whether any step of the transaction reaches a comment node: puts one in, takes one out, or
+ * rewrites the one where it stands, which is how a body, a reply and a resolution change.
+ *
+ * Every comment lives in its three nodes, so a change that reaches none of them cannot have
+ * changed a comment. That is what lets the guard settle the common transaction - typing, and
+ * nothing more - over the stretch it rewrote rather than over the whole document.
+ *
+ * A step of a kind this does not know - one a consumer brought - is answered as reaching one,
+ * since what it rewrote is not known either. The whole-document judgement then has the say, and
+ * an unknown step costs a comparison rather than a hole in the guard.
+ */
+export function transactionTouchesComments(tr: Transaction): boolean {
+  return tr.steps.some((step, index) => {
+    const before = tr.docs[index];
+    const after = tr.docs[index + 1] ?? tr.doc;
+    if (
+      step instanceof AttrStep ||
+      step instanceof AddNodeMarkStep ||
+      step instanceof RemoveNodeMarkStep
+    ) {
+      const node = before.nodeAt(step.pos);
+      return node !== null && isCommentNode(node);
+    }
+    if (
+      !(
+        step instanceof ReplaceStep ||
+        step instanceof ReplaceAroundStep ||
+        step instanceof AddMarkStep ||
+        step instanceof RemoveMarkStep
+      )
+    ) {
+      return true;
+    }
+    let touched = false;
+    step.getMap().forEach((oldStart, oldEnd, newStart, newEnd) => {
+      touched ||=
+        rangeHoldsComment(before, oldStart, oldEnd) ||
+        rangeHoldsComment(after, newStart, newEnd);
+    });
+    return touched;
+  });
+}
+
+/**
+ * Whether the protection lets this transaction through (`./protection`).
+ *
+ * The whole-document judgement is reached for only when a comment is touched at all
+ * (`transactionTouchesComments`). A change that touches none is a body edit: through under `none`,
+ * refused under `comments`, and nothing about ownership to ask.
+ */
+export function protectionAllowsTransaction(
+  tr: Transaction,
+  rules: ProtectionState
+): boolean {
+  switch (rules.protection) {
+    case "readOnly":
+      return false;
+    case "none":
+      return (
+        !transactionTouchesComments(tr) ||
+        protectionAllows(tr.before, tr.doc, rules)
+      );
+    case "comments":
+      return (
+        transactionTouchesComments(tr) &&
+        protectionAllows(tr.before, tr.doc, rules)
+      );
+    default: {
+      const unmodelled: never = rules.protection;
+      return unmodelled;
+    }
+  }
+}
+
 /**
  * Whether the guard would let this transaction through, decided and nothing else.
  *
@@ -433,13 +532,20 @@ function carriesPass(tr: Transaction): boolean {
  * (`editor/plugins/lockedContent`) - which a query about a button's state may not set off, so the
  * decision stands apart from it and every caller building an edit asks this rather than handing
  * the transaction to a state.
- * `doc` only stands in for a step the transaction kept no document for.
+ *
+ * The protection is judged before the passes and without them: a replayed edit is still an edit,
+ * and a pass that lifts a lock lifts no protection. Its judgement is over the whole change rather
+ * than step by step, which is what lets it tell a comment from everything else.
  */
-export function transactionAllowed(tr: Transaction, doc: PMNode): boolean {
+export function transactionAllowed(
+  tr: Transaction,
+  state: EditorState
+): boolean {
   if (!tr.docChanged) return true;
+  if (!protectionAllowsTransaction(tr, protectionOf(state))) return false;
   if (carriesPass(tr)) return true;
   // Each step counts positions in the document it was built against, which `docs` holds
   return tr.steps.every((step, index) =>
-    stepAllowed(step, tr.docs[index] ?? doc)
+    stepAllowed(step, tr.docs[index] ?? state.doc)
   );
 }

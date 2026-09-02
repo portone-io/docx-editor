@@ -124,6 +124,7 @@ function addCommentTransaction(
       id,
       referenceXml: null,
       author: comment.author,
+      authorId: comment.authorId ?? null,
       initials: comment.initials ?? null,
       date,
       text: comment.text,
@@ -147,7 +148,7 @@ function addCommentTransaction(
     .insert(to, end)
     .insert(to + 1, reference)
     .insert(from, start);
-  return transactionAllowed(transaction, state.doc) ? transaction : null;
+  return transactionAllowed(transaction, state) ? transaction : null;
 }
 
 /** Whether a non-empty selection in one paragraph can receive a comment. */
@@ -193,7 +194,7 @@ export function updateComment(id: string, text: string): Command {
       }
       return true;
     });
-    if (!changed || !transactionAllowed(transaction, state.doc)) return false;
+    if (!changed || !transactionAllowed(transaction, state)) return false;
     dispatch?.(transaction);
     return true;
   };
@@ -220,7 +221,7 @@ function updateReference(
       }
       return false;
     });
-    if (!changed || !transactionAllowed(transaction, state.doc)) return false;
+    if (!changed || !transactionAllowed(transaction, state)) return false;
     dispatch?.(transaction);
     return true;
   };
@@ -278,6 +279,7 @@ export function addCommentReply(id: string, reply: NewComment): Command {
           {
             id: replyId,
             author: reply.author,
+            authorId: reply.authorId ?? null,
             initials: reply.initials ?? null,
             date,
             text: reply.text,
@@ -371,7 +373,7 @@ export function removeComment(id: string): Command {
     for (const marker of positions.sort((a, b) => b.pos - a.pos)) {
       transaction.delete(marker.pos, marker.pos + marker.size);
     }
-    if (!transactionAllowed(transaction, state.doc)) return false;
+    if (!transactionAllowed(transaction, state)) return false;
     dispatch?.(transaction);
     return true;
   };

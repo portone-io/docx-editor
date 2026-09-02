@@ -23,6 +23,8 @@ import type { DocumentDefaults } from "../model/format";
 import { EMPTY_NUMBERING, type Numbering } from "../numbering/parseNumbering";
 import { pageDecorations } from "../page/pageDecorations";
 import { pageGeometryStyle, pagePixels } from "../page/pageLayout";
+import type { EditableComments, EditingProtection } from "../schema/protection";
+import { editsShut } from "../schema/protectionState";
 import { editorClassNames } from "../styles/classNames";
 import {
   DEFAULT_FONT_FALLBACKS,
@@ -30,6 +32,7 @@ import {
 } from "../styles/fontStack";
 import { documentDefaultsStyle } from "../styles/inlineStyle";
 import { gridBorders, withDerivedGridBorders } from "../table/gridBorders";
+import type { CommentAuthor } from "./commands/comments/model";
 import { documentDefaultTabStopPt, documentStyleTable } from "./documentStyles";
 import { externalClipboard } from "./externalClipboard";
 import { imageFiles } from "./imageFiles";
@@ -37,8 +40,9 @@ import { bookmarkProtection } from "./plugins/bookmarkProtection";
 import { columnResize } from "./plugins/columnResize";
 import { commentDecorations } from "./plugins/commentDecorations";
 import { commentReservations } from "./plugins/commentReservations";
+import { documentProtection } from "./plugins/documentProtection";
 import { imagePaste } from "./plugins/imagePaste";
-import { docxKeymap } from "./plugins/keymap";
+import { docxKeymap, historyKeys } from "./plugins/keymap";
 import { linkPanel } from "./plugins/linkPanel";
 import { listInputRules } from "./plugins/listInputRules";
 import { lockedContent } from "./plugins/lockedContent";
@@ -84,6 +88,15 @@ export interface EditorStateOptions {
   reservedCommentIds?: Iterable<string>;
   /** Every paragraph id present in the opened comment parts, including orphan extension entries. */
   reservedCommentParaIds?: Iterable<string>;
+  /**
+   * What the document as a whole may receive (`schema/protection`): everything, comments alone,
+   * or nothing. Everything when none is given, which is what every state was before.
+   */
+  protection?: EditingProtection;
+  /** Whose comments are written, and so whose may be edited under `editableComments: "own"` */
+  author?: CommentAuthor | null;
+  /** Whose comments may be edited or deleted. One's own when none is given */
+  editableComments?: EditableComments;
 }
 
 /**
@@ -106,6 +119,9 @@ export function createEditorState(
     defaultTabStopPt = DEFAULT_TAB_STOP_PT,
     reservedCommentIds = [],
     reservedCommentParaIds = [],
+    protection = "none",
+    author = null,
+    editableComments = "own",
   }: EditorStateOptions = {}
 ): EditorState {
   return EditorState.create({
@@ -117,7 +133,9 @@ export function createEditorState(
       ...consumerPlugins,
       // Refuses every edit inside a locked content control, whoever asked for it. It is not
       // optional: a document that locked a part of itself stays locked in every consumer.
+      // The same guard refuses what the protection below shuts.
       lockedContent(),
+      documentProtection({ protection, author, editableComments }),
       // Bookmark ranges are preserved rather than edited, so neither half may disappear.
       bookmarkProtection(),
       // Note bodies are display-only, so their imported main-story references stay paired.
@@ -126,6 +144,7 @@ export function createEditorState(
       commentReservations(reservedCommentIds, reservedCommentParaIds),
       history(),
       keymap(docxKeymap),
+      historyKeys(),
       keymap(baseKeymap),
       // Holds whether the link panel is open, which Cmd+K above and the toolbar button both set
       linkPanel(),
@@ -196,7 +215,9 @@ export function createEditorView({
 }: EditorOptions): EditorView {
   const view = new EditorView(mount, {
     state,
-    editable: () => !readOnly,
+    // A protection that shuts the body shuts typing with it. Selecting stays open either way, which
+    // is what a reader marking a stretch for a comment needs
+    editable: (current) => !readOnly && !editsShut(current),
     attributes: {
       class: editorClassNames.sheet,
       // The paper first, so a document that names one is drawn on it from the first frame

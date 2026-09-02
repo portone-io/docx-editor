@@ -4,7 +4,8 @@
 
 import { chainCommands } from "prosemirror-commands";
 import { undoInputRule } from "prosemirror-inputrules";
-import type { Command } from "prosemirror-state";
+import { keydownHandler } from "prosemirror-keymap";
+import { type Command, Plugin } from "prosemirror-state";
 import { goToNextCell } from "prosemirror-tables";
 import { canSplit } from "prosemirror-transform";
 import { toParagraphFormat } from "../../model/format";
@@ -82,6 +83,37 @@ const preserveTableFollowingParagraph: Command = (state) => {
   );
 };
 
+/** The undo and redo keys on their own, so that a view which took editing away can still run them */
+const historyKeymap: Record<string, Command> = {
+  "Mod-z": undo,
+  "Mod-y": redo,
+  "Shift-Mod-z": redo,
+};
+
+/**
+ * Keeps undo and redo on their keys where the keymap above cannot reach them.
+ *
+ * A view that took editing away drops every keydown before the keymap plugin sees it
+ * (`view.editable || !(event.type in editHandlers)` in prosemirror-view), so a commenter, who is
+ * given no caret, would have no way to take a comment back. A DOM handler is asked ahead of that
+ * check. An editable view leaves the keys to the keymap plugin, which would otherwise run them a
+ * second time.
+ */
+export function historyKeys(): Plugin {
+  const runHistoryKeys = keydownHandler(historyKeymap);
+  return new Plugin({
+    props: {
+      handleDOMEvents: {
+        keydown: (view, event) => {
+          if (view.editable || !runHistoryKeys(view, event)) return false;
+          event.preventDefault();
+          return true;
+        },
+      },
+    },
+  });
+}
+
 export const docxKeymap: Record<string, Command> = {
   Enter: chainCommands(leaveEmptyListItem, splitParagraph),
   "Shift-Enter": insertLineBreak,
@@ -89,9 +121,7 @@ export const docxKeymap: Record<string, Command> = {
   "Mod-Enter": insertPageBreak,
   // The paragraph keeps adjacent tables separate without changing imported documents.
   Backspace: chainCommands(preserveTableFollowingParagraph, undoInputRule),
-  "Mod-z": undo,
-  "Mod-y": redo,
-  "Shift-Mod-z": redo,
+  ...historyKeymap,
   "Mod-b": toggleBold,
   "Mod-i": toggleItalic,
   "Mod-u": toggleUnderline,

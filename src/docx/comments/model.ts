@@ -8,6 +8,7 @@ import type { ImportedComments } from "./reading";
 export interface CommentReferenceData {
   id: string;
   author: string | null;
+  authorId: string | null;
   initials: string | null;
   date: string | null;
   text: string;
@@ -23,6 +24,7 @@ export interface CommentReferenceData {
 export interface CommentReplyData {
   id: string;
   author: string | null;
+  authorId: string | null;
   initials: string | null;
   date: string | null;
   text: string;
@@ -68,6 +70,7 @@ export function importedCommentReplies(
     replies.push({
       id: reply.id,
       author: reply.author,
+      authorId: reply.authorId,
       initials: reply.initials,
       date: reply.date,
       text: reply.text,
@@ -102,6 +105,7 @@ function replyData(value: unknown): CommentReplyData[] {
       {
         id,
         author: nullableString(entry.author),
+        authorId: nullableString(entry.authorId),
         initials: nullableString(entry.initials),
         date: nullableString(entry.date),
         text: nullableString(entry.text) ?? "",
@@ -122,6 +126,7 @@ function referenceData(node: PMNode): CommentReferenceData | null {
   return {
     id,
     author: nullableString(node.attrs.author),
+    authorId: nullableString(node.attrs.authorId),
     initials: nullableString(node.attrs.initials),
     date: nullableString(node.attrs.date),
     text: nullableString(node.attrs.text) ?? "",

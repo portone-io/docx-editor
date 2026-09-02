@@ -15,6 +15,7 @@ import { insertPoint } from "prosemirror-transform";
 import { type ImageExtent, toImageExtent, toImageSrc } from "../ooxml/image";
 import { docxSchema } from "../schema";
 import { replacementShut } from "../schema/locks";
+import { editsShut } from "../schema/protectionState";
 
 /** What has to be known about an image before it can go into a document */
 export interface ImageToInsert {
@@ -35,10 +36,12 @@ export interface ImageToInsert {
  * Null as well where a lock shuts the selection: the image goes in in place of whatever is
  * selected, so the question is whether the guard would let that replacement through
  * (`schema/locks`), which a control the document locked against deletion answers no to even where
- * its contents stand open.
+ * its contents stand open. Null as well under a protection that shuts the body.
  */
 function insertPosition(state: EditorState): number | null {
-  if (replacementShut(state.selection, state.doc)) return null;
+  if (editsShut(state) || replacementShut(state.selection, state.doc)) {
+    return null;
+  }
   return insertPoint(state.doc, state.selection.from, docxSchema.nodes.image);
 }
 

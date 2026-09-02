@@ -18,6 +18,15 @@ export type { LineSpacing, ParagraphAlign } from "../../model/format";
 export type { ListKind } from "../../numbering/listTemplate";
 /** The size an image is shown at, which the insert command asks for */
 export type { ImageExtent } from "../../ooxml/image";
+/**
+ * What the editor as a whole may receive - everything, comments alone, or nothing - which a control
+ * of your own reads before it offers an edit, the way the built-in ones do.
+ */
+export type {
+  EditableComments,
+  EditingProtection,
+} from "../../schema/protection";
+export { editingProtection } from "../../schema/protectionState";
 /** The fonts to draw with where a document names one the machine does not have, which the font queries read */
 export type { FontFallbacks } from "../../styles/fontStack";
 /**
@@ -71,6 +80,7 @@ export {
   addComment,
   addCommentReply,
   canAddComment,
+  canEditComment,
   documentComments,
   removeComment,
   removeCommentReply,

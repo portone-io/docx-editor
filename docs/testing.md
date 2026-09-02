@@ -32,10 +32,10 @@ The suite uses a 30-second timeout because schema validation and tests that exer
 | --- | --- |
 | `src/publicApi.test.ts` | Runtime exports for every JavaScript entry match `api-manifest.json`. |
 | `src/folderBoundaries.test.ts` | Folder ranks are respected, every production file is reachable from an entry point, and every production folder is ranked. |
-| `src/lockHonesty.test.ts` | A command's applicability result agrees with what it dispatches around locked content. |
+| `src/lockHonesty.test.ts` | A command's applicability result agrees with what it dispatches around locked content and under every editing protection. |
 | `src/docx/exportSchemaValidation.test.ts` | Every fixture and representative edited export validates against the ECMA-376 Transitional schemas. |
 
-Update `api-manifest.json` only when a public runtime API change is intentional. The lock test lists command factories explicitly so every new command must state how it behaves around locks.
+Update `api-manifest.json` only when a public runtime API change is intentional. The lock test lists command factories explicitly so every new command must state how it behaves around locks and under a protection that shuts the body.
 
 The schema test requires `xmllint`, rejects a missing validator or an empty fixture set, and includes a negative control so a broken validation path cannot pass silently. It removes `mc:Ignorable` before validation as required by the markup-compatibility preprocessing model and supplies the standard XML namespace imported by the schemas.
 

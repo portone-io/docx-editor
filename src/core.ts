@@ -7,6 +7,8 @@ import type { Node as PMNode } from "prosemirror-model";
 import { type DocxBytes, importDocx as openDocx } from "./docx/importDocx";
 import type { DocxSession } from "./docx/session";
 
+export type { CommentOnlyVerdict } from "./docx/commentOnlyChange";
+export { onlyCommentsChangedBy } from "./docx/commentOnlyChange";
 export { exportDocx } from "./docx/exportDocx";
 export type { ParagraphStyleOption } from "./docx/formatting";
 export type { DocxBytes } from "./docx/importDocx";

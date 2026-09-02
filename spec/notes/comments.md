@@ -16,6 +16,16 @@ The editor preserves an untouched extension part byte-identically. Creating a re
 
 Observed 2026-08-22 against Microsoft [MS-DOCX] §2.5.3.1 `CT_CommentEx` and §2.5.1.5 `commentsEx`.
 
+## Author identity
+
+Word records who an author is beyond the display name in the `people` extension part (`w15:people`), related from the main document part with the relationship type `http://schemas.microsoft.com/office/2011/relationships/people` and declared with the content type `application/vnd.openxmlformats-officedocument.wordprocessingml.people+xml`. A `w15:person` carries a `w15:author` name and a `w15:presenceInfo` whose `w15:providerId` names the directory that issued `w15:userId`. The author name is the reader's key: `w:comment/@w:author` names the person, and the part names the identity behind the name. Nothing in the format stops a part from carrying two `w15:person` elements for one name, but neither Word nor this editor reads it that way, so a name stands for one identity per file.
+
+The editor writes the identity a host hands it under a provider id of its own and reads back only identities recorded under that provider; an identity another provider recorded, such as a signed-in Word user's, is one the editor cannot vouch for and is read as none. A name the part already records is read as it stands and never appended to, so a name a foreign provider recorded, and a name recorded twice over under different identities of this editor's, both read as no identity, which leaves every comment written under that name unrecognised and editable by anyone rather than silently handed to whichever identity a reader picks. Because the name is the key, two identities writing under one name cannot be told apart once the document is closed; the host is expected to keep display names distinct per identity.
+
+An untouched part is preserved byte-identically, and a new person is spliced into an existing part rather than the part being rewritten: it is written under whatever prefix the part's root binds to the w15 namespace, and a self-closing root is reopened to hold it.
+
+Observed 2026-09-02 against the Open XML SDK reference for `Person` and `PresenceInfo` (`DocumentFormat.OpenXml.Office2013.Word`); the [MS-DOCX] text is not held locally, so its section numbers were not verified and are not cited.
+
 ## Anchors
 
 A range comment uses matching start and end markers plus a reference with the same id. A reference without either range marker is a point comment anchored at the reference position. An unmatched start or end marker is also interpreted as a point anchor when a comment reference carries the same id; a marker without that reference is non-conformant. New range comments create the three main-story elements together; removal deletes every supported marker and reference represented for that id.

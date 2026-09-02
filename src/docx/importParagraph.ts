@@ -120,6 +120,7 @@ function buildRunChild(
             id,
             referenceXml: serializeXml(el),
             author: comment?.author ?? null,
+            authorId: comment?.authorId ?? null,
             initials: comment?.initials ?? null,
             date: comment?.date ?? null,
             text: comment?.text ?? "",

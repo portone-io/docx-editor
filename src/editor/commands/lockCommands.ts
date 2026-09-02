@@ -23,6 +23,7 @@ import {
   type Textblock,
   unlockAllowed,
 } from "../../schema/locks";
+import { editsShut } from "../../schema/protectionState";
 
 /**
  * The mark a newly locked stretch wears, which is also the XML it goes back out as.
@@ -213,8 +214,12 @@ type SelectionLockDetail =
  *
  * Only a text selection has anything to lock; a whole selected image or a block of table cells
  * is not a stretch of text a control can hold.
+ *
+ * Settling a lock is an edit of the body, so a protection that shuts the body leaves neither
+ * anything to lock nor a lock to lift (`schema/protection`).
  */
 function selectionLockDetail(state: EditorState): SelectionLockDetail {
+  if (editsShut(state)) return { kind: "none" };
   const selection = state.selection;
   const locking = !selection.empty && selection instanceof TextSelection;
   const edits: LockEdit[] = [];

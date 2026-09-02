@@ -47,3 +47,22 @@ export function runCommand(state: EditorState, command: Command): EditorState {
   if (!next) throw new Error("the command produced no transaction");
   return next;
 }
+
+/**
+ * The stretch the first occurrence of this text covers, inside a single text node.
+ * Unlike `posOfText`, the node may read more than the text itself, which is what a run the
+ * importer joined with its neighbours does.
+ */
+export function rangeOfText(
+  doc: PMNode,
+  needle: string
+): { from: number; to: number } {
+  let found: { from: number; to: number } | null = null;
+  doc.descendants((node, pos) => {
+    if (found !== null || !node.isText || node.text === undefined) return;
+    const at = node.text.indexOf(needle);
+    if (at >= 0) found = { from: pos + at, to: pos + at + needle.length };
+  });
+  if (found === null) throw new Error(`text not found: ${needle}`);
+  return found;
+}
