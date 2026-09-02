@@ -6,7 +6,6 @@ import {
   addComment,
   addCommentReply,
   type CommentAuthor,
-  canEditComment,
   type DocumentComment,
   documentComments,
   removeComment,
@@ -16,7 +15,8 @@ import {
   updateComment,
   updateCommentReply,
 } from "../editor/commands/commentCommands";
-import { editingProtection } from "../schema/protectionState";
+import { commentOwned } from "../schema/protection";
+import { protectionOf } from "../schema/protectionState";
 import { editorClassNames } from "../styles/classNames";
 import { CommentComposer, FocusedTextarea } from "./comments/CommentComposer";
 import {
@@ -73,12 +73,15 @@ export function CommentsPanel({
 }: CommentsPanelProps): ReactElement {
   // biome-ignore lint/correctness/useExhaustiveDependencies: comment data changes with the document, not with selection-only transactions
   const comments = useMemo(() => documentComments(state), [state.doc]);
+  const rules = protectionOf(state);
   // Writing, replying and settling a thread are open to whoever the protection lets comment;
-  // editing and deleting a body are the author's, which `canEditComment` answers per body
+  // editing and deleting a body are its author's. Ownership is asked of the identity the memoised
+  // list already carries, rather than of `canEditComment`, which walks the whole document again
+  // for every comment and reply on screen
   const writer =
-    author !== null && editingProtection(state) !== "readOnly" ? author : null;
-  const canEdit = (commentId: string, replyId: string | null = null) =>
-    writer !== null && canEditComment(state, commentId, replyId);
+    author !== null && rules.protection !== "readOnly" ? author : null;
+  const owned = (authorId: string | null) =>
+    writer !== null && commentOwned(rules, authorId);
   const panel = useRef<HTMLElement | null>(null);
   const [editing, setEditing] = useState<EditTarget | null>(null);
   const [draft, setDraft] = useState("");
@@ -190,7 +193,7 @@ export function CommentsPanel({
         )}
         {visible.map((comment) => {
           const rootTarget = { commentId: comment.id, replyId: null };
-          const rootOwned = canEdit(comment.id);
+          const rootOwned = owned(comment.authorId);
           const rootEditing = rootOwned && sameTarget(editing, rootTarget);
           return (
             <article
@@ -310,7 +313,7 @@ export function CommentsPanel({
                     commentId: comment.id,
                     replyId: reply.id,
                   };
-                  const replyOwned = canEdit(comment.id, reply.id);
+                  const replyOwned = owned(reply.authorId);
                   const isEditing = replyOwned && sameTarget(editing, target);
                   return (
                     <div

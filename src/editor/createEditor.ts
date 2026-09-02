@@ -211,6 +211,11 @@ export function createEditorView({
   fontFallbacks = DEFAULT_FONT_FALLBACKS,
   onStateChange,
 }: EditorOptions): EditorView {
+  // The paper and the document's own defaults hold for every state the view ever takes, so the
+  // sheet's style is built once here; the tab width is the one part read off the state
+  const sheetStyle =
+    `${pageGeometryStyle(pagePixels(geometry))};` +
+    `${documentDefaultsStyle(defaults, fontFallbacks)};`;
   const view = new EditorView(mount, {
     state,
     // A protection that shuts the body shuts typing with it, and is read off the state so that a
@@ -220,10 +225,7 @@ export function createEditorView({
     attributes: (current) => ({
       class: editorClassNames.sheet,
       // The paper first, so a document that names one is drawn on it from the first frame
-      style:
-        `${pageGeometryStyle(pagePixels(geometry))};` +
-        `${documentDefaultsStyle(defaults, fontFallbacks)};` +
-        `tab-size:${documentDefaultTabStopPt(current)}pt`,
+      style: `${sheetStyle}tab-size:${documentDefaultTabStopPt(current)}pt`,
       // A sheet that takes no typing is no longer focusable of itself, so a reader or a commenter
       // is handed the focus another way: the keys reach it, and the selection stays its own
       ...(editsShut(current) ? { tabindex: "0" } : {}),
