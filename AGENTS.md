@@ -16,8 +16,9 @@ Keep one source of truth for each concern and link to it instead of repeating it
 - Read [docs/releasing.md](./docs/releasing.md) before changing how a version is decided, published, or announced.
 - The user-facing documentation lives in the site's MDX pages, which the site serves; edit them there rather than mirroring them elsewhere.
   - Read [site/content/docs/features.mdx](./site/content/docs/features.mdx) for a support claim or a behavior change.
-  - Read [site/content/docs/core.mdx](./site/content/docs/core.mdx) for programmatic DOCX import and export.
-  - Read [site/content/docs/custom-controls.mdx](./site/content/docs/custom-controls.mdx) for commands, queries, plugins, or custom controls.
+  - Read [site/content/docs/core.mdx](./site/content/docs/core.mdx) for programmatic DOCX import and export, including verifying a commenter's file on the server.
+  - Read [site/content/docs/custom-controls.mdx](./site/content/docs/custom-controls.mdx) for commands, queries, plugins, custom controls, or the comment ownership rule.
+  - Read [site/content/docs/props.mdx](./site/content/docs/props.mdx) for the `mode` union.
 - Read [site/README.md](./site/README.md) for how the documentation and landing site is built and run.
 - Read [e2e/README.md](./e2e/README.md) only for a real-browser, IME, focus, or keyboard task.
 - Read [__fixtures__/README.md](./__fixtures__/README.md) only when adding, replacing, or interpreting a fixture document.

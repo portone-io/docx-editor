@@ -18,21 +18,33 @@ import "@portone/docx-editor/styles.css";
 import { DocxEditor, type DocxEditorHandle } from "@portone/docx-editor";
 import { useRef } from "react";
 
-export function Editor({ file }: { file: File }) {
+export function Editor({
+  file,
+  user,
+}: {
+  file: File;
+  user: { id: string; name: string };
+}) {
   const editorRef = useRef<DocxEditorHandle | null>(null);
 
-  return <DocxEditor ref={editorRef} document={file} />;
+  return (
+    <DocxEditor
+      ref={editorRef}
+      document={file}
+      mode={{ kind: "edit", author: { id: user.id, name: user.name } }}
+    />
+  );
 }
 ```
 
-`document` accepts a `File`, `Blob`, `ArrayBuffer`, or `Uint8Array`; use the ref to export the edited document as bytes.
+`document` accepts a `File`, `Blob`, `ArrayBuffer`, or `Uint8Array`; `mode` selects read-only, comment-only, or full editing and names the author new comments are attributed to; use the ref to export the edited document as bytes.
 
 ## What it does
 
-- Provides browser editing with built-in controls, read-only mode, and document locking.
+- Provides browser editing with built-in controls, read-only and comment-only modes, and document locking.
 - Fits the page to the available width by default and lets readers choose a fixed zoom level.
 - Exports edited documents as DOCX bytes or browser downloads.
-- Preserves document structures and package parts across edits.
+- Preserves document structures and package parts across edits, and records who wrote each comment.
 - Reads document styles, theme fonts, page layout, and CJK font information for display.
 
 See [Feature support](https://docx-editor.portone.io/docs/features) for the support matrix. Build [custom controls](https://docx-editor.portone.io/docs/custom-controls) or use [programmatic DOCX import and export](https://docx-editor.portone.io/docs/core).
