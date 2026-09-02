@@ -6,9 +6,15 @@ import { unzipSync, zipSync } from "fflate";
 import { Fragment, type Node as PMNode } from "prosemirror-model";
 import { TextSelection } from "prosemirror-state";
 import { describe, expect, it } from "vitest";
-import { decode, makeDocx, readFixture } from "./__testing__/docx";
+import {
+  decode,
+  LETTER_SECT_PR,
+  makeDocx,
+  readFixture,
+} from "./__testing__/docx";
 import { rangeOfText } from "./__testing__/editing";
 import {
+  type CommentOnlyVerdict,
   DocxImportError,
   type DocxSession,
   documentNumbering,
@@ -22,6 +28,7 @@ import {
 } from "./core";
 import { addComment, updateComment } from "./editor/commands/commentCommands";
 import { createEditorState } from "./editor/createEditor";
+import { isCommentNode } from "./schema/protection";
 
 /** A fixture with numbered lists, so the numbering side of the entry is covered too */
 const FIXTURE = "kitchen-sink.docx";
@@ -144,14 +151,25 @@ describe("core entry", () => {
 /**
  * The verifier a server runs over a file a browser handed back. A comment-only mode in the
  * editor is a courtesy; this is where the rule is held, so it is exercised over exported bytes
- * rather than over editor states.
+ * rather than over editor states, and over the whole package rather than the story alone.
  */
 describe("onlyCommentsChangedBy", () => {
+  const encoder = new TextEncoder();
   const run = (text: string) =>
     `<w:r><w:t xml:space="preserve">${text}</w:t></w:r>`;
+  const STYLES_PART = "word/styles.xml";
+  const DOCUMENT_PART = "word/document.xml";
+  const DOCUMENT_RELS_PART = "word/_rels/document.xml.rels";
+
   const original = () => {
-    const parts = unzipSync(makeDocx(`<w:p>${run("Alpha beta")}</w:p>`));
-    parts["[Content_Types].xml"] = new TextEncoder().encode(
+    const parts = unzipSync(
+      makeDocx(
+        `<w:p>${run("Alpha beta")}</w:p><w:p>${run("Gamma")}</w:p>` +
+          LETTER_SECT_PR,
+        '<w:sz w:val="20"/>'
+      )
+    );
+    parts["[Content_Types].xml"] = encoder.encode(
       '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
         '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>' +
         "</Types>"
@@ -159,7 +177,23 @@ describe("onlyCommentsChangedBy", () => {
     return zipSync(parts);
   };
 
-  /** The bytes after this author commented on "beta" */
+  /** The package with one part written over, which is every shape a submission can be tampered in */
+  function repacked(
+    bytes: Uint8Array,
+    changes: Readonly<Record<string, string>>
+  ): Uint8Array {
+    const parts = unzipSync(bytes);
+    for (const [path, text] of Object.entries(changes)) {
+      parts[path] = encoder.encode(text);
+    }
+    return zipSync(parts);
+  }
+
+  function partText(bytes: Uint8Array, path: string): string {
+    return decode(unzipSync(bytes)[path]);
+  }
+
+  /** The bytes before and after this author commented on "beta" */
   function commentedBy(authorId: string): {
     bytes: Uint8Array;
     commented: Uint8Array;
@@ -178,28 +212,42 @@ describe("onlyCommentsChangedBy", () => {
     return { bytes, commented: exportDocx(state.doc, session) };
   }
 
-  it("holds for an unchanged file and for a comment the author added", () => {
-    const { bytes, commented } = commentedBy("me");
-    expect(onlyCommentsChangedBy(bytes, bytes, "me")).toBe(true);
-    expect(onlyCommentsChangedBy(bytes, commented, "me")).toBe(true);
+  const allowed: CommentOnlyVerdict = { ok: true };
+  const refusedFor = (
+    reason: "body-changed" | "comment-not-owned" | "comment-author-forged"
+  ): CommentOnlyVerdict => ({ ok: false, reason });
+  const partRefused = (part: string): CommentOnlyVerdict => ({
+    ok: false,
+    reason: "part-changed",
+    part,
   });
 
-  it("does not hold for a comment claiming another identity", () => {
-    const { bytes, commented } = commentedBy("other");
-    expect(onlyCommentsChangedBy(bytes, commented, "me")).toBe(false);
-  });
+  describe("over the document story", () => {
+    it("holds for an unchanged file and for a comment the author added", () => {
+      const { bytes, commented } = commentedBy("me");
+      expect(onlyCommentsChangedBy(bytes, bytes, "me")).toEqual(allowed);
+      expect(onlyCommentsChangedBy(bytes, commented, "me")).toEqual(allowed);
+    });
 
-  it("does not hold for edited text", () => {
-    const bytes = original();
-    const { doc, session } = importDocx(bytes);
-    const edited = exportDocx(editFirstText(doc, EDITED), session);
-    expect(onlyCommentsChangedBy(bytes, edited, "me")).toBe(false);
-  });
+    it("does not hold for a comment claiming another identity", () => {
+      const { bytes, commented } = commentedBy("other");
+      expect(onlyCommentsChangedBy(bytes, commented, "me")).toEqual(
+        refusedFor("comment-author-forged")
+      );
+    });
 
-  it("holds for rewriting one's own comment and not another's", () => {
-    const mine = commentedBy("me").commented;
-    const rewrite = (bytes: Uint8Array): Uint8Array => {
+    it("does not hold for edited text", () => {
+      const bytes = original();
       const { doc, session } = importDocx(bytes);
+      const edited = exportDocx(editFirstText(doc, EDITED), session);
+      expect(onlyCommentsChangedBy(bytes, edited, "me")).toEqual(
+        refusedFor("body-changed")
+      );
+    });
+
+    it("holds for rewriting one's own comment and not another's", () => {
+      const mine = commentedBy("me").commented;
+      const { doc, session } = importDocx(mine);
       let state = createEditorState(doc, { editableComments: "all" });
       expect(
         updateComment("0", "rewritten")(
@@ -207,10 +255,131 @@ describe("onlyCommentsChangedBy", () => {
           (tr) => (state = state.apply(tr))
         )
       ).toBe(true);
-      return exportDocx(state.doc, session);
-    };
-    const rewritten = rewrite(mine);
-    expect(onlyCommentsChangedBy(mine, rewritten, "me")).toBe(true);
-    expect(onlyCommentsChangedBy(mine, rewritten, "other")).toBe(false);
+      const rewritten = exportDocx(state.doc, session);
+      expect(onlyCommentsChangedBy(mine, rewritten, "me")).toEqual(allowed);
+      expect(onlyCommentsChangedBy(mine, rewritten, "other")).toEqual(
+        refusedFor("comment-not-owned")
+      );
+    });
+
+    it("does not hold for a comment carried onto other text by anyone else", () => {
+      const mine = commentedBy("me").commented;
+      const { doc, session } = importDocx(mine);
+      const state = createEditorState(doc, { editableComments: "all" });
+      const markers: { pos: number; node: PMNode }[] = [];
+      state.doc.descendants((node, pos) => {
+        if (isCommentNode(node)) markers.push({ pos, node });
+        return true;
+      });
+      const tr = state.tr;
+      for (const { pos, node } of [...markers].reverse()) {
+        tr.delete(pos, pos + node.nodeSize);
+      }
+      const target = rangeOfText(tr.doc, "Gamma");
+      const [start, end, reference] = markers.map((marker) => marker.node);
+      tr.insert(target.to, [end, reference]);
+      tr.insert(target.from, start);
+      const moved = exportDocx(tr.doc, session);
+      expect(onlyCommentsChangedBy(mine, moved, "me")).toEqual(allowed);
+      expect(onlyCommentsChangedBy(mine, moved, "other")).toEqual(
+        refusedFor("comment-not-owned")
+      );
+    });
+
+    it("does not hold for a people part rewritten to claim another's comment", () => {
+      const theirs = commentedBy("other").commented;
+      const peoplePart = Object.keys(unzipSync(theirs)).find((path) =>
+        path.endsWith("people.xml")
+      );
+      if (peoplePart === undefined) throw new Error("no people part");
+      const stolen = repacked(theirs, {
+        [peoplePart]: partText(theirs, peoplePart).replace(
+          'userId="other"',
+          'userId="me"'
+        ),
+      });
+      expect(onlyCommentsChangedBy(theirs, stolen, "me")).toEqual(
+        refusedFor("comment-author-forged")
+      );
+    });
+  });
+
+  describe("over the rest of the package", () => {
+    it("does not hold for a part the submission added", () => {
+      const bytes = original();
+      const withHeader = repacked(bytes, {
+        "word/header1.xml": "<w:hdr/>",
+      });
+      expect(onlyCommentsChangedBy(bytes, withHeader, "me")).toEqual(
+        partRefused("word/header1.xml")
+      );
+    });
+
+    it("does not hold for a part the submission took away", () => {
+      const bytes = original();
+      const parts = unzipSync(bytes);
+      delete parts[STYLES_PART];
+      expect(onlyCommentsChangedBy(bytes, zipSync(parts), "me")).toEqual(
+        partRefused(STYLES_PART)
+      );
+    });
+
+    it("does not hold for a rewritten styles part", () => {
+      const bytes = original();
+      const restyled = repacked(bytes, {
+        [STYLES_PART]: partText(bytes, STYLES_PART).replace(
+          'w:val="20"',
+          'w:val="48"'
+        ),
+      });
+      expect(onlyCommentsChangedBy(bytes, restyled, "me")).toEqual(
+        partRefused(STYLES_PART)
+      );
+    });
+
+    it("does not hold for section properties the story never carried", () => {
+      const bytes = original();
+      const remargined = repacked(bytes, {
+        [DOCUMENT_PART]: partText(bytes, DOCUMENT_PART).replace(
+          'w:left="1440"',
+          'w:left="720"'
+        ),
+      });
+      expect(onlyCommentsChangedBy(bytes, remargined, "me")).toEqual(
+        partRefused(DOCUMENT_PART)
+      );
+    });
+
+    it("does not hold for a relationship the submission added", () => {
+      const bytes = original();
+      const related = repacked(bytes, {
+        [DOCUMENT_RELS_PART]: partText(bytes, DOCUMENT_RELS_PART).replace(
+          "</Relationships>",
+          '<Relationship Id="rId9" Target="https://example.com"' +
+            ' Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink"' +
+            ' TargetMode="External"/></Relationships>'
+        ),
+      });
+      expect(onlyCommentsChangedBy(bytes, related, "me")).toEqual({
+        ok: false,
+        reason: "relationship-changed",
+        part: DOCUMENT_RELS_PART,
+      });
+    });
+
+    it("holds for the parts a comment of one's own is written across", () => {
+      const { bytes, commented } = commentedBy("me");
+      const added = Object.keys(unzipSync(commented)).filter(
+        (path) => !(path in unzipSync(bytes))
+      );
+      expect(added).toContain("word/comments.xml");
+      expect(onlyCommentsChangedBy(bytes, commented, "me")).toEqual(allowed);
+    });
+
+    it("turns bytes that are not a docx down the way opening one does", () => {
+      expect(() =>
+        onlyCommentsChangedBy(original(), new Uint8Array([1, 2, 3]), "me")
+      ).toThrow(DocxImportError);
+    });
   });
 });
