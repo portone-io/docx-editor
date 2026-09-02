@@ -2,10 +2,12 @@
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { unzipSync } from "fflate";
+import { unzipSync, zipSync } from "fflate";
 import { Fragment, type Node as PMNode } from "prosemirror-model";
+import { TextSelection } from "prosemirror-state";
 import { describe, expect, it } from "vitest";
-import { decode, readFixture } from "./__testing__/docx";
+import { decode, makeDocx, readFixture } from "./__testing__/docx";
+import { rangeOfText } from "./__testing__/editing";
 import {
   DocxImportError,
   type DocxSession,
@@ -15,8 +17,11 @@ import {
   exportDocx,
   importDocx,
   type NumberingRef,
+  onlyCommentsChangedBy,
   toParagraphFormat,
 } from "./core";
+import { addComment, updateComment } from "./editor/commands/commentCommands";
+import { createEditorState } from "./editor/createEditor";
 
 /** A fixture with numbered lists, so the numbering side of the entry is covered too */
 const FIXTURE = "kitchen-sink.docx";
@@ -133,5 +138,79 @@ describe("core entry", () => {
       "the session must be the one importDocx handed back"
     );
     expect(() => documentNumbering(foreign)).toThrow();
+  });
+});
+
+/**
+ * The verifier a server runs over a file a browser handed back. A comment-only mode in the
+ * editor is a courtesy; this is where the rule is held, so it is exercised over exported bytes
+ * rather than over editor states.
+ */
+describe("onlyCommentsChangedBy", () => {
+  const run = (text: string) =>
+    `<w:r><w:t xml:space="preserve">${text}</w:t></w:r>`;
+  const original = () => {
+    const parts = unzipSync(makeDocx(`<w:p>${run("Alpha beta")}</w:p>`));
+    parts["[Content_Types].xml"] = new TextEncoder().encode(
+      '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+        '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>' +
+        "</Types>"
+    );
+    return zipSync(parts);
+  };
+
+  /** The bytes after this author commented on "beta" */
+  function commentedBy(authorId: string): {
+    bytes: Uint8Array;
+    commented: Uint8Array;
+  } {
+    const bytes = original();
+    const { doc, session } = importDocx(bytes);
+    let state = createEditorState(doc);
+    const { from, to } = rangeOfText(state.doc, "beta");
+    state = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, from, to))
+    );
+    addComment({ text: "note", author: "Someone", authorId })(
+      state,
+      (tr) => (state = state.apply(tr))
+    );
+    return { bytes, commented: exportDocx(state.doc, session) };
+  }
+
+  it("holds for an unchanged file and for a comment the author added", () => {
+    const { bytes, commented } = commentedBy("me");
+    expect(onlyCommentsChangedBy(bytes, bytes, "me")).toBe(true);
+    expect(onlyCommentsChangedBy(bytes, commented, "me")).toBe(true);
+  });
+
+  it("does not hold for a comment claiming another identity", () => {
+    const { bytes, commented } = commentedBy("other");
+    expect(onlyCommentsChangedBy(bytes, commented, "me")).toBe(false);
+  });
+
+  it("does not hold for edited text", () => {
+    const bytes = original();
+    const { doc, session } = importDocx(bytes);
+    const edited = exportDocx(editFirstText(doc, EDITED), session);
+    expect(onlyCommentsChangedBy(bytes, edited, "me")).toBe(false);
+  });
+
+  it("holds for rewriting one's own comment and not another's", () => {
+    const mine = commentedBy("me").commented;
+    const rewrite = (bytes: Uint8Array): Uint8Array => {
+      const { doc, session } = importDocx(bytes);
+      let state = createEditorState(doc, { editableComments: "all" });
+      expect(
+        updateComment("0", "rewritten")(
+          state,
+          (tr) => (state = state.apply(tr))
+        )
+      ).toBe(true);
+      return exportDocx(state.doc, session);
+    };
+    const rewritten = rewrite(mine);
+    expect(onlyCommentsChangedBy(mine, rewritten, "me")).toBe(true);
+    expect(onlyCommentsChangedBy(mine, rewritten, "other")).toBe(false);
   });
 });

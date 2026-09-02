@@ -27,6 +27,7 @@
     "emuToPx",
     "exportDocx",
     "importDocx",
+    "onlyCommentsChangedBy",
     "parseNumbering",
     "pxToEmu",
     "toCellFormat",

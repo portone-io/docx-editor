@@ -6,6 +6,7 @@
 import type { Node as PMNode } from "prosemirror-model";
 import { type DocxBytes, importDocx as openDocx } from "./docx/importDocx";
 import type { DocxSession } from "./docx/session";
+import { commentAdditionsBy, protectionAllows } from "./schema/protection";
 
 export { exportDocx } from "./docx/exportDocx";
 export type { ParagraphStyleOption } from "./docx/formatting";
@@ -71,4 +72,31 @@ export function importDocx(input: DocxBytes): {
   session: DocxSession;
 } {
   return openDocx(input);
+}
+
+/**
+ * Whether the second document differs from the first in nothing but comments, every one of them
+ * added, edited, deleted, replied to or settled by the author with this identity.
+ *
+ * This is the judgement the editor makes under `mode: { kind: "comment" }`, made again over the
+ * file a browser handed back: the editor's own refusal is a courtesy to the user, and a server
+ * taking the file in is where the rule holds. A comment carrying no recorded identity is
+ * everyone's to edit here as it is in the editor (`schema/protection`); a comment that appeared
+ * has to carry this identity, since a file can claim any author and the editor's own hand in
+ * writing it is not there to vouch for it.
+ */
+export function onlyCommentsChangedBy(
+  original: DocxBytes,
+  submitted: DocxBytes,
+  authorId: string
+): boolean {
+  const before = openDocx(original).doc;
+  const after = openDocx(submitted).doc;
+  return (
+    protectionAllows(before, after, {
+      protection: "comments",
+      authorId,
+      editableComments: "own",
+    }) && commentAdditionsBy(before, after, authorId)
+  );
 }
