@@ -40,7 +40,11 @@ function commentText(el: Element): string {
 export interface ImportedComment {
   id: string;
   author: string | null;
-  /** The identity the people part records for `author` under this editor's provider. Null otherwise */
+  /**
+   * The identity the people part records for `author` under this editor's provider. Null when it
+   * records none, and null as well when it records that name under more than one identity, which
+   * leaves no way to tell whose comment this is.
+   */
   authorId: string | null;
   initials: string | null;
   date: string | null;

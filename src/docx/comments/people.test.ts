@@ -218,6 +218,83 @@ describe("the people part", () => {
     expect(reopened[0]?.replies[0]?.authorId).toBe("u_lin");
   });
 
+  it("reads no identity for a name recorded under two identities of ours", () => {
+    const bytes = commentedDocx(
+      peopleXml(
+        person("Ada", COMMENT_AUTHOR_PROVIDER, "u_ada") +
+          person("Ada", COMMENT_AUTHOR_PROVIDER, "u_other")
+      )
+    );
+    expect(authorIdsOf(bytes)).toEqual([null]);
+  });
+
+  it("appends no person for a name the part already records", () => {
+    const ambiguous = peopleXml(
+      person("Ada", COMMENT_AUTHOR_PROVIDER, "u_ada") +
+        person("Ada", COMMENT_AUTHOR_PROVIDER, "u_other")
+    );
+    const foreign = peopleXml(person("Ada", "AD", "S::ada@corp"));
+    for (const original of [ambiguous, foreign]) {
+      const opened = importDocx(commentedDocx(original));
+      const state = applied(
+        selecting(createEditorState(opened.doc), "beta"),
+        addComment({ text: "Note", author: "Ada", authorId: "u_ada" })
+      );
+      const output = exportDocx(state.doc, opened.session);
+      expect(decode(unzipSync(output)["word/people.xml"])).toBe(original);
+      expect(authorIdsOf(output)).toEqual([null, null]);
+    }
+  });
+
+  it("reopens a self-closing root to splice a new author in", () => {
+    const opened = importDocx(
+      commentedDocx(`<w15:people xmlns:w15="${W15_NS}"/>`)
+    );
+    const state = applied(
+      selecting(createEditorState(opened.doc), "beta"),
+      addComment({ text: "Note", author: "Grace", authorId: "u_grace" })
+    );
+    const output = exportDocx(state.doc, opened.session);
+    expect(decode(unzipSync(output)["word/people.xml"])).toBe(
+      peopleXml(person("Grace", COMMENT_AUTHOR_PROVIDER, "u_grace"))
+    );
+    expect(authorIdsOf(output)).toEqual([null, "u_grace"]);
+  });
+
+  it("writes the new author under the prefix the root binds to the w15 namespace", () => {
+    const opened = importDocx(
+      commentedDocx(`<p15:people xmlns:p15="${W15_NS}"></p15:people>`)
+    );
+    const state = applied(
+      selecting(createEditorState(opened.doc), "beta"),
+      addComment({ text: "Note", author: "Grace", authorId: "u_grace" })
+    );
+    const output = exportDocx(state.doc, opened.session);
+    expect(decode(unzipSync(output)["word/people.xml"])).toBe(
+      `<p15:people xmlns:p15="${W15_NS}">` +
+        '<p15:person p15:author="Grace">' +
+        `<p15:presenceInfo p15:providerId="${COMMENT_AUTHOR_PROVIDER}" p15:userId="u_grace"/>` +
+        "</p15:person></p15:people>"
+    );
+    expect(authorIdsOf(output)).toEqual([null, "u_grace"]);
+  });
+
+  it("writes the new author with no prefix under a default-namespace root", () => {
+    const opened = importDocx(commentedDocx(`<people xmlns="${W15_NS}"/>`));
+    const state = applied(
+      selecting(createEditorState(opened.doc), "beta"),
+      addComment({ text: "Note", author: "Grace", authorId: "u_grace" })
+    );
+    const output = exportDocx(state.doc, opened.session);
+    expect(decode(unzipSync(output)["word/people.xml"])).toBe(
+      `<people xmlns="${W15_NS}">` +
+        '<person author="Grace">' +
+        `<presenceInfo providerId="${COMMENT_AUTHOR_PROVIDER}" userId="u_grace"/>` +
+        "</person></people>"
+    );
+    expect(authorIdsOf(output)).toEqual([null, "u_grace"]);
+  });
+
   it("records nothing for a comment written under no identity", () => {
     const opened = importDocx(plainDocx());
     const state = applied(
