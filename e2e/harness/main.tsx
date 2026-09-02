@@ -11,7 +11,7 @@ import { TextSelection } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { DocxEditor } from "../../src/DocxEditor";
+import { DocxEditor, type DocxEditorMode } from "../../src/DocxEditor";
 import type { DocxBytes } from "../../src/docx/importDocx";
 import { lockSelection } from "../../src/editor/commands/lockCommands";
 import { lockedMarkOf } from "../../src/schema/locks";
@@ -56,6 +56,21 @@ async function loadFixture(name: string): Promise<DocxBytes> {
 function askedFixture(): string {
   const asked = new URLSearchParams(window.location.search).get("fixture");
   return asked ?? DEFAULT_FIXTURE;
+}
+
+const HARNESS_AUTHOR = { id: "harness", name: "Harness" };
+
+/** The mode the page asked for through `?mode=`. A template author's editing surface when none */
+function askedMode(): DocxEditorMode {
+  const asked = new URLSearchParams(window.location.search).get("mode");
+  switch (asked) {
+    case "readOnly":
+      return { kind: "readOnly" };
+    case "comment":
+      return { kind: "comment", author: HARNESS_AUTHOR };
+    default:
+      return { kind: "edit", author: HARNESS_AUTHOR, locking: true };
+  }
 }
 
 function blockStart(view: EditorView, blockIndex: number): number {
@@ -230,7 +245,10 @@ function install(view: EditorView): void {
           TextSelection.create(view.state.doc, from, from + length)
         )
       );
+      // A mouse drag lands the focus on the sheet as it selects; `view.focus` only does so for an
+      // editable one, so a shut sheet, which is focusable of itself, is focused directly
       view.focus();
+      if (!view.editable) view.dom.focus({ preventScroll: true });
       return from;
     },
     lock: (blockIndex, offset, length) => {
@@ -272,7 +290,7 @@ function Harness() {
         renderImportError={(error) => (
           <p data-testid="import-error">{error.code}</p>
         )}
-        mode={{ kind: "edit", locking: true }}
+        mode={askedMode()}
         onReady={install}
       />
     </div>
