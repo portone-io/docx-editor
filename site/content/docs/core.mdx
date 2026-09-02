@@ -44,6 +44,63 @@ Use a parser configuration that disables external entities and external fetching
 This works without friction on a long-running Node server.
 On serverless functions jsdom adds noticeable bundle weight and cold-start time, and edge runtimes cannot run it at all, so treat those environments as unsupported for now.
 
+## Verifying a commenter's file
+
+A file returned by a `comment` editor should differ from the original in comments alone.
+The editor enforces that in the browser only; check it again on the server, where the file
+arrives.
+`onlyCommentsChangedBy` compares the returned file with the original:
+
+```ts
+import { onlyCommentsChangedBy } from "@portone/docx-editor/core";
+
+const verdict = onlyCommentsChangedBy(original, submitted, user.id);
+if (!verdict.ok) console.warn(verdict.reason);
+```
+
+The comparison covers the whole package, not the document text alone.
+Four things have to hold for a file to be accepted:
+
+- Every part arrives byte-identical, save for the comments part, the extended comments part, and
+  the people part.
+- The main document part reads as it did outside its body blocks.
+- Its relationships and `[Content_Types].xml` gain only what those three parts need.
+- The text reads as it did with the comments taken out, and every comment that changed is this
+  author's.
+
+`editableComments` says whose comments may have changed.
+It defaults to `"own"`, this author's comments and the ones carrying no identity; pass `"all"` for
+a file that came from a moderator's editor.
+
+The answer names what was refused rather than reporting a bare `false`, so a server can log it:
+
+```ts
+type CommentOnlyVerdict =
+  | { ok: true }
+  | {
+      ok: false;
+      reason: "body-changed" | "comment-not-owned" | "comment-author-forged";
+    }
+  | {
+      ok: false;
+      reason: "part-changed" | "relationship-changed";
+      part: string;
+    };
+```
+
+| `reason` | What it means |
+| --- | --- |
+| `body-changed` | The document differs in something other than its comments, which includes a body edit that swept a comment away with the text it was anchored to. |
+| `comment-not-owned` | A comment or reply written by somebody else was rewritten, re-anchored onto other text, or deleted. |
+| `comment-author-forged` | A comment that appeared claims another identity, or a comment that was already there had its author rewritten. |
+| `part-changed` | A part outside the comment parts differs, or the main part changed outside its body blocks. `part` names the package path. |
+| `relationship-changed` | The main part's relationships gained, lost, or repointed something that is not a comment part. `part` names the relationship part. |
+
+[Modes and protection](/docs/custom-controls#modes-and-protection) describes the ownership rule
+this holds to.
+
+Unreadable bytes throw `DocxImportError`, as `importDocx` does.
+
 ## Errors
 
 `DocxImportError` and `DocxExportError` expose stable `code` values for application handling. Error

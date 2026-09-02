@@ -14,10 +14,17 @@ button to the browser:
 ```tsx
 <DocxEditor
   document={file}
-  mode={{ kind: "edit", author, toolbar: false }}
+  mode={{
+    kind: "edit",
+    author: { id: user.id, name: user.name },
+    toolbar: false,
+  }}
   contextMenus={false}
 />
 ```
+
+A `comment` editor has no toolbar to hide, and its right-click menu is already cut down to Copy and
+Add comment.
 
 ## Commands and queries
 
@@ -70,12 +77,13 @@ The query prefixes describe what they return:
 - `isIn*` reports containment.
 
 `DEFAULT_X` names the built-in default for the prop or field named `x`. Selection-level readers use
-`selection*`, while document-level readers use `document*`. A reader of the standing the editor
+`selection*`, while document-level readers use `document*`. A reader of the protection the editor
 itself runs under, which the document does not record, uses `editing*`.
 
-Package commands account for locked content before reporting that they apply. Wrap third-party or
-application commands with `canRunCommand(command, state)` when they also need to respect document
-locks.
+Package commands account for locked content and for the editor's mode before reporting that they
+apply, so a control built on them is disabled exactly where the edit would be refused. Wrap
+third-party or application commands with `canRunCommand(command, state)` when they also need to
+respect document locks and the mode.
 
 Use `insertTab` to insert the same editable DOCX tab as the built-in Tab binding. It applies inside
 an ordinary paragraph; table cells and list paragraphs keep their navigation and level-changing Tab
@@ -101,8 +109,12 @@ External links are editable; bookmark links remain preserved.
 
 Comment controls use `canAddComment`, `addComment`, `documentComments`, `selectComment`,
 `updateComment`, `removeComment`, `addCommentReply`, `updateCommentReply`, `removeCommentReply`,
-and `setCommentResolved`. `commentAuthor` sets the identity written by the built-in comment and
-reply composers; when omitted, the built-in UI writes `Anonymous`.
+and `setCommentResolved`. `mode.author` is the identity the built-in composers write; a composer of
+your own passes `author` (the display name), `initials`, and `authorId` taken from `mode.author` to
+`addComment` and `addCommentReply`, so that the comment is recorded as that person's.
+`documentComments` reports `authorId` on every comment and reply, and `canEditComment` answers
+whether the current author may edit or delete one; [Modes and
+protection](#modes-and-protection) explains the rule behind it.
 
 `documentNotes` returns the distinct footnotes and endnotes referenced by the main document,
 including their display labels and plain-text bodies.
@@ -120,15 +132,25 @@ host should own it:
 import { DocxEditor, type DocxEditorZoom } from "@portone/docx-editor";
 import { useState } from "react";
 
+const author = { id: user.id, name: user.name };
+
 function Preview({ file }: { file: File }) {
   const [zoom, setZoom] = useState<DocxEditorZoom>("fit-width");
 
-  return <DocxEditor document={file} zoom={zoom} onZoomChange={setZoom} />;
+  return (
+    <DocxEditor
+      document={file}
+      mode={{ kind: "edit", author }}
+      zoom={zoom}
+      onZoomChange={setZoom}
+    />
+  );
 }
 ```
 
 Numeric values from `0.25` through `2` are accepted. The root entry exports `DEFAULT_ZOOM_LEVELS`
-for a custom toolbar. A read-only editor has no built-in toolbar, but a host can still set `zoom`.
+for a custom toolbar. A read-only or comment editor has no built-in toolbar, but a host can still
+set `zoom`.
 Zoom changes only the browser presentation; it does not change pagination measurements, the
 document model, or exported OOXML. Persisting a reader's choice belongs to the host application.
 
@@ -136,12 +158,63 @@ The comment panel reads the same factor from the `--docx-editor-zoom` custom pro
 editor workspace, so comment text scales with the paper instead of standing apart from it. Its font
 sizes stop shrinking at a readable floor, and the panel keeps its width at every zoom level.
 
+## Modes and protection
+
+`mode.kind` puts the editor under a protection:
+
+| `mode.kind` | What goes through |
+| --- | --- |
+| `readOnly` | Nothing. The text can be selected and copied; comments can be read. |
+| `comment` | Comments alone: adding, editing, deleting, replying, resolving, and reopening. |
+| `edit` | Everything. |
+
+The kinds are named after OOXML's document protection levels, but nothing is written to the file;
+a `w:documentProtection` the document carries is preserved as it is.
+
+Under `comment` a formatting command reports `false`, `canAddComment` still reports `true` over a
+selection, and undo takes back a comment but not a body edit, from the keyboard as well as from
+the panel.
+A [lock](#locked-content) is refused the same way.
+A control of your own reads the level with `editingProtection`:
+
+```tsx
+import {
+  canEditComment,
+  editingProtection,
+} from "@portone/docx-editor/commands";
+
+const level = editingProtection(state); // "none" | "readOnly" | "comments"
+const mine = canEditComment(state, comment.id); // or (state, comment.id, reply.id)
+```
+
+`canEditComment` answers whether the current author may edit or delete a comment or one of its
+replies.
+A comment records the identity it was written under in the document's `people.xml` part, the way
+Word does. The rule is:
+
+- A comment carrying a recognized identity belongs to that author. Nobody else is offered Edit or
+  Delete on it, and an edit a control offers anyway is refused.
+- A comment carrying no identity, one written in Word or before identities were recorded, belongs
+  to everyone.
+- Re-anchoring a comment onto other text counts as editing that comment, so somebody else's is
+  refused.
+- A comment's author never changes after it is written, its own author included; only a new
+  comment chooses an identity.
+- `mode.editableComments: "all"` opens every comment to the current author.
+- Replying, resolving, and reopening never depend on ownership; under `comment` and `edit` they
+  are open to everyone.
+- Deleting a root comment deletes its replies, whoever wrote them, because a thread hangs off its
+  root.
+
+A server that takes a commenter's file back checks the same rule with
+[`onlyCommentsChangedBy`](/docs/core#verifying-a-commenters-file).
+
 ## Locked content
 
 A lock is an OOXML content control that shuts its contents, so it is part of the document rather
 than editor state: it survives a round trip and travels with the file.
-A lock the open document already carries is honored in every mode, read-only included, and no prop
-turns it off.
+A lock the open document already carries is honored in every mode, `readOnly` and `comment`
+included, and no prop turns it off.
 What `mode: { kind: "edit", locking: true }` adds is the authoring side, the built-in menu entries
 that put a lock on and take one off, since settling part of a document is a template author's act
 rather than something every reader of a form should be handed.

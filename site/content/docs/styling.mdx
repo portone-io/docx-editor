@@ -80,7 +80,13 @@ const fallbacks: FontFallbacks = {
   defaultFontName: "Inter",
 };
 
-<DocxEditor document={file} fontFallbacks={fallbacks} />;
+const author = { id: user.id, name: user.name };
+
+<DocxEditor
+  document={file}
+  mode={{ kind: "edit", author }}
+  fontFallbacks={fallbacks}
+/>;
 ```
 
 A group is one family: every name in it is drawn with the same stack, and matching ignores letter

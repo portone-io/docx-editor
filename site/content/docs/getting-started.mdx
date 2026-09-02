@@ -63,7 +63,8 @@ moment.
 
 ## Mount the editor
 
-Render `DocxEditor` with the document, and keep a ref if the surrounding screen will export it:
+Render `DocxEditor` with the document and a `mode`, and keep a ref if the surrounding screen will
+export it:
 
 ```tsx
 import { DocxEditor, type DocxEditorHandle } from "@portone/docx-editor";
@@ -72,10 +73,19 @@ import { useRef } from "react";
 export function Editor({ file }: { file: File }) {
   const editorRef = useRef<DocxEditorHandle | null>(null);
 
-  return <DocxEditor ref={editorRef} document={file} />;
+  return (
+    <DocxEditor
+      ref={editorRef}
+      document={file}
+      mode={{ kind: "edit", author: { id: user.id, name: user.name } }}
+    />
+  );
 }
 ```
 
+`mode` says what the editor is for; `author` names the person its comments are written under,
+taken from your application's signed-in user.
+[Props](/docs/props#mode) describes the kinds.
 The editor fills the height it is given, so put it in a box with one.
 
 </Step>
@@ -109,7 +119,11 @@ export function Editor({ file }: { file: File }) {
       <button onClick={download} type="button">
         Export .docx
       </button>
-      <DocxEditor ref={editorRef} document={file} />
+      <DocxEditor
+        ref={editorRef}
+        document={file}
+        mode={{ kind: "edit", author: { id: user.id, name: user.name } }}
+      />
     </>
   );
 }
@@ -141,14 +155,16 @@ the reason.
 ## Choose what the editor is for
 
 `mode` decides what the editor offers.
-`{ kind: "readOnly" }` takes no edits and therefore has no toolbar or context menus;
-`{ kind: "edit" }` is the default, and its `locking` option adds the controls for settling part of
-a document.
+`{ kind: "readOnly" }` takes no edits and no comments, and therefore has no toolbar or context
+menus.
+`{ kind: "comment", author }` lets a reviewer select and comment on the text without changing it.
+`{ kind: "edit", author }` takes everything, and its `locking` option adds the controls for
+settling part of a document.
 
 ```tsx
 <DocxEditor
   document={file}
-  mode={{ kind: "edit", locking: true }}
+  mode={{ kind: "comment", author: { id: user.id, name: user.name } }}
   renderImportError={(error) => <p role="alert">{error.code}</p>}
 />
 ```
