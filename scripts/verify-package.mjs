@@ -90,7 +90,11 @@ export function Consumer({ document }: { document: DocxSource }) {
     <DocxEditor
       ref={editor}
       document={document}
-      mode={{ kind: "edit", locking: true }}
+      mode={{
+        kind: "edit",
+        author: { id: "consumer", name: "Consumer" },
+        locking: true,
+      }}
       presets={{ fonts: DEFAULT_FONTS, colors: DEFAULT_COLORS }}
     />
   );
@@ -192,7 +196,13 @@ document.body.append(host);
 const editor = { current: null };
 const root = createRoot(host);
 await act(async () => {
-  root.render(createElement(DocxEditor, { document: bytes, ref: editor }));
+  root.render(
+    createElement(DocxEditor, {
+      document: bytes,
+      mode: { kind: "edit", author: { id: "consumer", name: "Consumer" } },
+      ref: editor,
+    })
+  );
 });
 
 const handle = editor.current;
