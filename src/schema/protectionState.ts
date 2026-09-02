@@ -34,5 +34,16 @@ export function editingProtection(state: EditorState): EditingProtection {
  * then being refused by the guard draws a live control that swallows the click.
  */
 export function editsShut(state: EditorState): boolean {
-  return protectionOf(state).protection !== "none";
+  const protection = editingProtection(state);
+  switch (protection) {
+    case "none":
+      return false;
+    case "readOnly":
+    case "comments":
+      return true;
+    default: {
+      const unmodelled: never = protection;
+      return unmodelled;
+    }
+  }
 }

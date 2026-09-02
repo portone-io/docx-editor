@@ -457,6 +457,10 @@ function rangeHoldsComment(doc: PMNode, from: number, to: number): boolean {
  * Every comment lives in its three nodes, so a change that reaches none of them cannot have
  * changed a comment. That is what lets the guard settle the common transaction - typing, and
  * nothing more - over the stretch it rewrote rather than over the whole document.
+ *
+ * A step of a kind this does not know - one a consumer brought - is answered as reaching one,
+ * since what it rewrote is not known either. The whole-document judgement then has the say, and
+ * an unknown step costs a comparison rather than a hole in the guard.
  */
 export function transactionTouchesComments(tr: Transaction): boolean {
   return tr.steps.some((step, index) => {
@@ -469,6 +473,16 @@ export function transactionTouchesComments(tr: Transaction): boolean {
     ) {
       const node = before.nodeAt(step.pos);
       return node !== null && isCommentNode(node);
+    }
+    if (
+      !(
+        step instanceof ReplaceStep ||
+        step instanceof ReplaceAroundStep ||
+        step instanceof AddMarkStep ||
+        step instanceof RemoveMarkStep
+      )
+    ) {
+      return true;
     }
     let touched = false;
     step.getMap().forEach((oldStart, oldEnd, newStart, newEnd) => {
@@ -483,19 +497,32 @@ export function transactionTouchesComments(tr: Transaction): boolean {
 /**
  * Whether the protection lets this transaction through (`./protection`).
  *
- * The whole-document judgement is reached for only when a comment is touched at all. A change that
- * touches none is a body edit: through under `none`, refused under `comments`, and nothing about
- * ownership to ask. The judgement is a parameter so that a test can see when it is reached for;
- * nothing else hands one in.
+ * The whole-document judgement is reached for only when a comment is touched at all
+ * (`transactionTouchesComments`). A change that touches none is a body edit: through under `none`,
+ * refused under `comments`, and nothing about ownership to ask.
  */
 export function protectionAllowsTransaction(
   tr: Transaction,
-  rules: ProtectionState,
-  judge: typeof protectionAllows = protectionAllows
+  rules: ProtectionState
 ): boolean {
-  if (rules.protection === "readOnly") return false;
-  if (!transactionTouchesComments(tr)) return rules.protection === "none";
-  return judge(tr.before, tr.doc, rules);
+  switch (rules.protection) {
+    case "readOnly":
+      return false;
+    case "none":
+      return (
+        !transactionTouchesComments(tr) ||
+        protectionAllows(tr.before, tr.doc, rules)
+      );
+    case "comments":
+      return (
+        transactionTouchesComments(tr) &&
+        protectionAllows(tr.before, tr.doc, rules)
+      );
+    default: {
+      const unmodelled: never = rules.protection;
+      return unmodelled;
+    }
+  }
 }
 
 /**

@@ -28,15 +28,35 @@ function rulesOf({
   return { protection, authorId: author?.id ?? null, editableComments };
 }
 
+const PROTECTIONS: readonly EditingProtection[] = [
+  "none",
+  "readOnly",
+  "comments",
+];
+
+const EDITABLE_COMMENTS: readonly EditableComments[] = ["own", "all"];
+
+function isOneOf<Value extends string>(
+  values: readonly Value[],
+  candidate: unknown
+): candidate is Value {
+  return (
+    typeof candidate === "string" && values.some((value) => value === candidate)
+  );
+}
+
+/**
+ * Whether this is a protection to run under. The metadata comes in from wherever the transaction
+ * was built, so a value outside either enumeration leaves the editor under the protection it
+ * already had rather than under one nothing judges.
+ */
 function isRules(value: unknown): value is ProtectionState {
   if (typeof value !== "object" || value === null) return false;
-  const protection: unknown = Reflect.get(value, "protection");
   const authorId: unknown = Reflect.get(value, "authorId");
-  const editableComments: unknown = Reflect.get(value, "editableComments");
   return (
-    typeof protection === "string" &&
+    isOneOf(PROTECTIONS, Reflect.get(value, "protection")) &&
     (authorId === null || typeof authorId === "string") &&
-    typeof editableComments === "string"
+    isOneOf(EDITABLE_COMMENTS, Reflect.get(value, "editableComments"))
   );
 }
 

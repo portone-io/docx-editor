@@ -2,12 +2,15 @@
 import {
   type Command,
   type EditorState,
+  Plugin,
   TextSelection,
+  type Transaction,
 } from "prosemirror-state";
 import { afterEach, describe, expect, it } from "vitest";
 import { makeDocx } from "../../__testing__/docx";
 import { rangeOfText } from "../../__testing__/editing";
 import { importDocx } from "../../docx/importDocx";
+import { transactionAllowed } from "../../schema/locks";
 import type { EditingProtection } from "../../schema/protection";
 import {
   addComment,
@@ -224,5 +227,62 @@ describe("the editor view under protection", () => {
     });
     expect(view.editable).toBe(editable);
     view.destroy();
+  });
+});
+
+/**
+ * The plugins that put a document right after an edit - the derived table lines
+ * (`table/gridBorders`) and the styles read into new paragraphs (`styledParagraphs`) - append
+ * transactions of their own. An appended transaction the guard refuses is dropped without a word,
+ * which would leave the document half corrected, so under `comments` nothing they append may be
+ * refused.
+ */
+describe("the corrections the plugins append", () => {
+  const cell = (text: string) =>
+    `<w:tc><w:p><w:r><w:t xml:space="preserve">${text}</w:t></w:r></w:p></w:tc>`;
+  const TABLE_BODY =
+    "<w:tbl>" +
+    '<w:tblGrid><w:gridCol w:w="1000"/><w:gridCol w:w="2000"/></w:tblGrid>' +
+    `<w:tr>${cell("Left")}${cell("Right")}</w:tr>` +
+    "</w:tbl>";
+
+  it("go through the guard under comments, table cells included", () => {
+    const refused: Transaction[] = [];
+    const watching = new Plugin({
+      filterTransaction(tr, state) {
+        if (!transactionAllowed(tr, state)) refused.push(tr);
+        return true;
+      },
+    });
+    const opened = createEditorState(
+      importDocx(makeDocx(`${BODY}${TABLE_BODY}`)).doc,
+      {
+        protection: "comments",
+        author: { id: "me", name: "Me" },
+        consumerPlugins: [watching],
+      }
+    );
+
+    let state = selecting(opened, "Left");
+    const dispatch = (tr: Transaction) => {
+      state = state.apply(tr);
+    };
+    expect(
+      addComment({ text: "note", author: "Me", authorId: "me" })(
+        state,
+        dispatch
+      )
+    ).toBe(true);
+    const id = commentId(state);
+    for (const command of [
+      addCommentReply(id, { text: "reply", author: "Me", authorId: "me" }),
+      setCommentResolved(id, true),
+      removeComment(id),
+    ]) {
+      expect(command(state, dispatch)).toBe(true);
+    }
+
+    expect(refused).toEqual([]);
+    expect(state.doc.eq(opened.doc)).toBe(true);
   });
 });

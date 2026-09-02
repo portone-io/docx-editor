@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import type { EditorState } from "prosemirror-state";
 import { TextSelection } from "prosemirror-state";
-import { describe, expect, it, vi } from "vitest";
+import { DocAttrStep } from "prosemirror-transform";
+import { describe, expect, it } from "vitest";
 import { makeDocx } from "../__testing__/docx";
 import { rangeOfText } from "../__testing__/editing";
 import { importDocx } from "../docx/importDocx";
@@ -15,7 +16,7 @@ import {
   protectionAllowsTransaction,
   transactionTouchesComments,
 } from "./locks";
-import { type ProtectionState, protectionAllows } from "./protection";
+import type { ProtectionState } from "./protection";
 
 const run = (text: string) =>
   `<w:r><w:t xml:space="preserve">${text}</w:t></w:r>`;
@@ -81,9 +82,9 @@ describe("transactionTouchesComments", () => {
 });
 
 /**
- * The whole-document judgement is handed in watched, so the test can say it was never reached for,
- * which is the point of the fast path: a document of any size is typed in at the cost of the
- * stretch typed.
+ * Whether the transaction touches a comment is what says whether the whole-document judgement is
+ * reached for at all, which is the point of the fast path: a document of any size is typed in at
+ * the cost of the stretch typed.
  */
 describe("the guard's fast path", () => {
   const rules = (
@@ -94,20 +95,11 @@ describe("the guard's fast path", () => {
     editableComments: "own",
   });
 
-  it("settles typing under none without the whole-document judgement", () => {
-    const judge = vi.fn(protectionAllows);
-    expect(
-      protectionAllowsTransaction(typing(opened()), rules("none"), judge)
-    ).toBe(true);
-    expect(judge).not.toHaveBeenCalled();
-  });
-
-  it("refuses typing under comments without it either", () => {
-    const judge = vi.fn(protectionAllows);
-    expect(
-      protectionAllowsTransaction(typing(opened()), rules("comments"), judge)
-    ).toBe(false);
-    expect(judge).not.toHaveBeenCalled();
+  it("settles typing without the whole-document judgement, whichever way it goes", () => {
+    const tr = typing(opened());
+    expect(transactionTouchesComments(tr)).toBe(false);
+    expect(protectionAllowsTransaction(tr, rules("none"))).toBe(true);
+    expect(protectionAllowsTransaction(tr, rules("comments"))).toBe(false);
   });
 
   it("reaches for it when a comment is touched", () => {
@@ -115,10 +107,16 @@ describe("the guard's fast path", () => {
     let tr: ReturnType<EditorState["tr"]["setMeta"]> | null = null;
     setCommentResolved("0", true)(state, (built) => (tr = built));
     if (tr === null) throw new Error("no transaction");
-    const judge = vi.fn(protectionAllows);
-    expect(protectionAllowsTransaction(tr, rules("comments"), judge)).toBe(
-      true
-    );
-    expect(judge).toHaveBeenCalledTimes(1);
+    expect(transactionTouchesComments(tr)).toBe(true);
+    expect(protectionAllowsTransaction(tr, rules("comments"))).toBe(true);
+  });
+
+  it("reaches for it over a step whose kind it does not know", () => {
+    const state = opened("comments");
+    const tr = state.tr.step(new DocAttrStep("unknown", 1));
+    expect(transactionTouchesComments(tr)).toBe(true);
+    // The judgement finds the document as it was and lets the step through. Answering that a step
+    // of an unknown kind touches no comment would have refused it under comments instead
+    expect(protectionAllowsTransaction(tr, rules("comments"))).toBe(true);
   });
 });

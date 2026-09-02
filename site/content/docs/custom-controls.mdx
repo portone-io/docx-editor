@@ -68,7 +68,8 @@ The query prefixes describe what they return:
 - `isIn*` reports containment.
 
 `DEFAULT_X` names the built-in default for the prop or field named `x`. Selection-level readers use
-`selection*`, while document-level readers use `document*`.
+`selection*`, while document-level readers use `document*`. A reader of the standing the editor
+itself runs under, which the document does not record, uses `editing*`.
 
 Package commands account for locked content before reporting that they apply. Wrap third-party or
 application commands with `canRunCommand(command, state)` when they also need to respect document
