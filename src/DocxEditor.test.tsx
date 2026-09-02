@@ -1,17 +1,24 @@
 // @vitest-environment jsdom
 import { unzipSync } from "fflate";
 import { keymap } from "prosemirror-keymap";
-import { type Command, Plugin, PluginKey } from "prosemirror-state";
+import {
+  type Command,
+  Plugin,
+  PluginKey,
+  TextSelection,
+} from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 import { act, type ReactNode, useEffect, useRef, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { decode, makeDocx, readFixture } from "./__testing__/docx";
+import { AUTHOR, EDITING } from "./__testing__/mode";
 import { renderInto } from "./__testing__/react";
 import {
   DocxEditor,
   type DocxEditorHandle,
   type DocxEditorMode,
 } from "./DocxEditor";
+import { editingProtection } from "./editor/commands/index";
 import { DocxImportError } from "./ooxml/errors";
 import { editorClassNames } from "./styles/classNames";
 import type { FontFallbacks } from "./styles/fontStack";
@@ -108,6 +115,12 @@ function handleBox(): { current: DocxEditorHandle | null } {
   return { current: null };
 }
 
+function attached(box: { current: DocxEditorHandle | null }): DocxEditorHandle {
+  const editor = box.current;
+  if (!editor) throw new Error("the ref was not attached");
+  return editor;
+}
+
 describe("DocxEditor", () => {
   it("renders the document and lets the parent read the ref right away in its own effect", () => {
     const exported = { byteLength: 0 };
@@ -120,6 +133,7 @@ describe("DocxEditor", () => {
       return (
         <DocxEditor
           document={ONE_PARAGRAPH}
+          mode={EDITING}
           ref={editorRef}
           renderImportError={() => null}
         />
@@ -137,6 +151,7 @@ describe("DocxEditor", () => {
     const unmount = render(
       <DocxEditor
         document={ONE_PARAGRAPH}
+        mode={EDITING}
         ref={box}
         renderImportError={() => null}
       />
@@ -160,6 +175,7 @@ describe("DocxEditor", () => {
     const unmount = render(
       <DocxEditor
         document={ONE_PARAGRAPH.slice(0, 40)}
+        mode={EDITING}
         renderImportError={(error) => {
           rejected.current = error;
           return <p>could not open</p>;
@@ -173,7 +189,7 @@ describe("DocxEditor", () => {
 
   it("draws a panel of its own for a refused document when none was handed in", () => {
     const unmount = render(
-      <DocxEditor document={ONE_PARAGRAPH.slice(0, 40)} />
+      <DocxEditor document={ONE_PARAGRAPH.slice(0, 40)} mode={EDITING} />
     );
 
     const panel = host.querySelector(`.${editorClassNames.rejection}`);
@@ -190,7 +206,11 @@ describe("DocxEditor", () => {
     const box = handleBox();
 
     const unmount = render(
-      <DocxEditor document={copyOf(ONE_PARAGRAPH).buffer} ref={box} />
+      <DocxEditor
+        document={copyOf(ONE_PARAGRAPH).buffer}
+        mode={EDITING}
+        ref={box}
+      />
     );
 
     // Synchronously after the first render, with no frame taken in between
@@ -202,7 +222,9 @@ describe("DocxEditor", () => {
     const box = handleBox();
     const file = fileOf(ONE_PARAGRAPH, "handed-over.docx");
 
-    const unmount = render(<DocxEditor document={file} ref={box} />);
+    const unmount = render(
+      <DocxEditor document={file} mode={EDITING} ref={box} />
+    );
 
     // The blob is read first, so the editor stands empty for that moment
     expect(box.current).toBeNull();
@@ -225,6 +247,7 @@ describe("DocxEditor", () => {
       return (
         <DocxEditor
           document={file}
+          mode={EDITING}
           ref={box}
           onReady={(view) => opened.push(view.state.doc.textContent)}
         />
@@ -266,7 +289,11 @@ describe("DocxEditor", () => {
     const select = () =>
       host.querySelector<HTMLSelectElement>(`.${editorClassNames.zoomSelect}`);
     const unmountEdit = render(
-      <DocxEditor document={ONE_PARAGRAPH} renderImportError={() => null} />
+      <DocxEditor
+        document={ONE_PARAGRAPH}
+        mode={EDITING}
+        renderImportError={() => null}
+      />
     );
     expect(select()?.value).toBe("fit-width");
     expect(select()?.selectedOptions[0]?.textContent).toBe("Fit");
@@ -288,6 +315,7 @@ describe("DocxEditor", () => {
     const unmount = render(
       <DocxEditor
         document={ONE_PARAGRAPH}
+        mode={EDITING}
         defaultZoom={0.75}
         onZoomChange={(value) => changed.push(value)}
         renderImportError={() => null}
@@ -318,6 +346,7 @@ describe("DocxEditor", () => {
     const unmount = render(
       <DocxEditor
         document={ONE_PARAGRAPH}
+        mode={EDITING}
         defaultZoom={0.5}
         renderImportError={() => null}
       />
@@ -345,6 +374,7 @@ describe("DocxEditor", () => {
     const unmount = render(
       <DocxEditor
         document={ONE_PARAGRAPH}
+        mode={EDITING}
         zoom={1}
         onZoomChange={(value) => changed.push(value)}
         renderImportError={() => null}
@@ -387,6 +417,7 @@ describe("DocxEditor", () => {
     const unmountOff = render(
       <DocxEditor
         document={ONE_PARAGRAPH}
+        mode={EDITING}
         showPageGuides={false}
         renderImportError={() => null}
       />
@@ -403,7 +434,11 @@ describe("DocxEditor", () => {
         .fontFamily;
 
     const unmountDefault = render(
-      <DocxEditor document={BATANG_PARAGRAPH} renderImportError={() => null} />
+      <DocxEditor
+        document={BATANG_PARAGRAPH}
+        mode={EDITING}
+        renderImportError={() => null}
+      />
     );
     expect(runFont()).toContain("Noto Serif KR");
     unmountDefault();
@@ -411,6 +446,7 @@ describe("DocxEditor", () => {
     const unmountGiven = render(
       <DocxEditor
         document={BATANG_PARAGRAPH}
+        mode={EDITING}
         fontFallbacks={{
           groups: [{ stack: '"Noto Serif Devanagari"', names: ["Batang"] }],
           defaultStack: '"Noto Sans Devanagari"',
@@ -449,6 +485,7 @@ describe("DocxEditor", () => {
           </button>
           <DocxEditor
             document={BATANG_PARAGRAPH}
+            mode={EDITING}
             fontFallbacks={swapped ? later : mounted}
             renderImportError={() => null}
           />
@@ -471,6 +508,7 @@ describe("DocxEditor", () => {
     const unmount = render(
       <DocxEditor
         document={readFixture("east-asian.docx")}
+        mode={EDITING}
         renderImportError={() => null}
       />
     );
@@ -492,7 +530,11 @@ describe("DocxEditor", () => {
           <button type="button" onClick={() => setBuffer(OTHER_PARAGRAPH)}>
             Replace
           </button>
-          <DocxEditor document={buffer} renderImportError={() => null} />
+          <DocxEditor
+            document={buffer}
+            mode={EDITING}
+            renderImportError={() => null}
+          />
         </>
       );
     }
@@ -504,12 +546,104 @@ describe("DocxEditor", () => {
     unmount();
   });
 
+  describe("the modes", () => {
+    const COMMENTING: DocxEditorMode = { kind: "comment", author: AUTHOR };
+
+    /** Selects the whole of the first paragraph's text */
+    function selectAll(view: EditorView): void {
+      act(() => {
+        view.dispatch(
+          view.state.tr.setSelection(
+            TextSelection.create(view.state.doc, 1, 1 + "source".length)
+          )
+        );
+      });
+    }
+
+    function typeInto(view: EditorView): void {
+      act(() => {
+        view.dispatch(view.state.tr.insertText("typed ", 1));
+      });
+    }
+
+    it("lets a commenter select text but not change it, with no toolbar to change it from", () => {
+      const box = handleBox();
+      const unmount = render(
+        <DocxEditor
+          document={ONE_PARAGRAPH}
+          mode={COMMENTING}
+          ref={box}
+          renderImportError={() => null}
+        />
+      );
+      const { view } = attached(box);
+      expect(view.editable).toBe(false);
+      expect(editingProtection(view.state)).toBe("comments");
+      expect(host.querySelector('[role="toolbar"]')).toBeNull();
+
+      selectAll(view);
+      expect(view.state.selection.empty).toBe(false);
+      expect(view.state.doc.textContent).toBe("source");
+
+      typeInto(view);
+      expect(view.state.doc.textContent).toBe("source");
+      unmount();
+    });
+
+    it("changes mode on the open document without rebuilding the editor", () => {
+      const box = handleBox();
+      const modes: DocxEditorMode[] = [
+        { kind: "readOnly" },
+        COMMENTING,
+        { kind: "edit", author: AUTHOR },
+      ];
+
+      function Host() {
+        const [at, setAt] = useState(0);
+        return (
+          <>
+            <button type="button" onClick={() => setAt((index) => index + 1)}>
+              Next mode
+            </button>
+            <DocxEditor
+              document={ONE_PARAGRAPH}
+              mode={modes[at] ?? { kind: "readOnly" }}
+              ref={box}
+              renderImportError={() => null}
+            />
+          </>
+        );
+      }
+
+      const unmount = render(<Host />);
+      const reader = attached(box).view;
+      expect(reader.editable).toBe(false);
+      typeInto(reader);
+      expect(reader.state.doc.textContent).toBe("source");
+
+      act(() => host.querySelector("button")?.click());
+      const commenter = attached(box).view;
+      expect(commenter).toBe(reader);
+      expect(editingProtection(commenter.state)).toBe("comments");
+      expect(commenter.editable).toBe(false);
+
+      act(() => host.querySelector("button")?.click());
+      const editor = attached(box).view;
+      expect(editor).toBe(reader);
+      expect(editingProtection(editor.state)).toBe("none");
+      expect(editor.editable).toBe(true);
+      typeInto(editor);
+      expect(editor.state.doc.textContent).toBe("typed source");
+      unmount();
+    });
+  });
+
   describe("the right click menus", () => {
     /** The rows of whichever menu stands open */
     const menuRows = () =>
       host.querySelectorAll('button[role="menuitem"]').length;
 
-    function mount(mode?: DocxEditorMode) {
+    function mount(mode: DocxEditorMode = EDITING) {
       const box = handleBox();
       const unmount = render(
         <DocxEditor
@@ -554,7 +688,11 @@ describe("DocxEditor", () => {
     });
 
     it("hands the right click back to the browser where the consumer turned them off", () => {
-      const unmount = mount({ kind: "edit", contextMenus: false });
+      const unmount = mount({
+        kind: "edit",
+        author: AUTHOR,
+        contextMenus: false,
+      });
 
       // Nothing answered the event, so the browser draws the menu it always would
       expect(rightClick("p")).toBe(false);
@@ -607,17 +745,12 @@ describe("DocxEditor", () => {
     }
 
     /** The editor that the ref handed back. Fails the test when it was never attached */
-    function attached(box: { current: DocxEditorHandle | null }) {
-      const editor = box.current;
-      if (!editor) throw new Error("the ref was not attached");
-      return editor;
-    }
-
     it("lets a plugin keep its own state and append transactions", () => {
       const box = handleBox();
       const unmount = render(
         <DocxEditor
           document={ONE_PARAGRAPH}
+          mode={EDITING}
           plugins={[editWatcher()]}
           ref={box}
           renderImportError={() => null}
@@ -641,6 +774,7 @@ describe("DocxEditor", () => {
       const unmountBuiltIn = render(
         <DocxEditor
           document={ONE_PARAGRAPH}
+          mode={EDITING}
           ref={builtIn}
           renderImportError={() => null}
         />
@@ -654,6 +788,7 @@ describe("DocxEditor", () => {
       const unmountOverridden = render(
         <DocxEditor
           document={ONE_PARAGRAPH}
+          mode={EDITING}
           plugins={[keymap({ Enter: writeReturnMark })]}
           ref={overridden}
           renderImportError={() => null}
@@ -666,7 +801,8 @@ describe("DocxEditor", () => {
       unmountOverridden();
     });
 
-    it("hands the plugins to a readOnly editor as well", () => {
+    // A consumer plugin is not a way past the mode: what it dispatches is judged like anything else
+    it("hands the plugins to a readOnly editor as well, whose refusals they share", () => {
       const box = handleBox();
       const unmount = render(
         <DocxEditor
@@ -685,7 +821,8 @@ describe("DocxEditor", () => {
       act(() => {
         editor.view.dispatch(editor.view.state.tr.insertText("edited ", 1));
       });
-      expect(editedKey.getState(editor.view.state)).toBe(true);
+      expect(editedKey.getState(editor.view.state)).toBe(false);
+      expect(editor.view.state.doc.textContent).toBe("source");
       unmount();
     });
 
@@ -703,6 +840,7 @@ describe("DocxEditor", () => {
             </button>
             <DocxEditor
               document={swapped ? OTHER_PARAGRAPH : ONE_PARAGRAPH}
+              mode={EDITING}
               plugins={swapped ? [] : [editWatcher()]}
               ref={box}
               renderImportError={() => null}

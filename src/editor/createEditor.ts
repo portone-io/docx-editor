@@ -198,7 +198,6 @@ export interface EditorOptions {
   defaults: DocumentDefaults;
   /** The paper the document names. The sheet is drawn from it, A4 where a document names none */
   geometry?: PageGeometry;
-  readOnly: boolean;
   /** The fonts stood in for the ones the document declares. The built-in set when none is given */
   fontFallbacks?: FontFallbacks;
   onStateChange: (state: EditorState) => void;
@@ -209,23 +208,26 @@ export function createEditorView({
   state,
   defaults,
   geometry = A4_PORTRAIT,
-  readOnly,
   fontFallbacks = DEFAULT_FONT_FALLBACKS,
   onStateChange,
 }: EditorOptions): EditorView {
   const view = new EditorView(mount, {
     state,
-    // A protection that shuts the body shuts typing with it. Selecting stays open either way, which
-    // is what a reader marking a stretch for a comment needs
-    editable: (current) => !readOnly && !editsShut(current),
-    attributes: {
+    // A protection that shuts the body shuts typing with it, and is read off the state so that a
+    // mode switched on an open document takes effect without a new view. Selecting stays open
+    // either way, which is what a reader marking a stretch for a comment needs
+    editable: (current) => !editsShut(current),
+    attributes: (current) => ({
       class: editorClassNames.sheet,
       // The paper first, so a document that names one is drawn on it from the first frame
       style:
         `${pageGeometryStyle(pagePixels(geometry))};` +
         `${documentDefaultsStyle(defaults, fontFallbacks)};` +
-        `tab-size:${documentDefaultTabStopPt(state)}pt`,
-    },
+        `tab-size:${documentDefaultTabStopPt(current)}pt`,
+      // A sheet that takes no typing is no longer focusable of itself, so a reader or a commenter
+      // is handed the focus another way: the keys reach it, and the selection stays its own
+      ...(editsShut(current) ? { tabindex: "0" } : {}),
+    }),
     // The schema can only draw a run with the default fallback fonts, so this editor draws its own
     markViews: { run: runMarkView(fontFallbacks) },
     // An image is drawn by a view of its own, which is what carries the resize handles

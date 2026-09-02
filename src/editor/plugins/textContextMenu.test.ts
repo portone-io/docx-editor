@@ -5,6 +5,7 @@ import type { EditorView } from "prosemirror-view";
 import { afterEach, describe, expect, it } from "vitest";
 import { makeDocx } from "../../__testing__/docx";
 import { importDocx } from "../../docx/importDocx";
+import type { EditingProtection } from "../../schema/protection";
 import { createEditorState, createEditorView } from "../createEditor";
 import { tableMenuAnchor } from "./tableContextMenu";
 import { closeTextMenu, textMenuAnchor } from "./textContextMenu";
@@ -26,15 +27,14 @@ afterEach(() => {
   mounted = [];
 });
 
-function openEditor(readOnly = false): EditorView {
+function openEditor(protection: EditingProtection = "none"): EditorView {
   const mount = document.createElement("div");
   document.body.appendChild(mount);
   const { doc, session } = importDocx(makeDocx(BODY));
   const view = createEditorView({
     mount,
-    state: createEditorState(doc),
+    state: createEditorState(doc, { protection }),
     defaults: session.defaults,
-    readOnly,
     onStateChange: () => undefined,
   });
   mounted.push(() => {
@@ -98,7 +98,7 @@ describe("right clicking the text", () => {
   });
 
   it("does not block when readOnly", () => {
-    const view = openEditor(true);
+    const view = openEditor("readOnly");
     expect(rightClickAt(view, bodyParagraph(view), 2)).toBe(false);
     expect(textMenuAnchor(view.state)).toBeNull();
   });

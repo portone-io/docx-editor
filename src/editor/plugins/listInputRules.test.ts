@@ -74,7 +74,6 @@ function open(body: string, options: { numbering?: boolean } = {}): Opened {
     mount: document.createElement("div"),
     state,
     defaults: session.defaults,
-    readOnly: false,
     onStateChange: () => {},
   });
   mounted.view = view;

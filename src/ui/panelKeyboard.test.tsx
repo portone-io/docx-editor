@@ -14,6 +14,7 @@ import { TextSelection } from "prosemirror-state";
 import { act, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { decode, makeDocx } from "../__testing__/docx";
+import { EDITING } from "../__testing__/mode";
 import { renderInto } from "../__testing__/react";
 import { DocxEditor, type DocxEditorHandle } from "../DocxEditor";
 import { lockSelection } from "../editor/commands/lockCommands";
@@ -43,7 +44,12 @@ const render = (element: ReactNode) => renderInto(host, element);
 function mount() {
   const box: { current: DocxEditorHandle | null } = { current: null };
   const unmount = render(
-    <DocxEditor document={DOCUMENT} ref={box} renderImportError={() => null} />
+    <DocxEditor
+      document={DOCUMENT}
+      mode={EDITING}
+      ref={box}
+      renderImportError={() => null}
+    />
   );
   const handle = box.current;
   if (!handle) throw new Error("the ref was not attached");

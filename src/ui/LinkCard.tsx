@@ -64,14 +64,12 @@ export interface LinkCardProps {
   view: EditorView;
   state: EditorState;
   link: ActiveLinkSpan;
-  readOnly?: boolean;
 }
 
 export function LinkCard({
   view,
   state,
   link,
-  readOnly = false,
 }: LinkCardProps): ReactElement | null {
   const box = useRef<HTMLDivElement | null>(null);
   const [hidden, setHidden] = useState(false);
@@ -122,7 +120,7 @@ export function LinkCard({
           <ExternalLink size={ICON_SIZE} aria-hidden="true" />
         </button>
       )}
-      {!readOnly && openLinkPanel(state) && (
+      {openLinkPanel(state) && (
         <button
           type="button"
           className={editorClassNames.toolbarButton}
@@ -134,7 +132,7 @@ export function LinkCard({
           <Pencil size={ICON_SIZE} aria-hidden="true" />
         </button>
       )}
-      {!readOnly && removeLink(state) && (
+      {removeLink(state) && (
         <button
           type="button"
           className={editorClassNames.toolbarButton}

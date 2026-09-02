@@ -224,7 +224,6 @@ describe("the indentation the level specifies", () => {
       mount,
       state: createEditorState(doc, { numbering }),
       defaults: { fontSizePt: null, fontFamily: null, lineSpacing: null },
-      readOnly: false,
       onStateChange: () => {},
     });
     mounted.view = view;
@@ -291,7 +290,6 @@ describe("list numbers inside a table cell", () => {
       mount,
       state: createEditorState(doc, { numbering }),
       defaults: session.defaults,
-      readOnly: false,
       onStateChange: () => {},
     });
     mounted.view = view;

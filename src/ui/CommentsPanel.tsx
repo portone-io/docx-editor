@@ -6,6 +6,7 @@ import {
   addComment,
   addCommentReply,
   type CommentAuthor,
+  canEditComment,
   type DocumentComment,
   documentComments,
   removeComment,
@@ -15,6 +16,7 @@ import {
   updateComment,
   updateCommentReply,
 } from "../editor/commands/commentCommands";
+import { editingProtection } from "../schema/protectionState";
 import { editorClassNames } from "../styles/classNames";
 import { CommentComposer, FocusedTextarea } from "./comments/CommentComposer";
 import {
@@ -52,9 +54,9 @@ function sameTarget(left: EditTarget | null, right: EditTarget): boolean {
 export interface CommentsPanelProps {
   view: EditorView;
   state: EditorState;
-  readOnly: boolean;
   composerOpen: boolean;
-  author: CommentAuthor;
+  /** Whose comments the composers write. Null for a reader, who is offered none */
+  author: CommentAuthor | null;
   closeComposer: () => void;
   scrollContainer: HTMLElement | null;
   allCommentsOpen: boolean;
@@ -63,7 +65,6 @@ export interface CommentsPanelProps {
 export function CommentsPanel({
   view,
   state,
-  readOnly,
   composerOpen,
   author,
   closeComposer,
@@ -72,6 +73,12 @@ export function CommentsPanel({
 }: CommentsPanelProps): ReactElement {
   // biome-ignore lint/correctness/useExhaustiveDependencies: comment data changes with the document, not with selection-only transactions
   const comments = useMemo(() => documentComments(state), [state.doc]);
+  // Writing, replying and settling a thread are open to whoever the protection lets comment;
+  // editing and deleting a body are the author's, which `canEditComment` answers per body
+  const writer =
+    author !== null && editingProtection(state) !== "readOnly" ? author : null;
+  const canEdit = (commentId: string, replyId: string | null = null) =>
+    writer !== null && canEditComment(state, commentId, replyId);
   const panel = useRef<HTMLElement | null>(null);
   const [editing, setEditing] = useState<EditTarget | null>(null);
   const [draft, setDraft] = useState("");
@@ -150,7 +157,7 @@ export function CommentsPanel({
         className={editorClassNames.commentsCanvas}
         style={{ height: allCommentsOpen ? undefined : `${canvasHeight}px` }}
       >
-        {composerOpen && !readOnly && (
+        {composerOpen && writer !== null && (
           <div
             className={editorClassNames.commentPosition}
             data-comment-position={COMPOSER_POSITION}
@@ -163,7 +170,7 @@ export function CommentsPanel({
             }
           >
             <CommentComposer
-              author={author}
+              author={writer}
               label="Comment text"
               submitLabel="Comment"
               onClose={closeComposer}
@@ -172,8 +179,9 @@ export function CommentsPanel({
                   view,
                   addComment({
                     text,
-                    author: author.name,
-                    initials: author.initials,
+                    author: writer.name,
+                    authorId: writer.id,
+                    initials: writer.initials,
                   })
                 )
               }
@@ -182,7 +190,8 @@ export function CommentsPanel({
         )}
         {visible.map((comment) => {
           const rootTarget = { commentId: comment.id, replyId: null };
-          const rootEditing = !readOnly && sameTarget(editing, rootTarget);
+          const rootOwned = canEdit(comment.id);
+          const rootEditing = rootOwned && sameTarget(editing, rootTarget);
           return (
             <article
               className={editorClassNames.commentPosition}
@@ -212,9 +221,9 @@ export function CommentsPanel({
                       </span>
                     )}
                   </button>
-                  {!readOnly && !rootEditing && (
+                  {writer !== null && !rootEditing && (
                     <div className={editorClassNames.commentIconActions}>
-                      {!comment.resolved && (
+                      {rootOwned && !comment.resolved && (
                         <button
                           type="button"
                           aria-label="Edit"
@@ -247,7 +256,7 @@ export function CommentsPanel({
                           <Check size={16} aria-hidden="true" />
                         )}
                       </button>
-                      {!comment.resolved && (
+                      {rootOwned && !comment.resolved && (
                         <button
                           type="button"
                           aria-label="Delete"
@@ -266,7 +275,7 @@ export function CommentsPanel({
                     value={draft}
                     onChange={setDraft}
                   />
-                ) : readOnly || comment.resolved ? (
+                ) : writer === null || comment.resolved ? (
                   <p className={editorClassNames.commentBody}>{comment.text}</p>
                 ) : (
                   <button
@@ -281,23 +290,19 @@ export function CommentsPanel({
                     {comment.text}
                   </button>
                 )}
-                {!readOnly && (
+                {rootEditing && (
                   <div className={editorClassNames.commentActions}>
-                    {rootEditing ? (
-                      <>
-                        <button type="button" onClick={() => setEditing(null)}>
-                          Cancel
-                        </button>
-                        <button
-                          type="button"
-                          className={editorClassNames.commentPrimaryAction}
-                          disabled={draft.trim().length === 0}
-                          onClick={() => saveEdit(comment, null)}
-                        >
-                          Save
-                        </button>
-                      </>
-                    ) : null}
+                    <button type="button" onClick={() => setEditing(null)}>
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      className={editorClassNames.commentPrimaryAction}
+                      disabled={draft.trim().length === 0}
+                      onClick={() => saveEdit(comment, null)}
+                    >
+                      Save
+                    </button>
                   </div>
                 )}
                 {comment.replies.map((reply) => {
@@ -305,7 +310,8 @@ export function CommentsPanel({
                     commentId: comment.id,
                     replyId: reply.id,
                   };
-                  const isEditing = !readOnly && sameTarget(editing, target);
+                  const replyOwned = canEdit(comment.id, reply.id);
+                  const isEditing = replyOwned && sameTarget(editing, target);
                   return (
                     <div
                       className={editorClassNames.commentReply}
@@ -332,7 +338,7 @@ export function CommentsPanel({
                           {reply.text}
                         </p>
                       )}
-                      {!readOnly && !comment.resolved && (
+                      {replyOwned && !comment.resolved && (
                         <div className={editorClassNames.commentActions}>
                           {isEditing ? (
                             <>
@@ -387,24 +393,27 @@ export function CommentsPanel({
                     </div>
                   );
                 })}
-                {replying === comment.id && !readOnly && !comment.resolved && (
-                  <CommentComposer
-                    author={author}
-                    label="Reply text"
-                    submitLabel="Reply"
-                    onClose={() => setReplying(null)}
-                    onSubmit={(text) =>
-                      run(
-                        view,
-                        addCommentReply(comment.id, {
-                          text,
-                          author: author.name,
-                          initials: author.initials,
-                        })
-                      )
-                    }
-                  />
-                )}
+                {replying === comment.id &&
+                  writer !== null &&
+                  !comment.resolved && (
+                    <CommentComposer
+                      author={writer}
+                      label="Reply text"
+                      submitLabel="Reply"
+                      onClose={() => setReplying(null)}
+                      onSubmit={(text) =>
+                        run(
+                          view,
+                          addCommentReply(comment.id, {
+                            text,
+                            author: writer.name,
+                            authorId: writer.id,
+                            initials: writer.initials,
+                          })
+                        )
+                      }
+                    />
+                  )}
               </div>
             </article>
           );

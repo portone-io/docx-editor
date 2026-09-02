@@ -2,6 +2,7 @@
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { makeNotesDocx } from "../__testing__/docx";
+import { EDITING } from "../__testing__/mode";
 import { renderInto } from "../__testing__/react";
 import { DocxEditor } from "../DocxEditor";
 
@@ -25,7 +26,11 @@ describe("the document notes panel", () => {
     act(() => {
       unmount = renderInto(
         host,
-        <DocxEditor document={makeNotesDocx()} renderImportError={() => null} />
+        <DocxEditor
+          document={makeNotesDocx()}
+          mode={EDITING}
+          renderImportError={() => null}
+        />
       );
     });
 

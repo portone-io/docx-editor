@@ -4,6 +4,7 @@ import { TextSelection } from "prosemirror-state";
 import { act, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { decode, makeDocx } from "../__testing__/docx";
+import { AUTHOR, EDITING } from "../__testing__/mode";
 import { renderInto } from "../__testing__/react";
 import {
   DocxEditor,
@@ -72,6 +73,7 @@ const WITH_TABLE = makeDocx(
 /** The mode a screen where a template is authored mounts the editor in */
 const AUTHORING: DocxEditorMode = {
   kind: "edit",
+  author: AUTHOR,
   locking: true,
 };
 
@@ -84,6 +86,7 @@ function mount(bytes: Uint8Array, props: { mode?: DocxEditorMode } = {}) {
       document={bytes}
       ref={box}
       renderImportError={() => null}
+      mode={EDITING}
       {...props}
     />
   );

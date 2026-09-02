@@ -55,6 +55,8 @@ export type {
 } from "./ooxml/errors";
 export { DocxExportError, DocxImportError } from "./ooxml/errors";
 export { docxSchema } from "./schema";
+/** Whose comments the panel offers to edit, which `DocxEditorMode` takes */
+export type { EditableComments } from "./schema/protection";
 /**
  * The lists the built-in pickers offer. They are exported so that a toolbar of your own can
  * offer the same ones without writing them out again; the pickers themselves read these very
