@@ -54,6 +54,7 @@
     "addCommentReply",
     "canAddComment",
     "canDecreaseIndent",
+    "canEditComment",
     "canFormatText",
     "canIncreaseIndent",
     "canInsertImage",

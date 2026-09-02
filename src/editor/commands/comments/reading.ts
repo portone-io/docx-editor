@@ -3,6 +3,8 @@
 import type { Node as PMNode } from "prosemirror-model";
 import type { EditorState } from "prosemirror-state";
 import type { CommentReplyData } from "../../../docx/comments";
+import { commentOwned } from "../../../schema/protection";
+import { protectionOf } from "../../../schema/protectionState";
 import type { DocumentComment } from "./model";
 
 interface MarkerPositions {
@@ -72,3 +74,25 @@ export function documentComments(
   });
 }
 
+/**
+ * Whether the body of this comment, or of one of its replies, may be edited or deleted here: the
+ * protection lets comments be edited at all, and the body is one of one's own to edit
+ * (`schema/protection`). Replying and settling a thread are not governed by this; a comment command
+ * asked without `dispatch` answers for those.
+ */
+export function canEditComment(
+  state: EditorState,
+  commentId: string,
+  replyId: string | null = null
+): boolean {
+  const rules = protectionOf(state);
+  if (rules.protection === "readOnly") return false;
+  const comment = documentComments(state).find(
+    (entry) => entry.id === commentId
+  );
+  const body =
+    replyId === null
+      ? comment
+      : comment?.replies.find((reply) => reply.id === replyId);
+  return body !== undefined && commentOwned(rules, body.authorId);
+}

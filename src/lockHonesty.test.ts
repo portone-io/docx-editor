@@ -388,6 +388,8 @@ const NOT_A_COMMAND: Readonly<Record<string, string>> = {
   activeTextColor: "a query about the selection",
   canDecreaseIndent: "the query the decrease-indent button is drawn from",
   canAddComment: "the query the add-comment button is drawn from",
+  canEditComment:
+    "the query the edit and delete buttons of a comment are drawn from",
   canFormatText: "the query the character formatting controls are drawn from",
   canIncreaseIndent: "the query the increase-indent button is drawn from",
   canInsertImage: "the query the image button is drawn from",

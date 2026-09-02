@@ -80,6 +80,7 @@ export {
   addComment,
   addCommentReply,
   canAddComment,
+  canEditComment,
   documentComments,
   removeComment,
   removeCommentReply,
