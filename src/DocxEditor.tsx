@@ -82,10 +82,9 @@ export interface DocxEditorHandle {
  * an authoring act, not something every reader of a form should be handed. A lock the document
  * already carries holds whichever mode is chosen.
  *
- * `contextMenus: false` leaves the right click to the browser, for a consumer drawing menus of
- * its own. The plugins that take the browser's menu away go into the editor state, which is built
- * when the editor mounts, so this is read once there like `plugins`. The kind itself, the author
- * and `editableComments` are read on every render and take effect on the open document.
+ * The kind, the author and `editableComments` are read on every render and take effect on the
+ * open document. Whether the right click opens the editor's own menus is `contextMenus`, a prop
+ * of its own, since the plugins behind it are read when the editor mounts rather than per render.
  */
 export type DocxEditorMode =
   | { kind: "readOnly" }
@@ -99,7 +98,6 @@ export type DocxEditorMode =
       author: CommentAuthor;
       editableComments?: EditableComments;
       toolbar?: boolean;
-      contextMenus?: boolean;
       locking?: boolean;
     };
 
@@ -181,6 +179,16 @@ export interface DocxEditorProps {
    * `key` and remount.
    */
   plugins?: readonly Plugin[];
+  /**
+   * Whether the right click opens the editor's own menus. `false` leaves it to the browser,
+   * which is what a consumer drawing menus of its own wants. Defaults to `true`.
+   *
+   * Read once, when the editor mounts, like `plugins`: the plugins that take the browser's menu
+   * away go into the editor state, which is built there. A menu the protection has nothing to
+   * offer from stands down by itself, so a mode change needs nothing here. Later changes are
+   * ignored; to turn the menus around, change the `key` and remount.
+   */
+  contextMenus?: boolean;
   className?: string;
   style?: CSSProperties;
   onReady?: (view: EditorView) => void;
@@ -325,6 +333,7 @@ function DocxEditorSurface(
     fontFallbacks,
     presets,
     plugins,
+    contextMenus,
     className,
     style,
     onReady,
@@ -345,11 +354,9 @@ function DocxEditorSurface(
   );
   // Held from the first render on, so a value rebuilt on every render does not rebuild the editor
   const mountedPlugins = useRef(plugins).current;
-  // A read-only editor keeps the menu plugins, which stand down while the protection shuts what
+  // The plugins are mounted whatever the mode is, and stand down while the protection shuts what
   // they offer, so that opening the document up again brings the menus back with it
-  const mountedContextMenus = useRef(
-    mode.kind !== "edit" || (mode.contextMenus ?? true)
-  ).current;
+  const mountedContextMenus = useRef(contextMenus ?? true).current;
   const mountedFontFallbacks = useRef(fontFallbacks).current;
   const layerRef = useRef<HTMLDivElement | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);

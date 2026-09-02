@@ -5,6 +5,7 @@
 Add a `comment` mode, a reviewer's surface: the text may be selected and copied but not changed, while comments may be written, answered, resolved and reopened.
 It is the standing OOXML document protection calls `comments`, beside the `readOnly` and `edit` modes the editor already had.
 The mode may be changed on an open document; the editor, its history and the consumer's plugins stay.
+`contextMenus` moves out of the mode and onto `DocxEditor` itself, beside `plugins`: the plugins behind it are read once when the editor mounts, so `mode: { kind: "edit", contextMenus: false }` becomes `contextMenus={false}` on the component and holds through every later mode.
 
 The mode now names whose comments are written.
 `mode: { kind: "comment" | "edit", author: { id, name, initials? } }` replaces the `commentAuthor` prop, and `id` is required: a reader (`{ kind: "readOnly" }`) names none.

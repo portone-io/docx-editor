@@ -690,24 +690,33 @@ describe("DocxEditor", () => {
     const menuRows = () =>
       host.querySelectorAll('button[role="menuitem"]').length;
 
-    function mount(mode: DocxEditorMode = EDITING) {
+    /** jsdom draws nothing, so the spot a right click lands on is answered here: the caret the
+     * state already holds, which is what a click on the current selection lands on */
+    function answerCoords(handle: DocxEditorHandle): void {
+      handle.view.posAtCoords = () => ({
+        pos: handle.view.state.selection.head,
+        inside: -1,
+      });
+    }
+
+    function mount({
+      mode = EDITING,
+      contextMenus,
+    }: {
+      mode?: DocxEditorMode;
+      contextMenus?: boolean;
+    } = {}) {
       const box = handleBox();
       const unmount = render(
         <DocxEditor
           document={PARAGRAPH_AND_TABLE}
           mode={mode}
+          contextMenus={contextMenus}
           ref={box}
           renderImportError={() => null}
         />
       );
-      const handle = box.current;
-      if (!handle) throw new Error("the ref was not attached");
-      // jsdom draws nothing, so the spot a right click lands on is answered here: the caret the
-      // state already holds, which is what a click on the current selection lands on
-      handle.view.posAtCoords = () => ({
-        pos: handle.view.state.selection.head,
-        inside: -1,
-      });
+      answerCoords(attached(box));
       return unmount;
     }
 
@@ -735,13 +744,42 @@ describe("DocxEditor", () => {
     });
 
     it("hands the right click back to the browser where the consumer turned them off", () => {
-      const unmount = mount({
-        kind: "edit",
-        author: AUTHOR,
-        contextMenus: false,
-      });
+      const unmount = mount({ contextMenus: false });
 
       // Nothing answered the event, so the browser draws the menu it always would
+      expect(rightClick("p")).toBe(false);
+      expect(rightClick("td")).toBe(false);
+      expect(menuRows()).toBe(0);
+      unmount();
+    });
+
+    /** The plugins are read when the editor mounts, whichever mode it mounted in */
+    it("keeps them off after a switch into editing, since the choice is not the mode's", () => {
+      const box = handleBox();
+
+      function Host() {
+        const [editing, setEditing] = useState(false);
+        return (
+          <>
+            <button type="button" onClick={() => setEditing(true)}>
+              Edit
+            </button>
+            <DocxEditor
+              document={PARAGRAPH_AND_TABLE}
+              mode={editing ? EDITING : { kind: "readOnly" }}
+              contextMenus={false}
+              ref={box}
+              renderImportError={() => null}
+            />
+          </>
+        );
+      }
+
+      const unmount = render(<Host />);
+      answerCoords(attached(box));
+      act(() => host.querySelector("button")?.click());
+      expect(editingProtection(attached(box).view.state)).toBe("none");
+
       expect(rightClick("p")).toBe(false);
       expect(rightClick("td")).toBe(false);
       expect(menuRows()).toBe(0);

@@ -8,12 +8,14 @@ and context menus.
 
 ## Hide the built-in controls
 
-Disable either surface through `mode`:
+`mode.toolbar` turns the toolbar off, and `contextMenus`, a prop of its own, leaves the right
+button to the browser:
 
 ```tsx
 <DocxEditor
   document={file}
-  mode={{ kind: "edit", toolbar: false, contextMenus: false }}
+  mode={{ kind: "edit", author, toolbar: false }}
+  contextMenus={false}
 />
 ```
 

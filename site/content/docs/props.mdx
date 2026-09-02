@@ -12,7 +12,7 @@ the longer explanation.
 | Prop | Type | Default | What it does |
 | --- | --- | --- | --- |
 | `document` | `ArrayBuffer \| Uint8Array \| Blob` | required | The document to open. Bytes open immediately; a `Blob` or `File` is read first, and whichever document arrived last is the one opened. |
-| `mode` | `DocxEditorMode` | `{ kind: "edit" }` | What the editor is for. See [Mode](#mode). |
+| `mode` | `DocxEditorMode` | required | What the editor is for. See [Mode](#mode). |
 | `renderImportError` | `(error: DocxImportError) => ReactNode` | built-in panel | What to render in place of the editor when the document was refused. |
 | `showPageGuides` | `boolean` | `true` | Whether to draw approximate page boundaries over the document's paper. Drawn in read-only mode too. |
 | `zoom` | `DocxEditorZoom` | uncontrolled | The visual scale, when the host owns the selection. |
@@ -20,16 +20,16 @@ the longer explanation.
 | `onZoomChange` | `(zoom: DocxEditorZoom) => void` | — | Receives toolbar requests. A controlled host must update `zoom` for one to take effect. |
 | `fontFallbacks` | `FontFallbacks` | `DEFAULT_FONT_FALLBACKS` | The fonts drawn in place of names missing from the reader's machine. See [Styling](/docs/styling#font-fallbacks). |
 | `presets` | `DocxEditorPresets` | package defaults | The lists the built-in pickers offer. See [Custom controls](/docs/custom-controls#presets-and-plugins). |
-| `commentAuthor` | `CommentAuthor` | `{ name: "Anonymous" }` | The identity written by the built-in comment and reply composers. |
 | `plugins` | `readonly Plugin[]` | — | ProseMirror plugins placed ahead of the built-in ones, so a host keymap sees an event first. |
+| `contextMenus` | `boolean` | `true` | Whether the right click opens the editor's own menus. `false` leaves the right button to the browser, which is what a host drawing menus of its own wants. |
 | `className` | `string` | — | Added to the editor's outer frame alongside its own class. |
 | `style` | `CSSProperties` | — | Applied to that same frame. |
 | `onReady` | `(view: EditorView) => void` | — | Called with the view once the editor has mounted a document. |
 | `onChange` | `() => void` | — | Called on every editor state change, which includes cursor and selection moves. |
 
-`DocxEditorProps`, `DocxEditorMode`, `DocxEditorZoom`, `DocxEditorPresets`, `CommentAuthor`, and
-`DocxSource` are all exported from the root entry, so a wrapper component can name them without
-restating their shapes.
+`DocxEditorProps`, `DocxEditorMode`, `DocxEditorZoom`, `DocxEditorPresets`, `CommentAuthor`,
+`EditableComments`, and `DocxSource` are all exported from the root entry, so a wrapper component
+can name them without restating their shapes.
 
 ## Mode
 
@@ -40,16 +40,25 @@ edits and therefore has no toolbar and no context menus to offer.
 type DocxEditorMode =
   | { kind: "readOnly" }
   | {
+      kind: "comment";
+      author: CommentAuthor;
+      editableComments?: EditableComments;
+    }
+  | {
       kind: "edit";
+      author: CommentAuthor;
+      editableComments?: EditableComments;
       toolbar?: boolean;
-      contextMenus?: boolean;
       locking?: boolean;
     };
 ```
 
-`toolbar` and `contextMenus` both default to `true`.
-`contextMenus: false` leaves the right button to the browser, which is what a host drawing menus
-of its own wants.
+The kind, the `author` comments are written under, and `editableComments` are read on every render
+and take effect on the open document.
+Whether the right button opens the editor's own menus is the `contextMenus` prop rather than part
+of a kind, because the plugins behind it are read when the editor mounts.
+
+`toolbar` defaults to `true`.
 `locking` defaults to `false` and adds the controls for settling part of a document; a lock the
 document already carries is honored in every mode.
 See [Locked content](/docs/custom-controls#locked-content) for the commands behind it.
@@ -79,7 +88,7 @@ around it:
 - `plugins`
 - `fontFallbacks`
 - `defaultZoom`
-- `mode.contextMenus`
+- `contextMenus`
 
 Building any of them inline on every render is therefore harmless.
 To change one, change the component's `key` and let it remount, which is also how the component
