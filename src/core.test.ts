@@ -212,6 +212,22 @@ describe("onlyCommentsChangedBy", () => {
     return { bytes, commented: exportDocx(state.doc, session) };
   }
 
+  /** Another author's comment, with the people part rewritten to claim it for "me" */
+  function identityStolen(): { theirs: Uint8Array; stolen: Uint8Array } {
+    const theirs = commentedBy("other").commented;
+    const peoplePart = Object.keys(unzipSync(theirs)).find((path) =>
+      path.endsWith("people.xml")
+    );
+    if (peoplePart === undefined) throw new Error("no people part");
+    const stolen = repacked(theirs, {
+      [peoplePart]: partText(theirs, peoplePart).replace(
+        'userId="other"',
+        'userId="me"'
+      ),
+    });
+    return { theirs, stolen };
+  }
+
   const allowed: CommentOnlyVerdict = { ok: true };
   const refusedFor = (
     reason: "body-changed" | "comment-not-owned" | "comment-author-forged"
@@ -287,20 +303,35 @@ describe("onlyCommentsChangedBy", () => {
     });
 
     it("does not hold for a people part rewritten to claim another's comment", () => {
-      const theirs = commentedBy("other").commented;
-      const peoplePart = Object.keys(unzipSync(theirs)).find((path) =>
-        path.endsWith("people.xml")
-      );
-      if (peoplePart === undefined) throw new Error("no people part");
-      const stolen = repacked(theirs, {
-        [peoplePart]: partText(theirs, peoplePart).replace(
-          'userId="other"',
-          'userId="me"'
-        ),
-      });
+      const { theirs, stolen } = identityStolen();
       expect(onlyCommentsChangedBy(theirs, stolen, "me")).toEqual(
         refusedFor("comment-author-forged")
       );
+    });
+  });
+
+  describe("for a moderator's file", () => {
+    it("holds for another author's comment rewritten under `all`", () => {
+      const mine = commentedBy("me").commented;
+      const { doc, session } = importDocx(mine);
+      let state = createEditorState(doc, { editableComments: "all" });
+      updateComment("0", "rewritten")(state, (tr) => (state = state.apply(tr)));
+      const rewritten = exportDocx(state.doc, session);
+      expect(onlyCommentsChangedBy(mine, rewritten, "other")).toEqual(
+        refusedFor("comment-not-owned")
+      );
+      expect(
+        onlyCommentsChangedBy(mine, rewritten, "other", {
+          editableComments: "all",
+        })
+      ).toEqual(allowed);
+    });
+
+    it("does not hold for a rewritten identity under `all` either", () => {
+      const { theirs, stolen } = identityStolen();
+      expect(
+        onlyCommentsChangedBy(theirs, stolen, "me", { editableComments: "all" })
+      ).toEqual(refusedFor("comment-author-forged"));
     });
   });
 

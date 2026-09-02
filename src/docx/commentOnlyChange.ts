@@ -15,6 +15,7 @@ import {
   commentAdditionsBy,
   commentEditsOwned,
   commentIdentitiesKept,
+  type EditableComments,
 } from "../schema/protection";
 import {
   COMMENTS_CONTENT_TYPE,
@@ -217,7 +218,8 @@ function packageKept(
 function storyKept(
   before: PMNode,
   after: PMNode,
-  authorId: string
+  authorId: string,
+  editableComments: EditableComments
 ): CommentOnlyVerdict {
   if (!changesOnlyComments(before, after)) return refused("body-changed");
   if (
@@ -230,7 +232,7 @@ function storyKept(
     !commentEditsOwned(before, after, {
       protection: "comments",
       authorId,
-      editableComments: "own",
+      editableComments,
     })
   ) {
     return refused("comment-not-owned");
@@ -249,16 +251,22 @@ function storyKept(
  * carry this identity: a file can claim any author, and the editor's own hand in writing it is
  * not there to vouch for it. An identity already recorded is nobody's to rewrite.
  *
+ * `editableComments: "all"` judges the file of an editor opened for a moderator, where every
+ * comment was theirs to edit; an identity is nobody's to rewrite under either setting.
+ *
  * Bytes that are not a readable docx are turned down the way opening one is, with a
  * `DocxImportError`, rather than being answered as a file that changed.
  */
 export function onlyCommentsChangedBy(
   original: DocxBytes,
   submitted: DocxBytes,
-  authorId: string
+  authorId: string,
+  { editableComments = "own" }: { editableComments?: EditableComments } = {}
 ): CommentOnlyVerdict {
   const before = importDocx(original);
   const after = importDocx(submitted);
   const packaged = packageKept(before.session, after.session);
-  return packaged.ok ? storyKept(before.doc, after.doc, authorId) : packaged;
+  return packaged.ok
+    ? storyKept(before.doc, after.doc, authorId, editableComments)
+    : packaged;
 }

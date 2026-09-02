@@ -21,3 +21,4 @@ Ask `canEditComment` what a control may offer, or open the editor for a moderato
 
 Finally, a server taking a file back can hold the same rule over the bytes with `onlyCommentsChangedBy` from `@portone/docx-editor/core`, since the editor's own refusal is a courtesy the browser could go around.
 It judges the whole package - every other part has to arrive as it left, the paper and the styles included - and answers `{ ok: true }` or `{ ok: false, reason }`, naming what it refused: a changed body, a comment that is not the author's, a forged author, a changed part, or a changed relationship.
+Pass `{ editableComments: "all" }` for a file that came from a moderator's editor, where every comment was editable; an author's identity is refused under either setting.
