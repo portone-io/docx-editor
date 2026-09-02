@@ -8,7 +8,14 @@ import {
   TextSelection,
 } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
-import { act, type ReactNode, useEffect, useRef, useState } from "react";
+import {
+  act,
+  type ReactNode,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { decode, makeDocx, readFixture } from "./__testing__/docx";
 import { AUTHOR, EDITING } from "./__testing__/mode";
@@ -634,6 +641,46 @@ describe("DocxEditor", () => {
       expect(editor.editable).toBe(true);
       typeInto(editor);
       expect(editor.state.doc.textContent).toBe("typed source");
+      unmount();
+    });
+
+    /**
+     * A parent's layout effect is the last thing to run before the browser paints, so what it
+     * reads there is what the frame about to be drawn stands on: the sheet and the protection
+     * behind it have to have caught up with the mode by then, or the frame draws a body that
+     * still takes typing.
+     */
+    it("has the sheet and the protection caught up with the mode before the frame is painted", () => {
+      const box = handleBox();
+      const painted: string[] = [];
+
+      function Host() {
+        const [commenting, setCommenting] = useState(false);
+        useLayoutEffect(() => {
+          const view = box.current?.view;
+          if (view) {
+            painted.push(`${editingProtection(view.state)}/${view.editable}`);
+          }
+        });
+        return (
+          <>
+            <button type="button" onClick={() => setCommenting(true)}>
+              Comment
+            </button>
+            <DocxEditor
+              document={ONE_PARAGRAPH}
+              mode={commenting ? COMMENTING : { kind: "edit", author: AUTHOR }}
+              ref={box}
+              renderImportError={() => null}
+            />
+          </>
+        );
+      }
+
+      const unmount = render(<Host />);
+      act(() => host.querySelector("button")?.click());
+
+      expect(painted).toEqual(["none/true", "comments/false"]);
       unmount();
     });
   });

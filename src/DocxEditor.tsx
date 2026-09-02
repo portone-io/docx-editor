@@ -445,11 +445,19 @@ function DocxEditorSurface(
 
   // A mode changed on an open document is put into the state it already holds, so the view, its
   // history and the consumer's plugins all stay: `reconfigure` would keep the protection plugin's
-  // state too, which is why it goes in as a transaction
+  // state too, which is why it goes in as a transaction.
+  //
+  // It goes in from a layout effect, so the dispatch and the render it leaves behind both close
+  // before the browser paints: no frame is drawn with the state under one protection and the
+  // controls around it under another.
   const authorId = author?.id ?? null;
-  useEffect(() => {
+  const mounted = live !== null;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a mode written inline is a new object on every render, so the author is watched through `authorId`, the part of it the protection holds
+  useLayoutEffect(() => {
+    // A composer the mode before left open has nothing to write into a document that takes no comment
+    if (protection === "readOnly") setCommentComposerOpen(false);
     const view = viewRef.current;
-    if (!view || !live) return;
+    if (!view || !mounted) return;
     const held = protectionOf(view.state);
     if (
       held.protection === protection &&
@@ -461,7 +469,7 @@ function DocxEditorSurface(
     view.dispatch(
       setProtection(view.state.tr, { protection, author, editableComments })
     );
-  }, [live, protection, author, authorId, editableComments]);
+  }, [mounted, protection, authorId, editableComments]);
 
   useImperativeHandle<
     DocxEditorHandle | null,
@@ -490,8 +498,8 @@ function DocxEditorSurface(
   }
 
   // What the state on screen lets through, which is what every control below asks rather than
-  // the mode itself: the two agree once the effect above has run, and the state is what the guard
-  // answers to in the meantime
+  // the mode itself. The protection goes in from a layout effect above, so the state a control
+  // reads and the mode it was drawn for are the same on every frame the reader sees
   const bodyOpen = live !== null && editingProtection(live.state) === "none";
   const commentsOpenToWrite =
     live !== null && editingProtection(live.state) !== "readOnly";
@@ -555,7 +563,8 @@ function DocxEditorSurface(
         data-comments={showComments ? "visible" : undefined}
         style={zoomVariable(effectiveZoom)}
       >
-        {live && mode.kind !== "edit" && comments.length > 0 && (
+        {/* Where the body is shut there is no toolbar, so the comments are reached from here */}
+        {live && !bodyOpen && comments.length > 0 && (
           <button
             type="button"
             className={editorClassNames.commentsToggle}
