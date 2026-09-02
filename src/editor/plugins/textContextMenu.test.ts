@@ -103,12 +103,39 @@ describe("right clicking the text", () => {
     expect(textMenuAnchor(view.state)).toBeNull();
   });
 
-  /** A commenter is offered the comment entry, so the menu is worth taking the click for */
-  it("opens for a commenter, and takes a cell click too since the table menu has nothing to offer", () => {
+  /** A commenter is offered copying and the comment entry, so the click is worth taking */
+  it("opens for a commenter where the click lands in the selected text", () => {
     const view = openEditor("comments");
+    selectText(view, 1, 3);
+
     expect(rightClickAt(view, bodyParagraph(view), 2)).toBe(true);
     expect(textMenuAnchor(view.state)).not.toBeNull();
-    rightClickAt(view, cellWithText(view, "Left"), textStartIn(view, "Left"));
+  });
+
+  /** Every entry a shut body leaves is about the selected text, so a menu over none stands dead */
+  it("does not block for a commenter with nothing selected", () => {
+    const view = openEditor("comments");
+    expect(rightClickAt(view, bodyParagraph(view), 2)).toBe(false);
+    expect(textMenuAnchor(view.state)).toBeNull();
+  });
+
+  it("does not block for a commenter clicking outside the selected text", () => {
+    const view = openEditor("comments");
+    selectText(view, 1, 3);
+
+    expect(rightClickAt(view, bodyParagraph(view), 5)).toBe(false);
+    expect(textMenuAnchor(view.state)).toBeNull();
+    // The click left the selection where it was, the way the browser's own menu does
+    expect(view.state.selection.from).toBe(1);
+    expect(view.state.selection.to).toBe(3);
+  });
+
+  it("takes a commenter's cell click over the selected text, since the table menu has nothing to offer", () => {
+    const view = openEditor("comments");
+    const at = textStartIn(view, "Left");
+    selectText(view, at, at + 2);
+
+    expect(rightClickAt(view, cellWithText(view, "Left"), at + 1)).toBe(true);
     expect(textMenuAnchor(view.state)).not.toBeNull();
     expect(tableMenuAnchor(view.state)).toBeNull();
   });

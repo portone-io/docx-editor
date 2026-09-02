@@ -137,6 +137,12 @@ export function textContextMenu(): Plugin<TextMenuAnchor | null> {
           if (editingProtection(view.state) === "readOnly") return false;
           if (!isInEditor(view, event.target)) return false;
           const spot = clickedSpot(view, event);
+          // Under a shut body the entries left are the ones about the selected text: copying it
+          // and commenting on it. A click landing anywhere else would open a menu with nothing to
+          // do at all, so the browser's own menu is what that click is worth
+          if (editsShut(view.state) && !isInSelection(view.state, spot)) {
+            return false;
+          }
           if (forTableMenu(view, event.target, spot)) return false;
           event.preventDefault();
           view.dispatch(openMenu(view.state, event, spot));

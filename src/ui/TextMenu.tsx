@@ -152,7 +152,8 @@ export function TextMenu({
   const selected = !state.selection.empty;
   const shut = selectionTouchesLocked(state);
   // A commenter gets what a reader of the text may do with it - copy it, and comment on it - while
-  // the entries that change the body wait for a mode that lets the body be changed
+  // the entries that change the body wait for a mode that lets the body be changed. The plugin
+  // opens this menu over the selected text alone there, so neither entry is drawn dead
   const bodyOpen = !editsShut(state);
   const copy: MenuItem = {
     label: "Copy",

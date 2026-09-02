@@ -48,6 +48,24 @@ test("a commenter selects text and comments on it, and typing changes nothing", 
   ).toHaveText(target.docText);
 });
 
+/**
+ * Every entry a commenter is offered is about the selected text, so a right click landing outside
+ * one is worth more to the reader as the browser's own menu than as a menu of dead rows.
+ */
+test("a commenter right clicking with nothing selected keeps the browser's own menu", async ({
+  page,
+}) => {
+  await openHarness(page, "kitchen-sink", "comment");
+  const target = (await blocks(page)).find(
+    (block) => block.type === "paragraph" && block.docText.length > 20
+  );
+  if (!target) throw new Error("the fixture holds no paragraph long enough");
+
+  await selectText(page, target.index, 2, 0);
+  await page.evaluate(() => window.docxHarness.rightClick());
+  await expect(page.getByRole("menuitem")).toHaveCount(0);
+});
+
 test("a reader is handed the browser's own menu and no comment composer", async ({
   page,
 }) => {
