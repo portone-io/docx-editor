@@ -22,6 +22,7 @@ import { createEditorState } from "../editor/createEditor";
 import {
   changesOnlyComments,
   commentAdditionsBy,
+  isCommentNode,
   type ProtectionState,
   protectionAllows,
 } from "./protection";
@@ -33,10 +34,12 @@ const BODY =
   `<w:p>${run("Alpha ")}${run("beta")}</w:p>` + `<w:p>${run("Gamma")}</w:p>`;
 
 /** A state with nothing shut, anyone's comment included, so that every document shape below can be built through the commands */
+function stateOf(doc: PMNode): EditorState {
+  return createEditorState(doc, { editableComments: "all" });
+}
+
 function opened(): EditorState {
-  return createEditorState(importDocx(makeDocx(BODY)).doc, {
-    editableComments: "all",
-  });
+  return stateOf(importDocx(makeDocx(BODY)).doc);
 }
 
 function applied(state: EditorState, command: Command): EditorState {
@@ -78,6 +81,49 @@ const commentId = (state: EditorState): string => {
   return id;
 };
 
+/** Where the one comment reference stands, which is the node every attribute of a comment travels on */
+function referenceAt(doc: PMNode): { pos: number; node: PMNode } {
+  let found: { pos: number; node: PMNode } | null = null;
+  doc.descendants((node, pos) => {
+    if (found === null && node.type.name === "commentReference") {
+      found = { pos, node };
+    }
+    return true;
+  });
+  if (found === null) throw new Error("no comment in the document");
+  return found;
+}
+
+/**
+ * The document with the attributes of its one comment written over, which is the shape a step a
+ * consumer brought could take, and the shape a file handed back can simply claim.
+ */
+function rewritten(state: EditorState, attrs: Record<string, unknown>): PMNode {
+  const { pos, node } = referenceAt(state.doc);
+  // The document the step leaves behind rather than the state it would leave, since the guard
+  // itself refuses the step: this is a document arriving from outside the editor
+  return state.tr.setNodeMarkup(pos, undefined, { ...node.attrs, ...attrs })
+    .doc;
+}
+
+/** The document with the comment's three markers lifted off "beta" and put around "Gamma" */
+function moved(state: EditorState): PMNode {
+  const markers: { pos: number; node: PMNode }[] = [];
+  state.doc.descendants((node, pos) => {
+    if (isCommentNode(node)) markers.push({ pos, node });
+    return true;
+  });
+  const tr = state.tr;
+  for (const { pos, node } of [...markers].reverse()) {
+    tr.delete(pos, pos + node.nodeSize);
+  }
+  const target = rangeOfText(tr.doc, "Gamma");
+  const [start, end, reference] = markers.map((marker) => marker.node);
+  tr.insert(target.to, [end, reference]);
+  tr.insert(target.from, start);
+  return tr.doc;
+}
+
 function typed(state: EditorState): PMNode {
   return state.apply(state.tr.insertText("x", 1)).doc;
 }
@@ -115,6 +161,11 @@ describe("changesOnlyComments", () => {
         true
       );
     }
+  });
+
+  it("holds for a comment carried onto other text, which ownership answers for instead", () => {
+    const state = commented("other");
+    expect(changesOnlyComments(state.doc, moved(state))).toBe(true);
   });
 
   it("does not hold for typed text, with or without a comment beside it", () => {
@@ -183,6 +234,15 @@ describe("protectionAllows", () => {
       expect(protectionAllows(state.doc, after, rules("comments"))).toBe(true);
     });
 
+    it("refuses carrying it onto other text under own and takes it under all", () => {
+      const after = moved(state);
+      expect(protectionAllows(state.doc, after, rules("comments"))).toBe(false);
+      expect(protectionAllows(state.doc, after, rules("none"))).toBe(false);
+      expect(
+        protectionAllows(state.doc, after, rules("comments", "me", "all"))
+      ).toBe(true);
+    });
+
     it("takes a body edit that sweeps it away under none", () => {
       const from = rangeOfText(state.doc, "beta").from - 1;
       const swept = state.apply(
@@ -212,6 +272,13 @@ describe("protectionAllows", () => {
           )
         ).toBe(true);
       }
+    });
+
+    it("takes carrying one's own comment onto other text", () => {
+      const state = commented("me");
+      expect(protectionAllows(state.doc, moved(state), rules("comments"))).toBe(
+        true
+      );
     });
 
     it("lets the owner take a thread down with the replies others left on it", () => {
@@ -263,6 +330,45 @@ describe("protectionAllows", () => {
         ).toBe(false);
       }
     });
+  });
+});
+
+describe("a comment's identity", () => {
+  it.each([
+    ["another identity", { authorId: "me" }],
+    ["another name", { author: "Me" }],
+    ["no identity at all", { authorId: null }],
+  ])("is never rewritten into %s", (_name, attrs) => {
+    const state = commented("other");
+    const after = rewritten(state, attrs);
+    expect(protectionAllows(state.doc, after, rules("comments"))).toBe(false);
+    expect(protectionAllows(state.doc, after, rules("none"))).toBe(false);
+    expect(
+      protectionAllows(state.doc, after, rules("comments", "me", "all"))
+    ).toBe(false);
+    expect(commentAdditionsBy(state.doc, after, "me")).toBe(false);
+  });
+
+  it("is not the owner's to rewrite either", () => {
+    const state = commented("me");
+    const after = rewritten(state, { author: "Someone else" });
+    expect(protectionAllows(state.doc, after, rules("comments"))).toBe(false);
+  });
+
+  it("cannot be taken over by a rename in one round and a rewrite in the next", () => {
+    const state = commented("other");
+    const renamed = stateOf(rewritten(state, { authorId: "me", author: "Me" }));
+    const edited = applied(
+      renamed,
+      updateComment(commentId(renamed), "rewritten")
+    ).doc;
+    // Judged from the renamed document the rewrite reads as the owner's own, so the rename is
+    // where the takeover has to be refused, and it is refused however far back the judgement runs
+    expect(protectionAllows(renamed.doc, edited, rules("comments"))).toBe(true);
+    expect(protectionAllows(state.doc, renamed.doc, rules("comments"))).toBe(
+      false
+    );
+    expect(protectionAllows(state.doc, edited, rules("comments"))).toBe(false);
   });
 });
 
