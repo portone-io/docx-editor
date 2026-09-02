@@ -11,6 +11,12 @@ import {
 } from "../../ooxml/xml";
 import { readRelationships, relsPathOf, resolveTarget } from "../relationships";
 import { COMMENTS_EXTENDED_REL_TYPE, COMMENTS_REL_TYPE } from "./constants";
+import {
+  commentAuthorId,
+  type ImportedPeople,
+  NO_PEOPLE,
+  readPeople,
+} from "./people";
 
 function attribute(el: Element, localName: string): string | null {
   return (
@@ -34,6 +40,8 @@ function commentText(el: Element): string {
 export interface ImportedComment {
   id: string;
   author: string | null;
+  /** The identity the people part records for `author` under this editor's provider. Null otherwise */
+  authorId: string | null;
   initials: string | null;
   date: string | null;
   text: string;
@@ -55,6 +63,8 @@ export interface ImportedComments {
   extendedXml: string | null;
   extendedHadBom: boolean;
   extendedOrdered: readonly ImportedCommentExtension[];
+  /** The people part as opened, which is where an author's identity is looked up */
+  people: ImportedPeople;
 }
 
 export const NO_COMMENTS: ImportedComments = {
@@ -68,6 +78,7 @@ export const NO_COMMENTS: ImportedComments = {
   extendedXml: null,
   extendedHadBom: false,
   extendedOrdered: [],
+  people: NO_PEOPLE,
 };
 
 export interface ImportedCommentExtension {
@@ -139,19 +150,26 @@ function readCommentExtensions(
   return { partPath, xml: text, hadBom, byParaId, ordered };
 }
 
-/** Reads the Comments part related from the main document story. */
+/**
+ * Reads the Comments part related from the main document story.
+ *
+ * The people part is read whether or not there are comments: a document may carry one with no
+ * comment left, and a comment added to it then has to be recorded in that part rather than in a
+ * second one.
+ */
 export function readComments(
   parts: Map<string, Uint8Array>,
   mainPartPath: string
 ): ImportedComments {
+  const people = readPeople(parts, mainPartPath);
   const relationship = readRelationships(parts, relsPathOf(mainPartPath)).find(
     (entry) => entry.type === COMMENTS_REL_TYPE && !entry.external
   );
-  if (!relationship) return NO_COMMENTS;
+  if (!relationship) return { ...NO_COMMENTS, people };
 
   const partPath = resolveTarget(mainPartPath, relationship.target);
   const bytes = parts.get(partPath);
-  if (!bytes) return { ...NO_COMMENTS, partPath };
+  if (!bytes) return { ...NO_COMMENTS, partPath, people };
 
   const { text, hadBom } = decodeUtf8(bytes);
   const root = parseXml(text).documentElement;
@@ -163,10 +181,12 @@ export function readComments(
       if (id === null) return [];
       const paraId = lastParagraphId(el);
       const extension = paraId ? extensions.byParaId.get(paraId) : undefined;
+      const author = attribute(el, "author");
       return [
         {
           id,
-          author: attribute(el, "author"),
+          author,
+          authorId: author === null ? null : commentAuthorId(people, author),
           initials: attribute(el, "initials"),
           date: attribute(el, "date"),
           text: commentText(el),
@@ -209,5 +229,6 @@ export function readComments(
     extendedXml: extensions.xml,
     extendedHadBom: extensions.hadBom,
     extendedOrdered: extensions.ordered,
+    people,
   };
 }

@@ -605,6 +605,9 @@ export const docxSchema = new Schema({
         id: { default: null },
         referenceXml: { default: null },
         author: { default: null },
+        // The identity behind the display name, read from and written to the people part. Null for
+        // a comment nobody's identity is recorded for, which every comment made in Word is here
+        authorId: { default: null },
         initials: { default: null },
         date: { default: null },
         text: { default: "" },
@@ -625,6 +628,7 @@ export const docxSchema = new Schema({
             "data-comment-id": text(node.attrs.id),
             "data-reference-xml": text(node.attrs.referenceXml),
             "data-comment-author": text(node.attrs.author),
+            "data-comment-author-id": text(node.attrs.authorId),
             "data-comment-initials": text(node.attrs.initials),
             "data-comment-date": text(node.attrs.date),
             "data-comment-text": text(node.attrs.text),
@@ -648,6 +652,7 @@ export const docxSchema = new Schema({
             id: dom.getAttribute("data-comment-id"),
             referenceXml: dom.getAttribute("data-reference-xml"),
             author: dom.getAttribute("data-comment-author"),
+            authorId: dom.getAttribute("data-comment-author-id"),
             initials: dom.getAttribute("data-comment-initials"),
             date: dom.getAttribute("data-comment-date"),
             text: dom.getAttribute("data-comment-text") ?? "",

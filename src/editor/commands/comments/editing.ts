@@ -124,6 +124,7 @@ function addCommentTransaction(
       id,
       referenceXml: null,
       author: comment.author,
+      authorId: comment.authorId ?? null,
       initials: comment.initials ?? null,
       date,
       text: comment.text,
@@ -278,6 +279,7 @@ export function addCommentReply(id: string, reply: NewComment): Command {
           {
             id: replyId,
             author: reply.author,
+            authorId: reply.authorId ?? null,
             initials: reply.initials ?? null,
             date,
             text: reply.text,

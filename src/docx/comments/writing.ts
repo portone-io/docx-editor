@@ -4,7 +4,7 @@
 
 import type { Node as PMNode } from "prosemirror-model";
 import { DocxExportError } from "../../ooxml/errors";
-import { decodeUtf8, encodeUtf8, escapeXml, W_NS } from "../../ooxml/xml";
+import { encodeUtf8, escapeXml, W_NS } from "../../ooxml/xml";
 import { directoryOf, type RelationshipWriter } from "../relationships";
 import type { SessionStore } from "../session";
 import {
@@ -17,11 +17,13 @@ import {
   W14_NS,
   W15_NS,
 } from "./constants";
+import { withContentType } from "./contentTypes";
 import {
   type CommentReferenceData,
   type CommentReplyData,
   commentReferencesIn,
 } from "./model";
+import { planPeoplePart } from "./people";
 import type { ImportedComments } from "./reading";
 
 function commentsChanged(doc: PMNode, session: SessionStore): boolean {
@@ -298,46 +300,6 @@ function commentsXml(
   );
 }
 
-const TYPES_OPEN_TAG = /<(?:[\w.-]+:)?Types\b[^>]*>/;
-
-function withContentType(
-  parts: Map<string, Uint8Array>,
-  partPath: string,
-  contentType: string,
-  current: Uint8Array | undefined
-): Uint8Array | null {
-  const original = current ?? parts.get(CONTENT_TYPES_PATH);
-  if (!original) {
-    throw new DocxExportError(
-      "missing-content-types",
-      `cannot add a Comments part to a package that has no ${CONTENT_TYPES_PATH}`
-    );
-  }
-  const { text, hadBom } = decodeUtf8(original);
-  const partName = `/${partPath}`;
-  if (
-    new RegExp(
-      `<(?:[\\w.-]+:)?Override[^>]+PartName=["']${partName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}["']`,
-      "i"
-    ).test(text)
-  ) {
-    return null;
-  }
-  const open = TYPES_OPEN_TAG.exec(text);
-  if (!open) {
-    throw new DocxExportError(
-      "malformed-xml",
-      `${CONTENT_TYPES_PATH} has no Types element`
-    );
-  }
-  const rootName = /^<([^\s>]+)/.exec(open[0])?.[1] ?? "Types";
-  const separator = rootName.indexOf(":");
-  const prefix = separator < 0 ? "" : `${rootName.slice(0, separator)}:`;
-  const declaration = `<${prefix}Override PartName="${partName}" ContentType="${contentType}"/>`;
-  const at = open.index + open[0].length;
-  return encodeUtf8(text.slice(0, at) + declaration + text.slice(at), hadBom);
-}
-
 function availableCommentsPath(session: SessionStore): string {
   const directory = directoryOf(session.mainPartPath);
   for (let suffix = 0; ; suffix += 1) {
@@ -363,7 +325,10 @@ export interface CommentPartChanges {
   parts: ReadonlyMap<string, Uint8Array>;
 }
 
-/** Plans the Comments part, relationship and content type only when comment state changed. */
+/**
+ * Plans the Comments part, relationship and content type only when comment state changed, and the
+ * people part beside them for an author whose identity the document has yet to record.
+ */
 export function planCommentParts(
   doc: PMNode,
   session: SessionStore,
@@ -438,6 +403,15 @@ export function planCommentParts(
       );
       if (contentTypes) parts.set(CONTENT_TYPES_PATH, contentTypes);
     }
+  }
+  if (bodyChanged) {
+    const people = planPeoplePart(
+      currentCommentBodies(references).values(),
+      session,
+      relationships,
+      parts.get(CONTENT_TYPES_PATH) ?? currentContentTypes
+    );
+    for (const [path, bytes] of people ?? []) parts.set(path, bytes);
   }
   return { parts };
 }

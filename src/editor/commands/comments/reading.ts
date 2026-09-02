@@ -52,6 +52,7 @@ export function documentComments(
     return {
       id,
       author: stringAttr(node.attrs.author),
+      authorId: stringAttr(node.attrs.authorId),
       initials: stringAttr(node.attrs.initials),
       date: stringAttr(node.attrs.date),
       text: stringAttr(node.attrs.text) ?? "",
@@ -62,6 +63,7 @@ export function documentComments(
       replies: repliesAttr(node.attrs.replies).map((reply) => ({
         id: reply.id,
         author: reply.author,
+        authorId: reply.authorId,
         initials: reply.initials,
         date: reply.date,
         text: reply.text,
@@ -69,3 +71,4 @@ export function documentComments(
     };
   });
 }
+

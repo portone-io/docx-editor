@@ -13,6 +13,8 @@ export interface CommentAuthor {
 export interface NewComment {
   text: string;
   author: string;
+  /** The identity behind `author`. A comment written without one belongs to nobody in particular */
+  authorId?: string;
   initials?: string;
   /** ISO 8601 timestamp. The current time is used when omitted. */
   date?: string;
@@ -21,6 +23,7 @@ export interface NewComment {
 export interface DocumentComment {
   id: string;
   author: string | null;
+  authorId: string | null;
   initials: string | null;
   date: string | null;
   text: string;
@@ -34,6 +37,7 @@ export interface DocumentComment {
 export interface DocumentCommentReply {
   id: string;
   author: string | null;
+  authorId: string | null;
   initials: string | null;
   date: string | null;
   text: string;

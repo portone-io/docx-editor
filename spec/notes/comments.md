@@ -16,6 +16,14 @@ The editor preserves an untouched extension part byte-identically. Creating a re
 
 Observed 2026-08-22 against Microsoft [MS-DOCX] §2.5.3.1 `CT_CommentEx` and §2.5.1.5 `commentsEx`.
 
+## Author identity
+
+Word records who an author is beyond the display name in the `people` extension part (`w15:people`), related from the main document part with the relationship type `http://schemas.microsoft.com/office/2011/relationships/people` and declared with the content type `application/vnd.openxmlformats-officedocument.wordprocessingml.people+xml`. One `w15:person` stands for each `w15:author` name and carries a `w15:presenceInfo` whose `w15:providerId` names the directory that issued `w15:userId`. The author name is the key: `w:comment/@w:author` names the person, and the part names the identity behind the name.
+
+The editor writes the identity a host hands it under a provider id of its own and reads back only identities recorded under that provider; an identity another provider recorded, such as a signed-in Word user's, is one the editor cannot vouch for and is read as none. An untouched part is preserved byte-identically, and a new author is spliced into an existing part rather than the part being rewritten. Because the name is the key, two identities writing under one name cannot be told apart once the document is closed; the host is expected to keep display names distinct per identity.
+
+Observed 2026-09-02 against the Open XML SDK reference for `Person` and `PresenceInfo` (`DocumentFormat.OpenXml.Office2013.Word`); the [MS-DOCX] text is not held locally, so its section numbers were not verified and are not cited.
+
 ## Anchors
 
 A range comment uses matching start and end markers plus a reference with the same id. A reference without either range marker is a point comment anchored at the reference position. An unmatched start or end marker is also interpreted as a point anchor when a comment reference carries the same id; a marker without that reference is non-conformant. New range comments create the three main-story elements together; removal deletes every supported marker and reference represented for that id.
