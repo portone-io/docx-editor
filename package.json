@@ -77,6 +77,7 @@
     "test": "vitest run",
     "test:package": "vitest run --dir packaging --no-file-parallelism",
     "verify:package": "node scripts/verify-package.mjs",
+    "api:update": "pnpm build && node scripts/api-report.mjs --local",
     "spec": "node scripts/index-ooxml-spec.mjs",
     "changeset": "changeset",
     "changeset:version": "changeset version",

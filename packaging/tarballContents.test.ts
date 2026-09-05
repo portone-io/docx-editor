@@ -55,6 +55,12 @@ const forbiddenEntries = [
     what: "the test configuration",
     pattern: /(vitest|playwright)\.config\./,
   },
+  { what: "the declaration reports", pattern: /^package\/etc\// },
+  // Covers both api-extractor.base.json and the api-extractor/ configs
+  {
+    what: "the declaration report configuration",
+    pattern: /^package\/api-extractor/,
+  },
 ];
 
 const DIST = "package/dist/";
