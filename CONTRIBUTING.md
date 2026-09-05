@@ -54,6 +54,8 @@ If you changed anything under `src/`, run `pnpm changeset` and commit the file i
 It becomes the CHANGELOG entry, so write it for someone reading release notes rather than the diff.
 Choose `patch` unless the change adds to or breaks the public API.
 Those are `minor` while the package is below 1.0.
+A declaration added, removed, or rewritten in `etc/*.api.md` after running `pnpm api:update` is what that looks like; a line that only gains or loses an `(undocumented)` marker is not.
+Commit the regenerated report in the same commit as the changeset.
 
 By contributing, you agree that your contribution is licensed under the Apache License 2.0 used by this project.
 

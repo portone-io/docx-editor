@@ -55,7 +55,7 @@ The repository is a pnpm workspace whose root package is the library itself. `de
 
 ## Build and package
 
-`pnpm build` uses esbuild to emit one ESM file per source module and TypeScript to emit declarations beside them. Dependencies and peers remain external, and the stylesheet is copied to `dist/styles.css`.
+`pnpm build` uses esbuild to emit one ESM file per source module and TypeScript to emit declarations beside them. Dependencies and peers remain external, and the stylesheet is copied to `dist/styles.css`. A committed report under `etc/` for each entry point records that declared surface, and `pnpm api:update` regenerates it.
 
 Development exports point to `src/`, while `publishConfig` maps the same subpaths to `dist/`. `prepack` builds from a clean source tree before packing or publishing.
 

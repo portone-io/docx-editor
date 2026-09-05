@@ -10,7 +10,7 @@ Use `pnpm check` for the default local gate. Run the specialized checks when a c
 | `pnpm test` | Vitest tests under `src/` |
 | `pnpm typecheck` | TypeScript checks for the package and E2E project |
 | `pnpm lint` | Biome checks |
-| `pnpm test:package` | Published tarball contents and leaf-import size |
+| `pnpm test:package` | Published tarball contents, leaf-import size, and declaration reports |
 | `pnpm verify:package` | Fresh installation, declarations, entries, bundle, and stylesheet |
 | `pnpm test:e2e` | Playwright tests against a locally installed Chrome |
 
@@ -34,17 +34,19 @@ The suite uses a 30-second timeout because schema validation and tests that exer
 | `src/folderBoundaries.test.ts` | Folder ranks are respected, every production file is reachable from an entry point, and every production folder is ranked. |
 | `src/lockHonesty.test.ts` | A command's applicability result agrees with what it dispatches around locked content and under every editing protection. |
 | `src/docx/exportSchemaValidation.test.ts` | Every fixture and representative edited export validates against the ECMA-376 Transitional schemas. |
+| `packaging/apiReport.test.ts` | The committed `etc/*.api.md` reports match the declarations built from each published entry point. |
 
-Update `api-manifest.json` only when a public runtime API change is intentional. The lock test lists command factories explicitly so every new command must state how it behaves around locks and under every editing protection.
+Update `api-manifest.json` only when a public runtime API change is intentional. `pnpm api:update` does the same for the declaration reports, which record types and signatures rather than names. The lock test lists command factories explicitly so every new command must state how it behaves around locks and under every editing protection.
 
 The schema test requires `xmllint`, rejects a missing validator or an empty fixture set, and includes a negative control so a broken validation path cannot pass silently. It removes `mc:Ignorable` before validation as required by the markup-compatibility preprocessing model and supplies the standard XML namespace imported by the schemas.
 
 ## Package checks
 
-`pnpm test:package` runs two isolated checks against a clean build:
+`pnpm test:package` runs three isolated checks against a clean build:
 
 - `packaging/tarballContents.test.ts` packs the project and verifies exported files, declarations, the documents a consumer reads before installing, excluded development files, and resolved dependency ranges.
 - `packaging/leafImportSize.test.ts` rebuilds the output and protects small leaf imports from accidentally pulling in a large shared bundle.
+- `packaging/apiReport.test.ts` rebuilds the declarations and fails when a committed report in `etc/` no longer matches them.
 
 `pnpm verify:package` installs the tarball and its peers in a temporary project outside the repository. It typechecks and bundles a consumer, loads every JavaScript entry, mounts `DocxEditor` over a fixture document in jsdom, and verifies the published stylesheet. It packs that tarball itself unless `DOCX_EDITOR_TARBALL` points it at one. This is the check that catches declarations or imports that work only inside the source workspace.
 
