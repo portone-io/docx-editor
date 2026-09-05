@@ -103,6 +103,7 @@
     "@biomejs/biome": "2.5.10",
     "@changesets/changelog-github": "^1.0.0",
     "@changesets/cli": "^3.0.1",
+    "@microsoft/api-extractor": "7.59.0",
     "@playwright/test": "^1.62.1",
     "@types/node": "^26.2.0",
     "@types/react": "19.2.18",
