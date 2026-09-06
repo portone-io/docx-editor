@@ -9,7 +9,8 @@
 
 import { redo as historyRedo, undo as historyUndo } from "prosemirror-history";
 import type { Command, Transaction } from "prosemirror-state";
-import { historyReplay, transactionAllowed } from "../../schema/locks";
+import { transactionAllowed } from "../../schema/guards";
+import { historyReplay } from "../../schema/locks";
 
 /**
  * The same command, with every transaction it dispatches carrying the pass.

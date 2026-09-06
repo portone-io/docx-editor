@@ -31,14 +31,14 @@ The suite uses a 30-second timeout because schema validation and tests that exer
 | Test | Rule it protects |
 | --- | --- |
 | `src/publicApi.test.ts` | Runtime exports for every JavaScript entry match `api-manifest.json`. |
-| `src/folderBoundaries.test.ts` | Folder ranks are respected, every production file is reachable from an entry point, and every production folder is ranked. |
-| `src/lockHonesty.test.ts` | A command's applicability result agrees with what it dispatches around locked content and under every editing protection. |
+| `src/folderBoundaries.test.ts` | Folder ranks are respected, every production file is reachable from an entry point, every production folder is ranked, and no two modules read each other at runtime. |
+| `src/lockHonesty.test.ts` | A command's applicability result agrees with what it dispatches around locked content, across the bookmark and note markers a document is preserved with, and under every editing protection. Each place also states which guards refuse there, and the stated guards are held against the ones that answer. |
 | `src/docx/exportSchemaValidation.test.ts` | Every fixture and representative edited export validates against the ECMA-376 Transitional schemas. |
 | `src/schema/domRoundtrip.test.ts` | Every fixture survives being drawn to the DOM and read back, which is the path an IME composition takes. |
 | `src/schema/rawAttrs.test.ts` | Every attr the writer writes from says whether it carries raw XML, and each one that does is drawn holding its shape and not holding it. |
 | `packaging/apiReport.test.ts` | The committed `etc/*.api.md` reports match the declarations built from each published entry point. |
 
-Update `api-manifest.json` only when a public runtime API change is intentional. `pnpm api:update` does the same for the declaration reports, which record types and signatures rather than names. The lock test lists command factories explicitly so every new command must state how it behaves around locks and under every editing protection.
+Update `api-manifest.json` only when a public runtime API change is intentional. `pnpm api:update` does the same for the declaration reports, which record types and signatures rather than names. The lock test lists command factories explicitly so every new command must state how it behaves around locks and markers and under every editing protection.
 
 The schema test requires `xmllint`, rejects a missing validator or an empty fixture set, and includes a negative control so a broken validation path cannot pass silently. It removes `mc:Ignorable` before validation as required by the markup-compatibility preprocessing model and supplies the standard XML namespace imported by the schemas.
 

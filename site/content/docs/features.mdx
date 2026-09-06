@@ -21,7 +21,7 @@ This page is the user-facing support summary. API details live in
 | Images | Insert, paste, drop, select, and resize inline images. |
 | Hyperlinks | Create, change, remove, and open external links. |
 | Comments | View anchored threads; create, edit, reply to, resolve, reopen, and delete plain-text comments. Each comment records its author, so editing and deleting stay with them. |
-| Footnotes and endnotes | View references and plain-text note bodies while editing surrounding text. |
+| Footnotes and endnotes | View references and plain-text note bodies while editing surrounding text. A reference is preserved rather than edited: a selection running across one cannot be replaced, so typing or deleting over it leaves the text as it stands, and the picture, line break and page break controls are unavailable while it is held. |
 | Headers and footers | Visually preview the first section's plain-text first, even, and default stories, including decimal `PAGE` and `NUMPAGES` fields. |
 | Content controls | Edit or lock supported text and table-cell controls. |
 | Clipboard | Paste supported character formatting, paragraphs, destination-matched heading styles, line breaks, links, and common lists. Unsupported web styling is reduced to readable text. |
@@ -56,7 +56,7 @@ binding such as `Mod+K` without replacing the editor.
 | Content | Behavior |
 | --- | --- |
 | Additional Word character formatting and character styles | Existing formatting that the editor does not display or edit is preserved. |
-| Bookmarks | Existing bookmark ranges are preserved at their document positions but are not displayed or editable. |
+| Bookmarks | Existing bookmark ranges are preserved at their document positions but are not displayed or editable. A selection running across one of the invisible markers cannot be replaced, so typing or deleting over it leaves the text as it stands, and the picture, line break and page break controls are unavailable while it is held. Move the selection clear of the marker to edit the text around it. |
 | Document fields | Existing fields in the document body are preserved but not displayed or editable. |
 | Tracked changes | Existing revision markup is preserved but not displayed or editable. A rebuilt table is the exception: it loses its `w:tblGridChange`, and the properties of the cells continuing a vertical merge. |
 

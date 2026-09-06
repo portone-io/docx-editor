@@ -19,7 +19,7 @@ import {
   widthNumber,
   withWidthNumber,
 } from "../model/format";
-import { transactionAllowed } from "../schema/locks";
+import { transactionAllowed } from "../schema/guards";
 import { inheritCellAttrs, type TableRect } from "./format";
 import { cellWidthForGridCol, gridSpanWidth, tableGridCols } from "./widths";
 
@@ -51,7 +51,7 @@ function cellAt(rect: TableRect, row: number, col: number): PMNode | null {
 /**
  * Whether several cells can be merged into one.
  * The selection has to be a rectangle spanning more than one cell, no merged cell may stick out
- * past that rectangle, and the lock guard has to let the merge through: a locked cell may not be
+ * past that rectangle, and the guards have to let the merge through: a locked cell may not be
  * swallowed by another (`schema/locks`).
  *
  * The two queries are defined from the very transaction the commands run, so they cannot drift
@@ -65,7 +65,7 @@ export function canMergeCells(state: EditorState): boolean {
 
 /**
  * Whether a split is possible. The cursor has to sit inside a cell that is merged horizontally or
- * vertically, and the lock guard has to let the split through: the cells a split makes would each
+ * vertically, and the guards have to let the split through: the cells a split makes would each
  * carry the original's lock, which is a lock planted in places it was never put (`schema/locks`).
  */
 export function canSplitCell(state: EditorState): boolean {

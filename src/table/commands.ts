@@ -1,8 +1,8 @@
 /**
  * Building a transaction and running it are kept apart.
  * Following the ProseMirror convention, calling a command without `dispatch` only
- * reports whether it can run right now, and that answer takes in the lock guard
- * (`schema/locks`), so no caller has to ask about locks separately.
+ * reports whether it can run right now, and that answer takes in every guard an edit
+ * is judged by (`schema/guards`), so no caller has to ask about them separately.
  */
 
 import type { EditorState, Transaction } from "prosemirror-state";
@@ -10,7 +10,7 @@ import {
   deleteTable as pmDeleteTable,
   isInTable as pmIsInTable,
 } from "prosemirror-tables";
-import { transactionAllowed } from "../schema/locks";
+import { transactionAllowed } from "../schema/guards";
 import {
   buildAddColumnAfterTransaction,
   buildAddColumnBeforeTransaction,
@@ -34,8 +34,8 @@ export function isInTable(state: EditorState): boolean {
 }
 
 /**
- * A table command out of the transaction it builds, refused where the lock guard would turn that
- * transaction down (`schema/locks`).
+ * A table command out of the transaction it builds, refused where a guard would turn that
+ * transaction down (`schema/guards`).
  *
  * A structural edit is refused whole rather than trimmed: half a row cannot be deleted, and half a
  * block of cells cannot be merged into one. That is the opposite of a paragraph or character edit,

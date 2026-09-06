@@ -303,6 +303,27 @@ describe("editing inside a locked table cell", () => {
   });
 });
 
+/** One paragraph reading "mkn" with a bookmark range anchored around the "k" */
+const BOOKMARK_P =
+  "<w:p>" +
+  run("m") +
+  '<w:bookmarkStart w:id="9" w:name="b"/>' +
+  run("k") +
+  '<w:bookmarkEnd w:id="9"/>' +
+  run("n") +
+  "</w:p>";
+
+/** The position of the first node of this type */
+function posOfNode(doc: PMNode, typeName: string): number {
+  let found = -1;
+  doc.descendants((node, pos) => {
+    if (found < 0 && node.type.name === typeName) found = pos;
+    return found < 0;
+  });
+  if (found < 0) throw new Error(`no ${typeName} in the document`);
+  return found;
+}
+
 const lockPr = (val: string) =>
   `<w:sdtPr><w:id w:val="7"/><w:lock w:val="${val}"/></w:sdtPr>`;
 
@@ -485,6 +506,22 @@ describe("a refusal under an open composition", () => {
 
     await nextFrame();
     expect(live.composing).toBe(true);
+  });
+
+  /** Every guard's refusal goes through the same filter, so every one of them ends it */
+  it("ends the composition a bookmark refusal broke", async () => {
+    const live = mounted(opened(BOOKMARK_P));
+    composition(live, true);
+    expect(live.composing).toBe(true);
+
+    const before = live.state.doc;
+    const marker = posOfNode(live.state.doc, "rawInline");
+    live.dispatch(live.state.tr.delete(marker, marker + 1));
+    expect(live.state.doc).toBe(before);
+
+    await nextFrame();
+    expect(live.composing).toBe(false);
+    expect(live.state.doc).toBe(before);
   });
 
   it("does nothing where no composition is open", async () => {

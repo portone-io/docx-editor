@@ -23,7 +23,8 @@ import {
   NO_FILL,
   toCellFormat,
 } from "../model/format";
-import { isLockedCell, transactionAllowed } from "../schema/locks";
+import { transactionAllowed } from "../schema/guards";
+import { isLockedCell } from "../schema/locks";
 import { editsShut } from "../schema/protectionState";
 import type { TableCommand } from "./commands";
 import type { NodeAttrs, TableRect } from "./format";

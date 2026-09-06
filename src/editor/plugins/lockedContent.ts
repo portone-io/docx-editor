@@ -1,13 +1,13 @@
 /**
- * Rejects transactions disallowed by the guard in `schema/locks`, which answers for the locks the
- * document carries and for the protection the editor runs under (`schema/protection`) alike. A
- * rejected IME edit also ends the browser composition on the next frame so ProseMirror cannot
- * remain stuck in composing state.
+ * Rejects transactions no guard `schema/guards` registers would let through, the locks the document
+ * carries and the protection the editor runs under (`schema/protection`) among them. A rejected IME
+ * edit also ends the browser composition on the next frame so ProseMirror cannot remain stuck in
+ * composing state.
  */
 
 import { Plugin } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
-import { transactionAllowed } from "../../schema/locks";
+import { transactionAllowed } from "../../schema/guards";
 
 /**
  * Ends the composition the refusal has already broken, and redraws where it stood.

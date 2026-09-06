@@ -15,7 +15,7 @@ import { createEditorState } from "../editor/createEditor";
 import {
   protectionAllowsTransaction,
   transactionTouchesComments,
-} from "./locks";
+} from "./guards";
 import type { ProtectionState } from "./protection";
 
 const run = (text: string) =>

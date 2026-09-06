@@ -80,10 +80,12 @@ The query prefixes describe what they return:
 `selection*`, while document-level readers use `document*`. A reader of the protection the editor
 itself runs under, which the document does not record, uses `editing*`.
 
-Package commands account for locked content and for the editor's mode before reporting that they
-apply, so a control built on them is disabled exactly where the edit would be refused. Wrap
-third-party or application commands with `canRunCommand(command, state)` when they also need to
-respect document locks and the mode.
+Package commands account for locked content, for the editor's mode, and for the content the editor
+preserves rather than edits before reporting that they apply, so a control built on them is disabled
+exactly where the edit would be refused. Preserved bookmark markers and note references are part of
+that: neither can be put back once it is gone, so a command that would sweep one away reports that
+it does not apply. Wrap third-party or application commands with `canRunCommand(command, state)`
+when they also need to respect the same rules.
 
 Use `insertTab` to insert the same editable DOCX tab as the built-in Tab binding. It applies inside
 an ordinary paragraph; table cells and list paragraphs keep their navigation and level-changing Tab
