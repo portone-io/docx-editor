@@ -10,6 +10,7 @@
 
 import {
   attributeByLocalName,
+  elementChildren,
   escapeXml,
   parseXml,
   W_NS,
@@ -131,41 +132,53 @@ export function renderCommentBody(text: string, paraId: string | null): string {
   return `<w:p${attrs}><w:r>${pieces.join("")}</w:r></w:p>`;
 }
 
-/** The prefix the entry writes WordprocessingML names under, which its own tag says */
-const ENTRY_TAG = /^<([\w.-]+:)?comment(?=[\s/>])/;
+/** An opening tag named `p`, or a stretch of text that only looks like one */
+const PARAGRAPH_OR_SKIPPED =
+  /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<([\w.-]+:)?p(?=[\s/>])[^>]*>/g;
 
 /**
- * The prefixes this part writes WordprocessingML paragraphs under, spelled the way a tag carries
- * them and empty for a default namespace.
+ * The paragraph a thread key belongs on, which is the last one of the body.
  *
- * A part is free to bind the namespace under more than one prefix, and a body paragraph may be
- * written under any of them. `./reading` asks the namespace, so this asks it too, of the same
- * elements, rather than reading the declarations off the text and having to know how they were
- * quoted or where they were made.
+ * A body may hold a paragraph of another vocabulary, a picture's DrawingML `a:p` among them, and a
+ * key put on that says nothing about the thread. The namespace decides, since a prefix means only
+ * what the element it sits on binds it to, and a document may bind the same prefix twice over.
  */
-export function wordPrefixes(partXml: string | null): ReadonlySet<string> {
-  const prefixes = new Set<string>();
-  if (partXml === null) return prefixes;
+export function lastBodyParagraph(comment: Element): Element | null {
+  const paragraphs = comment.getElementsByTagNameNS(W_NS, "p");
+  return paragraphs.length === 0 ? null : paragraphs[paragraphs.length - 1];
+}
+
+/** Every element of the body whose name is `p`, whatever it means, in the order the text has them */
+function namedParagraphs(comment: Element): readonly Element[] {
+  return Array.from(comment.getElementsByTagName("*")).filter(
+    (element) => element.localName === "p"
+  );
+}
+
+/**
+ * The entries a part arrived holding, under the id each carries.
+ *
+ * The writer asks the document which paragraph a key goes on rather than asking the text, because
+ * only the document knows what a prefix means where it is written.
+ */
+export function arrivedEntries(
+  partXml: string | null
+): ReadonlyMap<string, Element> {
+  const entries = new Map<string, Element>();
+  if (partXml === null) return entries;
   let root: Element;
   try {
     root = parseXml(partXml).documentElement;
   } catch {
-    return prefixes;
+    return entries;
   }
-  for (const paragraph of Array.from(root.getElementsByTagNameNS(W_NS, "p"))) {
-    prefixes.add(paragraph.prefix === null ? "" : `${paragraph.prefix}:`);
+  for (const entry of elementChildren(root)) {
+    if (entry.namespaceURI !== W_NS || entry.localName !== "comment") continue;
+    const id = attributeByLocalName(entry, "id");
+    if (id !== null && !entries.has(id)) entries.set(id, entry);
   }
-  return prefixes;
+  return entries;
 }
-
-/**
- * A paragraph opening, or a span holding markup that only looks like one.
- *
- * A comment and a CDATA section are matched so that they can be passed over: text inside either is
- * not markup, and a key put there would be written into a file and read by nobody.
- */
-const PARAGRAPH_OR_SKIPPED =
-  /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<([\w.-]+:)?p(?=[\s/>])[^>]*>/g;
 
 /**
  * The entry with the thread key on its body's last paragraph, and unchanged where it has one.
@@ -175,10 +188,10 @@ const PARAGRAPH_OR_SKIPPED =
  * editor models, so a body holding more than plain text would lose it to a change nobody asked
  * for and nobody made.
  *
- * The paragraph is found by the prefixes this part binds WordprocessingML to, since a body may
- * hold a paragraph of another vocabulary: a picture carries a DrawingML `a:p`, and a key put on
- * that says nothing about the thread. `./reading` finds the same paragraph over the DOM, by
- * namespace, so the two agree where a part writes the same namespace under more than one prefix.
+ * `arrived` is that entry as the document has it, which is what says which paragraph is a
+ * WordprocessingML one and whether it already carries a key under some prefix. The text is only
+ * asked where that paragraph is: its opening tag is the one at the same place among the tags named
+ * `p`, counted the same way in both.
  *
  * The `w14` prefix is declared on the part rather than here: a part holding any thread state
  * declares it on its root along with the compatibility markup that goes with it (`./writing`).
@@ -186,25 +199,30 @@ const PARAGRAPH_OR_SKIPPED =
 export function withThreadKey(
   commentXml: string,
   paraId: string,
-  wordPrefixes: ReadonlySet<string> = new Set()
+  arrived: Element | null
 ): string {
-  const prefixes = new Set(wordPrefixes);
-  prefixes.add(ENTRY_TAG.exec(commentXml)?.[1] ?? "");
+  if (arrived === null) return commentXml;
+  const target = lastBodyParagraph(arrived);
+  if (target === null) return commentXml;
+  if (target.getAttributeNS(W14_NS, "paraId") !== null) return commentXml;
+
+  const at = namedParagraphs(arrived).indexOf(target);
   const openings = Array.from(commentXml.matchAll(PARAGRAPH_OR_SKIPPED)).filter(
-    (match) => !match[0].startsWith("<!") && prefixes.has(match[1] ?? "")
+    (match) => !match[0].startsWith("<!")
   );
-  const last = openings[openings.length - 1];
-  if (last === undefined || last.index === undefined) return commentXml;
-  if (/\sw14:paraId\s*=/.test(last[0])) return commentXml;
-  const selfClosing = last[0].endsWith("/>");
-  const opening =
-    last[0].slice(0, selfClosing ? -2 : -1) +
+  const opening = openings[at];
+  if (at === -1 || opening === undefined || opening.index === undefined) {
+    return commentXml;
+  }
+  const selfClosing = opening[0].endsWith("/>");
+  const keyed =
+    opening[0].slice(0, selfClosing ? -2 : -1) +
     ` w14:paraId="${escapeXml(paraId)}"` +
     (selfClosing ? "/>" : ">");
   return (
-    commentXml.slice(0, last.index) +
-    opening +
-    commentXml.slice(last.index + last[0].length)
+    commentXml.slice(0, opening.index) +
+    keyed +
+    commentXml.slice(opening.index + opening[0].length)
   );
 }
 

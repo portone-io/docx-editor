@@ -19,10 +19,10 @@ import {
 } from "./constants";
 import { withContentType } from "./contentTypes";
 import {
+  arrivedEntries,
   renderCommentBody,
   renderCommentExtension,
   withThreadKey,
-  wordPrefixes,
 } from "./grammar";
 import {
   type CommentReferenceData,
@@ -200,11 +200,15 @@ function keyedEntry(
 function renderedComment(
   comment: CommentReferenceData | CommentReplyData,
   arrivedKeyed: ReadonlySet<string>,
-  prefixes: ReadonlySet<string>
+  arrived: ReadonlyMap<string, Element>
 ): string {
   if (comment.imported && comment.commentXml !== null) {
     return carriesThreadMetadata(comment)
-      ? withThreadKey(comment.commentXml, comment.paraId, prefixes)
+      ? withThreadKey(
+          comment.commentXml,
+          comment.paraId,
+          arrived.get(comment.id) ?? null
+        )
       : comment.commentXml;
   }
   const attrs = [
@@ -287,7 +291,7 @@ function commentsXml(
   const hasThreadMetadata = Array.from(currentBodies.values()).some((comment) =>
     keyedEntry(comment, arrivedKeyed)
   );
-  const prefixes = wordPrefixes(comments.xml);
+  const arrived = arrivedEntries(comments.xml);
   const originalThreads = originalThreadIds(comments, originallyReferenced);
   const pieces: string[] = [];
   const written = new Set<string>();
@@ -295,7 +299,7 @@ function commentsXml(
   for (const original of comments.ordered) {
     const current = currentBodies.get(original.id);
     if (current) {
-      pieces.push(renderedComment(current, arrivedKeyed, prefixes));
+      pieces.push(renderedComment(current, arrivedKeyed, arrived));
       written.add(original.id);
       continue;
     }
@@ -307,7 +311,7 @@ function commentsXml(
   }
   for (const [id, comment] of currentBodies) {
     if (!written.has(id)) {
-      pieces.push(renderedComment(comment, arrivedKeyed, prefixes));
+      pieces.push(renderedComment(comment, arrivedKeyed, arrived));
     }
   }
 

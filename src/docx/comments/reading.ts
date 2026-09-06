@@ -12,6 +12,7 @@ import {
 } from "../../ooxml/xml";
 import { readRelationships, relsPathOf, resolveTarget } from "../relationships";
 import { COMMENTS_EXTENDED_REL_TYPE, COMMENTS_REL_TYPE } from "./constants";
+import { lastBodyParagraph } from "./grammar";
 import {
   commentAuthorId,
   type ImportedPeople,
@@ -84,17 +85,6 @@ export interface ImportedCommentExtension {
   parentParaId: string | null;
   resolved: boolean;
   xml: string;
-}
-
-/**
- * The last paragraph of a comment's body, which is where the thread key sits.
- *
- * A body may hold a paragraph of another vocabulary, a DrawingML one inside a picture among them,
- * so the search is for a WordprocessingML paragraph rather than for anything named `p`.
- */
-export function lastBodyParagraph(comment: Element): Element | null {
-  const paragraphs = comment.getElementsByTagNameNS(W_NS, "p");
-  return paragraphs.length === 0 ? null : paragraphs[paragraphs.length - 1];
 }
 
 /** The thread key of a comment, which the writer puts on the last paragraph of its body */

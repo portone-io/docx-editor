@@ -27,6 +27,7 @@ import { W14_NS, W15_NS } from "./constants";
 import {
   attributesWithin,
   COMMENT_ATTRIBUTES,
+  lastBodyParagraph,
   readStrictCommentBody,
   recordedIdentity,
   wellFormedCommentExtension,
@@ -34,7 +35,7 @@ import {
 } from "./grammar";
 import { commentReferencesIn } from "./model";
 import { commentAuthorId, type ImportedPeople } from "./people";
-import { lastBodyParagraph, lastParagraphId } from "./reading";
+import { lastParagraphId } from "./reading";
 
 /** The attributes of a comment that say whose it is, which nobody rewrites, its own author included */
 const COMMENT_IDENTITY: readonly string[] = [

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { parseXml, W_NS } from "../../ooxml/xml";
 import { W14_NS, W15_NS } from "./constants";
 import {
+  arrivedEntries,
   readStrictCommentBody,
   recordedIdentity,
   renderCommentBody,
@@ -11,7 +12,6 @@ import {
   wellFormedCommentExtension,
   wellFormedPerson,
   withThreadKey,
-  wordPrefixes,
 } from "./grammar";
 
 const entry = (body: string): Element =>
@@ -58,10 +58,17 @@ describe("what the writer writes, the reader reads back", () => {
 describe("giving an entry a thread key", () => {
   const body = '<w:p><w:r><w:t xml:space="preserve">note</w:t></w:r></w:p>';
 
+  /** The entry as the part has it, which is what says what a prefix means where it is written */
+  const partWith = (entry: string, declarations = `xmlns:w="${W_NS}"`) =>
+    arrivedEntries(`<w:comments ${declarations}>${entry}</w:comments>`).get(
+      "0"
+    ) ?? null;
+
+  const keyed = (entry: string, declarations?: string) =>
+    withThreadKey(entry, "ABCD1234", partWith(entry, declarations));
+
   it("puts the key on the body and leaves the rest of the entry alone", () => {
-    expect(
-      withThreadKey(`<w:comment w:id="0">${body}</w:comment>`, "ABCD1234")
-    ).toBe(
+    expect(keyed(`<w:comment w:id="0">${body}</w:comment>`)).toBe(
       '<w:comment w:id="0"><w:p w14:paraId="ABCD1234">' +
         '<w:r><w:t xml:space="preserve">note</w:t></w:r></w:p></w:comment>'
     );
@@ -69,17 +76,28 @@ describe("giving an entry a thread key", () => {
 
   it("leaves an entry that already carries one exactly as it was", () => {
     const already = `<w:comment w:id="0"><w:p w14:paraId="0000AAAA">${body.slice(5)}</w:comment>`;
-    expect(withThreadKey(already, "ABCD1234")).toBe(already);
+
+    expect(keyed(already, `xmlns:w="${W_NS}" xmlns:w14="${W14_NS}"`)).toBe(
+      already
+    );
+  });
+
+  it("leaves one carrying a key under another prefix alone, rather than writing a second", () => {
+    const already = `<w:comment w:id="0"><w:p k:paraId="0000AAAA">${body.slice(5)}</w:comment>`;
+
+    expect(keyed(already, `xmlns:w="${W_NS}" xmlns:k="${W14_NS}"`)).toBe(
+      already
+    );
   });
 
   it("puts it on the last paragraph, which is the one the key is read off", () => {
     const two = `<w:comment w:id="0">${body}${body}</w:comment>`;
-    const keyed = withThreadKey(two, "ABCD1234");
+    const written = keyed(two);
 
-    expect(keyed.indexOf("w14:paraId")).toBeGreaterThan(
-      keyed.indexOf("</w:p>")
+    expect(written.indexOf("w14:paraId")).toBeGreaterThan(
+      written.indexOf("</w:p>")
     );
-    expect(keyed.match(/w14:paraId/g)).toHaveLength(1);
+    expect(written.match(/w14:paraId/g)).toHaveLength(1);
   });
 
   it("keeps a body the writer would not have written, rather than putting one back", () => {
@@ -87,43 +105,39 @@ describe("giving an entry a thread key", () => {
       '<w:comment w:id="0"><w:p><w:r><w:rPr><w:b/></w:rPr>' +
       '<w:t xml:space="preserve">bold</w:t></w:r></w:p></w:comment>';
 
-    expect(withThreadKey(rich, "ABCD1234")).toContain("<w:b/>");
+    expect(keyed(rich)).toContain("<w:b/>");
   });
-
-  const otherPrefixBody = "<q:p><q:r><q:t>a</q:t></q:r></q:p>";
-  const otherPrefixPart = (quote: string) =>
-    `<w:comments xmlns:w=${quote}${W_NS}${quote} xmlns:q=${quote}${W_NS}${quote}>` +
-    `<w:comment w:id="0">${otherPrefixBody}</w:comment></w:comments>`;
 
   it.each(['"', "'"])(
     "takes a paragraph under a second prefix the part binds, declared with %s",
     (quote) => {
-      const prefixes = wordPrefixes(otherPrefixPart(quote));
+      const entry =
+        '<w:comment w:id="0"><q:p><q:r><q:t>a</q:t></q:r></q:p></w:comment>';
+      const declarations = `xmlns:w=${quote}${W_NS}${quote} xmlns:q=${quote}${W_NS}${quote}`;
 
-      expect(
-        withThreadKey(
-          `<w:comment w:id="0">${otherPrefixBody}</w:comment>`,
-          "ABCD1234",
-          prefixes
-        )
-      ).toContain('<q:p w14:paraId="ABCD1234">');
+      expect(keyed(entry, declarations)).toContain(
+        '<q:p w14:paraId="ABCD1234">'
+      );
     }
   );
 
-  it("leaves a paragraph of another vocabulary alone whatever the part holds", () => {
-    const body =
-      '<w:p><w:r><w:drawing><a:p xmlns:a="http://example.com/drawing"/></w:drawing></w:r></w:p>';
-    const prefixes = wordPrefixes(
-      `<w:comments xmlns:w="${W_NS}"><w:comment w:id="0">${body}</w:comment></w:comments>`
-    );
+  it("leaves a paragraph of another vocabulary alone", () => {
+    const entry =
+      '<w:comment w:id="0"><w:p><w:r><w:drawing>' +
+      '<a:p xmlns:a="http://example.com/drawing"/></w:drawing></w:r></w:p></w:comment>';
 
-    expect(
-      withThreadKey(
-        `<w:comment w:id="0">${body}</w:comment>`,
-        "ABCD1234",
-        prefixes
-      )
-    ).toContain('<w:p w14:paraId="ABCD1234">');
+    expect(keyed(entry)).toContain('<w:p w14:paraId="ABCD1234">');
+  });
+
+  it("reads a prefix as the element it sits on binds it, not as the part first bound it", () => {
+    const entry =
+      '<w:comment w:id="0"><q:p><q:r><q:drawing>' +
+      '<q:p xmlns:q="http://example.com/drawing"/></q:drawing></q:r></q:p></w:comment>';
+    const declarations = `xmlns:w="${W_NS}" xmlns:q="${W_NS}"`;
+
+    const written = keyed(entry, declarations);
+    expect(written).toContain('<q:p w14:paraId="ABCD1234"><q:r>');
+    expect(written).toContain('<q:p xmlns:q="http://example.com/drawing"/>');
   });
 });
 
