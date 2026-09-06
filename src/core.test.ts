@@ -507,6 +507,11 @@ describe("onlyCommentsChangedBy", () => {
       const COMMENTS_REL = `${REL_BASE}/comments`;
       const PEOPLE_REL =
         "http://schemas.microsoft.com/office/2011/relationships/people";
+      const relationshipsRefused: CommentOnlyVerdict = {
+        ok: false,
+        reason: "relationship-changed",
+        part: DOCUMENT_RELS_PART,
+      };
 
       /** The submission's relationships with one more pointing where it says */
       function alsoRelated(
@@ -537,14 +542,68 @@ describe("onlyCommentsChangedBy", () => {
         );
       });
 
-      it("does not hold for a part the file already had, related as a people part", () => {
+      it("does not hold for a second relationship of a comment type", () => {
         const { bytes, commented } = commentedBy("me");
-        const related = alsoRelated(commented, PEOPLE_REL, "styles.xml");
-        expect(onlyCommentsChangedBy(bytes, related, "me")).toEqual({
-          ok: false,
-          reason: "relationship-changed",
-          part: DOCUMENT_RELS_PART,
+        const twice = alsoRelated(commented, PEOPLE_REL, "styles.xml");
+        expect(onlyCommentsChangedBy(bytes, twice, "me")).toEqual(
+          relationshipsRefused
+        );
+      });
+
+      it("does not hold for a comment type the file already related", () => {
+        const { commented } = commentedBy("me");
+        const twice = alsoRelated(commented, COMMENTS_REL, "comments.xml");
+        expect(onlyCommentsChangedBy(commented, twice, "me")).toEqual(
+          relationshipsRefused
+        );
+      });
+
+      it("compares a part a second comment relationship names, rather than excusing it", () => {
+        const { commented } = commentedBy("me");
+        const twice = alsoRelated(commented, COMMENTS_REL, "styles.xml");
+        const restyled = repacked(twice, {
+          [STYLES_PART]: partText(twice, STYLES_PART).replace(
+            'w:val="20"',
+            'w:val="48"'
+          ),
         });
+        expect(onlyCommentsChangedBy(commented, restyled, "me")).toEqual(
+          partRefused(STYLES_PART)
+        );
+      });
+
+      /**
+       * The one rule the two above do not reach: a comment type the file has no relationship for
+       * is a type a submission may relate, and the part it relates has to be one it brought.
+       */
+      it("does not hold for a part the file already had, related as its first people part", () => {
+        const bytes = original();
+        const related = alsoRelated(bytes, PEOPLE_REL, "styles.xml");
+        const restyled = repacked(related, {
+          [STYLES_PART]: partText(related, STYLES_PART).replace(
+            'w:val="20"',
+            'w:val="48"'
+          ),
+        });
+        expect(onlyCommentsChangedBy(bytes, restyled, "me")).toEqual(
+          relationshipsRefused
+        );
+      });
+
+      it("does not hold for a forged relationship written ahead of the real one", () => {
+        const { bytes, commented } = commentedBy("me");
+        const ahead = repacked(commented, {
+          [DOCUMENT_RELS_PART]: partText(commented, DOCUMENT_RELS_PART).replace(
+            "<Relationship Id=",
+            `<Relationship Id="rId77" Type="${COMMENTS_REL}" Target="styles.xml"/>` +
+              "<Relationship Id="
+          ),
+        });
+        // The reader opens the forged part as the comments part, which leaves the real one
+        // outside the excused set rather than putting the forged one inside it
+        expect(onlyCommentsChangedBy(bytes, ahead, "me")).toEqual(
+          partRefused("word/comments.xml")
+        );
       });
     });
 
