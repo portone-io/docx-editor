@@ -3,10 +3,11 @@
  *
  * A preserved fragment goes back out the way it came, spliced into a slot the writer opens and
  * closes around it (`docx/serializeParagraph`), so a fragment that closes that slot itself, opens
- * a sibling beside it, or shows text of its own writes something the editor never modelled into
- * the exported file. Reading one back is the only place such a string can arrive from outside, so
- * every attr that carries one is read through here and a fragment that does not hold its shape is
- * turned down rather than corrected.
+ * a sibling beside it, or lays text down beside what it holds writes something the editor never
+ * modelled into the exported file. What stands inside the element it carries is that element's own
+ * and travels with it. Reading one back is the only place such a string can arrive from outside,
+ * so every attr that carries one is read through here and a fragment that does not hold its shape
+ * is turned down rather than corrected.
  *
  * A refusal is not an error: `getAttrs` answers `false` with it, which drops the parse rule and
  * leaves ProseMirror to settle the content one level plainer. Demotion, not contamination.
