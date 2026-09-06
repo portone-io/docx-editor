@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import { ANY_ELEMENT, ATTRIBUTES, acceptRawXml, ELEMENT } from "./fragment";
+import { R_NS } from "./xml";
 
 const SDT = {
   kind: "openTag",
@@ -74,6 +75,10 @@ describe("an element shape", () => {
     expect(acceptRawXml(ANY_ELEMENT, "")).toBe(false);
   });
 
+  it("refuses text standing alone where an element belongs", () => {
+    expect(acceptRawXml(ANY_ELEMENT, "smuggled")).toBe(false);
+  });
+
   it("carries an absent attr through untouched", () => {
     expect(acceptRawXml(ELEMENT("pPr"), null)).toBeNull();
     expect(acceptRawXml(ATTRIBUTES, null)).toBeNull();
@@ -102,6 +107,57 @@ describe("an attributes shape", () => {
 
   it("refuses an unbalanced quote", () => {
     expect(acceptRawXml(ATTRIBUTES, 'w:rsidR="00A')).toBe(false);
+  });
+
+  it("refuses a list that closes its own tag and opens a sibling", () => {
+    expect(acceptRawXml(ATTRIBUTES, 'w:rsidR="00A"></y><y w:rsidR="00B"')).toBe(
+      false
+    );
+  });
+});
+
+/**
+ * A producer may declare a namespace on the element that uses it rather than on the root of the
+ * part, so a fragment arrives carrying declarations of its own. One that agrees with what the
+ * prefix already means travels; one that binds a prefix the writer reads under is turned down.
+ */
+describe("a namespace the fragment declares", () => {
+  it("keeps an attribute list that declares the prefix it uses", () => {
+    const paraId = 'xmlns:w14="u" w14:paraId="1"';
+
+    expect(acceptRawXml(ATTRIBUTES, paraId)).toBe(paraId);
+  });
+
+  it("keeps an element that declares the prefix it uses", () => {
+    const pPr = '<w:pPr xmlns:w14="u"><w14:conflictMode w:val="1"/></w:pPr>';
+
+    expect(acceptRawXml(ELEMENT("pPr"), pPr)).toBe(pPr);
+  });
+
+  it("refuses a list binding the relationship prefix somewhere else", () => {
+    expect(acceptRawXml(ATTRIBUTES, 'xmlns:r="urn:evil"')).toBe(false);
+  });
+
+  it("refuses a list binding the wordprocessing prefix somewhere else", () => {
+    expect(acceptRawXml(ATTRIBUTES, 'xmlns:w="urn:evil"')).toBe(false);
+  });
+
+  it("refuses an element that rebinds a reserved prefix inside itself", () => {
+    expect(
+      acceptRawXml(ELEMENT("pPr"), '<w:pPr><w:jc xmlns:r="urn:evil"/></w:pPr>')
+    ).toBe(false);
+  });
+
+  it("refuses an opening tag that rebinds a reserved prefix", () => {
+    expect(acceptRawXml(HYPERLINK, '<w:hyperlink xmlns:r="urn:evil">')).toBe(
+      false
+    );
+  });
+
+  it("keeps a declaration that agrees with the prefix it binds", () => {
+    const bound = `xmlns:r="${R_NS}"`;
+
+    expect(acceptRawXml(ATTRIBUTES, bound)).toBe(bound);
   });
 });
 

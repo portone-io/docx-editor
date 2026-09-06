@@ -2,7 +2,13 @@
 import { describe, expect, it } from "vitest";
 import { importErrorCode } from "../__testing__/docx";
 import { DocxImportError } from "./errors";
-import { escapeXml, namespaceDecls, parseXml, W_NS } from "./xml";
+import {
+  declaredNamespaces,
+  escapeXml,
+  namespaceDecls,
+  parseXml,
+  W_NS,
+} from "./xml";
 
 describe("escapeXml", () => {
   it("turns the characters XML gives meaning to into entity references", () => {
@@ -119,5 +125,25 @@ describe("namespaceDecls", () => {
 
     expect(decls).not.toContain("xmlns:xml=");
     expect(decls).not.toContain("xmlns:xmlns=");
+  });
+});
+
+describe("declaredNamespaces", () => {
+  it("reads the namespaces a fragment binds on its own tags", () => {
+    const found = declaredNamespaces(
+      `<w:p xmlns:w14="${W_NS}"><w:r xmlns:m='urn:m'/></w:p>`
+    );
+
+    expect(Object.fromEntries(found)).toEqual({ w14: W_NS, m: "urn:m" });
+  });
+
+  it("reads one an attribute list opens with", () => {
+    expect(
+      Object.fromEntries(declaredNamespaces('xmlns:w14="u" w14:paraId="1"'))
+    ).toEqual({ w14: "u" });
+  });
+
+  it("passes over a default namespace, which binds no prefix", () => {
+    expect(declaredNamespaces('<w:p xmlns="urn:x"/>').size).toBe(0);
   });
 });

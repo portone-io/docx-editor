@@ -12,7 +12,14 @@
  * leaves ProseMirror to settle the content one level plainer. Demotion, not contamination.
  */
 
-import { elementChildren, namespaceDecls, parseXml, W_NS } from "./xml";
+import {
+  declaredNamespaces,
+  elementChildren,
+  namespaceDecls,
+  parseXml,
+  RESERVED_PREFIXES,
+  W_NS,
+} from "./xml";
 
 /**
  * What a raw XML string has to look like to be let into the attr that carries it.
@@ -97,7 +104,25 @@ function holdsHeadAlone(el: Element, shape: OpenTagShape): boolean {
   );
 }
 
+/**
+ * Whether the fragment binds a prefix the writer depends on to a namespace of its own choosing.
+ *
+ * A declaration travels with the tag it stands on and covers everything under it, and for an
+ * attribute list or an opening tag that is the very subtree the writer splices its own markup into:
+ * `xmlns:r="urn:evil"` on a paragraph leaves every `r:id` and `r:embed` written under it naming a
+ * relationship the package does not have, so the link re-imports with no address and the image
+ * loses its part. A declaration that agrees with what the prefix already means, and one binding a
+ * prefix the editor reads nothing under, are the producer's own and travel untouched.
+ */
+function rebindsReservedPrefix(xml: string): boolean {
+  return Array.from(declaredNamespaces(xml)).some(([prefix, uri]) => {
+    const reserved = RESERVED_PREFIXES.get(prefix);
+    return reserved !== undefined && reserved !== uri;
+  });
+}
+
 function holdsShape(shape: RawXmlShape, value: string): boolean {
+  if (rebindsReservedPrefix(value)) return false;
   switch (shape.kind) {
     case "element": {
       const el = loneElement(value);
@@ -105,15 +130,13 @@ function holdsShape(shape: RawXmlShape, value: string): boolean {
       return shape.names === "any" || isNamed(el, shape.names);
     }
     case "attributes": {
-      try {
-        const root = parseXml(
-          `<x ${namespaceDecls(value)} ${value}/>`
-        ).documentElement;
-        // An attribute list that opened a child of its own ended the tag it was written into
-        return root.childNodes.length === 0;
-      } catch {
-        return false;
-      }
+      // The list is read on a tag of its own rather than beside the declarations that make it
+      // parseable, so that a namespace the list declares shadows them instead of standing twice on
+      // one element, which is what a producer writing `<w:p xmlns:w14="..." w14:paraId="...">`
+      // hands us
+      const el = loneElement(`<y ${value}></y>`);
+      // An attribute list that opened a child of its own ended the tag it was written into
+      return el !== null && el.childNodes.length === 0;
     }
     case "openTag": {
       // Which element the fragment opened is settled by parsing at all: the closing text ends with

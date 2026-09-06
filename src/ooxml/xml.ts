@@ -11,6 +11,18 @@ export const W_NS =
 export const R_NS =
   "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 
+/**
+ * The prefixes whose meaning the editor depends on, and the namespace each one has to carry.
+ *
+ * Every element the writer spells out is a `w:` one, and the relationship a link or an image points
+ * at is named by `r:id` or `r:embed`, so a fragment that bound either prefix elsewhere would leave
+ * the writer's own markup meaning something else.
+ */
+export const RESERVED_PREFIXES: ReadonlyMap<string, string> = new Map([
+  ["w", W_NS],
+  ["r", R_NS],
+]);
+
 /** The name with its namespace prefix stripped off (`w:ascii` -> `ascii`) */
 export function localPart(name: string): string {
   const colon = name.indexOf(":");
@@ -123,6 +135,23 @@ export function namespaceDecls(xml: string): string {
         `xmlns:${prefix}="${prefix === "w" ? W_NS : `urn:docx-editor:${prefix}`}"`
     )
     .join(" ");
+}
+
+/**
+ * The namespaces a fragment binds itself, by prefix.
+ *
+ * A producer is free to declare a namespace on the element that first uses it rather than on the
+ * root of the part, and .NET's `XmlWriter` does, so a fragment cut out of such a file arrives
+ * carrying declarations of its own.
+ */
+export function declaredNamespaces(xml: string): Map<string, string> {
+  const declared = new Map<string, string>();
+  for (const [, prefix, quoted] of xml.matchAll(
+    /(?:^|[\s"'])xmlns:([A-Za-z_][\w.-]*)\s*=\s*("[^"]*"|'[^']*')/g
+  )) {
+    declared.set(prefix, quoted.slice(1, -1));
+  }
+  return declared;
 }
 
 export function elementChildren(el: Element): Element[] {

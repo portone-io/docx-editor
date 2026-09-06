@@ -600,6 +600,30 @@ describe("raw XML coming in through the DOM", () => {
     expect(parsed.firstChild?.attrs.pAttrs).toBe('w14:paraId="1A2B3C4D"');
   });
 
+  /**
+   * A producer is free to declare a namespace on the paragraph that uses it rather than on the
+   * root of the part, and .NET's `XmlWriter` does, so turning one down would drop the properties
+   * of every paragraph in such a file on the first re-read of the live DOM.
+   */
+  it("keeps a paragraph that declares the namespace its own attribute uses", () => {
+    const parsed = parseHtml(
+      `<p class="${editorClassNames.paragraph}" data-pattrs="xmlns:w14=&quot;u&quot; w14:paraId=&quot;1&quot;">x</p>`
+    );
+
+    expect(parsed.firstChild?.attrs.pAttrs).toBe(
+      'xmlns:w14="u" w14:paraId="1"'
+    );
+  });
+
+  it("a paragraph whose data-pattrs rebinds the relationship namespace is read as an unstyled paragraph", () => {
+    const parsed = parseHtml(
+      `<p class="${editorClassNames.paragraph}" data-pattrs="xmlns:r=&quot;urn:evil&quot;">x</p>`
+    );
+
+    expect(parsed.firstChild?.attrs.pAttrs).toBeNull();
+    expect(parsed.textContent).toBe("x");
+  });
+
   it("a run whose data-rpr smuggles a w:t loses the mark and keeps the text", () => {
     const parsed = parseHtml(
       `<p class="${editorClassNames.paragraph}"><span class="${editorClassNames.run}" data-rpr="&lt;w:rPr&gt;&lt;w:b/&gt;&lt;/w:rPr&gt;&lt;w:t&gt;smuggled&lt;/w:t&gt;">x</span></p>`
