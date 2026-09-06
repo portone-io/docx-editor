@@ -11,6 +11,7 @@ import {
   wellFormedCommentExtension,
   wellFormedPerson,
   withThreadKey,
+  wordPrefixes,
 } from "./grammar";
 
 const entry = (body: string): Element =>
@@ -87,6 +88,30 @@ describe("giving an entry a thread key", () => {
       '<w:t xml:space="preserve">bold</w:t></w:r></w:p></w:comment>';
 
     expect(withThreadKey(rich, "ABCD1234")).toContain("<w:b/>");
+  });
+
+  it("takes a paragraph under a second prefix the part binds to WordprocessingML", () => {
+    const prefixes = wordPrefixes(
+      `<w:comments xmlns:w="${W_NS}" xmlns:q="${W_NS}"/>`
+    );
+    const entry =
+      '<w:comment w:id="0"><q:p><q:r><q:t>a</q:t></q:r></q:p></w:comment>';
+
+    expect(withThreadKey(entry, "ABCD1234", prefixes)).toContain(
+      '<q:p w14:paraId="ABCD1234">'
+    );
+  });
+
+  it("leaves a paragraph of another vocabulary alone whatever the part binds", () => {
+    const prefixes = wordPrefixes(
+      `<w:comments xmlns:w="${W_NS}" xmlns:a="http://example.com/drawing"/>`
+    );
+    const entry =
+      '<w:comment w:id="0"><w:p><w:r><w:drawing><a:p/></w:drawing></w:r></w:p></w:comment>';
+
+    expect(withThreadKey(entry, "ABCD1234", prefixes)).toContain(
+      '<w:p w14:paraId="ABCD1234">'
+    );
   });
 });
 

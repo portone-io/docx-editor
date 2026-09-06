@@ -129,6 +129,24 @@ export function renderCommentBody(text: string, paraId: string | null): string {
 /** The prefix the entry writes WordprocessingML names under, which its own tag says */
 const ENTRY_TAG = /^<([\w.-]+:)?comment(?=[\s/>])/;
 
+const NAMESPACE_DECLARATION = /xmlns(?::([\w.-]+))?\s*=\s*"([^"]*)"/g;
+
+/**
+ * The prefixes a part binds WordprocessingML to, written the way a tag carries them.
+ *
+ * A part is free to bind the namespace under more than one prefix, and a body paragraph may be
+ * written under any of them. The reader asks the namespace, so the writer has to as well.
+ */
+export function wordPrefixes(partXml: string | null): ReadonlySet<string> {
+  const prefixes = new Set<string>();
+  for (const [, prefix, uri] of (partXml ?? "").matchAll(
+    NAMESPACE_DECLARATION
+  )) {
+    if (uri === W_NS) prefixes.add(prefix === undefined ? "" : `${prefix}:`);
+  }
+  return prefixes;
+}
+
 /**
  * A paragraph opening, or a span holding markup that only looks like one.
  *
@@ -146,17 +164,23 @@ const PARAGRAPH_OR_SKIPPED =
  * editor models, so a body holding more than plain text would lose it to a change nobody asked
  * for and nobody made.
  *
- * The paragraph is found by the prefix the entry itself writes WordprocessingML under, since a
- * body may hold a paragraph of another vocabulary: a picture carries a DrawingML `a:p`, and a key
- * put on that says nothing about the thread. `./reading` finds the same paragraph over the DOM.
+ * The paragraph is found by the prefixes this part binds WordprocessingML to, since a body may
+ * hold a paragraph of another vocabulary: a picture carries a DrawingML `a:p`, and a key put on
+ * that says nothing about the thread. `./reading` finds the same paragraph over the DOM, by
+ * namespace, so the two agree where a part writes the same namespace under more than one prefix.
  *
  * The `w14` prefix is declared on the part rather than here: a part holding any thread state
  * declares it on its root along with the compatibility markup that goes with it (`./writing`).
  */
-export function withThreadKey(commentXml: string, paraId: string): string {
-  const prefix = ENTRY_TAG.exec(commentXml)?.[1] ?? "";
+export function withThreadKey(
+  commentXml: string,
+  paraId: string,
+  wordPrefixes: ReadonlySet<string> = new Set()
+): string {
+  const prefixes = new Set(wordPrefixes);
+  prefixes.add(ENTRY_TAG.exec(commentXml)?.[1] ?? "");
   const openings = Array.from(commentXml.matchAll(PARAGRAPH_OR_SKIPPED)).filter(
-    (match) => !match[0].startsWith("<!") && (match[1] ?? "") === prefix
+    (match) => !match[0].startsWith("<!") && prefixes.has(match[1] ?? "")
   );
   const last = openings[openings.length - 1];
   if (last === undefined || last.index === undefined) return commentXml;

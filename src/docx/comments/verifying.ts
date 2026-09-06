@@ -15,6 +15,7 @@ import type { Node as PMNode } from "prosemirror-model";
 import {
   attributeByLocalName,
   elementChildren,
+  isElement,
   parseXml,
   serializeXml,
   W_NS,
@@ -150,7 +151,7 @@ export function wellFormedEntry(entry: Element): boolean {
  */
 function withoutThreadKey(entry: Element): string {
   const copy = entry.cloneNode(true);
-  if (!(copy instanceof Element)) return serializeXml(entry);
+  if (!isElement(copy)) return serializeXml(entry);
   const last = lastBodyParagraph(copy);
   last?.removeAttributeNS(W14_NS, "paraId");
   return serializeXml(copy);

@@ -128,7 +128,13 @@ export function attrString(el: Element): string | null {
     .join(" ");
 }
 
-function isElement(node: Node): node is Element {
+/**
+ * Whether this node is an element.
+ *
+ * `Node` is a global a server is asked to install (`site/content/docs/core.mdx`); `Element` is
+ * not, so nothing here may reach for it at run time.
+ */
+export function isElement(node: Node): node is Element {
   return node.nodeType === Node.ELEMENT_NODE;
 }
 
