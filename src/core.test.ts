@@ -27,9 +27,11 @@ import {
   onlyCommentsChangedBy,
   toParagraphFormat,
 } from "./core";
+import { COMMENTS_REL_TYPE, PEOPLE_REL_TYPE } from "./docx/comments/constants";
 import {
   addComment,
   canAddComment,
+  setCommentResolved,
   updateComment,
 } from "./editor/commands/commentCommands";
 import { createEditorState } from "./editor/createEditor";
@@ -494,6 +496,226 @@ describe("onlyCommentsChangedBy", () => {
         ok: false,
         reason: "relationship-changed",
         part: DOCUMENT_RELS_PART,
+      });
+    });
+
+    /**
+     * The excuse the three comment parts get is an excuse for those parts, not for whichever part
+     * a submission decides to relate under a comment type.
+     */
+    describe("for a part related as a comment part", () => {
+      const COMMENTS_REL = COMMENTS_REL_TYPE;
+      const PEOPLE_REL = PEOPLE_REL_TYPE;
+      const relationshipsRefused: CommentOnlyVerdict = {
+        ok: false,
+        reason: "relationship-changed",
+        part: DOCUMENT_RELS_PART,
+      };
+
+      /** The submission's relationships with one more pointing where it says */
+      function alsoRelated(
+        bytes: Uint8Array,
+        type: string,
+        target: string
+      ): Uint8Array {
+        return repacked(bytes, {
+          [DOCUMENT_RELS_PART]: partText(bytes, DOCUMENT_RELS_PART).replace(
+            "</Relationships>",
+            `<Relationship Id="rId77" Type="${type}" Target="${target}"/>` +
+              "</Relationships>"
+          ),
+        });
+      }
+
+      it("does not hold for a styles part the submission related as a second comments part", () => {
+        const { bytes, commented } = commentedBy("me");
+        const related = alsoRelated(commented, COMMENTS_REL, "styles.xml");
+        const restyled = repacked(related, {
+          [STYLES_PART]: partText(related, STYLES_PART).replace(
+            'w:val="20"',
+            'w:val="48"'
+          ),
+        });
+        expect(onlyCommentsChangedBy(bytes, restyled, "me")).toEqual(
+          partRefused(STYLES_PART)
+        );
+      });
+
+      it("does not hold for a second relationship of a comment type", () => {
+        const { bytes, commented } = commentedBy("me");
+        const twice = alsoRelated(commented, PEOPLE_REL, "styles.xml");
+        expect(onlyCommentsChangedBy(bytes, twice, "me")).toEqual(
+          relationshipsRefused
+        );
+      });
+
+      it("does not hold for a comment type the file already related", () => {
+        const { commented } = commentedBy("me");
+        const twice = alsoRelated(commented, COMMENTS_REL, "comments.xml");
+        expect(onlyCommentsChangedBy(commented, twice, "me")).toEqual(
+          relationshipsRefused
+        );
+      });
+
+      it("compares a part a second comment relationship names, rather than excusing it", () => {
+        const { commented } = commentedBy("me");
+        const twice = alsoRelated(commented, COMMENTS_REL, "styles.xml");
+        const restyled = repacked(twice, {
+          [STYLES_PART]: partText(twice, STYLES_PART).replace(
+            'w:val="20"',
+            'w:val="48"'
+          ),
+        });
+        expect(onlyCommentsChangedBy(commented, restyled, "me")).toEqual(
+          partRefused(STYLES_PART)
+        );
+      });
+
+      /**
+       * The one rule the two above do not reach: a comment type the file has no relationship for
+       * is a type a submission may relate, and the part it relates has to be one it brought.
+       */
+      it("does not hold for a part the file already had, related as its first people part", () => {
+        const bytes = original();
+        const related = alsoRelated(bytes, PEOPLE_REL, "styles.xml");
+        const restyled = repacked(related, {
+          [STYLES_PART]: partText(related, STYLES_PART).replace(
+            'w:val="20"',
+            'w:val="48"'
+          ),
+        });
+        expect(onlyCommentsChangedBy(bytes, restyled, "me")).toEqual(
+          relationshipsRefused
+        );
+      });
+
+      it("holds for a first comment in a file relating a comment type outside the package", () => {
+        const bytes = repacked(original(), {
+          [DOCUMENT_RELS_PART]: partText(
+            original(),
+            DOCUMENT_RELS_PART
+          ).replace(
+            "</Relationships>",
+            `<Relationship Id="rId9" Type="${COMMENTS_REL}"` +
+              ' Target="http://example.com/c.xml" TargetMode="External"/>' +
+              "</Relationships>"
+          ),
+        });
+        const { doc, session } = importDocx(bytes);
+        let state = createEditorState(doc);
+        const { from, to } = rangeOfText(state.doc, "beta");
+        state = state.apply(
+          state.tr.setSelection(TextSelection.create(state.doc, from, to))
+        );
+        addComment({ text: "note", author: "Someone", authorId: "me" })(
+          state,
+          (tr) => (state = state.apply(tr))
+        );
+
+        expect(
+          onlyCommentsChangedBy(bytes, exportDocx(state.doc, session), "me")
+        ).toEqual(allowed);
+      });
+
+      /** The extended part a file relates is the one a first comment is written into */
+      it("holds for a first comment in a file that already related an extended comments part", () => {
+        const EXTENDED_REL =
+          "http://schemas.microsoft.com/office/2011/relationships/commentsExtended";
+        const plain = original();
+        const related = repacked(plain, {
+          [DOCUMENT_RELS_PART]: partText(plain, DOCUMENT_RELS_PART).replace(
+            "</Relationships>",
+            `<Relationship Id="rId8" Type="${EXTENDED_REL}"` +
+              ' Target="commentsExtended.xml"/></Relationships>'
+          ),
+          "word/commentsExtended.xml":
+            '<w15:commentsEx xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml"/>',
+        });
+        const { doc, session } = importDocx(related);
+        let state = createEditorState(doc);
+        const { from, to } = rangeOfText(state.doc, "beta");
+        state = state.apply(
+          state.tr.setSelection(TextSelection.create(state.doc, from, to))
+        );
+        addComment({ text: "note", author: "Someone", authorId: "me" })(
+          state,
+          (tr) => (state = state.apply(tr))
+        );
+
+        expect(
+          onlyCommentsChangedBy(related, exportDocx(state.doc, session), "me")
+        ).toEqual(allowed);
+
+        // Settling the thread in the same session writes that part again rather than a second one
+        const settled = state;
+        let id = "";
+        settled.doc.descendants((node) => {
+          if (id === "" && node.type.name === "commentReference") {
+            id = String(node.attrs.id);
+          }
+          return true;
+        });
+        let after = settled;
+        expect(
+          setCommentResolved(id, true)(settled, (tr) => {
+            after = after.apply(tr);
+          })
+        ).toBe(true);
+
+        expect(
+          onlyCommentsChangedBy(related, exportDocx(after.doc, session), "me")
+        ).toEqual(allowed);
+      });
+
+      it("does not hold for a comment relationship the submission points outside the package", () => {
+        const { bytes, commented } = commentedBy("me");
+        const outward = repacked(commented, {
+          [DOCUMENT_RELS_PART]: partText(commented, DOCUMENT_RELS_PART).replace(
+            "</Relationships>",
+            `<Relationship Id="rId88" Type="${PEOPLE_REL}"` +
+              ' Target="http://example.com/p.xml" TargetMode="External"/>' +
+              "</Relationships>"
+          ),
+        });
+        expect(onlyCommentsChangedBy(bytes, outward, "me")).toEqual(
+          relationshipsRefused
+        );
+      });
+
+      /**
+       * Two relationships under one id are read differently depending on which of the two a
+       * reader keeps, and the decoy is neither gained nor a change to what was there.
+       */
+      it("does not hold for a relationship part naming one id twice", () => {
+        const { commented } = commentedBy("me");
+        const rels = partText(commented, DOCUMENT_RELS_PART);
+        const reused = /Id="([^"]+)"/.exec(rels)?.[1];
+        const decoyed = repacked(commented, {
+          [DOCUMENT_RELS_PART]: rels.replace(
+            "<Relationship Id=",
+            `<Relationship Id="${reused}" Type="${COMMENTS_REL}" Target="decoy.xml"/>` +
+              "<Relationship Id="
+          ),
+        });
+        expect(onlyCommentsChangedBy(commented, decoyed, "me")).toEqual(
+          relationshipsRefused
+        );
+      });
+
+      it("does not hold for a forged relationship written ahead of the real one", () => {
+        const { bytes, commented } = commentedBy("me");
+        const ahead = repacked(commented, {
+          [DOCUMENT_RELS_PART]: partText(commented, DOCUMENT_RELS_PART).replace(
+            "<Relationship Id=",
+            `<Relationship Id="rId77" Type="${COMMENTS_REL}" Target="styles.xml"/>` +
+              "<Relationship Id="
+          ),
+        });
+        // The reader opens the forged part as the comments part, which leaves the real one
+        // outside the excused set rather than putting the forged one inside it
+        expect(onlyCommentsChangedBy(bytes, ahead, "me")).toEqual(
+          partRefused("word/comments.xml")
+        );
       });
     });
 
