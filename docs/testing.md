@@ -34,6 +34,7 @@ The suite uses a 30-second timeout because schema validation and tests that exer
 | `src/folderBoundaries.test.ts` | Folder ranks are respected, every production file is reachable from an entry point, and every production folder is ranked. |
 | `src/lockHonesty.test.ts` | A command's applicability result agrees with what it dispatches around locked content and under every editing protection. |
 | `src/docx/exportSchemaValidation.test.ts` | Every fixture and representative edited export validates against the ECMA-376 Transitional schemas. |
+| `src/schema/domRoundtrip.test.ts` | Every fixture survives being drawn to the DOM and read back, which is the path an IME composition takes. |
 | `packaging/apiReport.test.ts` | The committed `etc/*.api.md` reports match the declarations built from each published entry point. |
 
 Update `api-manifest.json` only when a public runtime API change is intentional. `pnpm api:update` does the same for the declaration reports, which record types and signatures rather than names. The lock test lists command factories explicitly so every new command must state how it behaves around locks and under every editing protection.
