@@ -40,3 +40,11 @@ Prefer precise types over `any` and broad type assertions. Use narrowing, type g
 ### Naming
 
 Follow the [public API vocabulary](./site/content/docs/custom-controls.mdx#commands-and-queries) when adding or renaming an export.
+
+### Usability
+
+When changing editor interactions, check where focus, selection, and scroll end up, and whether users can understand why an action is unavailable or rejected.
+
+When designing public APIs, use names and return shapes that make their purpose clear, and choose defaults suited to common use cases.
+
+Write user-facing documentation for someone using the feature, without assuming they have read the implementation or diff.
