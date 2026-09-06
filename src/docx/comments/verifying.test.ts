@@ -406,6 +406,63 @@ describe("over the comment parts of a submitted file", () => {
     expect(verdict(withOrphan, dropped, "me")).toEqual(refused);
   });
 
+  /** The same rule over the other two parts: thread state for no comment, an identity for no name */
+  it("keeps an orphan of the other two parts as well", () => {
+    const { commented } = commentedBy("me");
+    const peoplePath = Object.keys(unzipSync(commented)).find((path) =>
+      path.endsWith("people.xml")
+    );
+    if (peoplePath === undefined) throw new Error("no people part");
+    const ghost =
+      '<w15:person w15:author="Ghost">' +
+      '<w15:presenceInfo w15:providerId="portone-docx-editor" w15:userId="ghost"/>' +
+      "</w15:person>";
+    const withGhost = repacked(
+      commented,
+      peoplePath,
+      partText(commented, peoplePath).replace(
+        "</w15:people>",
+        `${ghost}</w15:people>`
+      )
+    );
+    const dropped = repacked(
+      withGhost,
+      peoplePath,
+      partText(withGhost, peoplePath).replace(ghost, "")
+    );
+
+    expect(verdict(withGhost, withGhost, "me")).toEqual(allowed);
+    expect(verdict(withGhost, dropped, "me")).toEqual({
+      ok: false,
+      reason: "part-changed",
+      part: peoplePath,
+    });
+  });
+
+  it("refuses an identity recorded for a name nobody writes under", () => {
+    const { commented } = commentedBy("me");
+    const peoplePath = Object.keys(unzipSync(commented)).find((path) =>
+      path.endsWith("people.xml")
+    );
+    if (peoplePath === undefined) throw new Error("no people part");
+    const added = repacked(
+      commented,
+      peoplePath,
+      partText(commented, peoplePath).replace(
+        "</w15:people>",
+        '<w15:person w15:author="Nobody">' +
+          '<w15:presenceInfo w15:providerId="portone-docx-editor" w15:userId="me"/>' +
+          "</w15:person></w15:people>"
+      )
+    );
+
+    expect(verdict(commented, added, "me")).toEqual({
+      ok: false,
+      reason: "part-changed",
+      part: peoplePath,
+    });
+  });
+
   it("refuses a second entry smuggled in under an id the part already holds", () => {
     const { bytes, commented } = commentedBy("me");
     const text = partText(commented, COMMENTS_PART);

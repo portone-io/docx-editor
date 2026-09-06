@@ -267,100 +267,113 @@ function judged(
   );
 }
 
-function commentsKept(
+/** The entries of a file's comments part, which is what its other two parts are written against */
+function commentEntries(story: Story): readonly Element[] {
+  return Array.from(
+    arrivedEntries(story.session.comments.xml, "comment", "id").values(),
+    (entry) => entry.el
+  );
+}
+
+/**
+ * One of the three parts a comment is written across: where it sits, what it holds, and what the
+ * file has to still stand behind for an entry to belong there.
+ */
+interface PartKind {
+  namespace: string;
+  localName: string;
+  idAttr: string;
+  xmlOf(story: Story): string | null;
+  pathOf(story: Story): string | null;
+  /** The keys this file still stands behind, which is what an entry has to be keyed by */
+  referents(story: Story): ReadonlySet<string>;
+}
+
+const COMMENT_PARTS: readonly PartKind[] = [
+  {
+    namespace: W_NS,
+    localName: "comment",
+    idAttr: "id",
+    xmlOf: (story) => story.session.comments.xml,
+    pathOf: (story) => story.session.comments.partPath,
+    referents: (story) => referencedCommentIds(story.doc),
+  },
+  {
+    namespace: W15_NS,
+    localName: "commentEx",
+    idAttr: "paraId",
+    xmlOf: (story) => story.session.comments.extendedXml,
+    pathOf: (story) => story.session.comments.extendedPartPath,
+    // Thread state stands for a comment, and it is keyed by the comment's own thread key
+    referents: (story) =>
+      new Set(
+        commentEntries(story).flatMap((el) => {
+          const key = commentParaId(el);
+          return key === null ? [] : [key];
+        })
+      ),
+  },
+  {
+    namespace: W15_NS,
+    localName: "person",
+    idAttr: "author",
+    xmlOf: (story) => story.session.comments.people.xml,
+    pathOf: (story) => story.session.comments.people.partPath,
+    // An identity stands for a name somebody writes comments under
+    referents: (story) =>
+      new Set(
+        commentEntries(story).flatMap((el) => {
+          const author = attribute(el, "author");
+          return author === null ? [] : [author];
+        })
+      ),
+  },
+];
+
+/**
+ * Whether every entry of one part came back as it was, or as one this editor writes for an author
+ * who could have written it.
+ *
+ * An entry the file no longer stands behind is one no edit through the editor could have reached,
+ * and an entry it did not stand behind when it left is one no edit could have taken away. Both
+ * halves hold for each of the three parts: a comment nothing refers to, thread state for no
+ * comment, an identity for a name nobody writes under.
+ */
+function partKept(
+  kind: PartKind,
   before: Story,
   after: Story,
   authorId: string,
   editableComments: EditableComments
 ): boolean {
-  const arrived = arrivedEntries(before.session.comments.xml, "comment", "id");
+  const arrived = arrivedEntries(
+    kind.xmlOf(before),
+    kind.localName,
+    kind.idAttr
+  );
   const submitted = submittedEntries(
-    after.session.comments.xml,
-    W_NS,
-    "comment",
-    "id"
+    kind.xmlOf(after),
+    kind.namespace,
+    kind.localName,
+    kind.idAttr
   );
   if (submitted === null) return false;
 
-  const referredToBefore = referencedCommentIds(before.doc);
-  const referredToNow = referencedCommentIds(after.doc);
+  const stoodBehindNow = kind.referents(after);
   const people = after.session.comments.people;
-
   for (const entry of submitted) {
     const original = arrived.get(entry.id);
     if (original && original.xml === entry.xml) continue;
-    // Nothing in the story points at this entry, so no edit through the editor reached it
-    if (!referredToNow.has(entry.id)) return false;
+    if (!stoodBehindNow.has(entry.id)) return false;
     if (!judged(entry, arrived, authorId, editableComments, people)) {
       return false;
     }
   }
 
-  // An entry nothing referred to when the file left was not one an edit could have taken away
   const held = new Set(submitted.map((entry) => entry.id));
+  const stoodBehindBefore = kind.referents(before);
   return Array.from(arrived.keys()).every(
-    (id) => referredToBefore.has(id) || held.has(id)
-  );
-}
-
-function extensionsKept(
-  before: Story,
-  after: Story,
-  authorId: string,
-  editableComments: EditableComments
-): boolean {
-  const arrived = arrivedEntries(
-    before.session.comments.extendedXml,
-    "commentEx",
-    "paraId"
-  );
-  const submitted = submittedEntries(
-    after.session.comments.extendedXml,
-    W15_NS,
-    "commentEx",
-    "paraId"
-  );
-  if (submitted === null) return false;
-
-  const paragraphs = new Set(
-    Array.from(
-      arrivedEntries(after.session.comments.xml, "comment", "id").values()
-    ).flatMap((entry) => {
-      const paraId = commentParaId(entry.el);
-      return paraId === null ? [] : [paraId];
-    })
-  );
-
-  return submitted.every(
-    (entry) =>
-      // A thread state stands for a comment, so one that appeared has to name a comment there is
-      (arrived.has(entry.id) || paragraphs.has(entry.id)) &&
-      judged(
-        entry,
-        arrived,
-        authorId,
-        editableComments,
-        after.session.comments.people
-      )
-  );
-}
-
-function peopleKept(
-  before: Story,
-  after: Story,
-  authorId: string,
-  editableComments: EditableComments
-): boolean {
-  const people = after.session.comments.people;
-  const arrived = arrivedEntries(
-    before.session.comments.people.xml,
-    "person",
-    "author"
-  );
-  const submitted = submittedEntries(people.xml, W15_NS, "person", "author");
-  if (submitted === null) return false;
-  return submitted.every((entry) =>
-    judged(entry, arrived, authorId, editableComments, people)
+    (id) => stoodBehindBefore.has(id) || held.has(id)
   );
 }
 
@@ -379,33 +392,12 @@ export function commentPartsKept(
   authorId: string,
   editableComments: EditableComments
 ): CommentOnlyVerdict {
-  const commentsPath =
-    after.session.comments.partPath ?? before.session.comments.partPath;
-  if (
-    commentsPath !== null &&
-    !commentsKept(before, after, authorId, editableComments)
-  ) {
-    return { ok: false, reason: "part-changed", part: commentsPath };
-  }
-
-  const extendedPath =
-    after.session.comments.extendedPartPath ??
-    before.session.comments.extendedPartPath;
-  if (
-    extendedPath !== null &&
-    !extensionsKept(before, after, authorId, editableComments)
-  ) {
-    return { ok: false, reason: "part-changed", part: extendedPath };
-  }
-
-  const peoplePath =
-    after.session.comments.people.partPath ??
-    before.session.comments.people.partPath;
-  if (
-    peoplePath !== null &&
-    !peopleKept(before, after, authorId, editableComments)
-  ) {
-    return { ok: false, reason: "part-changed", part: peoplePath };
+  for (const kind of COMMENT_PARTS) {
+    const path = kind.pathOf(after) ?? kind.pathOf(before);
+    if (path === null) continue;
+    if (!partKept(kind, before, after, authorId, editableComments)) {
+      return { ok: false, reason: "part-changed", part: path };
+    }
   }
   return { ok: true };
 }
