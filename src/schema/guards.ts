@@ -11,6 +11,13 @@
  * What a guard is written against - `EditGuard`, `EditIntent` and the reach primitives - stands in
  * `./editGuard` so that a module writing a guard need not read this one, and is handed on from
  * here so that a caller has one door to the whole seam.
+ *
+ * `editShut` is not yet what every command asks. Only `editor/commands/breakCommands`,
+ * `editor/commands/tabCommands` and `editor/insertImage` ask it today; the rest still compose
+ * `editsShut` with a lock predicate of their own (`./locks`), and each decides for itself whether
+ * a stretch a guard shuts is trimmed out of the edit or refuses the whole of it. Until they move
+ * over, a guard added to the list below reaches those commands through `transactionAllowed` alone,
+ * which refuses the transaction they built rather than telling them not to build it.
  */
 
 import type { EditorState, Selection, Transaction } from "prosemirror-state";
