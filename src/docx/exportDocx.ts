@@ -17,6 +17,7 @@ import { parseNumbering } from "../numbering/parseNumbering";
 import { addListDefinitions } from "../numbering/writeNumbering";
 import { DocxExportError } from "../ooxml/errors";
 import { decodeUtf8, encodeUtf8, parseXml, W_NS } from "../ooxml/xml";
+import { sameSource } from "../schema/sourceEquality";
 import { planCommentParts } from "./comments";
 import { repackParts } from "./container";
 import type { ExportRefs } from "./exportRefs";
@@ -36,14 +37,20 @@ import {
 } from "./session";
 import { withUniqueControls } from "./uniqueControls";
 
-/** An unchanged block is exported with its original XML as is; only a changed block is rebuilt */
+/**
+ * An unchanged block is exported with its original XML as is; only a changed block is rebuilt.
+ *
+ * Unchanged is judged by `sameSource` rather than by `Node.eq`, because opening a file works the
+ * display attrs out again (`schema/attrRoles`) and a block rebuilt over that would lose the markup
+ * the writer does not model, `w:tblGridChange` among it.
+ */
 function blockXml(
   node: PMNode,
   session: SessionStore,
   refs: ExportRefs
 ): string {
   const imported = originalBlock(node, session);
-  if (imported && node.eq(imported.node)) return imported.xml;
+  if (imported && sameSource(node, imported.node)) return imported.xml;
   return serializeBlock(node, session, refs);
 }
 

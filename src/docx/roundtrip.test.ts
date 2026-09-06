@@ -23,6 +23,22 @@ import { exportDocx } from "./exportDocx";
 import { importDocx } from "./importDocx";
 import type { SessionStore } from "./session";
 
+function expectEveryPartIdentical(
+  bytes: Uint8Array,
+  out: Uint8Array,
+  mainPartPath: string
+): void {
+  const original = unzipSync(bytes);
+  const exported = unzipSync(out);
+  expect(Object.keys(exported)).toEqual(Object.keys(original));
+  for (const key of Object.keys(original)) {
+    if (key === mainPartPath) {
+      expect(decode(exported[key])).toBe(decode(original[key]));
+    }
+    expect(bytesEqual(exported[key], original[key])).toBe(true);
+  }
+}
+
 describe("round trip without editing", () => {
   it("there are fixtures", () => {
     expect(fixtureNames.length).toBeGreaterThan(0);
@@ -33,19 +49,59 @@ describe("round trip without editing", () => {
     (name) => {
       const bytes = readFixture(name);
       const { doc, session } = importDocx(bytes);
-      const out = exportDocx(doc, session);
 
-      const original = unzipSync(bytes);
-      const exported = unzipSync(out);
-      expect(Object.keys(exported)).toEqual(Object.keys(original));
-      for (const key of Object.keys(original)) {
-        if (key === session.mainPartPath) {
-          expect(decode(exported[key])).toBe(decode(original[key]));
-        }
-        expect(bytesEqual(exported[key], original[key])).toBe(true);
-      }
+      expectEveryPartIdentical(
+        bytes,
+        exportDocx(doc, session),
+        session.mainPartPath
+      );
     }
   );
+});
+
+/**
+ * `createEditorState` works the display attrs out again over the imported document, so this is the
+ * path a real editing session takes and the one the byte identity has to survive.
+ */
+describe("round trip through the editor state", () => {
+  it.each(fixtureNames)(
+    "%s: opening through createEditorState still exports every part byte identical",
+    (name) => {
+      const bytes = readFixture(name);
+      const { doc, session } = importDocx(bytes);
+
+      expectEveryPartIdentical(
+        bytes,
+        exportDocx(createEditorState(doc).doc, session),
+        session.mainPartPath
+      );
+    }
+  );
+
+  it("a table carrying tblGridChange keeps it when nothing but its derived borders changed", () => {
+    const body =
+      '<w:tbl><w:tblPr><w:tblW w:w="2000" w:type="dxa"/></w:tblPr>' +
+      '<w:tblGrid><w:gridCol w:w="1000"/><w:gridCol w:w="1000"/>' +
+      '<w:tblGridChange w:id="0"><w:tblGrid><w:gridCol w:w="900"/><w:gridCol w:w="1100"/></w:tblGrid></w:tblGridChange>' +
+      "</w:tblGrid>" +
+      "<w:tr><w:tc><w:tcPr><w:tcBorders>" +
+      '<w:right w:val="single" w:sz="12" w:space="0" w:color="FF0000"/>' +
+      "</w:tcBorders></w:tcPr><w:p><w:r><w:t>a</w:t></w:r></w:p></w:tc>" +
+      "<w:tc><w:p><w:r><w:t>b</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:p/>";
+    const bytes = makeDocx(body);
+    const { doc, session } = importDocx(bytes);
+
+    const opened = createEditorState(doc).doc;
+    expect(opened.eq(doc)).toBe(false);
+    expectEveryPartIdentical(
+      bytes,
+      exportDocx(opened, session),
+      session.mainPartPath
+    );
+    expect(
+      decode(unzipSync(exportDocx(opened, session))["word/document.xml"])
+    ).toContain("tblGridChange");
+  });
 });
 
 function namespaceDecls(xml: string): string[] {
