@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { Mark, type Node as PMNode } from "prosemirror-model";
-import type { Command, EditorState } from "prosemirror-state";
+import type { Command, EditorState, Transaction } from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
+import type { Step } from "prosemirror-transform";
 import { describe, expect, it } from "vitest";
 import {
   makeDocx,
@@ -14,7 +15,11 @@ import { importDocx } from "./docx/importDocx";
 import * as commands from "./editor/commands/index";
 import { createEditorState } from "./editor/createEditor";
 import { setProtection } from "./editor/plugins/documentProtection";
-import { EDIT_GUARDS } from "./schema/guards";
+import {
+  EDIT_GUARDS,
+  type EditGuardName,
+  type EditIntent,
+} from "./schema/guards";
 import type { EditingProtection } from "./schema/protection";
 import * as table from "./table";
 
@@ -32,10 +37,14 @@ import * as table from "./table";
  *
  * `NOT_A_COMMAND` carries everything else the two entries export, each with the reason it is not
  * a command, and the last test here fails the moment an export appears in neither list. That is
- * what stops a new command from being added without an answer to this question. `PLACES` names the
- * guards each place can draw a refusal from, and the test before it fails the moment a registered
- * guard has nowhere here to be put to the test, which is what stops a guard from being added and
- * never exercised.
+ * what stops a new command from being added without an answer to this question.
+ *
+ * `PLACES` names the guards each place draws a refusal from, and two tests hold that naming to what
+ * happens. One runs every command at the place with each guard listening in on itself and compares
+ * the guards that answered no against the names, so a place cannot name a guard that refuses
+ * nothing there and a guard cannot stop refusing without a word. The other fails the moment a
+ * registered guard has nowhere here to be put to the test, which is what stops a guard from being
+ * added and never exercised.
  */
 
 const runXml = (text: string) =>
@@ -230,12 +239,14 @@ interface Place {
   name: string;
   state: (protection: EditingProtection) => EditorState;
   /**
-   * The guards (`schema/guards`) a command can be refused by here.
+   * The guards (`schema/guards`) a command is refused by here, over the three protections.
    *
-   * A guard no place names is a guard nothing in this file ever puts to the test, so the last test
-   * refuses one, and the answer to it is a place rather than a name.
+   * This is not a note: "the guards each place names" runs every command at the place with each
+   * guard listening in on itself, and holds the guards that answered no against exactly this list.
+   * A guard no place names is a guard nothing in this file ever puts to the test, so the test after
+   * it refuses one, and the answer to that is a place rather than a name.
    */
-  guards: readonly string[];
+  guards: readonly EditGuardName[];
 }
 
 const PLACES: readonly Place[] = [
@@ -289,8 +300,10 @@ const PLACES: readonly Place[] = [
     state: (protection) => overText("ef", protection),
   },
   {
+    // The clause shuts deletion alone, so the contents stand open and the lock refuses nothing
+    // here. The place is what proves it: every command works inside such a control
     name: "a caret inside a control locked against deletion alone",
-    guards: ["protection", "lock"],
+    guards: ["protection"],
     state: (protection) => caretIn("gh", protection),
   },
   {
@@ -319,8 +332,10 @@ const PLACES: readonly Place[] = [
     state: (protection) => acrossNode("rawInline", protection),
   },
   {
+    // A marker is lost by being replaced, and a caret replaces nothing, so the guard stands aside
+    // and everything typed beside a marker goes in
     name: "a caret against a bookmark marker",
-    guards: ["protection", "bookmark"],
+    guards: ["protection"],
     state: (protection) => afterNode("rawInline", protection),
   },
   {
@@ -685,6 +700,95 @@ describe("every toggle over guarded content", () => {
       ).toBe(true);
     });
   });
+});
+
+/**
+ * What a guard answers with, which is the shape the three judgements have in common.
+ *
+ * A guard is written as one of the two judgements and never both (`schema/editGuard`), so this is
+ * wider than any single guard; it exists because assigning a guard to it is how the answers it
+ * gives can be written down without the registry having to be built a second way.
+ */
+interface GuardMethods {
+  shuts(intent: EditIntent, state: EditorState): boolean;
+  step?(step: Step, before: PMNode, after: PMNode, state: EditorState): boolean;
+  change?(tr: Transaction, state: EditorState): boolean;
+}
+
+/**
+ * Runs the work with every registered guard listening in on itself, and answers the guards that
+ * refused something while it ran.
+ *
+ * A refusal is a `shuts` answering true or a `step` or a `change` answering false, which are the
+ * three ways a guard turns an edit down (`schema/guards`). Both entry points stop at the first
+ * refusal, so a guard standing behind one that has already refused goes unasked; running the same
+ * place under each protection is what brings the ones behind `protection` out.
+ */
+function guardsRefusing(work: () => void): Set<EditGuardName> {
+  const refused = new Set<EditGuardName>();
+  const restore = EDIT_GUARDS.map((guard) => {
+    const methods: GuardMethods = guard;
+    const { shuts, step, change } = methods;
+    methods.shuts = (intent, state) => {
+      const open = shuts.call(guard, intent, state);
+      if (open) refused.add(guard.name);
+      return open;
+    };
+    if (step) {
+      methods.step = (one, before, after, state) => {
+        const allowed = step.call(guard, one, before, after, state);
+        if (!allowed) refused.add(guard.name);
+        return allowed;
+      };
+    }
+    if (change) {
+      methods.change = (tr, state) => {
+        const allowed = change.call(guard, tr, state);
+        if (!allowed) refused.add(guard.name);
+        return allowed;
+      };
+    }
+    return () => {
+      methods.shuts = shuts;
+      if (step) methods.step = step;
+      if (change) methods.change = change;
+    };
+  });
+
+  try {
+    work();
+  } finally {
+    for (const undo of restore) undo();
+  }
+  return refused;
+}
+
+/**
+ * The `guards` each place names is checked against the guards that answer, rather than read as a
+ * note beside it.
+ *
+ * Without this, a place could name a guard that refuses nothing there, and a guard could be taken
+ * out of `EDIT_GUARDS` without a word from this file: the predicate a command reports from and the
+ * dispatch it is refused at ask the same list, so the two go on agreeing with each other while both
+ * stop refusing.
+ */
+describe("the guards each place names", () => {
+  it.each(PLACES)(
+    "$name is where exactly those refuse",
+    ({ state, guards }) => {
+      const states = PROTECTIONS.map((protection) => state(protection));
+      const refused = guardsRefusing(() => {
+        for (const opened of states) {
+          for (const { command } of CASES) attempt(opened, command);
+        }
+      });
+
+      expect(
+        [...refused].sort(),
+        "the guards that refused a command here are not the ones this place names"
+      ).toEqual([...guards].sort());
+    }
+  );
 });
 
 describe("the list of places above", () => {
