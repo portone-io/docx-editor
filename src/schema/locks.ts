@@ -2,8 +2,8 @@
  * Evaluates OOXML content and deletion locks for inline controls and whole table cells. Commands
  * query these predicates before editing; `editor/plugins/lockedContent` enforces them at runtime.
  *
- * `transactionAllowed` is the one guard, and it answers for the protection the editor runs under
- * (`./protection`) as well as for the locks, so that a command asking it asks both.
+ * `lockGuard` is what `./guards` registers all of this as, so that a caller asking the one guard
+ * list asks the locks along with every other rule an edit is judged by.
  */
 
 import type {
@@ -12,12 +12,7 @@ import type {
   Node as PMNode,
   ResolvedPos,
 } from "prosemirror-model";
-import {
-  type EditorState,
-  PluginKey,
-  type Selection,
-  type Transaction,
-} from "prosemirror-state";
+import { PluginKey, type Selection } from "prosemirror-state";
 import {
   AddMarkStep,
   AddNodeMarkStep,
@@ -28,13 +23,8 @@ import {
   ReplaceStep,
   type Step,
 } from "prosemirror-transform";
+import type { EditGuard, EditIntent } from "./guards";
 import { docxSchema } from "./index";
-import {
-  isCommentNode,
-  type ProtectionState,
-  protectionAllows,
-} from "./protection";
-import { protectionOf } from "./protectionState";
 
 /**
  * The pass that lets a transaction through the guard, which is how a lock can be lifted at all.
@@ -292,6 +282,20 @@ export function insertionInsideLocked(doc: PMNode, pos: number): boolean {
   return before !== null && after !== null && before.eq(after);
 }
 
+/** Whether a lock shuts editing what stands in this stretch, where it stands */
+function markShut(doc: PMNode, from: number, to: number): boolean {
+  return from === to
+    ? insertionInsideLocked(doc, from)
+    : rangeTouchesLocked(doc, from, to);
+}
+
+/** Whether a lock shuts putting something in place of what stands in this stretch */
+function replaceShut(doc: PMNode, from: number, to: number): boolean {
+  return from === to
+    ? insertionInsideLocked(doc, from)
+    : rangeShut(doc, { from, to, takesAway: true });
+}
+
 /**
  * Whether the guard shuts editing where this selection stands.
  *
@@ -304,9 +308,7 @@ export function insertionInsideLocked(doc: PMNode, pos: number): boolean {
  */
 export function selectionShut(selection: Selection, doc: PMNode): boolean {
   return selection.ranges.some((range) =>
-    range.$from.pos === range.$to.pos
-      ? insertionInsideLocked(doc, range.$from.pos)
-      : rangeTouchesLocked(doc, range.$from.pos, range.$to.pos)
+    markShut(doc, range.$from.pos, range.$to.pos)
   );
 }
 
@@ -320,13 +322,9 @@ export function selectionShut(selection: Selection, doc: PMNode): boolean {
  * it would have gone through.
  */
 export function replacementShut(selection: Selection, doc: PMNode): boolean {
-  return selection.ranges.some((range) => {
-    const from = range.$from.pos;
-    const to = range.$to.pos;
-    return from === to
-      ? insertionInsideLocked(doc, from)
-      : rangeShut(doc, { from, to, takesAway: true });
-  });
+  return selection.ranges.some((range) =>
+    replaceShut(doc, range.$from.pos, range.$to.pos)
+  );
 }
 
 /**
@@ -433,119 +431,33 @@ function stepAllowed(step: Step, doc: PMNode): boolean {
   return true;
 }
 
-/** Whether the transaction carries one of the two passes through the guard */
-function carriesPass(tr: Transaction): boolean {
-  return (
-    tr.getMeta(unlockAllowed) === true || tr.getMeta(historyReplay) === true
-  );
-}
-
-function rangeHoldsComment(doc: PMNode, from: number, to: number): boolean {
-  let found = false;
-  doc.nodesBetween(from, to, (node) => {
-    if (found) return false;
-    if (isCommentNode(node)) found = true;
-    return !found;
-  });
-  return found;
-}
-
-/**
- * Whether any step of the transaction reaches a comment node: puts one in, takes one out, or
- * rewrites the one where it stands, which is how a body, a reply and a resolution change.
- *
- * Every comment lives in its three nodes, so a change that reaches none of them cannot have
- * changed a comment. That is what lets the guard settle the common transaction - typing, and
- * nothing more - over the stretch it rewrote rather than over the whole document.
- *
- * A step of a kind this does not know - one a consumer brought - is answered as reaching one,
- * since what it rewrote is not known either. The whole-document judgement then has the say, and
- * an unknown step costs a comparison rather than a hole in the guard.
- */
-export function transactionTouchesComments(tr: Transaction): boolean {
-  return tr.steps.some((step, index) => {
-    const before = tr.docs[index];
-    const after = tr.docs[index + 1] ?? tr.doc;
-    if (
-      step instanceof AttrStep ||
-      step instanceof AddNodeMarkStep ||
-      step instanceof RemoveNodeMarkStep
-    ) {
-      const node = before.nodeAt(step.pos);
-      return node !== null && isCommentNode(node);
-    }
-    if (
-      !(
-        step instanceof ReplaceStep ||
-        step instanceof ReplaceAroundStep ||
-        step instanceof AddMarkStep ||
-        step instanceof RemoveMarkStep
-      )
-    ) {
-      return true;
-    }
-    let touched = false;
-    step.getMap().forEach((oldStart, oldEnd, newStart, newEnd) => {
-      touched ||=
-        rangeHoldsComment(before, oldStart, oldEnd) ||
-        rangeHoldsComment(after, newStart, newEnd);
-    });
-    return touched;
-  });
-}
-
-/**
- * Whether the protection lets this transaction through (`./protection`).
- *
- * The whole-document judgement is reached for only when a comment is touched at all
- * (`transactionTouchesComments`). A change that touches none is a body edit: through under `none`,
- * refused under `comments`, and nothing about ownership to ask.
- */
-export function protectionAllowsTransaction(
-  tr: Transaction,
-  rules: ProtectionState
-): boolean {
-  switch (rules.protection) {
-    case "readOnly":
-      return false;
-    case "none":
-      return (
-        !transactionTouchesComments(tr) ||
-        protectionAllows(tr.before, tr.doc, rules)
-      );
-    case "comments":
-      return (
-        transactionTouchesComments(tr) &&
-        protectionAllows(tr.before, tr.doc, rules)
-      );
+/** Whether a lock shuts what this intent means to do where it stands */
+function intentShut(doc: PMNode, intent: EditIntent): boolean {
+  switch (intent.kind) {
+    case "insert":
+      return insertionInsideLocked(doc, intent.at);
+    case "block":
+      return insideLockedCell(doc, intent.at);
+    case "mark":
+      return markShut(doc, intent.from, intent.to);
+    case "replace":
+      return replaceShut(doc, intent.from, intent.to);
     default: {
-      const unmodelled: never = rules.protection;
+      const unmodelled: never = intent;
       return unmodelled;
     }
   }
 }
 
 /**
- * Whether the guard would let this transaction through, decided and nothing else.
+ * The locks the document carries, as `./guards` registers them.
  *
- * The refusal the guard itself answers with carries a side effect - the composition it ends
- * (`editor/plugins/lockedContent`) - which a query about a button's state may not set off, so the
- * decision stands apart from it and every caller building an edit asks this rather than handing
- * the transaction to a state.
- *
- * The protection is judged before the passes and without them: a replayed edit is still an edit,
- * and a pass that lifts a lock lifts no protection. Its judgement is over the whole change rather
- * than step by step, which is what lets it tell a comment from everything else.
+ * Both passes lift it: unlocking is the one edit that may reach into a lock, and every step the
+ * history replays is the reverse of a step that passed the guard when it was made.
  */
-export function transactionAllowed(
-  tr: Transaction,
-  state: EditorState
-): boolean {
-  if (!tr.docChanged) return true;
-  if (!protectionAllowsTransaction(tr, protectionOf(state))) return false;
-  if (carriesPass(tr)) return true;
-  // Each step counts positions in the document it was built against, which `docs` holds
-  return tr.steps.every((step, index) =>
-    stepAllowed(step, tr.docs[index] ?? state.doc)
-  );
-}
+export const lockGuard: EditGuard = {
+  name: "lock",
+  liftedBy: [unlockAllowed, historyReplay],
+  step: (step, before) => stepAllowed(step, before),
+  shuts: (intent, state) => intentShut(state.doc, intent),
+};

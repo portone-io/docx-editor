@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { makeDocx } from "../../__testing__/docx";
 import { rangeOfText } from "../../__testing__/editing";
 import { importDocx } from "../../docx/importDocx";
-import { transactionAllowed } from "../../schema/locks";
+import { transactionAllowed } from "../../schema/guards";
 import type { EditingProtection } from "../../schema/protection";
 import {
   addComment,

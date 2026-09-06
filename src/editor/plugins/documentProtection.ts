@@ -1,7 +1,7 @@
 /**
- * Holds the protection the editor runs under (`schema/protection`) in the state, where the guard
- * and the commands read it. The guard itself stands in `lockedContent`, which enforces
- * `transactionAllowed` for locks and protection in one pass.
+ * Holds the protection the editor runs under (`schema/protection`) in the state, where the guards
+ * and the commands read it. The runtime filter stands in `lockedContent`, which enforces every
+ * guard `schema/guards` registers, the protection among them, in one pass.
  */
 
 import { Plugin, type Transaction } from "prosemirror-state";

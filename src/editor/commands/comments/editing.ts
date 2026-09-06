@@ -9,7 +9,7 @@ import {
 } from "prosemirror-state";
 import { commentParaId } from "../../../docx/comments";
 import { docxSchema } from "../../../schema";
-import { transactionAllowed } from "../../../schema/locks";
+import { transactionAllowed } from "../../../schema/guards";
 import {
   reservedCommentIds,
   reservedCommentParaIds,

@@ -11,9 +11,9 @@
  *
  * The protection is editor state rather than document state: it is the reader's standing, not the
  * file's, so nothing here is written to or read from OOXML. `editor/plugins/documentProtection`
- * holds it in the state and `./protectionState` reads it back; the guard (`transactionAllowed` in
- * `./locks`) asks the judgements here. They take documents alone, so that the `./core` entry can
- * make the same judgement over a file without an editor.
+ * holds it in the state and `./protectionState` reads it back; the guard list (`./guards`) asks the
+ * judgements here. They take documents alone, so that the `./core` entry can make the same
+ * judgement over a file without an editor.
  */
 
 import { Fragment, type Node as PMNode } from "prosemirror-model";
