@@ -588,6 +588,49 @@ describe("onlyCommentsChangedBy", () => {
         );
       });
 
+      it("holds for a first comment in a file relating a comment type outside the package", () => {
+        const bytes = repacked(original(), {
+          [DOCUMENT_RELS_PART]: partText(
+            original(),
+            DOCUMENT_RELS_PART
+          ).replace(
+            "</Relationships>",
+            `<Relationship Id="rId9" Type="${COMMENTS_REL}"` +
+              ' Target="http://example.com/c.xml" TargetMode="External"/>' +
+              "</Relationships>"
+          ),
+        });
+        const { doc, session } = importDocx(bytes);
+        let state = createEditorState(doc);
+        const { from, to } = rangeOfText(state.doc, "beta");
+        state = state.apply(
+          state.tr.setSelection(TextSelection.create(state.doc, from, to))
+        );
+        addComment({ text: "note", author: "Someone", authorId: "me" })(
+          state,
+          (tr) => (state = state.apply(tr))
+        );
+
+        expect(
+          onlyCommentsChangedBy(bytes, exportDocx(state.doc, session), "me")
+        ).toEqual(allowed);
+      });
+
+      it("does not hold for a comment relationship the submission points outside the package", () => {
+        const { bytes, commented } = commentedBy("me");
+        const outward = repacked(commented, {
+          [DOCUMENT_RELS_PART]: partText(commented, DOCUMENT_RELS_PART).replace(
+            "</Relationships>",
+            `<Relationship Id="rId88" Type="${PEOPLE_REL}"` +
+              ' Target="http://example.com/p.xml" TargetMode="External"/>' +
+              "</Relationships>"
+          ),
+        });
+        expect(onlyCommentsChangedBy(bytes, outward, "me")).toEqual(
+          relationshipsRefused
+        );
+      });
+
       /**
        * Two relationships under one id are read differently depending on which of the two a
        * reader keeps, and the decoy is neither gained nor a change to what was there.

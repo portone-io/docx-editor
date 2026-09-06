@@ -147,7 +147,9 @@ function relationshipsKept(
   });
   const ids = new Set(before.map((entry) => entry.id));
   // Every original relationship survives where `kept` holds, so a type standing once in the
-  // submission is a type gained where the file had none
+  // submission is a type gained where the file had none. Only the relationships a reader opens
+  // count: one pointing outside the package names no part, whatever type it carries
+  const parts = after.filter((entry) => !entry.external);
   return (
     kept &&
     after
@@ -155,7 +157,8 @@ function relationshipsKept(
       .every(
         (entry) =>
           COMMENT_REL_TYPES.includes(entry.type) &&
-          after.filter((other) => other.type === entry.type).length === 1
+          !entry.external &&
+          parts.filter((other) => other.type === entry.type).length === 1
       )
   );
 }
