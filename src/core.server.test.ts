@@ -2,7 +2,7 @@
 import { unzipSync, zipSync } from "fflate";
 import { JSDOM } from "jsdom";
 import { TextSelection } from "prosemirror-state";
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { LETTER_SECT_PR, makeDocx } from "./__testing__/docx";
 import { rangeOfText } from "./__testing__/editing";
 import { exportDocx, importDocx, onlyCommentsChangedBy } from "./core";
@@ -17,11 +17,19 @@ import { createEditorState } from "./editor/createEditor";
  * of the suite runs under jsdom, where every other global is there to be reached for by accident.
  */
 describe("under the globals the documentation asks a server to install", () => {
+  // `vitest.config.ts` does not isolate files, so a global left behind is one the next node
+  // environment file in this worker would find without having asked for it
   beforeAll(() => {
     const { window } = new JSDOM();
     const globals = globalThis as unknown as Record<string, unknown>;
     globals.DOMParser = window.DOMParser;
     globals.Node = window.Node;
+  });
+
+  afterAll(() => {
+    const globals = globalThis as unknown as Record<string, unknown>;
+    globals.DOMParser = undefined;
+    globals.Node = undefined;
   });
 
   const author = { id: "me", name: "Me" };

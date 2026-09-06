@@ -113,7 +113,9 @@ function extensionsXml(
       `<w15:commentsEx xmlns:w15="${W15_NS}">${pieces.join("")}</w15:commentsEx>`
     );
   }
-  const open = /<(?:[\w.-]+:)?commentsEx\b[^>]*>/.exec(comments.extendedXml);
+  const open = /<(?:[^\s<>/:="']+:)?commentsEx\b[^>]*>/.exec(
+    comments.extendedXml
+  );
   if (!open) {
     throw new DocxExportError(
       "malformed-xml",
@@ -325,7 +327,7 @@ function commentsXml(
     );
   }
 
-  const open = /<(?:[\w.-]+:)?comments\b[^>]*>/.exec(comments.xml);
+  const open = /<(?:[^\s<>/:="']+:)?comments\b[^>]*>/.exec(comments.xml);
   if (!open) {
     throw new DocxExportError(
       "malformed-xml",

@@ -132,9 +132,15 @@ export function renderCommentBody(text: string, paraId: string | null): string {
   return `<w:p${attrs}><w:r>${pieces.join("")}</w:r></w:p>`;
 }
 
-/** An opening tag named `p`, or a stretch of text that only looks like one */
+/**
+ * An opening tag named `p`, or a stretch of text that only looks like one.
+ *
+ * A prefix is an XML name, which is wider than the letters an English one uses, so it is spelled
+ * here as everything a tag cannot hold rather than as the characters one usually does. The DOM
+ * counts the same tags, and the two have to agree on which they are.
+ */
 const PARAGRAPH_OR_SKIPPED =
-  /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<([\w.-]+:)?p(?=[\s/>])[^>]*>/g;
+  /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<([^\s<>/:="']+:)?p(?=[\s/>])[^>]*>/g;
 
 /**
  * The paragraph a thread key belongs on, which is the last one of the body.
@@ -204,7 +210,14 @@ export function withThreadKey(
   if (arrived === null) return commentXml;
   const target = lastBodyParagraph(arrived);
   if (target === null) return commentXml;
-  if (target.getAttributeNS(W14_NS, "paraId") !== null) return commentXml;
+  // Under the namespace it means, or under the name the key would be written as: a second
+  // attribute of one name is not XML this package can read back
+  if (
+    target.getAttributeNS(W14_NS, "paraId") !== null ||
+    target.hasAttribute("w14:paraId")
+  ) {
+    return commentXml;
+  }
 
   const at = namedParagraphs(arrived).indexOf(target);
   const openings = Array.from(commentXml.matchAll(PARAGRAPH_OR_SKIPPED)).filter(

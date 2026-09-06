@@ -129,6 +129,24 @@ describe("giving an entry a thread key", () => {
     expect(keyed(entry)).toContain('<w:p w14:paraId="ABCD1234">');
   });
 
+  it("takes a paragraph whose prefix is a name wider than an English one", () => {
+    const entry =
+      '<w:comment w:id="0"><w\u00f6:p><w\u00f6:r><w\u00f6:t>a</w\u00f6:t></w\u00f6:r></w\u00f6:p></w:comment>';
+
+    expect(keyed(entry, `xmlns:w="${W_NS}" xmlns:w\u00f6="${W_NS}"`)).toContain(
+      '<w\u00f6:p w14:paraId="ABCD1234">'
+    );
+  });
+
+  it("writes no second key beside one spelled the way it would spell its own", () => {
+    const entry =
+      '<w:comment w:id="0"><w:p w14:paraId="0000AAAA"><w:r><w:t>a</w:t></w:r></w:p></w:comment>';
+
+    expect(
+      keyed(entry, `xmlns:w="${W_NS}" xmlns:w14="http://example.com/other"`)
+    ).toBe(entry);
+  });
+
   it("reads a prefix as the element it sits on binds it, not as the part first bound it", () => {
     const entry =
       '<w:comment w:id="0"><q:p><q:r><q:drawing>' +
