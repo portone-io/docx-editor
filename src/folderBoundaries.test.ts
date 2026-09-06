@@ -69,6 +69,61 @@ function importsOf(file: string): { specifier: string; target: string }[] {
   );
 }
 
+/**
+ * One import or re-export statement, as the clause it names and the file it reads.
+ *
+ * The clause is matched without a `;` in it so that a statement can never run into the next one,
+ * which is what a lazy match over a file starting with several type-only imports would otherwise
+ * do.
+ */
+const IMPORT_STATEMENT =
+  /(?:^|\n)\s*(?:import|export)\s+([^;]*?)\s+from\s+"(\.[^"]+)";/g;
+
+/**
+ * The imports that survive into what runs, which are the ones a cycle can be built out of.
+ *
+ * A statement importing nothing but types is erased before anything runs and cannot hold a cycle
+ * up, so it is left out. A statement mixing a type in with a value is kept whole: the module is
+ * still fetched, and only writing it as `import type` would take it out of the graph.
+ */
+function runtimeImportsOf(file: string): string[] {
+  return [...readFileSync(file, "utf8").matchAll(IMPORT_STATEMENT)]
+    .filter(([, clause]) => !/^type\b/.test(clause.trim()))
+    .map(([, , specifier]) => resolveImport(file, specifier));
+}
+
+/** The first cycle the runtime import graph holds, as the path around it. Empty when it holds none */
+function firstRuntimeCycle(): string[] {
+  const done = new Set<string>();
+  const path: string[] = [];
+  const onPath = new Set<string>();
+
+  const walk = (file: string): string[] => {
+    onPath.add(file);
+    path.push(file);
+    for (const target of runtimeImportsOf(file)) {
+      if (!fileSet.has(target)) continue;
+      if (onPath.has(target)) {
+        return [...path.slice(path.indexOf(target)), target];
+      }
+      if (done.has(target)) continue;
+      const found = walk(target);
+      if (found.length > 0) return found;
+    }
+    path.pop();
+    onPath.delete(file);
+    done.add(file);
+    return [];
+  };
+
+  for (const file of files) {
+    if (done.has(file)) continue;
+    const found = walk(file);
+    if (found.length > 0) return found;
+  }
+  return [];
+}
+
 function entryFiles(): string[] {
   const pkg: unknown = JSON.parse(
     readFileSync(join(packageDir, "package.json"), "utf8")
@@ -143,6 +198,22 @@ describe("the folder layering", () => {
     expect(
       orphans,
       `unreachable from every entry:\n${orphans.join("\n")}`
+    ).toEqual([]);
+  });
+
+  /**
+   * Two modules that read each other are evaluated in whichever order the first importer happens
+   * to reach them, and whatever the module entered second reads at evaluation time is not there
+   * yet. A list built out of what other modules export - `schema/guards` and its `EDIT_GUARDS` -
+   * then holds a hole rather than raising anything, since the bundler lowers the declarations it
+   * is built from to `var`.
+   */
+  it("holds no cycle among the imports that survive into what runs", () => {
+    const cycle = firstRuntimeCycle().map((file) => relative(srcDir, file));
+
+    expect(
+      cycle,
+      `these modules read each other:\n${cycle.join(" ->\n")}\nMove what both of them need into a module that imports neither, or make one of the two imports \`import type\`.`
     ).toEqual([]);
   });
 });

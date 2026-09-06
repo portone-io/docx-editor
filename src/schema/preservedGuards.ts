@@ -9,7 +9,7 @@
  */
 
 import type { Node as PMNode } from "prosemirror-model";
-import { type EditGuard, rangeHolds, transactionReaches } from "./guards";
+import { type EditGuard, rangeHolds, transactionReaches } from "./editGuard";
 
 /** Everything about one preserved node that has to read the same after a change as before it */
 type Signature = (node: PMNode) => string;

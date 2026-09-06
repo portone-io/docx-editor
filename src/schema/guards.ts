@@ -7,25 +7,18 @@
  * (`editor/commands/canRunCommand`), and `editShut` runs it over the intent a command has before
  * it builds anything. Both ask the same list, which is what keeps a disabled control and a refused
  * edit saying the same thing.
+ *
+ * What a guard is written against - `EditGuard`, `EditIntent` and the reach primitives - stands in
+ * `./editGuard` so that a module writing a guard need not read this one, and is handed on from
+ * here so that a caller has one door to the whole seam.
  */
 
-import type { Node as PMNode } from "prosemirror-model";
-import type {
-  EditorState,
-  PluginKey,
-  Selection,
-  Transaction,
-} from "prosemirror-state";
+import type { EditorState, Selection, Transaction } from "prosemirror-state";
 import {
-  AddMarkStep,
-  AddNodeMarkStep,
-  AttrStep,
-  RemoveMarkStep,
-  RemoveNodeMarkStep,
-  ReplaceAroundStep,
-  ReplaceStep,
-  type Step,
-} from "prosemirror-transform";
+  type EditGuard,
+  type EditIntent,
+  transactionReaches,
+} from "./editGuard";
 import { lockGuard } from "./locks";
 import { bookmarkGuard, noteGuard } from "./preservedGuards";
 import {
@@ -35,107 +28,8 @@ import {
 } from "./protection";
 import { editsShut, protectionOf } from "./protectionState";
 
-/**
- * What a command means to do, in as much of it as a guard can answer for before anything is built.
- *
- * The positions are the ones the command would work over, counted in the document as it stands.
- */
-export type EditIntent =
-  /** Something goes in at this spot, and nothing there goes away */
-  | { kind: "insert"; at: number }
-  /** What stands in this stretch is marked where it stands */
-  | { kind: "mark"; from: number; to: number }
-  /** What stands in this stretch goes away, whatever takes its place */
-  | { kind: "replace"; from: number; to: number }
-  /** The block at this spot is rewritten around its content, an alignment or an indent */
-  | { kind: "block"; at: number };
-
-export interface EditGuard {
-  /** How this guard is named in the honesty test and in a refusal read by a developer */
-  readonly name: string;
-  /**
-   * Whether the step may go through, judged over the document it was built against.
-   * Omitted: every step passes.
-   */
-  step?(step: Step, before: PMNode, after: PMNode, state: EditorState): boolean;
-  /** The judgement a rule needs both documents of the whole change at once for */
-  change?(tr: Transaction, state: EditorState): boolean;
-  /** Whether the intent is shut where it stands, which is what a command asks before it builds */
-  shuts(intent: EditIntent, state: EditorState): boolean;
-  /** The passes that lift this guard's step judgement. Omitted: none does */
-  liftedBy?: readonly PluginKey<boolean>[];
-}
-
-/** Whether this stretch of the document holds a node the question answers for */
-export function rangeHolds(
-  doc: PMNode,
-  from: number,
-  to: number,
-  holds: (node: PMNode) => boolean
-): boolean {
-  let found = false;
-  doc.nodesBetween(from, to, (node) => {
-    if (found) return false;
-    if (holds(node)) found = true;
-    return !found;
-  });
-  return found;
-}
-
-/**
- * Whether the step reaches a node the question answers for: puts one in, takes one out, or
- * rewrites the one where it stands.
- *
- * A rule about such nodes cannot have been broken by a change that reaches none of them, which is
- * what lets a guard settle the common transaction - typing, and nothing more - over the stretches
- * its own steps rewrote rather than over the whole document.
- *
- * A step of a kind this does not know - one a consumer brought - is answered as reaching one,
- * since what it rewrote is not known either. The whole-document judgement then has the say, and
- * an unknown step costs a comparison rather than a hole in the guard.
- */
-export function stepReaches(
-  step: Step,
-  before: PMNode,
-  after: PMNode,
-  holds: (node: PMNode) => boolean
-): boolean {
-  if (
-    step instanceof AttrStep ||
-    step instanceof AddNodeMarkStep ||
-    step instanceof RemoveNodeMarkStep
-  ) {
-    const node = before.nodeAt(step.pos);
-    return node !== null && holds(node);
-  }
-  if (
-    !(
-      step instanceof ReplaceStep ||
-      step instanceof ReplaceAroundStep ||
-      step instanceof AddMarkStep ||
-      step instanceof RemoveMarkStep
-    )
-  ) {
-    return true;
-  }
-  let reached = false;
-  step.getMap().forEach((oldStart, oldEnd, newStart, newEnd) => {
-    reached ||=
-      rangeHolds(before, oldStart, oldEnd, holds) ||
-      rangeHolds(after, newStart, newEnd, holds);
-  });
-  return reached;
-}
-
-/** Whether any step of the transaction reaches a node the question answers for */
-export function transactionReaches(
-  tr: Transaction,
-  holds: (node: PMNode) => boolean
-): boolean {
-  return tr.steps.some((step, index) =>
-    stepReaches(step, tr.docs[index], tr.docs[index + 1] ?? tr.doc, holds)
-  );
-}
+export type { EditGuard, EditIntent } from "./editGuard";
+export { stepReaches } from "./editGuard";
 
 /**
  * Whether the transaction reaches a comment node, which is how a body, a reply and a resolution

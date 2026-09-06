@@ -23,7 +23,7 @@ import {
   ReplaceStep,
   type Step,
 } from "prosemirror-transform";
-import type { EditGuard, EditIntent } from "./guards";
+import type { EditGuard, EditIntent } from "./editGuard";
 import { docxSchema } from "./index";
 
 /**
