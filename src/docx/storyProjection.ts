@@ -11,10 +11,10 @@
  * same text (the test beside this file holds that over every fixture).
  *
  * The price is that the comparison levels whatever the writer levels: two blocks the writer would
- * put out alike read alike here, however differently the two files worded them. That is the same
- * boundary the editor keeps when it rebuilds a block, so nothing is compared that the editor would
- * not have written back anyway. The test beside this file holds the differences known to fall
- * under it, one case each, and holds that content the writer carries through is not among them.
+ * put out alike read alike here, however differently the two files worded them. Everything the
+ * writer carries through is compared, and what falls out of the comparison is only what would have
+ * been reworded on its way out anyway. The test beside this file holds the differences known to
+ * fall under that, one case each, and holds the other half: what the writer carries is compared.
  */
 
 import type { Node as PMNode } from "prosemirror-model";

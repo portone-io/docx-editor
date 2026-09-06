@@ -98,9 +98,10 @@ type CommentOnlyVerdict =
 
 Two files can say the same thing in different words, so the story is compared as this editor
 writes it back rather than as the two files worded it.
-Two blocks this editor would write alike read alike here: the attribute order inside a `w:tcW` or a
-`w:tblW`, a percentage width written as `100%` or as `5000`, runs a producer split that say the
-same text, and a table's `w:tblGridChange`, which this editor drops whenever it rebuilds a table.
+Two blocks this editor would write alike read alike here: the attribute order inside a `w:tcW` or
+a `w:tblW`, for instance, a percentage width written as `100%` or as `5000`, runs a producer split
+that say the same text, or a table's `w:tblGridChange`, which this editor drops whenever it
+rebuilds a table.
 A submission that changed only such a difference is accepted.
 Content this editor carries through rather than rebuilding is compared, so a rebuilt block is not
 a place to hide bytes the comparison cannot see.

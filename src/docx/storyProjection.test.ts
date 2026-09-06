@@ -169,7 +169,7 @@ describe("differences the writer levels", () => {
  * The other half of the rule. What the writer carries through rather than rebuilding is compared,
  * so a rebuilt block is not a place to put bytes the comparison cannot see.
  */
-describe("content the writer carries through", () => {
+describe("differences the comparison sees", () => {
   it("tells two tables whose cells say different things apart", () => {
     expect(storyOf(TABLE(WIDTH, CELL_WIDTH, GRID))).not.toEqual(
       storyOf(
