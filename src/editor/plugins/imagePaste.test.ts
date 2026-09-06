@@ -603,6 +603,23 @@ describe("pasting images carried by HTML", () => {
     view.destroy();
   });
 
+  it("takes the size of an editor image from the pixels it was copied at", async () => {
+    decodesAs(2, 1);
+    const { view } = openEditor();
+
+    // What a copy out of this editor writes: no `data-extent`, the drawn pixels instead
+    paste(
+      view,
+      `<img class="${editorClassNames.image}" src="${TINY_PNG_DATA_URL}" ` +
+        'width="150" height="75">'
+    );
+
+    await vi.waitFor(() => expect(firstImage(view.state.doc)).not.toBeNull());
+    const extent = toImageExtent(firstImage(view.state.doc)?.attrs.extent);
+    expect(extent).toEqual({ cx: pxToEmu(150), cy: pxToEmu(75) });
+    view.destroy();
+  });
+
   it("rejects a copied extent that would round to an empty drawing", async () => {
     decodesAs(1, 1);
     const { view } = openEditor();
