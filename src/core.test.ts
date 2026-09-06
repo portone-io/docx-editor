@@ -27,7 +27,11 @@ import {
   onlyCommentsChangedBy,
   toParagraphFormat,
 } from "./core";
-import { addComment, updateComment } from "./editor/commands/commentCommands";
+import {
+  addComment,
+  canAddComment,
+  updateComment,
+} from "./editor/commands/commentCommands";
 import { createEditorState } from "./editor/createEditor";
 import { isCommentNode } from "./schema/protection";
 
@@ -312,107 +316,76 @@ describe("onlyCommentsChangedBy", () => {
   });
 
   /**
-   * A comment is legitimate wherever a paragraph is, so the verdict has to hold over the corpus
-   * rather than over the two paragraphs a hand-written case reaches. A paragraph inside a table is
-   * the one a comparison over the model turned down, since a commented table is rebuilt and comes
-   * back worded the way this editor words it.
+   * A comment is legitimate wherever a paragraph is, so the verdict has to hold over every
+   * paragraph of the corpus rather than over the two a hand-written case reaches. A paragraph
+   * inside a table is the one a comparison over the model turned down, since a commented table is
+   * rebuilt and comes back worded the way this editor words it.
    */
-  describe("over the fixtures", () => {
+  describe("over every paragraph of every fixture", () => {
     interface Spot {
       from: number;
       to: number;
+      text: string;
     }
 
-    /** Every paragraph of this block carrying text, with the range its first character spans */
-    function textParagraphsIn(
-      block: PMNode,
-      offset: number
-    ): { paragraph: PMNode; spot: Spot }[] {
-      if (block.type.name === "paragraph") {
-        const spot = { from: offset + 1, to: offset + 2 };
-        return block.textContent.length > 0 ? [{ paragraph: block, spot }] : [];
-      }
-      const found: { paragraph: PMNode; spot: Spot }[] = [];
-      block.descendants((node, pos) => {
-        if (node.type.name !== "paragraph") return true;
-        // The block's content starts one step inside it, its first character one step inside that
-        if (node.textContent.length > 0) {
-          found.push({
-            paragraph: node,
-            spot: { from: offset + pos + 2, to: offset + pos + 3 },
+    /** The first character of every paragraph carrying text, as a range a comment can be put over */
+    function everyParagraph(doc: PMNode): Spot[] {
+      const spots: Spot[] = [];
+      doc.descendants((node, pos) => {
+        if (node.type.name === "paragraph" && node.textContent.length > 0) {
+          spots.push({
+            from: pos + 1,
+            to: pos + 2,
+            text: node.textContent.slice(0, 40),
           });
         }
-        return false;
-      });
-      return found;
-    }
-
-    /** The first text paragraph of every table, which is where the verdict used to be wrong */
-    function tableSpots(doc: PMNode): Spot[] {
-      const spots: Spot[] = [];
-      doc.forEach((block, offset) => {
-        if (block.type.name !== "table") return;
-        const [first] = textParagraphsIn(block, offset);
-        if (first !== undefined) spots.push(first.spot);
+        return node.type.name !== "paragraph";
       });
       return spots;
-    }
-
-    /** What makes one paragraph a different case from another: the inline nodes and marks it holds */
-    function inlineKinds(paragraph: PMNode): string {
-      const kinds = new Set<string>();
-      paragraph.forEach((child) => {
-        kinds.add(child.type.name);
-        for (const mark of child.marks) kinds.add(mark.type.name);
-      });
-      return Array.from(kinds).sort().join(" ");
     }
 
     /**
-     * A cell of every table, and one body paragraph for every kind of content the fixture holds.
+     * The paragraphs that take no comment, which are the ones a locked content control holds.
      *
-     * Two paragraphs made of the same kinds of inline node put the writer through the same code,
-     * so walking every paragraph of the corpus buys no evidence and costs this lane ten times as
-     * much. What it would re-prove, that the writer is a fixed point over every modelled block,
-     * `docx/storyProjection.test.ts` holds directly.
+     * Named rather than counted, so a change that starts refusing comments elsewhere fails here
+     * instead of quietly shrinking what the sweep below covers.
      */
-    function sampledSpots(doc: PMNode): Spot[] {
-      const spots = tableSpots(doc);
-      const seen = new Set<string>();
-      doc.forEach((block, offset) => {
-        if (block.type.name === "table") return;
-        for (const { paragraph, spot } of textParagraphsIn(block, offset)) {
-          const kinds = inlineKinds(paragraph);
-          if (seen.has(kinds)) continue;
-          seen.add(kinds);
-          spots.push(spot);
-        }
-      });
-      return spots;
-    }
+    const LOCKED: Readonly<Record<string, readonly string[]>> = {
+      "kitchen-sink.docx": ["Settled"],
+    };
 
     it.each(fixtureNames)(
-      "holds for a comment of one's own in %s, table cells included",
+      "holds for a comment of one's own in every paragraph of %s, table cells included",
       (name) => {
         const bytes = readFixture(name);
         const { doc, session } = importDocx(bytes);
-        const spots = sampledSpots(doc);
+        const spots = everyParagraph(doc);
         expect(spots.length).toBeGreaterThan(0);
 
-        for (const { from, to } of spots) {
+        const refused: string[] = [];
+        for (const { from, to, text } of spots) {
           // A state of its own for each, so every submission differs in that one comment alone
           let state = createEditorState(doc);
           state = state.apply(
             state.tr.setSelection(TextSelection.create(state.doc, from, to))
           );
-          addComment({ text: "note", author: "Someone", authorId: "me" })(
-            state,
-            (tr) => (state = state.apply(tr))
-          );
+          if (!canAddComment(state)) {
+            refused.push(text);
+            continue;
+          }
+          const before = state.doc;
+          expect(
+            addComment({ text: "note", author: "Someone", authorId: "me" })(
+              state,
+              (tr) => (state = state.apply(tr))
+            )
+          ).toBe(true);
+          expect(state.doc.eq(before)).toBe(false);
           expect(
             onlyCommentsChangedBy(bytes, exportDocx(state.doc, session), "me")
           ).toEqual(allowed);
         }
+        expect(refused).toEqual(LOCKED[name] ?? []);
       }
     );
 
@@ -420,7 +393,10 @@ describe("onlyCommentsChangedBy", () => {
       const bytes = readFixture(FIXTURE);
       const { doc, session } = importDocx(bytes);
       let state = createEditorState(doc);
-      const [inACell] = tableSpots(state.doc);
+      const inACell = everyParagraph(state.doc).find(
+        (spot) =>
+          state.doc.resolve(spot.from).node(-1).type.name === "tableCell"
+      );
       if (inACell === undefined)
         throw new Error("the fixture has no table text");
       state = state.apply(
