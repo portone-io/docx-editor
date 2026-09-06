@@ -99,6 +99,23 @@ function srcIdOf(dom: HTMLElement): number | null {
 }
 
 /**
+ * A content control's opening tag, with everything it wrapped cut away.
+ * `docx/serializeParagraph` and `docx/serializeTable` put back exactly the closing text named here.
+ */
+const SDT_PREFIX: RawXmlShape = {
+  kind: "openTag",
+  name: "sdt",
+  closedBy: "<w:sdtContent/></w:sdt>",
+};
+
+/** A hyperlink's opening tag, closed the same way */
+const LINK_PREFIX: RawXmlShape = {
+  kind: "openTag",
+  name: "hyperlink",
+  closedBy: "</w:hyperlink>",
+};
+
+/**
  * The raw XML an attr carries, checked against the shape that attr goes back out as.
  *
  * `false` for a fragment that does not hold it, which every rule reading one answers `false` to in
@@ -270,20 +287,25 @@ export const docxSchema = new Schema({
         { tag: "colgroup", ignore: true },
         {
           tag: `table.${editorClassNames.table}`,
-          getAttrs: (dom) => ({
-            srcId: srcIdOf(dom),
-            tblAttrs: dom.getAttribute("data-tblattrs"),
-            tblPr: dom.getAttribute("data-tblpr"),
-            tblW: toTableWidth(parseJson(dom.getAttribute("data-tblw"))),
-            gridCols: parseNumberList(dom.getAttribute("data-cols")),
-            format: toTableFormat(parseJson(dom.getAttribute("data-fmt"))),
-            styleInside: toInsideBorders(
-              parseJson(dom.getAttribute("data-style-inside"))
-            ),
-            styleCellMargins: toCellMargins(
-              parseJson(dom.getAttribute("data-style-margins"))
-            ),
-          }),
+          getAttrs: (dom) => {
+            const tblAttrs = rawXml(dom, "data-tblattrs", ATTRIBUTES);
+            const tblPr = rawXml(dom, "data-tblpr", ELEMENT("tblPr"));
+            if (tblAttrs === false || tblPr === false) return false;
+            return {
+              srcId: srcIdOf(dom),
+              tblAttrs,
+              tblPr,
+              tblW: toTableWidth(parseJson(dom.getAttribute("data-tblw"))),
+              gridCols: parseNumberList(dom.getAttribute("data-cols")),
+              format: toTableFormat(parseJson(dom.getAttribute("data-fmt"))),
+              styleInside: toInsideBorders(
+                parseJson(dom.getAttribute("data-style-inside"))
+              ),
+              styleCellMargins: toCellMargins(
+                parseJson(dom.getAttribute("data-style-margins"))
+              ),
+            };
+          },
         },
       ],
     },
@@ -317,12 +339,20 @@ export const docxSchema = new Schema({
       parseDOM: [
         {
           tag: "tr",
-          getAttrs: (dom) => ({
-            trAttrs: dom.getAttribute("data-trattrs"),
-            tblPrEx: dom.getAttribute("data-tblprex"),
-            trPr: dom.getAttribute("data-trpr"),
-            format: toRowFormat(parseJson(dom.getAttribute("data-fmt"))),
-          }),
+          getAttrs: (dom) => {
+            const trAttrs = rawXml(dom, "data-trattrs", ATTRIBUTES);
+            const tblPrEx = rawXml(dom, "data-tblprex", ELEMENT("tblPrEx"));
+            const trPr = rawXml(dom, "data-trpr", ELEMENT("trPr"));
+            if (trAttrs === false || tblPrEx === false || trPr === false) {
+              return false;
+            }
+            return {
+              trAttrs,
+              tblPrEx,
+              trPr,
+              format: toRowFormat(parseJson(dom.getAttribute("data-fmt"))),
+            };
+          },
         },
       ],
     },
@@ -387,22 +417,30 @@ export const docxSchema = new Schema({
       parseDOM: [
         {
           tag: "td",
-          getAttrs: (dom) => ({
-            colspan: parseInt10(dom.getAttribute("colspan"), 1),
-            rowspan: parseInt10(dom.getAttribute("rowspan"), 1),
-            colwidth: toColWidth(
-              parseNumberList(dom.getAttribute("data-colwidth"))
-            ),
-            tcAttrs: dom.getAttribute("data-tcattrs"),
-            tcPr: dom.getAttribute("data-tcpr"),
-            tcW: toTableWidth(parseJson(dom.getAttribute("data-tcw"))),
-            format: toCellFormat(parseJson(dom.getAttribute("data-fmt"))),
-            sdtPrefix: dom.getAttribute("data-sdt-prefix"),
-            sdtContentsLocked:
-              dom.getAttribute("data-sdt-contents-locked") === "1",
-            sdtDeletionLocked:
-              dom.getAttribute("data-sdt-deletion-locked") === "1",
-          }),
+          getAttrs: (dom) => {
+            const tcAttrs = rawXml(dom, "data-tcattrs", ATTRIBUTES);
+            const tcPr = rawXml(dom, "data-tcpr", ELEMENT("tcPr"));
+            const sdtPrefix = rawXml(dom, "data-sdt-prefix", SDT_PREFIX);
+            if (tcAttrs === false || tcPr === false || sdtPrefix === false) {
+              return false;
+            }
+            return {
+              colspan: parseInt10(dom.getAttribute("colspan"), 1),
+              rowspan: parseInt10(dom.getAttribute("rowspan"), 1),
+              colwidth: toColWidth(
+                parseNumberList(dom.getAttribute("data-colwidth"))
+              ),
+              tcAttrs,
+              tcPr,
+              tcW: toTableWidth(parseJson(dom.getAttribute("data-tcw"))),
+              format: toCellFormat(parseJson(dom.getAttribute("data-fmt"))),
+              sdtPrefix,
+              sdtContentsLocked:
+                dom.getAttribute("data-sdt-contents-locked") === "1",
+              sdtDeletionLocked:
+                dom.getAttribute("data-sdt-deletion-locked") === "1",
+            };
+          },
         },
       ],
     },
@@ -835,9 +873,9 @@ export const docxSchema = new Schema({
         {
           tag: `span.${editorClassNames.sdt}`,
           getAttrs: (dom) => {
-            const prefix = dom.getAttribute("data-sdt-prefix");
+            const prefix = rawXml(dom, "data-sdt-prefix", SDT_PREFIX);
             // With no opening tag to put back there is no control left to write out
-            if (prefix === null) return false;
+            if (prefix === null || prefix === false) return false;
             return {
               sdtPrefix: prefix,
               sdtKey: parseInt10(dom.getAttribute("data-sdt-key"), 0),
@@ -901,8 +939,9 @@ export const docxSchema = new Schema({
         {
           tag: `span.${editorClassNames.link}`,
           getAttrs: (dom) => {
-            const prefix = dom.getAttribute("data-link-prefix");
+            const prefix = rawXml(dom, "data-link-prefix", LINK_PREFIX);
             const href = dom.getAttribute("data-href");
+            if (prefix === false) return false;
             // With neither an opening tag to put back nor an address to write one from, there is
             // no link left to write out
             if (prefix === null && href === null) return false;

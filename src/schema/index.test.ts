@@ -618,6 +618,35 @@ describe("raw XML coming in through the DOM", () => {
     expect(parsed.firstChild?.child(0).type.name).toBe("text");
   });
 
+  it("a cell whose data-tcpr closes the cell is read as a cell without properties", () => {
+    const parsed = parseHtml(
+      `<table class="${editorClassNames.table}"><tbody><tr><td class="${editorClassNames.tableCell}" data-tcpr="&lt;/w:tc&gt;&lt;w:tc&gt;&lt;w:tcPr/&gt;"><p class="${editorClassNames.paragraph}">x</p></td></tr></tbody></table>`
+    );
+
+    const cell = parsed.firstChild?.firstChild?.firstChild;
+    expect(cell?.type.name).toBe("tableCell");
+    expect(cell?.attrs.tcPr).toBeNull();
+    expect(parsed.textContent).toBe("x");
+  });
+
+  it("a control whose opening tag names another element loses the mark", () => {
+    const parsed = parseHtml(
+      `<p class="${editorClassNames.paragraph}"><span class="${editorClassNames.sdt}" data-sdt-prefix="&lt;w:tbl&gt;">x</span></p>`
+    );
+
+    expect(parsed.textContent).toBe("x");
+    expect(parsed.firstChild?.firstChild?.marks).toEqual([]);
+  });
+
+  it("a link whose opening tag does not close keeps neither the tag nor the address", () => {
+    const parsed = parseHtml(
+      `<p class="${editorClassNames.paragraph}"><span class="${editorClassNames.link}" data-link-prefix="&lt;w:hyperlink&gt;&lt;w:r&gt;" data-href="https://example.com">x</span></p>`
+    );
+
+    expect(parsed.textContent).toBe("x");
+    expect(parsed.firstChild?.firstChild?.marks).toEqual([]);
+  });
+
   it("a tab whose data-tattrs is not an attribute list loses the mark", () => {
     const parsed = parseHtml(
       `<p class="${editorClassNames.paragraph}"><span class="${editorClassNames.tab}" data-tattrs="&lt;w:tab/&gt;">\t</span></p>`
