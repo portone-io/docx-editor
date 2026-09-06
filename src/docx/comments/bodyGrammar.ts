@@ -82,6 +82,37 @@ export function renderCommentBody(text: string, paraId: string | null): string {
   return `<w:p${attrs}><w:r>${pieces.join("")}</w:r></w:p>`;
 }
 
+/** The opening tag of the last paragraph of a fragment, which is where the thread key goes */
+const LAST_PARAGRAPH = /<([\w.-]+:)?p(?=[\s/>])[^>]*>/g;
+
+/**
+ * The entry with the thread key on its body's last paragraph, and unchanged where it has one.
+ *
+ * Settling a thread or replying to it hangs the state off that key, and an entry that arrived
+ * without one has to gain it. Writing the entry afresh instead would put back only what this
+ * editor models, so a body holding more than plain text would lose it to a change nobody asked
+ * for and nobody made.
+ *
+ * The prefix is declared on the part rather than here: a part holding any thread state declares it
+ * on its root along with the compatibility markup that goes with it (`./writing`).
+ */
+export function withThreadKey(commentXml: string, paraId: string): string {
+  const openings = Array.from(commentXml.matchAll(LAST_PARAGRAPH));
+  const last = openings[openings.length - 1];
+  if (last === undefined || last.index === undefined) return commentXml;
+  if (/\sw14:paraId\s*=/.test(last[0])) return commentXml;
+  const selfClosing = last[0].endsWith("/>");
+  const opening =
+    last[0].slice(0, selfClosing ? -2 : -1) +
+    ` w14:paraId="${escapeXml(paraId)}"` +
+    (selfClosing ? "/>" : ">");
+  return (
+    commentXml.slice(0, last.index) +
+    opening +
+    commentXml.slice(last.index + last[0].length)
+  );
+}
+
 function readRunText(run: Element): string | null {
   const pieces: string[] = [];
   for (const child of Array.from(run.children)) {

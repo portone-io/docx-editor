@@ -7,7 +7,7 @@ import { DocxExportError } from "../../ooxml/errors";
 import { encodeUtf8, escapeXml, W_NS } from "../../ooxml/xml";
 import { directoryOf, type RelationshipWriter } from "../relationships";
 import type { SessionStore } from "../session";
-import { renderCommentBody } from "./bodyGrammar";
+import { renderCommentBody, withThreadKey } from "./bodyGrammar";
 import {
   COMMENTS_CONTENT_TYPE,
   COMMENTS_EXTENDED_CONTENT_TYPE,
@@ -27,6 +27,24 @@ import {
 import { planPeoplePart } from "./people";
 import type { ImportedComments } from "./reading";
 
+/**
+ * Whether the entry this comment arrived as has to gain the key its thread state hangs off.
+ *
+ * A comment settled or replied to for the first time is written into the extended part under a
+ * key, and an entry that arrived without one has none for that to name.
+ */
+function needsThreadKey(
+  id: string,
+  comment: CommentReferenceData,
+  session: SessionStore
+): boolean {
+  return (
+    comment.imported &&
+    carriesThreadMetadata(comment) &&
+    (session.comments.byId.get(id)?.paraId ?? null) === null
+  );
+}
+
 function commentsChanged(doc: PMNode, session: SessionStore): boolean {
   const current = commentReferencesIn(doc);
   if (current.size !== session.commentReferenceIds.size) return true;
@@ -45,6 +63,9 @@ function commentsChanged(doc: PMNode, session: SessionStore): boolean {
   }
   for (const comment of current.values()) {
     if (comment.replies.some((reply) => !reply.imported)) return true;
+  }
+  for (const [id, comment] of current) {
+    if (needsThreadKey(id, comment, session)) return true;
   }
   return false;
 }
@@ -88,7 +109,10 @@ function extensionsXml(
     }
   }
   for (const [id, comment] of current) {
-    if (!written.has(id)) pieces.push(renderedExtension(comment));
+    // A comment with no thread state carries no key for an entry here to name
+    if (!written.has(id) && carriesThreadMetadata(comment)) {
+      pieces.push(renderedExtension(comment));
+    }
   }
 
   if (comments.extendedXml === null) {
@@ -154,6 +178,11 @@ function extensionsChanged(doc: PMNode, session: SessionStore): boolean {
   return false;
 }
 
+/**
+ * Whether the comment has thread state to write down: it arrived with some, it has been settled
+ * or replied to since, or it is itself a reply. A comment with none needs no entry in the extended
+ * part, where absent reads as an open thread standing on its own.
+ */
 function carriesThreadMetadata(
   comment: CommentReferenceData | CommentReplyData
 ): boolean {
@@ -168,7 +197,9 @@ function renderedComment(
   comment: CommentReferenceData | CommentReplyData
 ): string {
   if (comment.imported && comment.commentXml !== null) {
-    return comment.commentXml;
+    return carriesThreadMetadata(comment)
+      ? withThreadKey(comment.commentXml, comment.paraId)
+      : comment.commentXml;
   }
   const attrs = [
     `w:id="${escapeXml(comment.id)}"`,

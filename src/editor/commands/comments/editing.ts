@@ -232,19 +232,14 @@ export function setCommentResolved(id: string, resolved: boolean): Command {
   return (state, dispatch) =>
     updateReference(id, (node) => {
       if (node.attrs.resolved === resolved) return null;
+      // The key the thread state hangs off is the one the comment already has, whether it arrived
+      // with it or was given one on the way in. The entry keeps whatever it says, and the writer
+      // puts the key on it (`docx/comments/bodyGrammar`)
       return {
         ...node.attrs,
-        paraId:
-          node.attrs.threadImported === true && node.attrs.extensionXml === null
-            ? nextCommentParaId(state, `comment-${id}`)
-            : node.attrs.paraId,
         resolved,
         extensionXml: null,
         threadImported: false,
-        imported:
-          node.attrs.commentXml !== null && node.attrs.extensionXml === null
-            ? false
-            : node.attrs.imported,
       };
     })(state, dispatch);
 }
