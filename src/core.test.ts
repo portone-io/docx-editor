@@ -312,55 +312,82 @@ describe("onlyCommentsChangedBy", () => {
   });
 
   /**
-   * A comment is legitimate wherever a paragraph is, so the verdict has to hold over every
-   * paragraph of every fixture rather than over the two a hand-written case reaches. The
-   * paragraphs inside a table are the ones a comparison over the model turned down, since a
-   * commented table is rebuilt and comes back worded the way this editor words it.
+   * A comment is legitimate wherever a paragraph is, so the verdict has to hold over the corpus
+   * rather than over the two paragraphs a hand-written case reaches. A paragraph inside a table is
+   * the one a comparison over the model turned down, since a commented table is rebuilt and comes
+   * back worded the way this editor words it.
    */
-  describe("over every paragraph of every fixture", () => {
-    /** The first character of every paragraph carrying text, as a range a comment can be put over */
-    function firstCharacterOfEveryParagraph(
-      doc: PMNode
-    ): { from: number; to: number }[] {
-      const ranges: { from: number; to: number }[] = [];
-      doc.descendants((node, pos) => {
-        if (node.type.name === "paragraph" && node.textContent.length > 0) {
-          ranges.push({ from: pos + 1, to: pos + 2 });
-        }
-        return node.type.name !== "paragraph";
-      });
-      return ranges;
+  describe("over the fixtures", () => {
+    interface Spot {
+      from: number;
+      to: number;
     }
 
-    /** The first paragraph standing in a table cell, as that same range */
-    function firstCharacterInACell(doc: PMNode): { from: number; to: number } {
-      let found: { from: number; to: number } | null = null;
-      doc.descendants((node, pos, parent) => {
-        if (found !== null) return false;
-        if (
-          node.type.name === "paragraph" &&
-          parent?.type.name === "tableCell" &&
-          node.textContent.length > 0
-        ) {
-          found = { from: pos + 1, to: pos + 2 };
+    /** The first character of every paragraph of this block that carries text, as a range */
+    function textParagraphsIn(block: PMNode, offset: number): Spot[] {
+      if (block.type.name === "paragraph") {
+        return block.textContent.length > 0
+          ? [{ from: offset + 1, to: offset + 2 }]
+          : [];
+      }
+      const spots: Spot[] = [];
+      block.descendants((node, pos) => {
+        if (node.type.name !== "paragraph") return true;
+        // The block's content starts one step inside it, its first character one step inside that
+        if (node.textContent.length > 0) {
+          spots.push({ from: offset + pos + 2, to: offset + pos + 3 });
         }
-        return true;
+        return false;
       });
-      if (found === null) throw new Error("the fixture has no table cell text");
-      return found;
+      return spots;
+    }
+
+    /**
+     * A cell of every table, and the body paragraphs at either end.
+     *
+     * The tables are where the verdict used to be wrong, and a cell reaches every rebuilt piece a
+     * body paragraph does. Walking every paragraph of the corpus instead re-proves the writer's
+     * fixed point, which `docx/storyProjection.test.ts` already holds over every modelled block,
+     * at ten times the cost of this lane.
+     */
+    function commentableSpots(doc: PMNode): Spot[] {
+      const paragraphs: Spot[] = [];
+      const cells: Spot[] = [];
+      doc.forEach((block, offset) => {
+        const spots = textParagraphsIn(block, offset);
+        if (block.type.name === "table") {
+          if (spots[0] !== undefined) cells.push(spots[0]);
+        } else {
+          paragraphs.push(...spots);
+        }
+      });
+      const ends = [paragraphs[0], paragraphs[paragraphs.length - 1]];
+      return [...cells, ...ends.filter((spot) => spot !== undefined)];
+    }
+
+    function firstCellSpot(doc: PMNode): Spot {
+      const inTables: Spot[] = [];
+      doc.forEach((block, offset) => {
+        if (block.type.name === "table") {
+          inTables.push(...textParagraphsIn(block, offset));
+        }
+      });
+      const [spot] = inTables;
+      if (spot === undefined) throw new Error("the fixture has no table text");
+      return spot;
     }
 
     it.each(fixtureNames)(
-      "holds for a comment of one's own in every paragraph of %s, table cells included",
+      "holds for a comment of one's own in %s, table cells included",
       (name) => {
         const bytes = readFixture(name);
         const { doc, session } = importDocx(bytes);
-        const spots = firstCharacterOfEveryParagraph(doc);
+        const spots = commentableSpots(doc);
         expect(spots.length).toBeGreaterThan(0);
 
         for (const { from, to } of spots) {
-          // A state of its own for each, so every submission differs from the original in one comment
-          let state = createEditorState(doc, { protection: "none" });
+          // A state of its own for each, so every submission differs in that one comment alone
+          let state = createEditorState(doc);
           state = state.apply(
             state.tr.setSelection(TextSelection.create(state.doc, from, to))
           );
@@ -378,8 +405,8 @@ describe("onlyCommentsChangedBy", () => {
     it("still does not hold for a cell whose text was typed into", () => {
       const bytes = readFixture(FIXTURE);
       const { doc, session } = importDocx(bytes);
-      let state = createEditorState(doc, { protection: "none" });
-      const { from, to } = firstCharacterInACell(state.doc);
+      let state = createEditorState(doc);
+      const { from, to } = firstCellSpot(state.doc);
       state = state.apply(state.tr.insertText(EDITED, from, to));
 
       expect(

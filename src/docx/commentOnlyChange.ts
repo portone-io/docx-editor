@@ -222,6 +222,8 @@ function packageKept(
  * The two files were written by different hands, so they are compared as this editor's writer
  * puts them out rather than as they are worded (`./storyProjection`). A story the writer cannot
  * put out at all is answered the way a changed one is: there is nothing to compare it against.
+ * No file this package opens reaches that answer today, since every attr the writer needs is set
+ * on import; it is here so that a story it cannot write is refused rather than thrown over.
  */
 function sameBody(before: Story, after: Story): boolean {
   const was = comparableStory(before, withoutComments);
@@ -265,9 +267,7 @@ function storyKept(
  *
  * Every part of the package has to arrive as it left, save for the three a comment is written
  * across and the relationship and content type they are declared with; the document story itself
- * has to read as it did, comments aside. Reading the same is judged by writing both stories out
- * through this editor's writer, so the wording the two files chose is not compared and neither is
- * markup the writer does not put back at all. A comment carrying no recorded identity is everyone's to
+ * has to read as it did, comments aside. A comment carrying no recorded identity is everyone's to
  * edit here as it is in the editor (`schema/protection`), while a comment that appeared has to
  * carry this identity: a file can claim any author, and the editor's own hand in writing it is
  * not there to vouch for it. An identity already recorded is nobody's to rewrite.
