@@ -23,7 +23,7 @@ import {
   ReplaceStep,
   type Step,
 } from "prosemirror-transform";
-import type { EditGuard, EditIntent } from "./editGuard";
+import type { EditIntent, StepGuard } from "./editGuard";
 import { docxSchema } from "./index";
 
 /**
@@ -455,7 +455,7 @@ function intentShut(doc: PMNode, intent: EditIntent): boolean {
  * Both passes lift it: unlocking is the one edit that may reach into a lock, and every step the
  * history replays is the reverse of a step that passed the guard when it was made.
  */
-export const lockGuard: EditGuard = {
+export const lockGuard: StepGuard = {
   name: "lock",
   liftedBy: [unlockAllowed, historyReplay],
   step: (step, before) => stepAllowed(step, before),

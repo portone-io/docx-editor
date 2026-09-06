@@ -21,6 +21,16 @@ const LOCKED_P =
   `<w:sdt>${LOCKED_PR}<w:sdtContent>${runXml("bc")}</w:sdtContent></w:sdt>` +
   `${runXml("d")}</w:p>`;
 
+/** A one row table whose left cell stands inside a control that shuts its contents */
+const LOCKED_CELL_TABLE =
+  "<w:tbl>" +
+  '<w:tblGrid><w:gridCol w:w="1000"/><w:gridCol w:w="1000"/></w:tblGrid>' +
+  "<w:tr>" +
+  `<w:sdt>${LOCKED_PR}<w:sdtContent><w:tc><w:p>${runXml("Shut")}</w:p></w:tc></w:sdtContent></w:sdt>` +
+  `<w:tc><w:p>${runXml("Open")}</w:p></w:tc>` +
+  "</w:tr>" +
+  "</w:tbl>";
+
 /** One paragraph reading "mkn" with a bookmark range anchored around the "k" */
 const BOOKMARK_P =
   "<w:p>" +
@@ -152,5 +162,19 @@ describe("editShut", () => {
     const readOnly = opened(BOOKMARK_P, "readOnly");
     expect(editShut(readOnly, { kind: "insert", at: 1 })).toBe(true);
     expect(editShut(readOnly, { kind: "block", at: 1 })).toBe(true);
+  });
+
+  /**
+   * A block rewritten around its content - given an alignment or an indent - is the one intent the
+   * lock answers by the cell alone: a paragraph merely holding a locked control keeps both, and
+   * only what a locked cell holds is shut. Nothing builds this intent yet, so it is put here.
+   */
+  it("shuts a block intent inside a locked cell and leaves the cell beside it open", () => {
+    const state = opened(LOCKED_CELL_TABLE);
+    const shut = textRange(state.doc, "Shut");
+    const open = textRange(state.doc, "Open");
+
+    expect(editShut(state, { kind: "block", at: shut.from })).toBe(true);
+    expect(editShut(state, { kind: "block", at: open.from })).toBe(false);
   });
 });

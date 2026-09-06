@@ -15,8 +15,10 @@
 
 import type { EditorState, Selection, Transaction } from "prosemirror-state";
 import {
+  type ChangeGuard,
   type EditGuard,
   type EditIntent,
+  type StepGuard,
   transactionReaches,
 } from "./editGuard";
 import { lockGuard } from "./locks";
@@ -28,7 +30,7 @@ import {
 } from "./protection";
 import { editsShut, protectionOf } from "./protectionState";
 
-export type { EditGuard, EditIntent } from "./editGuard";
+export type { EditGuard, EditGuardName, EditIntent } from "./editGuard";
 export { stepReaches } from "./editGuard";
 
 /**
@@ -78,7 +80,7 @@ export function protectionAllowsTransaction(
  * It takes both documents at once so that it can tell a comment from everything else, and it has
  * no pass: a replayed edit is still an edit.
  */
-const protectionGuard: EditGuard = {
+const protectionGuard: ChangeGuard = {
   name: "protection",
   change: (tr, state) => protectionAllowsTransaction(tr, protectionOf(state)),
   shuts: (_intent, state) => editsShut(state),
@@ -90,8 +92,6 @@ export const EDIT_GUARDS: readonly EditGuard[] = [
   bookmarkGuard,
   noteGuard,
 ];
-
-type StepGuard = EditGuard & { step: NonNullable<EditGuard["step"]> };
 
 function judgesSteps(guard: EditGuard): guard is StepGuard {
   return guard.step !== undefined;

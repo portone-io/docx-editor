@@ -9,7 +9,12 @@
  */
 
 import type { Node as PMNode } from "prosemirror-model";
-import { type EditGuard, rangeHolds, transactionReaches } from "./editGuard";
+import {
+  type ChangeGuard,
+  type EditGuardName,
+  rangeHolds,
+  transactionReaches,
+} from "./editGuard";
 
 /** Everything about one preserved node that has to read the same after a change as before it */
 type Signature = (node: PMNode) => string;
@@ -45,10 +50,10 @@ function same(a: readonly string[], b: readonly string[]): boolean {
  * was.
  */
 export function preservedNodeGuard(
-  name: string,
+  name: EditGuardName,
   holds: (node: PMNode) => boolean,
   signature: Signature
-): EditGuard {
+): ChangeGuard {
   const listOf = (doc: PMNode) => signatures(doc, holds, signature);
   return {
     name,

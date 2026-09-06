@@ -37,21 +37,50 @@ export type EditIntent =
   /** The block at this spot is rewritten around its content, an alignment or an indent */
   | { kind: "block"; at: number };
 
-export interface EditGuard {
-  /** How this guard is named in the honesty test and in a refusal read by a developer */
-  readonly name: string;
-  /**
-   * Whether the step may go through, judged over the document it was built against.
-   * Omitted: every step passes.
-   */
-  step?(step: Step, before: PMNode, after: PMNode, state: EditorState): boolean;
-  /** The judgement a rule needs both documents of the whole change at once for */
-  change?(tr: Transaction, state: EditorState): boolean;
+/**
+ * How a guard is named in the honesty test and in a refusal read by a developer.
+ *
+ * The names are written out because the registry is a closed list: `lockHonesty` checks each one
+ * against the places it puts that guard to the test, and a place naming a guard that no longer
+ * stands has to be a mistake the compiler catches rather than an annotation answering for nothing.
+ */
+export type EditGuardName = "protection" | "lock" | "bookmark" | "note";
+
+/** What every guard answers, whichever of the two judgements it is written as */
+interface GuardCommon {
+  readonly name: EditGuardName;
   /** Whether the intent is shut where it stands, which is what a command asks before it builds */
   shuts(intent: EditIntent, state: EditorState): boolean;
+}
+
+/**
+ * A guard that judges one step at a time, over the document that step was built against.
+ *
+ * Only this form takes a pass. A pass lifts one guard's reading of a step, and a rule that has to
+ * see both documents of the change at once has no single step for it to let through.
+ */
+export interface StepGuard extends GuardCommon {
+  step(step: Step, before: PMNode, after: PMNode, state: EditorState): boolean;
   /** The passes that lift this guard's step judgement. Omitted: none does */
   liftedBy?: readonly PluginKey<boolean>[];
+  change?: never;
 }
+
+/** A guard that needs both documents of the whole change at once */
+export interface ChangeGuard extends GuardCommon {
+  change(tr: Transaction, state: EditorState): boolean;
+  step?: never;
+  liftedBy?: never;
+}
+
+/**
+ * One rule an edit is judged by: whether it would leave the document in a state the file cannot be
+ * written back from.
+ *
+ * A guard is one judgement or the other, and answers `shuts` either way, so there is no writing
+ * one that judges nothing and no hanging a pass on a judgement no pass can lift.
+ */
+export type EditGuard = StepGuard | ChangeGuard;
 
 /** Whether this stretch of the document holds a node the question answers for */
 export function rangeHolds(
