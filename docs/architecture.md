@@ -29,7 +29,7 @@ A folder may import itself and folders with a lower rank only.
 | 1 | `styles` | Visual styles, presets, and font fallbacks |
 | 2 | `ooxml` | XML, errors, units, and image primitives |
 | 3 | `numbering` | Numbering definitions and list markers |
-| 4 | `schema` | ProseMirror nodes, marks, rendering, and locks |
+| 4 | `schema` | ProseMirror nodes, marks, rendering, locks, and edit guards |
 | 5 | `docx` | Import, export, session state, and page geometry |
 | 6 | `page` | Page-boundary calculations |
 | 6 | `table` | Table editing, formatting, and resizing |

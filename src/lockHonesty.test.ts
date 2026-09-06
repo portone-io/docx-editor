@@ -3,29 +3,39 @@ import { Mark, type Node as PMNode } from "prosemirror-model";
 import type { Command, EditorState } from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
 import { describe, expect, it } from "vitest";
-import { makeDocx, TINY_PNG_DATA_URL } from "./__testing__/docx";
+import {
+  makeDocx,
+  makeNotesDocx,
+  NOTE_BODY,
+  TINY_PNG_DATA_URL,
+} from "./__testing__/docx";
 import { select } from "./__testing__/editing";
 import { importDocx } from "./docx/importDocx";
 import * as commands from "./editor/commands/index";
 import { createEditorState } from "./editor/createEditor";
 import { setProtection } from "./editor/plugins/documentProtection";
+import { EDIT_GUARDS } from "./schema/guards";
 import type { EditingProtection } from "./schema/protection";
 import * as table from "./table";
 
 /**
- * Every command the package exports answers truthfully over locked content, and under every
- * protection the editor can run under (`schema/protection`).
+ * Every command the package exports answers truthfully wherever a guard could refuse it
+ * (`schema/guards`): over locked content, over the markers a document is preserved with, and under
+ * every protection the editor can run under (`schema/protection`).
  *
  * The invariant: a command reporting false must change nothing when it is dispatched, and one
- * reporting true must change something. A command that reports true and is then refused by the
- * lock guard draws a live control that swallows the click; one that reports false and dispatches
- * anyway would be worse still. Both are the same fault, and this file is the only thing that
- * checks it, so the list of commands is written out by hand: half of them are factories
- * (`setParagraphAlign(align)`, `insertTable({rows, columns})`) that no reflection would reach.
+ * reporting true must change something. A command that reports true and is then refused by a guard
+ * draws a live control that swallows the click; one that reports false and dispatches anyway would
+ * be worse still. Both are the same fault, and this file is the only thing that checks it, so the
+ * list of commands is written out by hand: half of them are factories (`setParagraphAlign(align)`,
+ * `insertTable({rows, columns})`) that no reflection would reach.
  *
  * `NOT_A_COMMAND` carries everything else the two entries export, each with the reason it is not
  * a command, and the last test here fails the moment an export appears in neither list. That is
- * what stops a new command from being added without an answer to this question.
+ * what stops a new command from being added without an answer to this question. `PLACES` names the
+ * guards each place can draw a refusal from, and the test before it fails the moment a registered
+ * guard has nowhere here to be put to the test, which is what stops a guard from being added and
+ * never exercised.
  */
 
 const runXml = (text: string) =>
@@ -74,11 +84,28 @@ const BODY =
   `<w:tr>${cellXml(runXml("Under1"))}${cellXml(runXml("Under2"))}${cellXml(runXml("Under3"))}</w:tr>` +
   "</w:tbl>";
 
+/**
+ * A paragraph a bookmark range is anchored inside, which the editor preserves and never edits.
+ * Text stands on either side of both markers, so a selection can run across one of them without
+ * leaving the paragraph, and these two are the only raw inlines the document holds.
+ */
+const BOOKMARK_P =
+  "<w:p>" +
+  runXml("m") +
+  '<w:bookmarkStart w:id="9" w:name="b"/>' +
+  runXml("k") +
+  '<w:bookmarkEnd w:id="9"/>' +
+  runXml("n") +
+  "</w:p>";
+
 function opened(protection: EditingProtection): EditorState {
-  return createEditorState(importDocx(makeDocx(BODY)).doc, {
-    protection,
-    author: { id: "me", name: "Me" },
-  });
+  return createEditorState(
+    importDocx(makeNotesDocx(BODY + NOTE_BODY + BOOKMARK_P)).doc,
+    {
+      protection,
+      author: { id: "me", name: "Me" },
+    }
+  );
 }
 
 /** The three standings a state can be built with, each of which every command is put to */
@@ -144,6 +171,43 @@ function overText(needle: string, protection: EditingProtection): EditorState {
   return select(state, inside - 1, inside - 1 + needle.length);
 }
 
+/** Where the first node of this type stands, and how much room it takes */
+function nodeSpan(
+  doc: PMNode,
+  typeName: string
+): { pos: number; size: number } {
+  const spans: { pos: number; size: number }[] = [];
+  doc.descendants((node, pos) => {
+    if (spans.length === 0 && node.type.name === typeName) {
+      spans.push({ pos, size: node.nodeSize });
+    }
+    return spans.length === 0;
+  });
+  const first = spans[0];
+  if (first === undefined) throw new Error(`no ${typeName} in the document`);
+  return first;
+}
+
+/** A selection running from the character before that node to the character after it */
+function acrossNode(
+  typeName: string,
+  protection: EditingProtection
+): EditorState {
+  const state = opened(protection);
+  const { pos, size } = nodeSpan(state.doc, typeName);
+  return select(state, pos - 1, pos + size + 1);
+}
+
+/** A caret standing right after that node */
+function afterNode(
+  typeName: string,
+  protection: EditingProtection
+): EditorState {
+  const state = opened(protection);
+  const { pos, size } = nodeSpan(state.doc, typeName);
+  return select(state, pos + size);
+}
+
 function cellsSelected(
   anchor: string,
   head: string,
@@ -161,23 +225,33 @@ function cellsSelected(
   );
 }
 
-/** Where the selection stands, which is what decides whether a lock is in the way */
+/** Where the selection stands, which is what decides whether a guard is in the way */
 interface Place {
   name: string;
   state: (protection: EditingProtection) => EditorState;
+  /**
+   * The guards (`schema/guards`) a command can be refused by here.
+   *
+   * A guard no place names is a guard nothing in this file ever puts to the test, so the last test
+   * refuses one, and the answer to it is a place rather than a name.
+   */
+  guards: readonly string[];
 }
 
 const PLACES: readonly Place[] = [
   {
     name: "a caret in body text no control covers",
+    guards: ["protection"],
     state: (protection) => caretIn("a", protection),
   },
   {
     name: "a caret inside a locked control",
+    guards: ["protection", "lock"],
     state: (protection) => caretIn("bc", protection),
   },
   {
     name: "a selection running across a locked control",
+    guards: ["protection", "lock"],
     state: (protection) => {
       const state = opened(protection);
       return select(state, 1, state.doc.child(0).content.size + 1);
@@ -185,53 +259,80 @@ const PLACES: readonly Place[] = [
   },
   {
     name: "a caret inside a locked cell",
+    guards: ["protection", "lock"],
     state: (protection) => caretIn("TopLeft", protection),
   },
   {
     name: "a caret in a cell no lock stands in",
+    guards: ["protection", "lock"],
     state: (protection) => caretIn("BottomRight", protection),
   },
   {
     name: "a block of cells one of which is locked",
+    guards: ["protection", "lock"],
     state: (protection) => cellsSelected("TopLeft", "TopRight", protection),
   },
   {
     name: "a block of cells no lock stands in",
+    guards: ["protection", "lock"],
     state: (protection) =>
       cellsSelected("BottomLeft", "BottomRight", protection),
   },
   {
     name: "a caret inside a control whose contents alone are locked",
+    guards: ["protection", "lock"],
     state: (protection) => caretIn("ef", protection),
   },
   {
     name: "a selection covering such a control whole, which may still be deleted",
+    guards: ["protection", "lock"],
     state: (protection) => overText("ef", protection),
   },
   {
     name: "a caret inside a control locked against deletion alone",
+    guards: ["protection", "lock"],
     state: (protection) => caretIn("gh", protection),
   },
   {
     name: "a selection covering a control locked against deletion alone whole",
+    guards: ["protection", "lock"],
     state: (protection) => overText("gh", protection),
   },
   {
     name: "a caret inside a cell whose contents alone are locked",
+    guards: ["protection", "lock"],
     state: (protection) => caretIn("ShutCell", protection),
   },
   {
     name: "a caret inside a cell locked against deletion alone",
+    guards: ["protection", "lock"],
     state: (protection) => caretIn("KeptCell", protection),
   },
   {
     name: "a block of cells one of which is locked against deletion alone",
+    guards: ["protection", "lock"],
     state: (protection) => cellsSelected("KeptCell", "PlainCell", protection),
+  },
+  {
+    name: "a selection running across a bookmark marker",
+    guards: ["protection", "bookmark"],
+    state: (protection) => acrossNode("rawInline", protection),
+  },
+  {
+    name: "a caret against a bookmark marker",
+    guards: ["protection", "bookmark"],
+    state: (protection) => afterNode("rawInline", protection),
+  },
+  {
+    name: "a selection running across a footnote reference",
+    guards: ["protection", "note"],
+    state: (protection) => acrossNode("noteReference", protection),
   },
   {
     // The history is empty in a freshly opened document, so undo and redo have nothing to take
     // back anywhere else, and this is where their answering true is put to the test
     name: "a caret after an edit, so the history holds something",
+    guards: ["protection"],
     state: (protection) => {
       // The edit is made with nothing shut and the protection put on after, the way a mode is
       // switched on a document already worked on, so the history holds something under each
@@ -459,7 +560,7 @@ function attempt(
 }
 
 describe.each(PROTECTIONS)(
-  "every exported command over locked content under %s",
+  "every exported command over guarded content under %s",
   (protection) => {
     describe.each(PLACES)("with $name", ({ state }) => {
       it.each(CASES)("$name says what dispatching it does", ({ command }) => {
@@ -569,7 +670,7 @@ function afterRunning(state: EditorState, command: Command): EditorState {
   return after;
 }
 
-describe("every toggle over locked content", () => {
+describe("every toggle over guarded content", () => {
   describe.each(PLACES)("with $name", ({ state }) => {
     it.each(TOGGLES)("$name takes back what it put on", ({ command }) => {
       const before = state("none");
@@ -583,6 +684,20 @@ describe("every toggle over locked content", () => {
         "pressing it twice left the document somewhere else, so what the first press did cannot be undone by the second"
       ).toBe(true);
     });
+  });
+});
+
+describe("the list of places above", () => {
+  it("holds a place every registered guard can refuse at", () => {
+    const named = new Set(PLACES.flatMap((place) => place.guards));
+    const unexercised = EDIT_GUARDS.map((guard) => guard.name).filter(
+      (name) => !named.has(name)
+    );
+
+    expect(
+      unexercised,
+      `registered in EDIT_GUARDS but no place puts it to the test: ${unexercised.join(", ")}\nAdd a place this guard refuses at, and name the guard in that place's \`guards\`.`
+    ).toEqual([]);
   });
 });
 

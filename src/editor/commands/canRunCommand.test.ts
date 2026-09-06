@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { deleteSelection } from "prosemirror-commands";
 import type { Node as PMNode } from "prosemirror-model";
 import {
   type Command,
@@ -7,7 +8,7 @@ import {
 } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 import { afterEach, describe, expect, it } from "vitest";
-import { makeDocx } from "../../__testing__/docx";
+import { makeDocx, makeNotesDocx } from "../../__testing__/docx";
 import { importDocx } from "../../docx/importDocx";
 import {
   addRowBefore,
@@ -87,6 +88,65 @@ describe("a table command that would reach into locked content", () => {
 
   it("is reported as unavailable where the command itself does not apply", () => {
     expect(canRunCommand(mergeCells, caretAt("Locked"))).toBe(false);
+  });
+});
+
+/** One paragraph reading "mkn" with a bookmark range anchored around the "k" */
+const BOOKMARK_P =
+  "<w:p>" +
+  run("m") +
+  '<w:bookmarkStart w:id="9" w:name="b"/>' +
+  run("k") +
+  '<w:bookmarkEnd w:id="9"/>' +
+  run("n") +
+  "</w:p>";
+
+/** A selection running from the character before the first node of this type to the one after it */
+function across(state: EditorState, typeName: string): EditorState {
+  const spans: { pos: number; size: number }[] = [];
+  state.doc.descendants((node, pos) => {
+    if (spans.length === 0 && node.type.name === typeName) {
+      spans.push({ pos, size: node.nodeSize });
+    }
+    return spans.length === 0;
+  });
+  const span = spans[0];
+  if (span === undefined) throw new Error(`no ${typeName} in the document`);
+  return state.apply(
+    state.tr.setSelection(
+      TextSelection.create(state.doc, span.pos - 1, span.pos + span.size + 1)
+    )
+  );
+}
+
+/** The state a command answers about, and the state dispatching it really leaves behind */
+function ran(state: EditorState, command: Command): EditorState {
+  let after = state;
+  command(state, (tr) => {
+    after = after.apply(tr);
+  });
+  return after;
+}
+
+/**
+ * A bookmark marker and a note reference are preserved rather than edited, so a command that would
+ * sweep one away is refused when it is dispatched. The answer has to say so beforehand.
+ */
+describe("a command that would sweep away a preserved marker", () => {
+  it("reports false for deleteSelection across a footnote reference", () => {
+    const opened = createEditorState(importDocx(makeNotesDocx()).doc);
+    const state = across(opened, "noteReference");
+
+    expect(canRunCommand(deleteSelection, state)).toBe(false);
+    expect(ran(state, deleteSelection).doc.eq(state.doc)).toBe(true);
+  });
+
+  it("reports false for deleteSelection across a bookmark marker", () => {
+    const opened = createEditorState(importDocx(makeDocx(BOOKMARK_P)).doc);
+    const state = across(opened, "rawInline");
+
+    expect(canRunCommand(deleteSelection, state)).toBe(false);
+    expect(ran(state, deleteSelection).doc.eq(state.doc)).toBe(true);
   });
 });
 
