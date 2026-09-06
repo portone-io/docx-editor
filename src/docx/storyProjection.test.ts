@@ -58,6 +58,8 @@ const TABLE = (tblW: string, tcW: string, grid: string) =>
   `<w:tbl><w:tblPr>${tblW}</w:tblPr>${grid}<w:tr>${CELL(tcW)}</w:tr></w:tbl>`;
 
 const GRID = '<w:tblGrid><w:gridCol w:w="6500"/></w:tblGrid>';
+const WIDTH = '<w:tblW w:w="6500" w:type="dxa"/>';
+const CELL_WIDTH = '<w:tcW w:w="6500" w:type="dxa"/>';
 
 function storyOf(body: string): readonly string[] {
   const projected = comparableStory(importDocx(makeDocx(body)), asIs);
@@ -66,13 +68,15 @@ function storyOf(body: string): readonly string[] {
 }
 
 /**
- * What the comparison forgives, one case each.
+ * The differences the writer levels, one case each.
  *
  * Writing both sides out through the same writer takes away every difference the writer itself
- * levels, and these are those differences. The list is the documented limit of the comparison, so
- * a lexical difference outside it is not forgiven and adding a case here is a decision to review.
+ * levels, and these are the ones known to fall under it: two spellings of one value, and content
+ * the writer rebuilds from what it read rather than copying. The list is not a closed set, since
+ * it is the writer that decides it, so `carries through` below holds the other half of the rule:
+ * content the writer copies is compared, and smuggling bytes into a rebuilt block is refused.
  */
-describe("accepted losses", () => {
+describe("differences the writer levels", () => {
   it("reads a Word-ordered tcW and tblW and a writer-ordered one as the same block", () => {
     expect(
       storyOf(
@@ -114,26 +118,75 @@ describe("accepted losses", () => {
   });
 
   it("does not tell a table whose tblGridChange was dropped from the original", () => {
-    const width = '<w:tblW w:w="6500" w:type="dxa"/>';
-    const cell = '<w:tcW w:w="6500" w:type="dxa"/>';
     const revised = storyOf(
       TABLE(
-        width,
-        cell,
+        WIDTH,
+        CELL_WIDTH,
         '<w:tblGrid><w:gridCol w:w="6500"/>' +
           '<w:tblGridChange w:id="0"><w:tblGrid><w:gridCol w:w="4000"/>' +
           "</w:tblGrid></w:tblGridChange></w:tblGrid>"
       )
     );
     expect(revised.join("")).not.toContain("tblGridChange");
-    expect(revised).toEqual(storyOf(TABLE(width, cell, GRID)));
+    expect(revised).toEqual(storyOf(TABLE(WIDTH, CELL_WIDTH, GRID)));
   });
 
+  it("reads runs split by a producer and one run saying the same as the same paragraph", () => {
+    expect(storyOf("<w:p><w:r><w:t>ab</w:t></w:r></w:p>")).toEqual(
+      storyOf("<w:p><w:r><w:t>a</w:t></w:r><w:r><w:t>b</w:t></w:r></w:p>")
+    );
+  });
+
+  it("reads a w:t with and without xml:space as the same paragraph", () => {
+    expect(storyOf("<w:p><w:r><w:t>a</w:t></w:r></w:p>")).toEqual(
+      storyOf('<w:p><w:r><w:t xml:space="preserve">a</w:t></w:r></w:p>')
+    );
+  });
+
+  it("reads a literal tab and a w:tab as the same paragraph", () => {
+    expect(
+      storyOf('<w:p><w:r><w:t xml:space="preserve">a\tb</w:t></w:r></w:p>')
+    ).toEqual(
+      storyOf("<w:p><w:r><w:t>a</w:t><w:tab/><w:t>b</w:t></w:r></w:p>")
+    );
+  });
+
+  it("reads a cell property the writer rebuilds from the model as the model says it", () => {
+    // A vMerge on a cell nothing continues, and a gridSpan of one, say nothing the model records
+    expect(storyOf(TABLE(WIDTH, CELL_WIDTH, GRID))).toEqual(
+      storyOf(
+        TABLE(
+          WIDTH,
+          CELL_WIDTH + '<w:gridSpan w:val="1"/><w:vMerge w:val="restart"/>',
+          GRID
+        )
+      )
+    );
+  });
+});
+
+/**
+ * The other half of the rule. What the writer carries through rather than rebuilding is compared,
+ * so a rebuilt block is not a place to put bytes the comparison cannot see.
+ */
+describe("content the writer carries through", () => {
   it("tells two tables whose cells say different things apart", () => {
-    const width = '<w:tblW w:w="6500" w:type="dxa"/>';
-    const cell = '<w:tcW w:w="6500" w:type="dxa"/>';
-    expect(storyOf(TABLE(width, cell, GRID))).not.toEqual(
-      storyOf(TABLE(width, cell, GRID).replace("<w:t>a</w:t>", "<w:t>b</w:t>"))
+    expect(storyOf(TABLE(WIDTH, CELL_WIDTH, GRID))).not.toEqual(
+      storyOf(
+        TABLE(WIDTH, CELL_WIDTH, GRID).replace("<w:t>a</w:t>", "<w:t>b</w:t>")
+      )
+    );
+  });
+
+  it("tells a cell whose properties gained an XML comment apart", () => {
+    expect(storyOf(TABLE(WIDTH, CELL_WIDTH, GRID))).not.toEqual(
+      storyOf(TABLE(WIDTH, CELL_WIDTH + "<!-- smuggled -->", GRID))
+    );
+  });
+
+  it("tells a cell whose properties gained stray text apart", () => {
+    expect(storyOf(TABLE(WIDTH, CELL_WIDTH, GRID))).not.toEqual(
+      storyOf(TABLE(WIDTH, CELL_WIDTH + "smuggled", GRID))
     );
   });
 });
