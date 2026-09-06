@@ -27,6 +27,9 @@ export function serializeBlock(
   if (node.type.name === "rawBlock") return preservedXml(node);
   if (node.type.name === "bookmarkBlock") return serializeRaw(node, session);
   if (node.type.name === "docxRaw") return serializeRaw(node, session);
+  // A block the schema puts in the preserved group is one nothing here models, whatever it is
+  // called, so it goes back out as it came rather than being refused for want of a branch
+  if (node.type.isInGroup("preserved")) return serializeRaw(node, session);
   throw new DocxExportError(
     "unsupported-content",
     `block we cannot serialize: ${node.type.name}`

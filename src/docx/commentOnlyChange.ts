@@ -34,6 +34,7 @@ import {
   resolveTarget,
 } from "./relationships";
 import type { SessionStore } from "./session";
+import { isModelledBlock } from "./storyProjection";
 
 /**
  * Why a file is not the one it claims to be. `part-changed` and `relationship-changed` name the
@@ -98,10 +99,7 @@ function commentPartPaths(session: SessionStore): Set<string> {
  */
 function aroundTheStory(session: SessionStore): string {
   const preserved = session.blocks
-    .filter(
-      (block) =>
-        block.node.type.name !== "paragraph" && block.node.type.name !== "table"
-    )
+    .filter((block) => !isModelledBlock(block.node))
     .map((block) => block.xml)
     .join("");
   return session.documentPrefix + preserved + session.documentSuffix;
