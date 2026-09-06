@@ -87,12 +87,14 @@ function sameBytes(before: Uint8Array, after: Uint8Array): boolean {
  * reader takes the first of each; excusing the rest would let a submission name any part it liked
  * and have it go uncompared.
  */
-function commentPartPaths(session: SessionStore): Set<string> {
+function commentPartsOf(session: SessionStore): readonly (string | null)[] {
   const { partPath, extendedPartPath, people } = session.comments;
+  return [partPath, extendedPartPath, people.partPath];
+}
+
+function commentPartPaths(session: SessionStore): Set<string> {
   return new Set(
-    [partPath, extendedPartPath, people.partPath].filter(
-      (path): path is string => path !== null
-    )
+    commentPartsOf(session).filter((path): path is string => path !== null)
   );
 }
 
@@ -116,14 +118,23 @@ function aroundTheStory(session: SessionStore): string {
  * Whether the relationships of the main document part are the ones it arrived with, save for the
  * comment parts it may have gained. An id already handed out keeps pointing where it pointed.
  *
- * A comment part a file did not have it may gain, once. Writing a comment relates each of the
+ * A comment part the file did not have may be gained, once. Writing a comment relates each of the
  * three parts a single time, so a second one under the same type is not something this editor
  * writes, and it is how a submission would otherwise name a part of its choosing.
+ *
+ * An id names one relationship. A part naming one twice is read differently depending on which of
+ * the two a reader keeps, so it is turned down rather than judged.
  */
 function relationshipsKept(
   before: readonly Relationship[],
   after: readonly Relationship[]
 ): boolean {
+  if (
+    new Set(before.map((entry) => entry.id)).size !== before.length ||
+    new Set(after.map((entry) => entry.id)).size !== after.length
+  ) {
+    return false;
+  }
   const now = new Map(after.map((entry) => [entry.id, entry]));
   const kept = before.every((entry) => {
     const current = now.get(entry.id);
@@ -135,16 +146,17 @@ function relationshipsKept(
     );
   });
   const ids = new Set(before.map((entry) => entry.id));
-  const typesBefore = new Set(before.map((entry) => entry.type));
-  const gained = after.filter((entry) => !ids.has(entry.id));
-  const gainedTypes = gained.map((entry) => entry.type);
+  // Every original relationship survives where `kept` holds, so a type standing once in the
+  // submission is a type gained where the file had none
   return (
     kept &&
-    gained.every(
-      (entry) =>
-        COMMENT_REL_TYPES.includes(entry.type) && !typesBefore.has(entry.type)
-    ) &&
-    new Set(gainedTypes).size === gainedTypes.length
+    after
+      .filter((entry) => !ids.has(entry.id))
+      .every(
+        (entry) =>
+          COMMENT_REL_TYPES.includes(entry.type) &&
+          after.filter((other) => other.type === entry.type).length === 1
+      )
   );
 }
 
@@ -193,9 +205,10 @@ function gainedCommentPartsAreNew(
   before: SessionStore,
   after: SessionStore
 ): boolean {
-  const had = commentPartPaths(before);
-  return Array.from(commentPartPaths(after)).every(
-    (path) => had.has(path) || !before.parts.has(path)
+  const had = commentPartsOf(before);
+  return commentPartsOf(after).every(
+    (path, kind) =>
+      path === null || path === had[kind] || !before.parts.has(path)
   );
 }
 

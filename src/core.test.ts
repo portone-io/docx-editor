@@ -27,6 +27,7 @@ import {
   onlyCommentsChangedBy,
   toParagraphFormat,
 } from "./core";
+import { COMMENTS_REL_TYPE, PEOPLE_REL_TYPE } from "./docx/comments/constants";
 import {
   addComment,
   canAddComment,
@@ -502,11 +503,8 @@ describe("onlyCommentsChangedBy", () => {
      * a submission decides to relate under a comment type.
      */
     describe("for a part related as a comment part", () => {
-      const REL_BASE =
-        "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
-      const COMMENTS_REL = `${REL_BASE}/comments`;
-      const PEOPLE_REL =
-        "http://schemas.microsoft.com/office/2011/relationships/people";
+      const COMMENTS_REL = COMMENTS_REL_TYPE;
+      const PEOPLE_REL = PEOPLE_REL_TYPE;
       const relationshipsRefused: CommentOnlyVerdict = {
         ok: false,
         reason: "relationship-changed",
@@ -586,6 +584,26 @@ describe("onlyCommentsChangedBy", () => {
           ),
         });
         expect(onlyCommentsChangedBy(bytes, restyled, "me")).toEqual(
+          relationshipsRefused
+        );
+      });
+
+      /**
+       * Two relationships under one id are read differently depending on which of the two a
+       * reader keeps, and the decoy is neither gained nor a change to what was there.
+       */
+      it("does not hold for a relationship part naming one id twice", () => {
+        const { commented } = commentedBy("me");
+        const rels = partText(commented, DOCUMENT_RELS_PART);
+        const reused = /Id="([^"]+)"/.exec(rels)?.[1];
+        const decoyed = repacked(commented, {
+          [DOCUMENT_RELS_PART]: rels.replace(
+            "<Relationship Id=",
+            `<Relationship Id="${reused}" Type="${COMMENTS_REL}" Target="decoy.xml"/>` +
+              "<Relationship Id="
+          ),
+        });
+        expect(onlyCommentsChangedBy(commented, decoyed, "me")).toEqual(
           relationshipsRefused
         );
       });
