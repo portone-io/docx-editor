@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import { ANY_ELEMENT, ATTRIBUTES, acceptRawXml, ELEMENT } from "./fragment";
-import { R_NS } from "./xml";
+import { R_NS, W_NS } from "./xml";
 
 const SDT = {
   kind: "openTag",
@@ -36,7 +36,9 @@ describe("an element shape", () => {
   });
 
   it("refuses an element of another namespace under a named shape", () => {
-    expect(acceptRawXml(ELEMENT("pPr"), "<m:pPr/>")).toBe(false);
+    expect(acceptRawXml(ELEMENT("pPr"), '<m:pPr xmlns:m="urn:math"/>')).toBe(
+      false
+    );
   });
 
   it("accepts a single element of another namespace for an any shape", () => {
@@ -122,6 +124,57 @@ describe("an attributes shape", () => {
  * prefix already means travels; one that binds a prefix the writer reads under is turned down.
  */
 describe("a namespace the fragment declares", () => {
+  it.each([
+    "<wx:rPr><wx:b/></wx:rPr>",
+    "<rPr><b/></rPr>",
+    `<wx:rPr xmlns:wx="${W_NS}"><wx:b/></wx:rPr>`,
+    `<rPr xmlns="${W_NS}"><b/></rPr>`,
+  ])(
+    "keeps properties whose namespace was inherited or explicitly WordprocessingML: %s",
+    (xml) => {
+      expect(acceptRawXml(ELEMENT("rPr"), xml)).toBe(xml);
+    }
+  );
+
+  it.each([
+    '<rPr xmlns="urn:foreign"/>',
+    '<wx:rPr xmlns:wx="urn:docx-editor:wx"/>',
+  ])(
+    "does not mistake an explicit foreign binding for an inherited one: %s",
+    (xml) => {
+      expect(acceptRawXml(ELEMENT("rPr"), xml)).toBe(false);
+    }
+  );
+
+  it("checks the namespace of a control's properties without losing inherited prefixes", () => {
+    const inherited = "<w:sdt><wx:sdtPr/>";
+    expect(acceptRawXml(SDT, inherited)).toBe(inherited);
+    expect(acceptRawXml(SDT, '<w:sdt xmlns:wx="urn:foreign"><wx:sdtPr/>')).toBe(
+      false
+    );
+  });
+
+  it.each([
+    ["r", R_NS],
+    ["w", W_NS],
+  ])("does not let a descendant hide a rebound %s prefix", (prefix, uri) => {
+    const xml = `<w:sdt xmlns:${prefix}="urn:evil"><w:sdtPr xmlns:${prefix}="${uri}"/>`;
+    expect(acceptRawXml(SDT, xml)).toBe(false);
+  });
+
+  it("does not read declaration-like text as a namespace binding", () => {
+    const xml = `<w:sdt><w:sdtPr><w:alias w:val="xmlns:r='urn:example'"/></w:sdtPr>`;
+    expect(acceptRawXml(SDT, xml)).toBe(xml);
+    expect(
+      acceptRawXml(ATTRIBUTES, `xmlns:r="urn:evil" title=" xmlns:r='${R_NS}'"`)
+    ).toBe(false);
+  });
+
+  it("compares decoded namespace URIs", () => {
+    const attrs = `xmlns:r="${R_NS.replace("relationships", "relationship&#115;")}"`;
+    expect(acceptRawXml(ATTRIBUTES, attrs)).toBe(attrs);
+  });
+
   it("keeps an attribute list that declares the prefix it uses", () => {
     const paraId = 'xmlns:w14="u" w14:paraId="1"';
 

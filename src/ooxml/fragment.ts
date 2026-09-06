@@ -14,7 +14,6 @@
  */
 
 import {
-  declaredNamespaces,
   elementChildren,
   namespaceDecls,
   parseXml,
@@ -43,7 +42,7 @@ export type RawXmlShape =
 
 type OpenTagShape = Extract<RawXmlShape, { kind: "openTag" }>;
 
-/** A single WordprocessingML element going by one of these local names */
+/** A single element by local name, rejecting an explicitly foreign namespace */
 export function ELEMENT(...names: string[]): RawXmlShape {
   return { kind: "element", names };
 }
@@ -76,11 +75,23 @@ function loneElement(xml: string): Element | null {
     return null;
   }
   if (root.childNodes.length !== 1) return null;
-  return elementChildren(root)[0] ?? null;
+  const el = elementChildren(root)[0];
+  return el === undefined || rebindsReservedPrefix(el) ? null : el;
 }
 
 function isNamed(el: Element, names: readonly string[]): boolean {
-  return el.namespaceURI === W_NS && names.includes(el.localName);
+  if (!names.includes(el.localName)) return false;
+  // Import cuts fragments away from their part's namespace declarations. A binding supplied
+  // only by our wrapper is unknown, not evidence that the element is in a foreign namespace.
+  const declaration = el.prefix === null ? "xmlns" : `xmlns:${el.prefix}`;
+  for (
+    let scope: Element = el;
+    scope.parentElement !== null;
+    scope = scope.parentElement
+  ) {
+    if (scope.hasAttribute(declaration)) return el.namespaceURI === W_NS;
+  }
+  return true;
 }
 
 /**
@@ -115,15 +126,19 @@ function holdsHeadAlone(el: Element, shape: OpenTagShape): boolean {
  * loses its part. A declaration that agrees with what the prefix already means, and one binding a
  * prefix the editor reads nothing under, are the producer's own and travel untouched.
  */
-function rebindsReservedPrefix(xml: string): boolean {
-  return Array.from(declaredNamespaces(xml)).some(([prefix, uri]) => {
-    const reserved = RESERVED_PREFIXES.get(prefix);
-    return reserved !== undefined && reserved !== uri;
-  });
+function rebindsReservedPrefix(el: Element): boolean {
+  // Inspect actual attributes on every element. A descendant declaration cannot erase its
+  // ancestor's binding, and text resembling a declaration is not a namespace declaration.
+  return (
+    Array.from(el.attributes).some((attr) => {
+      if (attr.prefix !== "xmlns") return false;
+      const reserved = RESERVED_PREFIXES.get(attr.localName);
+      return reserved !== undefined && reserved !== attr.value;
+    }) || elementChildren(el).some(rebindsReservedPrefix)
+  );
 }
 
 function holdsShape(shape: RawXmlShape, value: string): boolean {
-  if (rebindsReservedPrefix(value)) return false;
   switch (shape.kind) {
     case "element": {
       const el = loneElement(value);

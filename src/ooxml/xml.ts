@@ -137,23 +137,6 @@ export function namespaceDecls(xml: string): string {
     .join(" ");
 }
 
-/**
- * The namespaces a fragment binds itself, by prefix.
- *
- * A producer is free to declare a namespace on the element that first uses it rather than on the
- * root of the part, and .NET's `XmlWriter` does, so a fragment cut out of such a file arrives
- * carrying declarations of its own.
- */
-export function declaredNamespaces(xml: string): Map<string, string> {
-  const declared = new Map<string, string>();
-  for (const [, prefix, quoted] of xml.matchAll(
-    /(?:^|[\s"'])xmlns:([A-Za-z_][\w.-]*)\s*=\s*("[^"]*"|'[^']*')/g
-  )) {
-    declared.set(prefix, quoted.slice(1, -1));
-  }
-  return declared;
-}
-
 export function elementChildren(el: Element): Element[] {
   return Array.from(el.children);
 }
