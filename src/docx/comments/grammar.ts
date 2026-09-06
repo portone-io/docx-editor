@@ -104,8 +104,17 @@ export function renderCommentBody(text: string, paraId: string | null): string {
   return `<w:p${attrs}><w:r>${pieces.join("")}</w:r></w:p>`;
 }
 
-/** The opening tag of the last paragraph of a fragment, which is where the thread key goes */
-const LAST_PARAGRAPH = /<([\w.-]+:)?p(?=[\s/>])[^>]*>/g;
+/** The prefix the entry writes WordprocessingML names under, which its own tag says */
+const ENTRY_TAG = /^<([\w.-]+:)?comment(?=[\s/>])/;
+
+/**
+ * A paragraph opening, or a span holding markup that only looks like one.
+ *
+ * A comment and a CDATA section are matched so that they can be passed over: text inside either is
+ * not markup, and a key put there would be written into a file and read by nobody.
+ */
+const PARAGRAPH_OR_SKIPPED =
+  /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<([\w.-]+:)?p(?=[\s/>])[^>]*>/g;
 
 /**
  * The entry with the thread key on its body's last paragraph, and unchanged where it has one.
@@ -115,11 +124,18 @@ const LAST_PARAGRAPH = /<([\w.-]+:)?p(?=[\s/>])[^>]*>/g;
  * editor models, so a body holding more than plain text would lose it to a change nobody asked
  * for and nobody made.
  *
- * The prefix is declared on the part rather than here: a part holding any thread state declares it
- * on its root along with the compatibility markup that goes with it (`./writing`).
+ * The paragraph is found by the prefix the entry itself writes WordprocessingML under, since a
+ * body may hold a paragraph of another vocabulary: a picture carries a DrawingML `a:p`, and a key
+ * put on that says nothing about the thread. `./reading` finds the same paragraph over the DOM.
+ *
+ * The `w14` prefix is declared on the part rather than here: a part holding any thread state
+ * declares it on its root along with the compatibility markup that goes with it (`./writing`).
  */
 export function withThreadKey(commentXml: string, paraId: string): string {
-  const openings = Array.from(commentXml.matchAll(LAST_PARAGRAPH));
+  const prefix = ENTRY_TAG.exec(commentXml)?.[1] ?? "";
+  const openings = Array.from(commentXml.matchAll(PARAGRAPH_OR_SKIPPED)).filter(
+    (match) => !match[0].startsWith("<!") && (match[1] ?? "") === prefix
+  );
   const last = openings[openings.length - 1];
   if (last === undefined || last.index === undefined) return commentXml;
   if (/\sw14:paraId\s*=/.test(last[0])) return commentXml;

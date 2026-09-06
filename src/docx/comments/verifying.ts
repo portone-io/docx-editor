@@ -31,7 +31,7 @@ import {
 } from "./grammar";
 import { commentReferencesIn } from "./model";
 import { commentAuthorId, type ImportedPeople } from "./people";
-import { lastParagraphId } from "./reading";
+import { lastBodyParagraph, lastParagraphId } from "./reading";
 
 const PERSON_ATTRIBUTES: ReadonlySet<string> = new Set([`${W15_NS} author`]);
 
@@ -170,19 +170,28 @@ export function wellFormedEntry(entry: Element): boolean {
 /**
  * The entry with the thread key taken off, which is what two files are compared by when the one
  * thing between them is that a thread was settled or replied to.
- *
- * The key is taken off and put back rather than copied away from: an entry carries prefixes the
- * part root declares, so the fragment on its own does not parse.
  */
 function withoutThreadKey(entry: Element): string {
-  const paragraphs = Array.from(entry.getElementsByTagNameNS(W_NS, "p"));
-  const last = paragraphs[paragraphs.length - 1];
-  const key = last?.getAttributeNodeNS(W14_NS, "paraId") ?? null;
-  if (last === undefined || key === null) return serializeXml(entry);
-  last.removeAttributeNode(key);
-  const said = serializeXml(entry);
-  last.setAttributeNodeNS(key);
-  return said;
+  const copy = entry.cloneNode(true);
+  if (!(copy instanceof Element)) return serializeXml(entry);
+  const last = lastBodyParagraph(copy);
+  last?.removeAttributeNS(W14_NS, "paraId");
+  return serializeXml(copy);
+}
+
+/**
+ * Whether the only thing between the two is that a thread gained its key.
+ *
+ * Settling a thread or replying to it belongs to everyone and leaves what the comment says alone,
+ * and the writer answers by putting the key on the entry that arrived rather than writing one of
+ * its own (`./grammar`). Such an entry is not a rewrite, so it is neither held to the grammar this
+ * editor writes bodies in nor to who owns the comment.
+ */
+function threadKeyAlone(entry: Element, original: Element): boolean {
+  const before = lastParagraphId(original);
+  const after = lastParagraphId(entry);
+  const kept = before === null || after === before;
+  return kept && withoutThreadKey(entry) === withoutThreadKey(original);
 }
 
 function recordedIdentity(person: Element): string | null {
@@ -222,7 +231,6 @@ export function entryAllowed(
     ) {
       return false;
     }
-    if (withoutThreadKey(entry) === withoutThreadKey(original)) return true;
     return (
       editableComments === "all" || recorded === null || recorded === authorId
     );
@@ -237,27 +245,6 @@ export function entryAllowed(
     return original === null && recordedIdentity(entry) === authorId;
   }
   return false;
-}
-
-function judged(
-  entry: KeyedEntry,
-  arrived: ReadonlyMap<string, Entry>,
-  authorId: string,
-  editableComments: EditableComments,
-  people: ImportedPeople
-): boolean {
-  const original = arrived.get(entry.id);
-  if (original && original.xml === entry.xml) return true;
-  return (
-    wellFormedEntry(entry.el) &&
-    entryAllowed(
-      entry.el,
-      original?.el ?? null,
-      authorId,
-      editableComments,
-      people
-    )
-  );
 }
 
 /** The entries of a file's comments part, which is what its other two parts are written against */
@@ -358,7 +345,17 @@ function partKept(
     const original = arrived.get(entry.id);
     if (original && original.xml === entry.xml) continue;
     if (!stoodBehindNow.has(entry.id)) return false;
-    if (!judged(entry, arrived, authorId, editableComments, people)) {
+    if (original && threadKeyAlone(entry.el, original.el)) continue;
+    if (
+      !wellFormedEntry(entry.el) ||
+      !entryAllowed(
+        entry.el,
+        original?.el ?? null,
+        authorId,
+        editableComments,
+        people
+      )
+    ) {
       return false;
     }
   }

@@ -184,8 +184,21 @@ function carriesThreadMetadata(
   );
 }
 
+/**
+ * The thread key belongs on the entry where the comment has thread state to hang off it, and
+ * where the entry arrived carrying one: a key already written is what its state is keyed by
+ * elsewhere, so a rewrite of what the comment says keeps it.
+ */
+function keyedEntry(
+  comment: CommentReferenceData | CommentReplyData,
+  arrivedKeyed: ReadonlySet<string>
+): boolean {
+  return carriesThreadMetadata(comment) || arrivedKeyed.has(comment.id);
+}
+
 function renderedComment(
-  comment: CommentReferenceData | CommentReplyData
+  comment: CommentReferenceData | CommentReplyData,
+  arrivedKeyed: ReadonlySet<string>
 ): string {
   if (comment.imported && comment.commentXml !== null) {
     return carriesThreadMetadata(comment)
@@ -202,7 +215,7 @@ function renderedComment(
   ]
     .filter((entry): entry is string => entry !== null)
     .join(" ");
-  const paraId = carriesThreadMetadata(comment) ? comment.paraId : null;
+  const paraId = keyedEntry(comment, arrivedKeyed) ? comment.paraId : null;
   const body = renderCommentBody(comment.text, paraId);
   return `<w:comment xmlns:w="${W_NS}" ${attrs}>${body}</w:comment>`;
 }
@@ -264,8 +277,13 @@ function commentsXml(
   originallyReferenced: ReadonlySet<string>
 ): string {
   const currentBodies = currentCommentBodies(references);
-  const hasThreadMetadata = Array.from(currentBodies.values()).some(
-    carriesThreadMetadata
+  const arrivedKeyed = new Set(
+    Array.from(comments.byId.values()).flatMap((entry) =>
+      entry.paraId === null ? [] : [entry.id]
+    )
+  );
+  const hasThreadMetadata = Array.from(currentBodies.values()).some((comment) =>
+    keyedEntry(comment, arrivedKeyed)
   );
   const originalThreads = originalThreadIds(comments, originallyReferenced);
   const pieces: string[] = [];
@@ -274,7 +292,7 @@ function commentsXml(
   for (const original of comments.ordered) {
     const current = currentBodies.get(original.id);
     if (current) {
-      pieces.push(renderedComment(current));
+      pieces.push(renderedComment(current, arrivedKeyed));
       written.add(original.id);
       continue;
     }
@@ -285,7 +303,7 @@ function commentsXml(
     }
   }
   for (const [id, comment] of currentBodies) {
-    if (!written.has(id)) pieces.push(renderedComment(comment));
+    if (!written.has(id)) pieces.push(renderedComment(comment, arrivedKeyed));
   }
 
   if (comments.xml === null) {

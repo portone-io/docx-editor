@@ -251,11 +251,11 @@ export function addCommentReply(id: string, reply: NewComment): Command {
     const replyId = nextCommentId(state);
     const date = reply.date ?? new Date().toISOString();
     return updateReference(id, (node) => {
+      // The key a reply hangs off is the one the comment already has, whether it arrived with it
+      // or was given one on the way in. Minting a second would re-point the thread
       const parentParaId =
-        node.attrs.threadImported === true && node.attrs.extensionXml === null
-          ? nextCommentParaId(state, `comment-${id}`)
-          : (stringAttr(node.attrs.paraId) ??
-            nextCommentParaId(state, `comment-${id}`));
+        stringAttr(node.attrs.paraId) ??
+        nextCommentParaId(state, `comment-${id}`);
       const paraId = nextCommentParaId(state, `comment-${replyId}-${date}`, [
         parentParaId,
       ]);
@@ -265,10 +265,6 @@ export function addCommentReply(id: string, reply: NewComment): Command {
         resolved: false,
         extensionXml: null,
         threadImported: false,
-        imported:
-          node.attrs.commentXml !== null && node.attrs.extensionXml === null
-            ? false
-            : node.attrs.imported,
         replies: [
           ...repliesAttr(node.attrs.replies),
           {
