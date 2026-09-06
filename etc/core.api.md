@@ -396,7 +396,7 @@ export type VerticalAlign = (typeof VERTICAL_ALIGNS)[number];
 
 // Warnings were encountered during analysis:
 //
-// dist/docx/commentOnlyChange.d.ts:44:5 - (ae-forgotten-export) The symbol "EditableComments" needs to be exported by the entry point core.d.ts
+// dist/docx/commentOnlyChange.d.ts:46:5 - (ae-forgotten-export) The symbol "EditableComments" needs to be exported by the entry point core.d.ts
 
 // (No @packageDocumentation comment for this package)
 
