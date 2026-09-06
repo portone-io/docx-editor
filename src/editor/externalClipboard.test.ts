@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+
+import type { Node as PMNode } from "prosemirror-model";
 import { AllSelection, TextSelection } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 import { describe, expect, it } from "vitest";
@@ -163,7 +165,7 @@ describe("copying out of the editor", () => {
     view.destroy();
   });
 
-  it("keeps the size of an image copied inside the editor", () => {
+  it("says an image's size in the pixels it was drawn at", () => {
     const extent = { cx: 1905000, cy: 952500 };
     const paragraph = docxSchema.nodes.paragraph.create(null, [
       docxSchema.nodes.image.create({ src: TINY_PNG_DATA_URL, extent }),
@@ -177,14 +179,11 @@ describe("copying out of the editor", () => {
     view.dispatch(view.state.tr.setSelection(new AllSelection(view.state.doc)));
     const html = copiedHtml(view);
 
-    // The measure the document keeps does not travel; the pixels the browser was given do
+    // The measure the document keeps does not travel; the pixels the browser was given do, and
+    // `editor/plugins/imagePaste` reads a size back out of them
     expect(html).not.toContain("data-extent");
     expect(html).toContain(`width="${Math.round(emuToPx(extent.cx))}"`);
-
-    paste(view, { "text/plain": "", "text/html": html });
-    const pasted = view.state.doc.child(0).child(0);
-    expect(pasted.type.name).toBe("image");
-    expect(pasted.attrs.extent).toEqual(extent);
+    expect(html).toContain(`height="${Math.round(emuToPx(extent.cy))}"`);
     view.destroy();
   });
 
@@ -287,6 +286,124 @@ describe("copying out of the editor", () => {
     expect(styleIdOf(view.state.doc.firstChild?.attrs.pPr)).toBe(
       "DocumentHeading1"
     );
+    view.destroy();
+  });
+
+  it("a copy taken before the style travelled on its own still keeps it", () => {
+    const { view } = openStyledEditor();
+    paste(view, {
+      "text/plain": "source",
+      "text/html":
+        `<p class="${editorClassNames.paragraph}" ` +
+        "data-ppr='<w:pPr><w:pStyle w:val=\"DocumentHeading1\"/></w:pPr>'>" +
+        "source</p>",
+    });
+
+    expect(styleIdOf(view.state.doc.firstChild?.attrs.pPr)).toBe(
+      "DocumentHeading1"
+    );
+    view.destroy();
+  });
+
+  it("copying inside a table carries none of what the table is written with", () => {
+    const cell = (text: string, inner?: PMNode) =>
+      docxSchema.nodes.tableCell.create(
+        {
+          tcPr: '<w:tcPr><w:shd w:val="CELL_PROPERTIES"/></w:tcPr>',
+          tcAttrs: 'w:id="CELL_ATTRIBUTES"',
+        },
+        inner ??
+          docxSchema.nodes.paragraph.create(null, [docxSchema.text(text)])
+      );
+    const inner = docxSchema.nodes.table.create(
+      { tblPr: '<w:tblPr><w:tblStyle w:val="INNER_TABLE"/></w:tblPr>' },
+      [docxSchema.nodes.tableRow.create(null, [cell("deep"), cell("also")])]
+    );
+    const outer = docxSchema.nodes.table.create(
+      {
+        tblPr: '<w:tblPr><w:tblStyle w:val="OUTER_TABLE"/></w:tblPr>',
+        tblAttrs: 'w:x="TABLE_ATTRIBUTES"',
+      },
+      [
+        docxSchema.nodes.tableRow.create(
+          { trPr: '<w:trPr><w:x w:val="ROW_PROPERTIES"/></w:trPr>' },
+          [cell("", inner), cell("beside")]
+        ),
+      ]
+    );
+    const view = createEditorView({
+      mount: document.createElement("div"),
+      state: createEditorState(docxSchema.nodes.doc.create(null, [outer])),
+      defaults: NO_DOCUMENT_DEFAULTS,
+      onStateChange: () => {},
+    });
+    let firstText = -1;
+    view.state.doc.descendants((node, position) => {
+      if (firstText < 0 && node.isText) firstText = position;
+      return true;
+    });
+    view.dispatch(
+      view.state.tr.setSelection(
+        TextSelection.create(view.state.doc, firstText + 1, firstText + 3)
+      )
+    );
+
+    // prosemirror-view writes the wrappers a slice is open through into `data-pm-slice` after the
+    // serializer has run, which is the one place a whitelist over the drawing cannot reach
+    const html = copiedHtml(view);
+    for (const written of [
+      "CELL_PROPERTIES",
+      "CELL_ATTRIBUTES",
+      "INNER_TABLE",
+      "OUTER_TABLE",
+      "TABLE_ATTRIBUTES",
+      "ROW_PROPERTIES",
+    ]) {
+      expect(html).not.toContain(written);
+    }
+    expect(html).not.toContain("<w:");
+    view.destroy();
+  });
+
+  it("a link leaves as one and comes back as one", () => {
+    const paragraph = docxSchema.nodes.paragraph.create(null, [
+      docxSchema.text("the docs", [
+        docxSchema.marks.link.create({
+          href: "https://example.com/docs",
+          linkPrefix: '<w:hyperlink r:id="RELATIONSHIP">',
+          linkKey: 3,
+        }),
+      ]),
+    ]);
+    const source = createEditorView({
+      mount: document.createElement("div"),
+      state: createEditorState(docxSchema.nodes.doc.create(null, [paragraph])),
+      defaults: NO_DOCUMENT_DEFAULTS,
+      onStateChange: () => {},
+    });
+    source.dispatch(
+      source.state.tr.setSelection(new AllSelection(source.state.doc))
+    );
+    const html = copiedHtml(source);
+    source.destroy();
+
+    // An anchor is what a link is anywhere else, and the relationship it hung off here is not
+    expect(html).toContain(
+      '<a class="docx-editor-link" href="https://example.com/docs">'
+    );
+    expect(html).not.toContain("RELATIONSHIP");
+
+    const { view } = openEditor();
+    paste(view, { "text/plain": "the docs", "text/html": html });
+    const links: unknown[] = [];
+    view.state.doc.descendants((node) => {
+      for (const mark of node.marks) {
+        if (mark.type === docxSchema.marks.link) links.push(mark.attrs.href);
+      }
+      return true;
+    });
+
+    expect(links).toContain("https://example.com/docs");
     view.destroy();
   });
 });

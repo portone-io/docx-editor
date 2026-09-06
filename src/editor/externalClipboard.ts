@@ -20,6 +20,7 @@ import {
   type InlineContext,
   type InlineStyle,
   marksFor,
+  safeHref,
   withInlineStyle,
 } from "./clipboard/inlineFormatting";
 import { listRefOf } from "./commands/listCommands";
@@ -157,6 +158,28 @@ function withAttribute(
     : [tag, { [name]: value }, ...rest];
 }
 
+function asTag(spec: DOMOutputSpec, tag: string): DOMOutputSpec {
+  return isSpecArray(spec) ? [tag, ...spec.slice(1)] : spec;
+}
+
+/**
+ * A link written the way everything else writes one.
+ *
+ * The editor draws the address as data so that a click inside the text places the caret rather
+ * than navigating. A copy is read somewhere else, where an anchor is what a link is: it follows
+ * in mail or a document, and it comes back as a link when it is pasted here again.
+ */
+function copiedMarkSpec(mark: Mark, spec: DOMOutputSpec): DOMOutputSpec {
+  const stripped = stripPrivateAttributes(spec);
+  if (mark.type !== docxSchema.marks.link) return stripped;
+  const href = safeHref(
+    typeof mark.attrs.href === "string" ? mark.attrs.href : null
+  );
+  return href === null
+    ? stripped
+    : asTag(withAttribute(stripped, "href", href), "a");
+}
+
 function copiedNodeSpec(node: PMNode, spec: DOMOutputSpec): DOMOutputSpec {
   const stripped = stripPrivateAttributes(spec);
   if (node.type !== docxSchema.nodes.paragraph) return stripped;
@@ -185,7 +208,7 @@ function clipboardSerializer(): DOMSerializer {
     Object.entries(drawn.marks).map(([name, toDOM]) => [
       name,
       (mark: Mark, inline: boolean) =>
-        stripPrivateAttributes(toDOM(mark, inline)),
+        copiedMarkSpec(mark, toDOM(mark, inline)),
     ])
   );
   return new DOMSerializer(nodes, marks);
@@ -255,6 +278,41 @@ function fragmentText(fragment: Fragment): string {
 }
 
 /**
+ * The wrappers a copy is open through, emptied of what they carry.
+ *
+ * `prosemirror-view` writes those wrappers into `data-pm-slice` as JSON once the serializer has
+ * run, so a table's, a row's and a cell's own XML would leave the editor there whatever the
+ * drawing says. It peels a wrapper only while the slice is open past it on both sides and it holds
+ * a single child, so those are the ones emptied here; a paste reads the open depth, which the
+ * shape still says, and a drag inside the editor carries the slice itself rather than the text.
+ */
+function bareWrappers(
+  content: Fragment,
+  openStart: number,
+  openEnd: number
+): Fragment {
+  const wrapper = content.firstChild;
+  if (openStart <= 1 || openEnd <= 1 || content.childCount !== 1)
+    return content;
+  if (wrapper === null || wrapper.childCount !== 1) return content;
+  return Fragment.from(
+    wrapper.type.create(
+      null,
+      bareWrappers(wrapper.content, openStart - 1, openEnd - 1),
+      wrapper.marks
+    )
+  );
+}
+
+function copiedSlice(slice: Slice): Slice {
+  return new Slice(
+    bareWrappers(slice.content, slice.openStart, slice.openEnd),
+    slice.openStart,
+    slice.openEnd
+  );
+}
+
+/**
  * The plain text a copy leaves beside the HTML.
  *
  * Prosemirror's own answer is the text content with a line between blocks, which loses a tab, a
@@ -270,9 +328,13 @@ function normalizedStyleName(value: string): string {
 }
 
 function copiedStyleId(element: HTMLElement): string | null {
-  return element.classList.contains(editorClassNames.paragraph)
-    ? element.getAttribute(COPIED_STYLE_ATTRIBUTE)
-    : null;
+  if (!element.classList.contains(editorClassNames.paragraph)) return null;
+  // A copy taken before the style travelled on its own attribute still carries the whole `w:pPr`,
+  // and the id read out of either is checked against this document's styles before it is used
+  return (
+    element.getAttribute(COPIED_STYLE_ATTRIBUTE) ??
+    styleIdOf(element.getAttribute("data-ppr"))
+  );
 }
 
 function headingLevel(element: HTMLElement, sourceStyleId: string | null) {
@@ -582,6 +644,7 @@ export function externalClipboard(): Plugin {
     props: {
       clipboardSerializer: serializer,
       clipboardTextSerializer: clipboardText,
+      transformCopied: copiedSlice,
       handlePaste(view, event) {
         insertClipboardData(view, {
           html: event.clipboardData?.getData("text/html"),

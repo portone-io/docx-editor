@@ -192,7 +192,13 @@ function styleOf(parent: InlineStyle, element: HTMLElement): InlineStyle {
   return style;
 }
 
-function safeHref(value: string | null): string | null {
+/**
+ * The address a link may carry, whichever way it travels.
+ *
+ * A copy writes one out and a paste reads one in, and an address this rule turns down is one
+ * neither end should act on, so both ask here.
+ */
+export function safeHref(value: string | null): string | null {
   const href = value?.trim() ?? "";
   if (href === "") return null;
   if (/^(?:https?|mailto|tel):/i.test(href)) return href;
