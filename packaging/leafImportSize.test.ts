@@ -61,7 +61,7 @@ let workDir = "";
 beforeAll(async () => {
   workDir = await mkdtemp(join(tmpdir(), "docx-editor-leaf-"));
   // The output has to be the build's own, the way a release off a clean checkout would be.
-  // Both specs in this folder write `dist`, which is why `test:package` runs one file at a time
+  // Every spec in this folder writes `dist`, which is why `test:package` runs one file at a time
   await rm(join(packageDir, "dist"), { recursive: true, force: true });
   await run("pnpm", ["build"], { cwd: packageDir });
 }, 180_000);
