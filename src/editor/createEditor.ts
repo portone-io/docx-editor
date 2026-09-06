@@ -36,7 +36,6 @@ import type { CommentAuthor } from "./commands/comments/model";
 import { documentDefaultTabStopPt, documentStyleTable } from "./documentStyles";
 import { externalClipboard } from "./externalClipboard";
 import { imageFiles } from "./imageFiles";
-import { bookmarkProtection } from "./plugins/bookmarkProtection";
 import { columnResize } from "./plugins/columnResize";
 import { commentDecorations } from "./plugins/commentDecorations";
 import { commentReservations } from "./plugins/commentReservations";
@@ -46,7 +45,6 @@ import { docxKeymap, historyKeys } from "./plugins/keymap";
 import { linkPanel } from "./plugins/linkPanel";
 import { listInputRules } from "./plugins/listInputRules";
 import { lockedContent } from "./plugins/lockedContent";
-import { noteProtection } from "./plugins/noteProtection";
 import { numberingMarkers } from "./plugins/numberingDecorations";
 import { rowResize } from "./plugins/rowResize";
 import { styledParagraphs } from "./plugins/styledParagraphs";
@@ -131,15 +129,11 @@ export function createEditorState(
       // first answer for a keypress, a paste, a drop or any other DOM event, so this is the
       // only place from which a consumer handler can win over the built-in one.
       ...consumerPlugins,
-      // Refuses every edit inside a locked content control, whoever asked for it. It is not
-      // optional: a document that locked a part of itself stays locked in every consumer.
-      // The same guard refuses what the protection below shuts.
+      // Refuses every edit no guard in `schema/guards` lets through, whoever asked for it. It is
+      // not optional: a document that locked a part of itself stays locked in every consumer, and
+      // the preserved bookmark markers and note references stay where the file put them.
       lockedContent(),
       documentProtection({ protection, author, editableComments }),
-      // Bookmark ranges are preserved rather than edited, so neither half may disappear.
-      bookmarkProtection(),
-      // Note bodies are display-only, so their imported main-story references stay paired.
-      noteProtection(),
       // An orphan Comments-part entry still owns its id and must not be replaced by a new comment.
       commentReservations(reservedCommentIds, reservedCommentParaIds),
       history(),
