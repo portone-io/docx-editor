@@ -232,17 +232,18 @@ function stringAttr(value: unknown): string {
  * text rather than in it. An image says what it was given to say instead.
  */
 function inlineText(node: PMNode): string {
-  if (node.isText) {
-    return node.marks.some((mark) => mark.type === docxSchema.marks.tab)
-      ? "\t"
-      : (node.text ?? "");
-  }
+  // A tab is written as the character it is, so a run of them says how many there were. The mark
+  // beside it is what the editor draws the stop with, not what the text says
+  if (node.isText) return node.text ?? "";
   if (node.type === docxSchema.nodes.hardBreak) {
     return isPageBreak(node.attrs.brAttrs) ? "\f" : "\n";
   }
   if (node.type === docxSchema.nodes.image) return stringAttr(node.attrs.alt);
   if (node.type === docxSchema.nodes.noteReference) {
-    return stringAttr(node.attrs.label);
+    // A note whose own mark follows draws no number, and the text reads as the page does
+    return node.attrs.customMarkFollows === true
+      ? ""
+      : stringAttr(node.attrs.label);
   }
   return "";
 }

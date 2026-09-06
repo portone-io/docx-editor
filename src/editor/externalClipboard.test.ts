@@ -138,6 +138,20 @@ function copiedHtml(view: EditorView): string {
     .innerHTML;
 }
 
+/** Everything a document leaves on the clipboard as text */
+function copiedText(doc: PMNode): string {
+  const view = createEditorView({
+    mount: document.createElement("div"),
+    state: createEditorState(doc),
+    defaults: NO_DOCUMENT_DEFAULTS,
+    onStateChange: () => {},
+  });
+  view.dispatch(view.state.tr.setSelection(new AllSelection(view.state.doc)));
+  const { text } = view.serializeForClipboard(view.state.selection.content());
+  view.destroy();
+  return text;
+}
+
 describe("copying out of the editor", () => {
   it("copied HTML carries no data- attribute other than data-style", () => {
     const view = openLoadedEditor();
@@ -185,6 +199,41 @@ describe("copying out of the editor", () => {
     expect(html).toContain(`width="${Math.round(emuToPx(extent.cx))}"`);
     expect(html).toContain(`height="${Math.round(emuToPx(extent.cy))}"`);
     view.destroy();
+  });
+
+  it("copied text keeps a run of tabs as the run it was", () => {
+    const tabbed = (count: number) =>
+      docxSchema.nodes.doc.create(null, [
+        docxSchema.nodes.paragraph.create(null, [
+          docxSchema.text("A"),
+          docxSchema.text("\t".repeat(count), [docxSchema.marks.tab.create()]),
+          docxSchema.text("B"),
+        ]),
+      ]);
+
+    expect(copiedText(tabbed(1))).toBe("A\tB");
+    expect(copiedText(tabbed(2))).toBe("A\t\tB");
+    expect(copiedText(tabbed(3))).toBe("A\t\t\tB");
+  });
+
+  it("copied text leaves the number off a note that draws its own mark", () => {
+    const noted = (customMarkFollows: boolean) =>
+      docxSchema.nodes.doc.create(null, [
+        docxSchema.nodes.paragraph.create(null, [
+          docxSchema.text("Text"),
+          docxSchema.nodes.noteReference.create({
+            id: "2",
+            kind: "footnote",
+            label: "1",
+            text: "the body",
+            customMarkFollows,
+          }),
+          ...(customMarkFollows ? [docxSchema.text("*")] : []),
+        ]),
+      ]);
+
+    expect(copiedText(noted(true))).toBe("Text*");
+    expect(copiedText(noted(false))).toBe("Text1");
   });
 
   it("copied text keeps tabs, breaks and cell boundaries", () => {
