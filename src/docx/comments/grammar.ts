@@ -8,7 +8,12 @@
  * everything else.
  */
 
-import { attributeByLocalName, escapeXml, W_NS } from "../../ooxml/xml";
+import {
+  attributeByLocalName,
+  escapeXml,
+  parseXml,
+  W_NS,
+} from "../../ooxml/xml";
 import { COMMENT_AUTHOR_PROVIDER, W14_NS, W15_NS } from "./constants";
 import type { CommentReferenceData, CommentReplyData } from "./model";
 
@@ -129,20 +134,26 @@ export function renderCommentBody(text: string, paraId: string | null): string {
 /** The prefix the entry writes WordprocessingML names under, which its own tag says */
 const ENTRY_TAG = /^<([\w.-]+:)?comment(?=[\s/>])/;
 
-const NAMESPACE_DECLARATION = /xmlns(?::([\w.-]+))?\s*=\s*"([^"]*)"/g;
-
 /**
- * The prefixes a part binds WordprocessingML to, written the way a tag carries them.
+ * The prefixes this part writes WordprocessingML paragraphs under, spelled the way a tag carries
+ * them and empty for a default namespace.
  *
  * A part is free to bind the namespace under more than one prefix, and a body paragraph may be
- * written under any of them. The reader asks the namespace, so the writer has to as well.
+ * written under any of them. `./reading` asks the namespace, so this asks it too, of the same
+ * elements, rather than reading the declarations off the text and having to know how they were
+ * quoted or where they were made.
  */
 export function wordPrefixes(partXml: string | null): ReadonlySet<string> {
   const prefixes = new Set<string>();
-  for (const [, prefix, uri] of (partXml ?? "").matchAll(
-    NAMESPACE_DECLARATION
-  )) {
-    if (uri === W_NS) prefixes.add(prefix === undefined ? "" : `${prefix}:`);
+  if (partXml === null) return prefixes;
+  let root: Element;
+  try {
+    root = parseXml(partXml).documentElement;
+  } catch {
+    return prefixes;
+  }
+  for (const paragraph of Array.from(root.getElementsByTagNameNS(W_NS, "p"))) {
+    prefixes.add(paragraph.prefix === null ? "" : `${paragraph.prefix}:`);
   }
   return prefixes;
 }

@@ -90,28 +90,40 @@ describe("giving an entry a thread key", () => {
     expect(withThreadKey(rich, "ABCD1234")).toContain("<w:b/>");
   });
 
-  it("takes a paragraph under a second prefix the part binds to WordprocessingML", () => {
+  const otherPrefixBody = "<q:p><q:r><q:t>a</q:t></q:r></q:p>";
+  const otherPrefixPart = (quote: string) =>
+    `<w:comments xmlns:w=${quote}${W_NS}${quote} xmlns:q=${quote}${W_NS}${quote}>` +
+    `<w:comment w:id="0">${otherPrefixBody}</w:comment></w:comments>`;
+
+  it.each(['"', "'"])(
+    "takes a paragraph under a second prefix the part binds, declared with %s",
+    (quote) => {
+      const prefixes = wordPrefixes(otherPrefixPart(quote));
+
+      expect(
+        withThreadKey(
+          `<w:comment w:id="0">${otherPrefixBody}</w:comment>`,
+          "ABCD1234",
+          prefixes
+        )
+      ).toContain('<q:p w14:paraId="ABCD1234">');
+    }
+  );
+
+  it("leaves a paragraph of another vocabulary alone whatever the part holds", () => {
+    const body =
+      '<w:p><w:r><w:drawing><a:p xmlns:a="http://example.com/drawing"/></w:drawing></w:r></w:p>';
     const prefixes = wordPrefixes(
-      `<w:comments xmlns:w="${W_NS}" xmlns:q="${W_NS}"/>`
+      `<w:comments xmlns:w="${W_NS}"><w:comment w:id="0">${body}</w:comment></w:comments>`
     );
-    const entry =
-      '<w:comment w:id="0"><q:p><q:r><q:t>a</q:t></q:r></q:p></w:comment>';
 
-    expect(withThreadKey(entry, "ABCD1234", prefixes)).toContain(
-      '<q:p w14:paraId="ABCD1234">'
-    );
-  });
-
-  it("leaves a paragraph of another vocabulary alone whatever the part binds", () => {
-    const prefixes = wordPrefixes(
-      `<w:comments xmlns:w="${W_NS}" xmlns:a="http://example.com/drawing"/>`
-    );
-    const entry =
-      '<w:comment w:id="0"><w:p><w:r><w:drawing><a:p/></w:drawing></w:r></w:p></w:comment>';
-
-    expect(withThreadKey(entry, "ABCD1234", prefixes)).toContain(
-      '<w:p w14:paraId="ABCD1234">'
-    );
+    expect(
+      withThreadKey(
+        `<w:comment w:id="0">${body}</w:comment>`,
+        "ABCD1234",
+        prefixes
+      )
+    ).toContain('<w:p w14:paraId="ABCD1234">');
   });
 });
 
