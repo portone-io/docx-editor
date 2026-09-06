@@ -13,8 +13,9 @@
  * The price is that the comparison levels whatever the writer levels: two blocks the writer would
  * put out alike read alike here, however differently the two files worded them. Everything the
  * writer carries through is compared, and what falls out of the comparison is only what would have
- * been reworded on its way out anyway. The test beside this file holds the differences known to
- * fall under that, one case each, and holds the other half: what the writer carries is compared.
+ * been reworded on its way out anyway. What the writer builds afresh rather than reading is the
+ * exception, a table's grid and a drawing's extent, and a difference inside those is not seen.
+ * The test beside this file holds both halves, one case each.
  */
 
 import type { Node as PMNode } from "prosemirror-model";

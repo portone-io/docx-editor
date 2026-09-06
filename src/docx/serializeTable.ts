@@ -21,6 +21,7 @@ import { type ExportRefs, NO_EXPORT_REFS } from "./exportRefs";
 import {
   type Props,
   parseProps,
+  propsChild,
   renderProps,
   setPropsChild,
   TBL_PR_ORDER,
@@ -43,9 +44,36 @@ function propsOf(xml: unknown, tag: string): Props {
   return parsed;
 }
 
+/**
+ * An element whose attributes the model decides, keeping whatever stood inside the one it replaces.
+ *
+ * These elements carry attributes alone in the schema, so what a producer put inside is nothing
+ * this package models. It is still content the file arrived with, and a rebuilt block that quietly
+ * dropped it would be a block the verifier (`./storyProjection`) cannot see all of.
+ */
+function modelled(
+  name: string,
+  attrs: string,
+  replacing: string | undefined
+): string {
+  const opens = replacing?.indexOf(">") ?? -1;
+  const closes = replacing?.lastIndexOf("</") ?? -1;
+  const inner =
+    replacing !== undefined && opens !== -1 && closes > opens
+      ? replacing.slice(opens + 1, closes)
+      : "";
+  const open = attrs === "" ? `<w:${name}` : `<w:${name} ${attrs}`;
+  return inner === "" ? `${open}/>` : `${open}>${inner}</w:${name}>`;
+}
+
 /** A width that carries no number goes out with the 0 Word writes in its place */
-function widthXml(name: string, width: TableWidth): string {
-  return `<w:${name} w:w="${widthNumber(width) ?? 0}" w:type="${width.type}"/>`;
+function widthXml(
+  name: string,
+  width: TableWidth,
+  replacing: string | undefined
+): string {
+  const attrs = `w:w="${widthNumber(width) ?? 0}" w:type="${width.type}"`;
+  return modelled(name, attrs, replacing);
 }
 
 /**
@@ -61,7 +89,8 @@ function withWidth(
   order: readonly string[]
 ): Props {
   if (!width) return props;
-  return setPropsChild(props, name, widthXml(name, width), order);
+  const replacing = propsChild(props.children, name)?.xml;
+  return setPropsChild(props, name, widthXml(name, width, replacing), order);
 }
 
 function tablePropsXml(table: PMNode): string {
@@ -85,13 +114,20 @@ function cellPropsXml(cell: PMNode, role: CellRole): string {
   const colspan = spanCount(cell.attrs.colspan);
   const rowspan = spanCount(cell.attrs.rowspan);
 
-  const gridSpan = colspan > 1 ? `<w:gridSpan w:val="${colspan}"/>` : null;
+  const gridSpan =
+    colspan > 1
+      ? modelled(
+          "gridSpan",
+          `w:val="${colspan}"`,
+          propsChild(props.children, "gridSpan")?.xml
+        )
+      : null;
+  const merging =
+    role === "continue" ? "" : rowspan > 1 ? 'w:val="restart"' : null;
   const vMerge =
-    role === "continue"
-      ? "<w:vMerge/>"
-      : rowspan > 1
-        ? '<w:vMerge w:val="restart"/>'
-        : null;
+    merging === null
+      ? null
+      : modelled("vMerge", merging, propsChild(props.children, "vMerge")?.xml);
 
   const spanned = setPropsChild(props, "gridSpan", gridSpan, TC_PR_ORDER);
   const merged = setPropsChild(spanned, "vMerge", vMerge, TC_PR_ORDER);

@@ -189,6 +189,32 @@ describe("differences the comparison sees", () => {
       storyOf(TABLE(WIDTH, CELL_WIDTH + "smuggled", GRID))
     );
   });
+
+  it("tells a width element that gained a comment inside it apart", () => {
+    // The model decides this element's attributes, so it is written afresh; what a producer put
+    // inside it is not the model's and comes along
+    expect(storyOf(TABLE(WIDTH, CELL_WIDTH, GRID))).not.toEqual(
+      storyOf(
+        TABLE(
+          WIDTH,
+          '<w:tcW w:w="6500" w:type="dxa"><!-- smuggled --></w:tcW>',
+          GRID
+        )
+      )
+    );
+  });
+
+  it("does not tell a grid apart, which is built from the column widths alone", () => {
+    expect(storyOf(TABLE(WIDTH, CELL_WIDTH, GRID))).toEqual(
+      storyOf(
+        TABLE(
+          WIDTH,
+          CELL_WIDTH,
+          '<w:tblGrid><w:gridCol w:w="6500"><!-- unseen --></w:gridCol></w:tblGrid>'
+        )
+      )
+    );
+  });
 });
 
 describe("a story the writer cannot put out", () => {
