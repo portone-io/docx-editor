@@ -7,6 +7,7 @@ import { DocxExportError } from "../../ooxml/errors";
 import { encodeUtf8, escapeXml, W_NS } from "../../ooxml/xml";
 import { directoryOf, type RelationshipWriter } from "../relationships";
 import type { SessionStore } from "../session";
+import { renderCommentBody } from "./bodyGrammar";
 import {
   COMMENTS_CONTENT_TYPE,
   COMMENTS_EXTENDED_CONTENT_TYPE,
@@ -153,18 +154,6 @@ function extensionsChanged(doc: PMNode, session: SessionStore): boolean {
   return false;
 }
 
-function commentTextXml(text: string): string {
-  const lines = text.split("\n");
-  const pieces: string[] = [];
-  lines.forEach((line, index) => {
-    if (index > 0) pieces.push("<w:br/>");
-    if (line.length > 0 || lines.length === 1) {
-      pieces.push(`<w:t xml:space="preserve">${escapeXml(line)}</w:t>`);
-    }
-  });
-  return `<w:r>${pieces.join("")}</w:r>`;
-}
-
 function carriesThreadMetadata(
   comment: CommentReferenceData | CommentReplyData
 ): boolean {
@@ -191,11 +180,9 @@ function renderedComment(
   ]
     .filter((entry): entry is string => entry !== null)
     .join(" ");
-  const threaded = carriesThreadMetadata(comment);
-  const paragraphAttrs = threaded
-    ? ` xmlns:w14="${W14_NS}" w14:paraId="${escapeXml(comment.paraId)}"`
-    : "";
-  return `<w:comment xmlns:w="${W_NS}" ${attrs}><w:p${paragraphAttrs}>${commentTextXml(comment.text)}</w:p></w:comment>`;
+  const paraId = carriesThreadMetadata(comment) ? comment.paraId : null;
+  const body = renderCommentBody(comment.text, paraId);
+  return `<w:comment xmlns:w="${W_NS}" ${attrs}>${body}</w:comment>`;
 }
 
 function withThreadMarkupCompatibility(openTag: string): string {
