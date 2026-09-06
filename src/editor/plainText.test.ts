@@ -184,8 +184,8 @@ describe("pasting what was copied out of a locked cell", () => {
       view.state.tr.setSelection(CellSelection.create(view.state.doc, cells[0]))
     );
     const copied = view.serializeForClipboard(view.state.selection.content());
-    // The clipboard really does carry the lock, so dropping it is the paste path's own doing
-    expect(copied.dom.innerHTML).toContain('data-sdt-contents-locked="1"');
+    // The lock does not leave the editor at all, so there is nothing for a paste to carry back in
+    expect(copied.dom.innerHTML).not.toContain("data-sdt-contents-locked");
 
     // The caret at the end of the neighbouring cell, where the copy is pasted
     const target = cellPositions(view.state.doc)[1];

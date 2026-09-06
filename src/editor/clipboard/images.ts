@@ -1,5 +1,10 @@
 import { MAX_IMAGE_BYTES } from "../../docx/media";
-import { isImageMime, toImageExtent, toImageSrc } from "../../ooxml/image";
+import {
+  isImageMime,
+  pxToEmu,
+  toImageExtent,
+  toImageSrc,
+} from "../../ooxml/image";
 import { editorClassNames } from "../../styles/classNames";
 import {
   boundedImageSrc,
@@ -22,8 +27,7 @@ interface ResolveOptions {
   signal: AbortSignal;
 }
 
-function extentAttribute(element: HTMLElement) {
-  if (!element.classList.contains(editorClassNames.image)) return null;
+function declaredExtent(element: HTMLElement) {
   try {
     return toImageExtent(
       JSON.parse(element.getAttribute("data-extent") ?? "null")
@@ -31,6 +35,23 @@ function extentAttribute(element: HTMLElement) {
   } catch {
     return null;
   }
+}
+
+/**
+ * The size an image is drawn at, which is what a copy out of this editor carries: the extent in
+ * EMU is the document's own measure and does not travel (`editor/externalClipboard`), while the
+ * pixels the browser was given do.
+ */
+function renderedExtent(element: HTMLElement) {
+  const width = Number.parseInt(element.getAttribute("width") ?? "", 10);
+  const height = Number.parseInt(element.getAttribute("height") ?? "", 10);
+  if (!Number.isFinite(width) || !Number.isFinite(height)) return null;
+  return toImageExtent({ cx: pxToEmu(width), cy: pxToEmu(height) });
+}
+
+function extentAttribute(element: HTMLElement) {
+  if (!element.classList.contains(editorClassNames.image)) return null;
+  return declaredExtent(element) ?? renderedExtent(element);
 }
 
 function fetchableUrl(source: string): URL | null {
