@@ -72,6 +72,18 @@ function commentedBy(
   return { bytes, commented: exportDocx(state.doc, session) };
 }
 
+/** The file after this author commented and then settled the thread, which writes the extended part */
+function settledByMe(): Uint8Array {
+  const bytes = plainDocx();
+  const { doc, session } = importDocx(bytes);
+  const added = applied(
+    selecting(createEditorState(doc), "beta"),
+    addComment({ text: "note", author: "Someone", authorId: "me" })
+  );
+  const settled = applied(added, setCommentResolved("0", true));
+  return exportDocx(settled.doc, session);
+}
+
 function partText(bytes: Uint8Array, path: string): string {
   return decode(unzipSync(bytes)[path]);
 }
@@ -404,6 +416,42 @@ describe("over the comment parts of a submitted file", () => {
     expect(verdict(withOrphan, withOrphan, "me")).toEqual(allowed);
     expect(verdict(withOrphan, rewritten, "me")).toEqual(refused);
     expect(verdict(withOrphan, dropped, "me")).toEqual(refused);
+  });
+
+  /**
+   * The extended part stands for comments by their thread key, so an entry keyed to no comment is
+   * one no edit through the editor could have written, and one it stood behind cannot go away.
+   */
+  it("holds the extended comments part to the same rule", () => {
+    const settled = settledByMe();
+    const extendedPath = Object.keys(unzipSync(settled)).find((path) =>
+      path.endsWith("commentsExtended.xml")
+    );
+    if (extendedPath === undefined) throw new Error("no extended part");
+    const refusedThere = {
+      ok: false,
+      reason: "part-changed",
+      part: extendedPath,
+    };
+    const ghost = '<w15:commentEx w15:paraId="DEADBEEF" w15:done="1"/>';
+    const withGhost = repacked(
+      settled,
+      extendedPath,
+      partText(settled, extendedPath).replace(
+        "</w15:commentsEx>",
+        `${ghost}</w15:commentsEx>`
+      )
+    );
+    const dropped = repacked(
+      withGhost,
+      extendedPath,
+      partText(withGhost, extendedPath).replace(ghost, "")
+    );
+
+    expect(verdict(withGhost, withGhost, "me")).toEqual(allowed);
+    // Thread state keyed to no comment is state no edit through the editor could have written
+    expect(verdict(settled, withGhost, "me")).toEqual(refusedThere);
+    expect(verdict(withGhost, dropped, "me")).toEqual(refusedThere);
   });
 
   /** The same rule over the other two parts: thread state for no comment, an identity for no name */

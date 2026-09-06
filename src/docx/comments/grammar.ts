@@ -8,7 +8,7 @@
  * everything else.
  */
 
-import { escapeXml, W_NS } from "../../ooxml/xml";
+import { attributeByLocalName, escapeXml, W_NS } from "../../ooxml/xml";
 import { COMMENT_AUTHOR_PROVIDER, W14_NS, W15_NS } from "./constants";
 import type { CommentReferenceData, CommentReplyData } from "./model";
 
@@ -44,7 +44,29 @@ const TEXT_ATTRIBUTES: ReadonlySet<string> = new Set([
   nameKey(XML_NS, "space"),
 ]);
 
+const PERSON_ATTRIBUTES: ReadonlySet<string> = new Set([
+  nameKey(W15_NS, "author"),
+]);
+
+const PRESENCE_ATTRIBUTES: ReadonlySet<string> = new Set([
+  nameKey(W15_NS, "providerId"),
+  nameKey(W15_NS, "userId"),
+]);
+
 const NO_ATTRIBUTES: ReadonlySet<string> = new Set();
+
+/**
+ * A thread key, which is four bytes written as hexadecimal (`ST_LongHexNumber`, ECMA-376 Part 1
+ * §17.18.51). The writer takes its own from `nextCommentParaId`, and a key that arrived was
+ * written by a producer holding to the same type.
+ */
+const THREAD_KEY = /^[0-9A-Fa-f]{8}$/;
+
+/** Whether the attribute is absent, or a thread key */
+function threadKeyOrNone(el: Element, localName: string): boolean {
+  const value = attributeByLocalName(el, localName);
+  return value === null || THREAD_KEY.test(value);
+}
 
 /**
  * Whether the element carries no attribute outside this set.
@@ -186,6 +208,42 @@ function readRunText(run: Element): string | null {
  * An entry that arrived and was not edited is compared as it stands rather than read here, so
  * saying no to a shape this editor would not have written turns down only a rewrite.
  */
+/** Whether this editor's writer could have put out this thread state */
+export function wellFormedCommentExtension(entry: Element): boolean {
+  return (
+    attributesWithin(entry, COMMENT_EX_ATTRIBUTES) &&
+    entry.childNodes.length === 0 &&
+    threadKeyOrNone(entry, "paraId") &&
+    threadKeyOrNone(entry, "paraIdParent") &&
+    // The writer says a thread is settled or open, and nothing else `ST_OnOff` would take
+    ["0", "1", null].includes(attributeByLocalName(entry, "done"))
+  );
+}
+
+/** Whether this editor's writer could have put out this recorded identity */
+export function wellFormedPerson(entry: Element): boolean {
+  if (!attributesWithin(entry, PERSON_ATTRIBUTES)) return false;
+  if (!holdsElementsOnly(entry)) return false;
+  const children = Array.from(entry.children);
+  if (children.length !== 1) return false;
+  const [presence] = children;
+  return (
+    isNamed(presence, W15_NS, "presenceInfo") &&
+    attributesWithin(presence, PRESENCE_ATTRIBUTES) &&
+    attributeByLocalName(presence, "providerId") === COMMENT_AUTHOR_PROVIDER &&
+    attributeByLocalName(presence, "userId") !== null &&
+    presence.childNodes.length === 0
+  );
+}
+
+/** The identity a recorded person stands for, and null for an entry recording none */
+export function recordedIdentity(person: Element): string | null {
+  const [presence] = Array.from(person.children);
+  return presence === undefined
+    ? null
+    : attributeByLocalName(presence, "userId");
+}
+
 export function readStrictCommentBody(comment: Element): string | null {
   if (!holdsElementsOnly(comment)) return null;
   const paragraphs = Array.from(comment.children);

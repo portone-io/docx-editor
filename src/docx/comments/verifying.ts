@@ -22,23 +22,18 @@ import {
 import type { EditableComments } from "../../schema/protection";
 import type { CommentOnlyVerdict } from "../commentOnlyChange";
 import type { Story } from "../storyProjection";
-import { COMMENT_AUTHOR_PROVIDER, W14_NS, W15_NS } from "./constants";
+import { W14_NS, W15_NS } from "./constants";
 import {
   attributesWithin,
   COMMENT_ATTRIBUTES,
-  COMMENT_EX_ATTRIBUTES,
   readStrictCommentBody,
+  recordedIdentity,
+  wellFormedCommentExtension,
+  wellFormedPerson,
 } from "./grammar";
 import { commentReferencesIn } from "./model";
 import { commentAuthorId, type ImportedPeople } from "./people";
 import { lastBodyParagraph, lastParagraphId } from "./reading";
-
-const PERSON_ATTRIBUTES: ReadonlySet<string> = new Set([`${W15_NS} author`]);
-
-const PRESENCE_ATTRIBUTES: ReadonlySet<string> = new Set([
-  `${W15_NS} providerId`,
-  `${W15_NS} userId`,
-]);
 
 /** The attributes of a comment that say whose it is, which nobody rewrites, its own author included */
 const COMMENT_IDENTITY: readonly string[] = [
@@ -127,26 +122,11 @@ function referencedCommentIds(doc: PMNode): ReadonlySet<string> {
   return ids;
 }
 
-function personWellFormed(entry: Element): boolean {
-  if (!attributesWithin(entry, PERSON_ATTRIBUTES)) return false;
-  const children = elementChildren(entry);
-  if (children.length !== 1) return false;
-  const [presence] = children;
-  return (
-    presence.namespaceURI === W15_NS &&
-    presence.localName === "presenceInfo" &&
-    attributesWithin(presence, PRESENCE_ATTRIBUTES) &&
-    attributeByLocalName(presence, "providerId") === COMMENT_AUTHOR_PROVIDER &&
-    attributeByLocalName(presence, "userId") !== null &&
-    elementChildren(presence).length === 0
-  );
-}
-
 /**
  * Whether this editor's writer could have put the entry out, whoever it belongs to.
  *
  * Shape alone: which attributes it carries and what stands inside it. Who may have written it is
- * `entryAllowed`'s question.
+ * `entryAllowed`'s question. Each kind is read where it is written (`./grammar`).
  */
 export function wellFormedEntry(entry: Element): boolean {
   if (entry.namespaceURI === W_NS && entry.localName === "comment") {
@@ -156,13 +136,10 @@ export function wellFormedEntry(entry: Element): boolean {
     );
   }
   if (entry.namespaceURI === W15_NS && entry.localName === "commentEx") {
-    return (
-      attributesWithin(entry, COMMENT_EX_ATTRIBUTES) &&
-      elementChildren(entry).length === 0
-    );
+    return wellFormedCommentExtension(entry);
   }
   if (entry.namespaceURI === W15_NS && entry.localName === "person") {
-    return personWellFormed(entry);
+    return wellFormedPerson(entry);
   }
   return false;
 }
@@ -192,13 +169,6 @@ function threadKeyAlone(entry: Element, original: Element): boolean {
   const after = lastParagraphId(entry);
   const kept = before === null || after === before;
   return kept && withoutThreadKey(entry) === withoutThreadKey(original);
-}
-
-function recordedIdentity(person: Element): string | null {
-  const [presence] = elementChildren(person);
-  return presence === undefined
-    ? null
-    : attributeByLocalName(presence, "userId");
 }
 
 /**

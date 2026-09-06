@@ -1,10 +1,15 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import { parseXml, W_NS } from "../../ooxml/xml";
-import { W14_NS } from "./constants";
+import { W14_NS, W15_NS } from "./constants";
 import {
   readStrictCommentBody,
+  recordedIdentity,
   renderCommentBody,
+  renderCommentExtension,
+  renderPerson,
+  wellFormedCommentExtension,
+  wellFormedPerson,
   withThreadKey,
 } from "./grammar";
 
@@ -82,5 +87,66 @@ describe("giving an entry a thread key", () => {
       '<w:t xml:space="preserve">bold</w:t></w:r></w:p></w:comment>';
 
     expect(withThreadKey(rich, "ABCD1234")).toContain("<w:b/>");
+  });
+});
+
+/** What every comment and reply says about itself, whatever thread state it stands in */
+const said = {
+  id: "0",
+  author: "Someone",
+  authorId: "me",
+  initials: null,
+  date: "2020-01-01T00:00:00Z",
+  text: "note",
+  commentXml: null,
+  imported: false,
+  extensionXml: null,
+};
+
+const alone = (xml: string): Element =>
+  parseXml(`<w15:part xmlns:w15="${W15_NS}">${xml}</w15:part>`).documentElement
+    .children[0];
+
+describe("the thread state this editor writes", () => {
+  it("is recognised by the half that reads it", () => {
+    const settled = renderCommentExtension({
+      ...said,
+      paraId: "ABCD1234",
+      resolved: true,
+      threadImported: false,
+      replies: [],
+    });
+    const reply = renderCommentExtension({
+      ...said,
+      paraId: "0000AAAA",
+      parentParaId: "ABCD1234",
+    });
+
+    expect(wellFormedCommentExtension(alone(settled))).toBe(true);
+    expect(wellFormedCommentExtension(alone(reply))).toBe(true);
+  });
+
+  it("is not recognised where a key is not four bytes of hexadecimal", () => {
+    const forged = '<w15:commentEx w15:paraId="not a key"/>';
+
+    expect(wellFormedCommentExtension(alone(forged))).toBe(false);
+  });
+});
+
+describe("the identity this editor records", () => {
+  it("is recognised by the half that reads it, and says whose it is", () => {
+    const person = renderPerson("Someone", "me", "w15:", "");
+
+    expect(wellFormedPerson(alone(person))).toBe(true);
+    expect(recordedIdentity(alone(person))).toBe("me");
+  });
+
+  it("is not recognised where another provider recorded it", () => {
+    const theirs = renderPerson("Someone", "me", "w15:", "").replace(
+      "portone-docx-editor",
+      "AD"
+    );
+
+    expect(wellFormedPerson(alone(theirs))).toBe(false);
   });
 });
