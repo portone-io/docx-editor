@@ -630,3 +630,18 @@ describe("display values coming in through data-fmt", () => {
     expect(render(parsed.child(0)).innerHTML).not.toContain("fixed");
   });
 });
+
+describe("the two kinds of block", () => {
+  it("every block names exactly one of modelled and preserved", () => {
+    const blocks = Object.values(docxSchema.nodes).filter((type) =>
+      type.isInGroup("block")
+    );
+    expect(blocks.length).toBeGreaterThan(0);
+    for (const type of blocks) {
+      const kinds = ["modelled", "preserved"].filter((group) =>
+        type.isInGroup(group)
+      );
+      expect([type.name, kinds]).toEqual([type.name, [expect.any(String)]]);
+    }
+  });
+});

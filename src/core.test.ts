@@ -323,58 +323,71 @@ describe("onlyCommentsChangedBy", () => {
       to: number;
     }
 
-    /** The first character of every paragraph of this block that carries text, as a range */
-    function textParagraphsIn(block: PMNode, offset: number): Spot[] {
+    /** Every paragraph of this block carrying text, with the range its first character spans */
+    function textParagraphsIn(
+      block: PMNode,
+      offset: number
+    ): { paragraph: PMNode; spot: Spot }[] {
       if (block.type.name === "paragraph") {
-        return block.textContent.length > 0
-          ? [{ from: offset + 1, to: offset + 2 }]
-          : [];
+        const spot = { from: offset + 1, to: offset + 2 };
+        return block.textContent.length > 0 ? [{ paragraph: block, spot }] : [];
       }
-      const spots: Spot[] = [];
+      const found: { paragraph: PMNode; spot: Spot }[] = [];
       block.descendants((node, pos) => {
         if (node.type.name !== "paragraph") return true;
         // The block's content starts one step inside it, its first character one step inside that
         if (node.textContent.length > 0) {
-          spots.push({ from: offset + pos + 2, to: offset + pos + 3 });
+          found.push({
+            paragraph: node,
+            spot: { from: offset + pos + 2, to: offset + pos + 3 },
+          });
         }
         return false;
+      });
+      return found;
+    }
+
+    /** The first text paragraph of every table, which is where the verdict used to be wrong */
+    function tableSpots(doc: PMNode): Spot[] {
+      const spots: Spot[] = [];
+      doc.forEach((block, offset) => {
+        if (block.type.name !== "table") return;
+        const [first] = textParagraphsIn(block, offset);
+        if (first !== undefined) spots.push(first.spot);
       });
       return spots;
     }
 
-    /**
-     * A cell of every table, and the body paragraphs at either end.
-     *
-     * The tables are where the verdict used to be wrong, and a cell reaches every rebuilt piece a
-     * body paragraph does. Walking every paragraph of the corpus instead re-proves the writer's
-     * fixed point, which `docx/storyProjection.test.ts` already holds over every modelled block,
-     * at ten times the cost of this lane.
-     */
-    function commentableSpots(doc: PMNode): Spot[] {
-      const paragraphs: Spot[] = [];
-      const cells: Spot[] = [];
-      doc.forEach((block, offset) => {
-        const spots = textParagraphsIn(block, offset);
-        if (block.type.name === "table") {
-          if (spots[0] !== undefined) cells.push(spots[0]);
-        } else {
-          paragraphs.push(...spots);
-        }
+    /** What makes one paragraph a different case from another: the kinds of inline node it holds */
+    function inlineKinds(paragraph: PMNode): string {
+      const kinds = new Set<string>();
+      paragraph.forEach((child) => {
+        kinds.add(child.type.name);
       });
-      const ends = [paragraphs[0], paragraphs[paragraphs.length - 1]];
-      return [...cells, ...ends.filter((spot) => spot !== undefined)];
+      return Array.from(kinds).sort().join(" ");
     }
 
-    function firstCellSpot(doc: PMNode): Spot {
-      const inTables: Spot[] = [];
+    /**
+     * A cell of every table, and one body paragraph for every kind of content the fixture holds.
+     *
+     * Two paragraphs made of the same kinds of inline node put the writer through the same code,
+     * so walking every paragraph of the corpus buys no evidence and costs this lane ten times as
+     * much. What it would re-prove, that the writer is a fixed point over every modelled block,
+     * `docx/storyProjection.test.ts` holds directly.
+     */
+    function sampledSpots(doc: PMNode): Spot[] {
+      const spots = tableSpots(doc);
+      const seen = new Set<string>();
       doc.forEach((block, offset) => {
-        if (block.type.name === "table") {
-          inTables.push(...textParagraphsIn(block, offset));
+        if (block.type.name === "table") return;
+        for (const { paragraph, spot } of textParagraphsIn(block, offset)) {
+          const kinds = inlineKinds(paragraph);
+          if (seen.has(kinds)) continue;
+          seen.add(kinds);
+          spots.push(spot);
         }
       });
-      const [spot] = inTables;
-      if (spot === undefined) throw new Error("the fixture has no table text");
-      return spot;
+      return spots;
     }
 
     it.each(fixtureNames)(
@@ -382,7 +395,7 @@ describe("onlyCommentsChangedBy", () => {
       (name) => {
         const bytes = readFixture(name);
         const { doc, session } = importDocx(bytes);
-        const spots = commentableSpots(doc);
+        const spots = sampledSpots(doc);
         expect(spots.length).toBeGreaterThan(0);
 
         for (const { from, to } of spots) {
@@ -406,8 +419,12 @@ describe("onlyCommentsChangedBy", () => {
       const bytes = readFixture(FIXTURE);
       const { doc, session } = importDocx(bytes);
       let state = createEditorState(doc);
-      const { from, to } = firstCellSpot(state.doc);
-      state = state.apply(state.tr.insertText(EDITED, from, to));
+      const [inACell] = tableSpots(state.doc);
+      if (inACell === undefined)
+        throw new Error("the fixture has no table text");
+      state = state.apply(
+        state.tr.insertText(EDITED, inACell.from, inACell.to)
+      );
 
       expect(
         onlyCommentsChangedBy(bytes, exportDocx(state.doc, session), "me")
