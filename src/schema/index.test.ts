@@ -618,6 +618,73 @@ describe("raw XML coming in through the DOM", () => {
     expect(parsed.firstChild?.child(0).type.name).toBe("text");
   });
 
+  it("a rawInline carrying a comment range marker beside its element is refused", () => {
+    const parsed = parseHtml(
+      `<p class="${editorClassNames.paragraph}"><span class="${editorClassNames.rawInline}" data-xml="&lt;w:bookmarkEnd w:id=&quot;1&quot;/&gt;&lt;w:commentRangeStart w:id=&quot;7&quot;/&gt;"></span>x</p>`
+    );
+
+    expect(parsed.firstChild?.childCount).toBe(1);
+    expect(parsed.textContent).toBe("x");
+  });
+
+  it("a rawInline keeps an element of a namespace the editor does not model", () => {
+    const parsed = parseHtml(
+      `<p class="${editorClassNames.paragraph}"><span class="${editorClassNames.rawInline}" data-xml="&lt;m:oMathPara/&gt;"></span></p>`
+    );
+
+    expect(parsed.firstChild?.firstChild?.attrs.xml).toBe("<m:oMathPara/>");
+  });
+
+  it("a comment marker whose data-xml is not a range marker is refused", () => {
+    const parsed = parseHtml(
+      `<p class="${editorClassNames.paragraph}"><span class="${editorClassNames.commentMarker}" data-comment-marker="start" data-comment-id="7" data-xml="&lt;w:p&gt;&lt;w:r&gt;&lt;w:t&gt;smuggled&lt;/w:t&gt;&lt;/w:r&gt;&lt;/w:p&gt;"></span>x</p>`
+    );
+
+    expect(parsed.firstChild?.childCount).toBe(1);
+    expect(parsed.textContent).toBe("x");
+  });
+
+  it("a comment reference whose reply carries a smuggled body is refused", () => {
+    const replies = JSON.stringify([
+      {
+        id: "2",
+        paraId: "0A0A0A0A",
+        parentParaId: "0B0B0B0B",
+        commentXml: '<w:comment w:id="2"/><w:comment w:id="3"/>',
+      },
+    ]);
+    const parsed = parseHtml(
+      `<p class="${editorClassNames.paragraph}"><span class="${editorClassNames.commentMarker}" data-comment-marker="reference" data-comment-id="1" data-comment-replies="${replies.replaceAll('"', "&quot;")}"></span>x</p>`
+    );
+
+    expect(parsed.firstChild?.childCount).toBe(1);
+    expect(parsed.textContent).toBe("x");
+  });
+
+  it("a note reference whose data-reference-xml names another element is refused", () => {
+    const parsed = parseHtml(
+      `<p class="${editorClassNames.paragraph}"><sup class="${editorClassNames.noteReference}" data-note-id="1" data-reference-xml="&lt;w:commentReference w:id=&quot;1&quot;/&gt;">1</sup></p>`
+    );
+
+    expect(parsed.firstChild?.child(0).type.name).not.toBe("noteReference");
+  });
+
+  it("an image whose data-xml is not a drawing is refused", () => {
+    const parsed = parseHtml(
+      `<p class="${editorClassNames.paragraph}"><img class="${editorClassNames.image}" src="data:image/png;base64,iVBORw0KGgo=" data-xml="&lt;w:drawing/&gt;&lt;w:t&gt;smuggled&lt;/w:t&gt;"></p>`
+    );
+
+    expect(parsed.firstChild?.childCount).toBe(0);
+  });
+
+  it("a preserved block whose data-xml opens a sibling is refused", () => {
+    const parsed = parseHtml(
+      `<div class="${editorClassNames.rawBlock} ${editorClassNames.rawXmlBlock}" data-xml="&lt;w:tbl/&gt;&lt;w:tbl/&gt;" data-name="w:tbl">placeholder</div>`
+    );
+
+    expect(parsed.firstChild?.type.name).not.toBe("rawBlock");
+  });
+
   it("a cell whose data-tcpr closes the cell is read as a cell without properties", () => {
     const parsed = parseHtml(
       `<table class="${editorClassNames.table}"><tbody><tr><td class="${editorClassNames.tableCell}" data-tcpr="&lt;/w:tc&gt;&lt;w:tc&gt;&lt;w:tcPr/&gt;"><p class="${editorClassNames.paragraph}">x</p></td></tr></tbody></table>`

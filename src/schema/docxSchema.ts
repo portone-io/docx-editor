@@ -24,6 +24,7 @@ import {
   toTableWidth,
 } from "../model/format";
 import {
+  ANY_ELEMENT,
   ATTRIBUTES,
   acceptRawXml,
   ELEMENT,
@@ -42,6 +43,10 @@ import {
 import { imageNodeSpec, runMarkSpec } from "./rendering";
 
 export { imageNodeSpec, runMarkSpec } from "./rendering";
+
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === "object" && value !== null;
+}
 
 function text(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
@@ -96,6 +101,24 @@ function srcIdOf(dom: HTMLElement): number | null {
   if (raw === null) return null;
   const parsed = Number.parseInt(raw, 10);
   return Number.isNaN(parsed) ? null : parsed;
+}
+
+/**
+ * Whether every reply a comment carries holds the XML the comment parts take it back as.
+ * A reply body goes back out into `word/comments.xml` (`docx/comments/writing`) rather than into
+ * the story, so one smuggling a sibling would write it there.
+ */
+function repliesHoldTheirXml(value: unknown): boolean {
+  if (!Array.isArray(value)) return true;
+  const replies: readonly unknown[] = value;
+  return replies.every((reply) => {
+    if (!isRecord(reply)) return true;
+    return (
+      acceptRawXml(ELEMENT("comment"), text(reply.commentXml) ?? null) !==
+        false &&
+      acceptRawXml(ANY_ELEMENT, text(reply.extensionXml) ?? null) !== false
+    );
+  });
 }
 
 /**
@@ -473,10 +496,11 @@ export const docxSchema = new Schema({
       parseDOM: [
         {
           tag: `div.${editorClassNames.rawXmlBlock}`,
-          getAttrs: (dom) => ({
-            xml: dom.getAttribute("data-xml"),
-            name: dom.getAttribute("data-name"),
-          }),
+          getAttrs: (dom) => {
+            const xml = rawXml(dom, "data-xml", ANY_ELEMENT);
+            if (xml === false) return false;
+            return { xml, name: dom.getAttribute("data-name") };
+          },
         },
       ],
     },
@@ -599,12 +623,16 @@ export const docxSchema = new Schema({
       parseDOM: [
         {
           tag: `img.${editorClassNames.image}`,
-          getAttrs: (dom) => ({
-            src: toImageSrc(dom.getAttribute("src")),
-            extent: toImageExtent(parseJson(dom.getAttribute("data-extent"))),
-            alt: dom.getAttribute("alt") || null,
-            xml: dom.getAttribute("data-xml"),
-          }),
+          getAttrs: (dom) => {
+            const xml = rawXml(dom, "data-xml", ELEMENT("drawing"));
+            if (xml === false) return false;
+            return {
+              src: toImageSrc(dom.getAttribute("src")),
+              extent: toImageExtent(parseJson(dom.getAttribute("data-extent"))),
+              alt: dom.getAttribute("alt") || null,
+              xml,
+            };
+          },
         },
       ],
     },
@@ -632,10 +660,11 @@ export const docxSchema = new Schema({
       parseDOM: [
         {
           tag: `span.${editorClassNames.commentMarker}[data-comment-marker="start"]`,
-          getAttrs: (dom) => ({
-            id: dom.getAttribute("data-comment-id"),
-            xml: dom.getAttribute("data-xml"),
-          }),
+          getAttrs: (dom) => {
+            const xml = rawXml(dom, "data-xml", ELEMENT("commentRangeStart"));
+            if (xml === false) return false;
+            return { id: dom.getAttribute("data-comment-id"), xml };
+          },
         },
       ],
     },
@@ -663,10 +692,11 @@ export const docxSchema = new Schema({
       parseDOM: [
         {
           tag: `span.${editorClassNames.commentMarker}[data-comment-marker="end"]`,
-          getAttrs: (dom) => ({
-            id: dom.getAttribute("data-comment-id"),
-            xml: dom.getAttribute("data-xml"),
-          }),
+          getAttrs: (dom) => {
+            const xml = rawXml(dom, "data-xml", ELEMENT("commentRangeEnd"));
+            if (xml === false) return false;
+            return { id: dom.getAttribute("data-comment-id"), xml };
+          },
         },
       ],
     },
@@ -723,23 +753,52 @@ export const docxSchema = new Schema({
       parseDOM: [
         {
           tag: `span.${editorClassNames.commentMarker}[data-comment-marker="reference"]`,
-          getAttrs: (dom) => ({
-            id: dom.getAttribute("data-comment-id"),
-            referenceXml: dom.getAttribute("data-reference-xml"),
-            author: dom.getAttribute("data-comment-author"),
-            authorId: dom.getAttribute("data-comment-author-id"),
-            initials: dom.getAttribute("data-comment-initials"),
-            date: dom.getAttribute("data-comment-date"),
-            text: dom.getAttribute("data-comment-text") ?? "",
-            commentXml: dom.getAttribute("data-comment-xml"),
-            imported: dom.getAttribute("data-comment-imported") === "1",
-            paraId: dom.getAttribute("data-comment-para-id"),
-            resolved: dom.getAttribute("data-comment-resolved") === "1",
-            extensionXml: dom.getAttribute("data-comment-extension-xml"),
-            threadImported:
-              dom.getAttribute("data-comment-thread-imported") === "1",
-            replies: parseJson(dom.getAttribute("data-comment-replies")) ?? [],
-          }),
+          getAttrs: (dom) => {
+            const referenceXml = rawXml(
+              dom,
+              "data-reference-xml",
+              ELEMENT("commentReference")
+            );
+            const commentXml = rawXml(
+              dom,
+              "data-comment-xml",
+              ELEMENT("comment")
+            );
+            // The extended properties are a `w15:commentEx`, and `w15` is a namespace nothing
+            // this far down knows, so the element is held to its shape alone
+            const extensionXml = rawXml(
+              dom,
+              "data-comment-extension-xml",
+              ANY_ELEMENT
+            );
+            const replies =
+              parseJson(dom.getAttribute("data-comment-replies")) ?? [];
+            if (
+              referenceXml === false ||
+              commentXml === false ||
+              extensionXml === false ||
+              !repliesHoldTheirXml(replies)
+            ) {
+              return false;
+            }
+            return {
+              id: dom.getAttribute("data-comment-id"),
+              referenceXml,
+              author: dom.getAttribute("data-comment-author"),
+              authorId: dom.getAttribute("data-comment-author-id"),
+              initials: dom.getAttribute("data-comment-initials"),
+              date: dom.getAttribute("data-comment-date"),
+              text: dom.getAttribute("data-comment-text") ?? "",
+              commentXml,
+              imported: dom.getAttribute("data-comment-imported") === "1",
+              paraId: dom.getAttribute("data-comment-para-id"),
+              resolved: dom.getAttribute("data-comment-resolved") === "1",
+              extensionXml,
+              threadImported:
+                dom.getAttribute("data-comment-thread-imported") === "1",
+              replies,
+            };
+          },
         },
       ],
     },
@@ -781,18 +840,26 @@ export const docxSchema = new Schema({
       parseDOM: [
         {
           tag: `sup.${editorClassNames.noteReference}`,
-          getAttrs: (dom) => ({
-            kind:
-              dom.getAttribute("data-note-kind") === "endnote"
-                ? "endnote"
-                : "footnote",
-            id: dom.getAttribute("data-note-id"),
-            label: dom.getAttribute("data-note-label") ?? "?",
-            text: dom.getAttribute("data-note-text") ?? "",
-            customMarkFollows:
-              dom.getAttribute("data-custom-mark-follows") === "1",
-            referenceXml: dom.getAttribute("data-reference-xml"),
-          }),
+          getAttrs: (dom) => {
+            const referenceXml = rawXml(
+              dom,
+              "data-reference-xml",
+              ELEMENT("footnoteReference", "endnoteReference")
+            );
+            if (referenceXml === false) return false;
+            return {
+              kind:
+                dom.getAttribute("data-note-kind") === "endnote"
+                  ? "endnote"
+                  : "footnote",
+              id: dom.getAttribute("data-note-id"),
+              label: dom.getAttribute("data-note-label") ?? "?",
+              text: dom.getAttribute("data-note-text") ?? "",
+              customMarkFollows:
+                dom.getAttribute("data-custom-mark-follows") === "1",
+              referenceXml,
+            };
+          },
         },
       ],
     },
@@ -815,7 +882,10 @@ export const docxSchema = new Schema({
       parseDOM: [
         {
           tag: `span.${editorClassNames.rawInline}`,
-          getAttrs: (dom) => ({ xml: dom.getAttribute("data-xml") }),
+          getAttrs: (dom) => {
+            const xml = rawXml(dom, "data-xml", ANY_ELEMENT);
+            return xml === false ? false : { xml };
+          },
         },
       ],
     },
