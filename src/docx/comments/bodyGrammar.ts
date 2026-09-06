@@ -10,19 +10,21 @@
 import { escapeXml, W_NS } from "../../ooxml/xml";
 import { W14_NS, W15_NS } from "./constants";
 
+const ELEMENT_NODE = 1;
+const TEXT_NODE = 3;
+
 const XMLNS_NS = "http://www.w3.org/2000/xmlns/";
 const XML_NS = "http://www.w3.org/XML/1998/namespace";
 
 const nameKey = (namespace: string | null, localName: string): string =>
   `${namespace ?? ""} ${localName}`;
 
-/** The attributes this editor writes on a `w:comment` */
+/** The attributes this editor writes on a `w:comment`. The thread key goes on the body's paragraph */
 export const COMMENT_ATTRIBUTES: ReadonlySet<string> = new Set([
   nameKey(W_NS, "id"),
   nameKey(W_NS, "author"),
   nameKey(W_NS, "date"),
   nameKey(W_NS, "initials"),
-  nameKey(W14_NS, "paraId"),
 ]);
 
 /** The attributes this editor writes on a `w15:commentEx` */
@@ -63,6 +65,24 @@ export function attributesWithin(
 
 function isNamed(el: Element, namespace: string, localName: string): boolean {
   return el.namespaceURI === namespace && el.localName === localName;
+}
+
+/**
+ * Whether the element holds elements and nothing else.
+ *
+ * The writer puts no whitespace, comment or stray text between the pieces of a body, so an entry
+ * carrying any is one it did not write, and a reading that passed over them would leave a place to
+ * put bytes nothing looks at.
+ */
+function holdsElementsOnly(el: Element): boolean {
+  return Array.from(el.childNodes).every(
+    (node) => node.nodeType === ELEMENT_NODE
+  );
+}
+
+/** Whether the element holds text and nothing else, which is what a `w:t` holds */
+function holdsTextOnly(el: Element): boolean {
+  return Array.from(el.childNodes).every((node) => node.nodeType === TEXT_NODE);
 }
 
 /** The body of a comment, as a paragraph of one run holding the text and the breaks in it */
@@ -114,12 +134,13 @@ export function withThreadKey(commentXml: string, paraId: string): string {
 }
 
 function readRunText(run: Element): string | null {
+  if (!holdsElementsOnly(run)) return null;
   const pieces: string[] = [];
   for (const child of Array.from(run.children)) {
     if (isNamed(child, W_NS, "br")) {
       if (
         !attributesWithin(child, NO_ATTRIBUTES) ||
-        child.children.length > 0
+        child.childNodes.length > 0
       ) {
         return null;
       }
@@ -127,9 +148,11 @@ function readRunText(run: Element): string | null {
       continue;
     }
     if (!isNamed(child, W_NS, "t")) return null;
+    // The writer keeps the space of every line, so it says so on every `w:t` it writes
     if (
       !attributesWithin(child, TEXT_ATTRIBUTES) ||
-      child.children.length > 0
+      child.getAttributeNS(XML_NS, "space") !== "preserve" ||
+      !holdsTextOnly(child)
     ) {
       return null;
     }
@@ -146,12 +169,14 @@ function readRunText(run: Element): string | null {
  * saying no to a shape this editor would not have written turns down only a rewrite.
  */
 export function readStrictCommentBody(comment: Element): string | null {
+  if (!holdsElementsOnly(comment)) return null;
   const paragraphs = Array.from(comment.children);
   if (paragraphs.length !== 1) return null;
   const [paragraph] = paragraphs;
   if (!isNamed(paragraph, W_NS, "p")) return null;
   if (!attributesWithin(paragraph, PARAGRAPH_ATTRIBUTES)) return null;
 
+  if (!holdsElementsOnly(paragraph)) return null;
   const runs = Array.from(paragraph.children);
   if (runs.length !== 1) return null;
   const [run] = runs;

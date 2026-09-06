@@ -147,7 +147,70 @@ describe("the shape this editor writes", () => {
   });
 
   it("refuses an attribute this editor does not write on a comment", () => {
-    expect(wellFormedEntry(comment('w:id="0" w:done="1"', BODY))).toBe(false);
+    for (const attrs of [
+      'w:id="0" w:done="1"',
+      'w:id="0" w14:paraId="12345678"',
+    ]) {
+      expect(wellFormedEntry(comment(attrs, BODY))).toBe(false);
+    }
+  });
+
+  it("refuses bytes riding between the pieces of a body", () => {
+    for (const body of [
+      '<w:p><!-- payload --><w:r><w:t xml:space="preserve">a</w:t></w:r></w:p>',
+      '<w:p>payload<w:r><w:t xml:space="preserve">a</w:t></w:r></w:p>',
+      '<w:p><w:r>payload<w:t xml:space="preserve">a</w:t></w:r></w:p>',
+      '<w:p><w:r><w:t xml:space="preserve">a<!-- payload --></w:t></w:r></w:p>',
+    ]) {
+      expect(wellFormedEntry(comment('w:id="0"', body))).toBe(false);
+    }
+  });
+
+  it("refuses a w:t that does not keep its space, which the writer always says", () => {
+    expect(
+      wellFormedEntry(comment('w:id="0"', "<w:p><w:r><w:t>a</w:t></w:r></w:p>"))
+    ).toBe(false);
+  });
+
+  const extension = (attrs: string): Element =>
+    elementOf(`<w15:commentEx xmlns:w15="${W15_NS}" ${attrs}/>`);
+
+  const person = (inner: string, attrs = 'w15:author="Someone"'): Element =>
+    elementOf(
+      `<w15:person xmlns:w15="${W15_NS}" ${attrs}>${inner}</w15:person>`
+    );
+
+  const PRESENCE =
+    '<w15:presenceInfo w15:providerId="portone-docx-editor" w15:userId="me"/>';
+
+  it("takes the thread state and the identity this editor writes", () => {
+    expect(
+      wellFormedEntry(extension('w15:paraId="12345678" w15:done="1"'))
+    ).toBe(true);
+    expect(wellFormedEntry(person(PRESENCE))).toBe(true);
+  });
+
+  it("refuses thread state this editor does not write", () => {
+    for (const entry of [
+      extension('w15:paraId="12345678" w15:resolved="1"'),
+      elementOf(
+        `<w15:commentEx xmlns:w15="${W15_NS}" w15:paraId="12345678"><w15:extra/></w15:commentEx>`
+      ),
+    ]) {
+      expect(wellFormedEntry(entry)).toBe(false);
+    }
+  });
+
+  it("refuses an identity this editor did not record", () => {
+    for (const entry of [
+      person(""),
+      person(PRESENCE + PRESENCE),
+      person('<w15:presenceInfo w15:providerId="AD" w15:userId="me"/>'),
+      person('<w15:presenceInfo w15:providerId="portone-docx-editor"/>'),
+      person(PRESENCE, 'w15:author="Someone" w15:extra="1"'),
+    ]) {
+      expect(wellFormedEntry(entry)).toBe(false);
+    }
   });
 });
 
