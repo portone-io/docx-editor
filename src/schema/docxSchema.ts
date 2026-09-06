@@ -123,19 +123,23 @@ function repliesHoldTheirXml(value: unknown): boolean {
 
 /**
  * A content control's opening tag, with everything it wrapped cut away.
- * `docx/serializeParagraph` and `docx/serializeTable` put back exactly the closing text named here.
+ * `docx/serializeParagraph` and `docx/serializeTable` put back exactly the closing text named here,
+ * and `docx/sdt` cuts the tag at the `w:sdtContent` those two write, so the properties are all that
+ * may still hang off it.
  */
 const SDT_PREFIX: RawXmlShape = {
   kind: "openTag",
   name: "sdt",
   closedBy: "<w:sdtContent/></w:sdt>",
+  head: ["sdtPr", "sdtEndPr"],
 };
 
-/** A hyperlink's opening tag, closed the same way */
+/** A hyperlink's opening tag, closed the same way. `docx/hyperlink` cuts it at the tag itself */
 const LINK_PREFIX: RawXmlShape = {
   kind: "openTag",
   name: "hyperlink",
   closedBy: "</w:hyperlink>",
+  head: [],
 };
 
 /**

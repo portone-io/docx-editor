@@ -20,12 +20,20 @@ import { elementChildren, namespaceDecls, parseXml, W_NS } from "./xml";
  * `element` is a whole element: a properties fragment, a drawing, an annotation reference.
  * `attributes` is what stood inside an opening tag, as `attrString` writes it.
  * `openTag` is an opening tag with everything it wrapped cut away, which the writer puts back by
- * appending the closing text `closedBy` names.
+ * appending the closing text `closedBy` names. `head` is what may still stand between the two:
+ * the property elements the tag carries ahead of its content, by local name.
  */
 export type RawXmlShape =
   | { kind: "element"; names: readonly string[] | "any" }
   | { kind: "attributes" }
-  | { kind: "openTag"; name: string; closedBy: string };
+  | {
+      kind: "openTag";
+      name: string;
+      closedBy: string;
+      head: readonly string[];
+    };
+
+type OpenTagShape = Extract<RawXmlShape, { kind: "openTag" }>;
 
 /** A single WordprocessingML element going by one of these local names */
 export function ELEMENT(...names: string[]): RawXmlShape {
@@ -67,6 +75,28 @@ function isNamed(el: Element, names: readonly string[]): boolean {
   return el.namespaceURI === W_NS && names.includes(el.localName);
 }
 
+/**
+ * Whether the opened tag holds its own head and nothing besides what `closedBy` brought.
+ *
+ * The writer splices the content it modelled between the opening tag and the closing text, so a
+ * fragment that carried children of its own would put them in front of that content, and one that
+ * opened the very slot the closing text opens would leave the file with two of them. Only the
+ * property elements `head` names may stand there, and no text at all.
+ */
+function holdsHeadAlone(el: Element, shape: OpenTagShape): boolean {
+  const closing = loneElement(`<w:${shape.name}>${shape.closedBy}`);
+  if (closing === null) return false;
+  const children = elementChildren(el);
+  const own = children.slice(
+    0,
+    children.length - elementChildren(closing).length
+  );
+  return (
+    el.childNodes.length === children.length &&
+    own.every((child) => isNamed(child, shape.head))
+  );
+}
+
 function holdsShape(shape: RawXmlShape, value: string): boolean {
   switch (shape.kind) {
     case "element": {
@@ -86,8 +116,11 @@ function holdsShape(shape: RawXmlShape, value: string): boolean {
       }
     }
     case "openTag": {
+      // Which element the fragment opened is settled by parsing at all: the closing text ends with
+      // that element's own end tag, and XML matches an end tag against the very spelling the start
+      // tag used, so nothing but `<w:{name}` can reach here
       const el = loneElement(value + shape.closedBy);
-      return el !== null && isNamed(el, [shape.name]);
+      return el !== null && holdsHeadAlone(el, shape);
     }
   }
 }

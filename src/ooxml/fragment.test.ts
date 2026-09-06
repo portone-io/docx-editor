@@ -6,11 +6,13 @@ const SDT = {
   kind: "openTag",
   name: "sdt",
   closedBy: "<w:sdtContent/></w:sdt>",
+  head: ["sdtPr", "sdtEndPr"],
 } as const;
 const HYPERLINK = {
   kind: "openTag",
   name: "hyperlink",
   closedBy: "</w:hyperlink>",
+  head: [],
 } as const;
 
 describe("an element shape", () => {
@@ -129,5 +131,34 @@ describe("an open tag shape", () => {
 
   it("refuses an opening tag of another element", () => {
     expect(acceptRawXml(SDT, "<w:tbl>")).toBe(false);
+  });
+
+  it("accepts the properties a control carries ahead of its content", () => {
+    const prefix =
+      '<w:sdt w:foo="1"><w:sdtPr><w:id w:val="1"/></w:sdtPr><w:sdtEndPr/>';
+
+    expect(acceptRawXml(SDT, prefix)).toBe(prefix);
+  });
+
+  it("refuses a link opening tag carrying a run of its own", () => {
+    expect(
+      acceptRawXml(
+        HYPERLINK,
+        '<w:hyperlink r:id="rId7"><w:r><w:t>smuggled</w:t></w:r>'
+      )
+    ).toBe(false);
+  });
+
+  it("refuses a control opening tag that brings its own content slot", () => {
+    expect(
+      acceptRawXml(
+        SDT,
+        "<w:sdt><w:sdtPr/><w:sdtContent><w:r><w:t>smuggled</w:t></w:r></w:sdtContent>"
+      )
+    ).toBe(false);
+  });
+
+  it("refuses an opening tag showing text where its content goes", () => {
+    expect(acceptRawXml(HYPERLINK, "<w:hyperlink>smuggled")).toBe(false);
   });
 });
