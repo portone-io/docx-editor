@@ -5,8 +5,7 @@ import {
 } from "prosemirror-state";
 import { toParagraphFormat } from "../../model/format";
 import { docxSchema } from "../../schema";
-import { replacementShut } from "../../schema/locks";
-import { editsShut } from "../../schema/protectionState";
+import { editShut, selectionIntents } from "../../schema/guards";
 
 function isOrdinaryParagraph(state: EditorState): boolean {
   const { $from } = state.selection;
@@ -29,8 +28,9 @@ export const insertTab: Command = (state, dispatch) => {
     !(selection instanceof TextSelection) ||
     !selection.$from.sameParent(selection.$to) ||
     !isOrdinaryParagraph(state) ||
-    editsShut(state) ||
-    replacementShut(selection, state.doc)
+    selectionIntents(selection, "replace").some((intent) =>
+      editShut(state, intent)
+    )
   ) {
     return false;
   }

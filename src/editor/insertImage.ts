@@ -14,8 +14,7 @@ import type { Command, EditorState } from "prosemirror-state";
 import { insertPoint } from "prosemirror-transform";
 import { type ImageExtent, toImageExtent, toImageSrc } from "../ooxml/image";
 import { docxSchema } from "../schema";
-import { replacementShut } from "../schema/locks";
-import { editsShut } from "../schema/protectionState";
+import { editShut, selectionIntents } from "../schema/guards";
 
 /** What has to be known about an image before it can go into a document */
 export interface ImageToInsert {
@@ -33,13 +32,18 @@ export interface ImageToInsert {
  * The selection itself when an inline node can stand there, and the nearest position that
  * can hold one otherwise. Null when no position in this document can, which is the case
  * for a document made up entirely of preserved blocks.
- * Null as well where a lock shuts the selection: the image goes in in place of whatever is
- * selected, so the question is whether the guard would let that replacement through
- * (`schema/locks`), which a control the document locked against deletion answers no to even where
- * its contents stand open. Null as well under a protection that shuts the body.
+ * Null as well where a guard shuts the selection: the image goes in in place of whatever is
+ * selected, so the question is whether the guards would let that replacement through
+ * (`schema/guards`). A control the document locked against deletion answers no even where its
+ * contents stand open, a preserved bookmark marker or note reference answers no wherever it
+ * stands, and a protection that shuts the body answers no everywhere.
  */
 function insertPosition(state: EditorState): number | null {
-  if (editsShut(state) || replacementShut(state.selection, state.doc)) {
+  if (
+    selectionIntents(state.selection, "replace").some((intent) =>
+      editShut(state, intent)
+    )
+  ) {
     return null;
   }
   return insertPoint(state.doc, state.selection.from, docxSchema.nodes.image);

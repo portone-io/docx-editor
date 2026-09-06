@@ -27,6 +27,7 @@ import {
   type Step,
 } from "prosemirror-transform";
 import { lockGuard } from "./locks";
+import { bookmarkGuard, noteGuard } from "./preservedGuards";
 import {
   isCommentNode,
   type ProtectionState,
@@ -65,58 +66,84 @@ export interface EditGuard {
   liftedBy?: readonly PluginKey<boolean>[];
 }
 
-function rangeHoldsComment(doc: PMNode, from: number, to: number): boolean {
+/** Whether this stretch of the document holds a node the question answers for */
+export function rangeHolds(
+  doc: PMNode,
+  from: number,
+  to: number,
+  holds: (node: PMNode) => boolean
+): boolean {
   let found = false;
   doc.nodesBetween(from, to, (node) => {
     if (found) return false;
-    if (isCommentNode(node)) found = true;
+    if (holds(node)) found = true;
     return !found;
   });
   return found;
 }
 
 /**
- * Whether any step of the transaction reaches a comment node: puts one in, takes one out, or
- * rewrites the one where it stands, which is how a body, a reply and a resolution change.
+ * Whether the step reaches a node the question answers for: puts one in, takes one out, or
+ * rewrites the one where it stands.
  *
- * Every comment lives in its three nodes, so a change that reaches none of them cannot have
- * changed a comment. That is what lets the guard settle the common transaction - typing, and
- * nothing more - over the stretch it rewrote rather than over the whole document.
+ * A rule about such nodes cannot have been broken by a change that reaches none of them, which is
+ * what lets a guard settle the common transaction - typing, and nothing more - over the stretches
+ * its own steps rewrote rather than over the whole document.
  *
  * A step of a kind this does not know - one a consumer brought - is answered as reaching one,
  * since what it rewrote is not known either. The whole-document judgement then has the say, and
  * an unknown step costs a comparison rather than a hole in the guard.
  */
-export function transactionTouchesComments(tr: Transaction): boolean {
-  return tr.steps.some((step, index) => {
-    const before = tr.docs[index];
-    const after = tr.docs[index + 1] ?? tr.doc;
-    if (
-      step instanceof AttrStep ||
-      step instanceof AddNodeMarkStep ||
-      step instanceof RemoveNodeMarkStep
-    ) {
-      const node = before.nodeAt(step.pos);
-      return node !== null && isCommentNode(node);
-    }
-    if (
-      !(
-        step instanceof ReplaceStep ||
-        step instanceof ReplaceAroundStep ||
-        step instanceof AddMarkStep ||
-        step instanceof RemoveMarkStep
-      )
-    ) {
-      return true;
-    }
-    let touched = false;
-    step.getMap().forEach((oldStart, oldEnd, newStart, newEnd) => {
-      touched ||=
-        rangeHoldsComment(before, oldStart, oldEnd) ||
-        rangeHoldsComment(after, newStart, newEnd);
-    });
-    return touched;
+export function stepReaches(
+  step: Step,
+  before: PMNode,
+  after: PMNode,
+  holds: (node: PMNode) => boolean
+): boolean {
+  if (
+    step instanceof AttrStep ||
+    step instanceof AddNodeMarkStep ||
+    step instanceof RemoveNodeMarkStep
+  ) {
+    const node = before.nodeAt(step.pos);
+    return node !== null && holds(node);
+  }
+  if (
+    !(
+      step instanceof ReplaceStep ||
+      step instanceof ReplaceAroundStep ||
+      step instanceof AddMarkStep ||
+      step instanceof RemoveMarkStep
+    )
+  ) {
+    return true;
+  }
+  let reached = false;
+  step.getMap().forEach((oldStart, oldEnd, newStart, newEnd) => {
+    reached ||=
+      rangeHolds(before, oldStart, oldEnd, holds) ||
+      rangeHolds(after, newStart, newEnd, holds);
   });
+  return reached;
+}
+
+/** Whether any step of the transaction reaches a node the question answers for */
+export function transactionReaches(
+  tr: Transaction,
+  holds: (node: PMNode) => boolean
+): boolean {
+  return tr.steps.some((step, index) =>
+    stepReaches(step, tr.docs[index], tr.docs[index + 1] ?? tr.doc, holds)
+  );
+}
+
+/**
+ * Whether the transaction reaches a comment node, which is how a body, a reply and a resolution
+ * change. Every comment lives in its three nodes, so a change that reaches none of them cannot
+ * have changed a comment.
+ */
+export function transactionTouchesComments(tr: Transaction): boolean {
+  return transactionReaches(tr, isCommentNode);
 }
 
 /**
@@ -163,7 +190,12 @@ const protectionGuard: EditGuard = {
   shuts: (_intent, state) => editsShut(state),
 };
 
-export const EDIT_GUARDS: readonly EditGuard[] = [protectionGuard, lockGuard];
+export const EDIT_GUARDS: readonly EditGuard[] = [
+  protectionGuard,
+  lockGuard,
+  bookmarkGuard,
+  noteGuard,
+];
 
 type StepGuard = EditGuard & { step: NonNullable<EditGuard["step"]> };
 
