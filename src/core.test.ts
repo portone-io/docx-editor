@@ -356,6 +356,8 @@ describe("onlyCommentsChangedBy", () => {
       "kitchen-sink.docx": ["Settled"],
     };
 
+    const SWEEP_TIMEOUT_MS = 120_000;
+
     it.each(fixtureNames)(
       "holds for a comment of one's own in every paragraph of %s, table cells included",
       (name) => {
@@ -388,7 +390,10 @@ describe("onlyCommentsChangedBy", () => {
           ).toEqual(allowed);
         }
         expect(refused).toEqual(LOCKED[name] ?? []);
-      }
+      },
+      // A comment on every paragraph of a real document, each one exported and read back twice by
+      // the verifier. Minutes of work on a slow runner, and the corpus is the point of the case
+      SWEEP_TIMEOUT_MS
     );
 
     it("still does not hold for a cell whose text was typed into", () => {
