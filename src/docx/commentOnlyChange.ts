@@ -25,6 +25,7 @@ import {
   PEOPLE_CONTENT_TYPE,
   PEOPLE_REL_TYPE,
 } from "./comments/constants";
+import { commentPartsKept } from "./comments/verifying";
 import { type DocxBytes, importDocx } from "./importDocx";
 import {
   type Relationship,
@@ -314,7 +315,9 @@ function storyKept(
  *
  * Every part of the package has to arrive as it left, save for the three a comment is written
  * across and the relationship and content type they are declared with; the document story itself
- * has to read as it did, comments aside. A comment carrying no recorded identity is everyone's to
+ * has to read as it did, comments aside. Those three parts are read entry by entry instead
+ * (`./comments/verifying`), since a comment edit is free to rewrite them and something has to say
+ * what it may have written there. A comment carrying no recorded identity is everyone's to
  * edit here as it is in the editor (`schema/protection`), while a comment that appeared has to
  * carry this identity: a file can claim any author, and the editor's own hand in writing it is
  * not there to vouch for it. An identity already recorded is nobody's to rewrite.
@@ -334,7 +337,11 @@ export function onlyCommentsChangedBy(
   const before = importDocx(original);
   const after = importDocx(submitted);
   const packaged = packageKept(before.session, after.session);
-  return packaged.ok
-    ? storyKept(before, after, authorId, editableComments)
-    : packaged;
+  if (!packaged.ok) return packaged;
+  const story = storyKept(before, after, authorId, editableComments);
+  // The parts are judged last, so a comment the wrong hand touched is named for that rather than
+  // for the part it was written across
+  return story.ok
+    ? commentPartsKept(before, after, authorId, editableComments)
+    : story;
 }

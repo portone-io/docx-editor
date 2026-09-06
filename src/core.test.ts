@@ -356,6 +356,8 @@ describe("onlyCommentsChangedBy", () => {
       "kitchen-sink.docx": ["Settled"],
     };
 
+    const SWEEP_TIMEOUT_MS = 120_000;
+
     it.each(fixtureNames)(
       "holds for a comment of one's own in every paragraph of %s, table cells included",
       (name) => {
@@ -388,7 +390,10 @@ describe("onlyCommentsChangedBy", () => {
           ).toEqual(allowed);
         }
         expect(refused).toEqual(LOCKED[name] ?? []);
-      }
+      },
+      // A comment on every paragraph of a real document, each one exported and read back twice by
+      // the verifier. Minutes of work on a slow runner, and the corpus is the point of the case
+      SWEEP_TIMEOUT_MS
     );
 
     it("still does not hold for a cell whose text was typed into", () => {
@@ -732,6 +737,72 @@ describe("onlyCommentsChangedBy", () => {
       expect(() =>
         onlyCommentsChangedBy(original(), new Uint8Array([1, 2, 3]), "me")
       ).toThrow(DocxImportError);
+    });
+  });
+
+  /**
+   * The three parts a comment is written across are the ones a comment edit rewrites, so the
+   * package comparison passes over their bytes. What a submission put in them is read entry by
+   * entry instead (`docx/comments/verifying`), or a file could carry anything at all inside a
+   * comment and be answered as one where only comments changed.
+   */
+  describe("over the comment parts", () => {
+    const COMMENTS_PART = "word/comments.xml";
+
+    /** The same file with its comments part rewritten */
+    function tampered(
+      commented: Uint8Array,
+      rewrite: (xml: string) => string
+    ): Uint8Array {
+      return repacked(commented, {
+        [COMMENTS_PART]: rewrite(partText(commented, COMMENTS_PART)),
+      });
+    }
+
+    it("does not hold for a field injected into a comment body", () => {
+      const { bytes, commented } = commentedBy("me");
+      const forged = tampered(commented, (xml) =>
+        xml.replace(
+          "</w:p></w:comment>",
+          '<w:r><w:fldChar w:fldCharType="begin"/></w:r>' +
+            '<w:r><w:instrText xml:space="preserve"> INCLUDEPICTURE "http://evil.example/x.png" </w:instrText></w:r>' +
+            '<w:r><w:fldChar w:fldCharType="end"/></w:r></w:p></w:comment>'
+        )
+      );
+
+      expect(onlyCommentsChangedBy(bytes, forged, "me")).toEqual(
+        partRefused(COMMENTS_PART)
+      );
+    });
+
+    it("does not hold for an orphan comment the submission added", () => {
+      const { bytes, commented } = commentedBy("me");
+      const orphaned = tampered(commented, (xml) =>
+        xml.replace(
+          "</w:comments>",
+          '<w:comment w:id="999" w:author="Someone Else" w:date="2020-01-01T00:00:00Z">' +
+            `<w:p>${run("ghost")}</w:p></w:comment></w:comments>`
+        )
+      );
+
+      expect(onlyCommentsChangedBy(bytes, orphaned, "me")).toEqual(
+        partRefused(COMMENTS_PART)
+      );
+    });
+
+    it("does not hold for mc:AlternateContent inside one's own comment", () => {
+      const { bytes, commented } = commentedBy("me");
+      const wrapped = tampered(commented, (xml) =>
+        xml.replace(
+          "</w:p></w:comment>",
+          '<mc:AlternateContent xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">' +
+            `<mc:Fallback>${run("x")}</mc:Fallback></mc:AlternateContent></w:p></w:comment>`
+        )
+      );
+
+      expect(onlyCommentsChangedBy(bytes, wrapped, "me")).toEqual(
+        partRefused(COMMENTS_PART)
+      );
     });
   });
 });

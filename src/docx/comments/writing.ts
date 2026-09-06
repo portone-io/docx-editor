@@ -19,12 +19,36 @@ import {
 } from "./constants";
 import { withContentType } from "./contentTypes";
 import {
+  arrivedEntries,
+  renderCommentBody,
+  renderCommentExtension,
+  withThreadKey,
+} from "./grammar";
+import {
   type CommentReferenceData,
   type CommentReplyData,
   commentReferencesIn,
 } from "./model";
 import { planPeoplePart } from "./people";
 import type { ImportedComments } from "./reading";
+
+/**
+ * Whether the entry this comment arrived as has to gain the key its thread state hangs off.
+ *
+ * A comment settled or replied to for the first time is written into the extended part under a
+ * key, and an entry that arrived without one has none for that to name.
+ */
+function needsThreadKey(
+  id: string,
+  comment: CommentReferenceData,
+  session: SessionStore
+): boolean {
+  return (
+    comment.imported &&
+    carriesThreadMetadata(comment) &&
+    (session.comments.byId.get(id)?.paraId ?? null) === null
+  );
+}
 
 function commentsChanged(doc: PMNode, session: SessionStore): boolean {
   const current = commentReferencesIn(doc);
@@ -45,20 +69,10 @@ function commentsChanged(doc: PMNode, session: SessionStore): boolean {
   for (const comment of current.values()) {
     if (comment.replies.some((reply) => !reply.imported)) return true;
   }
+  for (const [id, comment] of current) {
+    if (needsThreadKey(id, comment, session)) return true;
+  }
   return false;
-}
-
-function renderedExtension(
-  comment: CommentReferenceData | CommentReplyData
-): string {
-  if (comment.extensionXml !== null) return comment.extensionXml;
-  const parent =
-    "parentParaId" in comment
-      ? ` w15:paraIdParent="${escapeXml(comment.parentParaId)}"`
-      : "";
-  const done =
-    "resolved" in comment ? ` w15:done="${comment.resolved ? "1" : "0"}"` : "";
-  return `<w15:commentEx w15:paraId="${escapeXml(comment.paraId)}"${parent}${done}/>`;
 }
 
 function extensionsXml(
@@ -80,14 +94,17 @@ function extensionsXml(
     const id = idByParaId.get(original.paraId);
     const item = id === undefined ? undefined : current.get(id);
     if (id !== undefined && item && !written.has(id)) {
-      pieces.push(renderedExtension(item));
+      pieces.push(renderCommentExtension(item));
       written.add(id);
     } else if (id === undefined || !originalThreads.has(id)) {
       pieces.push(original.xml);
     }
   }
   for (const [id, comment] of current) {
-    if (!written.has(id)) pieces.push(renderedExtension(comment));
+    // A comment with no thread state carries no key for an entry here to name
+    if (!written.has(id) && carriesThreadMetadata(comment)) {
+      pieces.push(renderCommentExtension(comment));
+    }
   }
 
   if (comments.extendedXml === null) {
@@ -96,7 +113,9 @@ function extensionsXml(
       `<w15:commentsEx xmlns:w15="${W15_NS}">${pieces.join("")}</w15:commentsEx>`
     );
   }
-  const open = /<(?:[\w.-]+:)?commentsEx\b[^>]*>/.exec(comments.extendedXml);
+  const open = /<(?:[^\s<>/:="']+:)?commentsEx\b[^>]*>/.exec(
+    comments.extendedXml
+  );
   if (!open) {
     throw new DocxExportError(
       "malformed-xml",
@@ -153,18 +172,11 @@ function extensionsChanged(doc: PMNode, session: SessionStore): boolean {
   return false;
 }
 
-function commentTextXml(text: string): string {
-  const lines = text.split("\n");
-  const pieces: string[] = [];
-  lines.forEach((line, index) => {
-    if (index > 0) pieces.push("<w:br/>");
-    if (line.length > 0 || lines.length === 1) {
-      pieces.push(`<w:t xml:space="preserve">${escapeXml(line)}</w:t>`);
-    }
-  });
-  return `<w:r>${pieces.join("")}</w:r>`;
-}
-
+/**
+ * Whether the comment has thread state to write down: it arrived with some, it has been settled
+ * or replied to since, or it is itself a reply. A comment with none needs no entry in the extended
+ * part, where absent reads as an open thread standing on its own.
+ */
 function carriesThreadMetadata(
   comment: CommentReferenceData | CommentReplyData
 ): boolean {
@@ -175,11 +187,31 @@ function carriesThreadMetadata(
   );
 }
 
+/**
+ * The thread key belongs on the entry where the comment has thread state to hang off it, and
+ * where the entry arrived carrying one: a key already written is what its state is keyed by
+ * elsewhere, so a rewrite of what the comment says keeps it.
+ */
+function keyedEntry(
+  comment: CommentReferenceData | CommentReplyData,
+  arrivedKeyed: ReadonlySet<string>
+): boolean {
+  return carriesThreadMetadata(comment) || arrivedKeyed.has(comment.id);
+}
+
 function renderedComment(
-  comment: CommentReferenceData | CommentReplyData
+  comment: CommentReferenceData | CommentReplyData,
+  arrivedKeyed: ReadonlySet<string>,
+  arrived: ReadonlyMap<string, Element>
 ): string {
   if (comment.imported && comment.commentXml !== null) {
-    return comment.commentXml;
+    return carriesThreadMetadata(comment)
+      ? withThreadKey(
+          comment.commentXml,
+          comment.paraId,
+          arrived.get(comment.id) ?? null
+        )
+      : comment.commentXml;
   }
   const attrs = [
     `w:id="${escapeXml(comment.id)}"`,
@@ -191,11 +223,9 @@ function renderedComment(
   ]
     .filter((entry): entry is string => entry !== null)
     .join(" ");
-  const threaded = carriesThreadMetadata(comment);
-  const paragraphAttrs = threaded
-    ? ` xmlns:w14="${W14_NS}" w14:paraId="${escapeXml(comment.paraId)}"`
-    : "";
-  return `<w:comment xmlns:w="${W_NS}" ${attrs}><w:p${paragraphAttrs}>${commentTextXml(comment.text)}</w:p></w:comment>`;
+  const paraId = keyedEntry(comment, arrivedKeyed) ? comment.paraId : null;
+  const body = renderCommentBody(comment.text, paraId);
+  return `<w:comment xmlns:w="${W_NS}" ${attrs}>${body}</w:comment>`;
 }
 
 function withThreadMarkupCompatibility(openTag: string): string {
@@ -255,9 +285,15 @@ function commentsXml(
   originallyReferenced: ReadonlySet<string>
 ): string {
   const currentBodies = currentCommentBodies(references);
-  const hasThreadMetadata = Array.from(currentBodies.values()).some(
-    carriesThreadMetadata
+  const arrivedKeyed = new Set(
+    Array.from(comments.byId.values()).flatMap((entry) =>
+      entry.paraId === null ? [] : [entry.id]
+    )
   );
+  const hasThreadMetadata = Array.from(currentBodies.values()).some((comment) =>
+    keyedEntry(comment, arrivedKeyed)
+  );
+  const arrived = arrivedEntries(comments.xml);
   const originalThreads = originalThreadIds(comments, originallyReferenced);
   const pieces: string[] = [];
   const written = new Set<string>();
@@ -265,7 +301,7 @@ function commentsXml(
   for (const original of comments.ordered) {
     const current = currentBodies.get(original.id);
     if (current) {
-      pieces.push(renderedComment(current));
+      pieces.push(renderedComment(current, arrivedKeyed, arrived));
       written.add(original.id);
       continue;
     }
@@ -276,7 +312,9 @@ function commentsXml(
     }
   }
   for (const [id, comment] of currentBodies) {
-    if (!written.has(id)) pieces.push(renderedComment(comment));
+    if (!written.has(id)) {
+      pieces.push(renderedComment(comment, arrivedKeyed, arrived));
+    }
   }
 
   if (comments.xml === null) {
@@ -289,7 +327,7 @@ function commentsXml(
     );
   }
 
-  const open = /<(?:[\w.-]+:)?comments\b[^>]*>/.exec(comments.xml);
+  const open = /<(?:[^\s<>/:="']+:)?comments\b[^>]*>/.exec(comments.xml);
   if (!open) {
     throw new DocxExportError(
       "malformed-xml",
