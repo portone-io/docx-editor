@@ -104,14 +104,29 @@ function extensionsXml(
     );
   }
   const name = /^<([^\s>]+)/.exec(open[0])?.[1];
-  const close = name ? comments.extendedXml.lastIndexOf(`</${name}>`) : -1;
+  if (name === undefined) {
+    throw new DocxExportError(
+      "malformed-xml",
+      "the Comments Extended part has no commentsEx root element"
+    );
+  }
+  const bodyAt = open.index + open[0].length;
+  // A part that arrived holding nothing is written as an empty element, which has to be opened
+  // before an entry can go inside it
+  if (open[0].endsWith("/>")) {
+    return (
+      comments.extendedXml.slice(0, open.index) +
+      `${open[0].slice(0, -2)}>${pieces.join("")}</${name}>` +
+      comments.extendedXml.slice(bodyAt)
+    );
+  }
+  const close = comments.extendedXml.lastIndexOf(`</${name}>`);
   if (close === -1) {
     throw new DocxExportError(
       "malformed-xml",
       "the Comments Extended part has no closing commentsEx tag"
     );
   }
-  const bodyAt = open.index + open[0].length;
   return (
     comments.extendedXml.slice(0, bodyAt) +
     pieces.join("") +

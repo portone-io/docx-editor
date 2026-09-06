@@ -31,6 +31,7 @@ import { COMMENTS_REL_TYPE, PEOPLE_REL_TYPE } from "./docx/comments/constants";
 import {
   addComment,
   canAddComment,
+  setCommentResolved,
   updateComment,
 } from "./editor/commands/commentCommands";
 import { createEditorState } from "./editor/createEditor";
@@ -616,10 +617,7 @@ describe("onlyCommentsChangedBy", () => {
         ).toEqual(allowed);
       });
 
-      /**
-       * The reader opens no comment part at all where the file has no comments part, so a comment
-       * part the original related is one the submission may be found holding for the first time.
-       */
+      /** The extended part a file relates is the one a first comment is written into */
       it("holds for a first comment in a file that already related an extended comments part", () => {
         const EXTENDED_REL =
           "http://schemas.microsoft.com/office/2011/relationships/commentsExtended";
@@ -646,6 +644,26 @@ describe("onlyCommentsChangedBy", () => {
 
         expect(
           onlyCommentsChangedBy(related, exportDocx(state.doc, session), "me")
+        ).toEqual(allowed);
+
+        // Settling the thread in the same session writes that part again rather than a second one
+        const settled = state;
+        let id = "";
+        settled.doc.descendants((node) => {
+          if (id === "" && node.type.name === "commentReference") {
+            id = String(node.attrs.id);
+          }
+          return true;
+        });
+        let after = settled;
+        expect(
+          setCommentResolved(id, true)(settled, (tr) => {
+            after = after.apply(tr);
+          })
+        ).toBe(true);
+
+        expect(
+          onlyCommentsChangedBy(related, exportDocx(after.doc, session), "me")
         ).toEqual(allowed);
       });
 

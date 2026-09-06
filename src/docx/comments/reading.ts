@@ -157,27 +157,34 @@ function readCommentExtensions(
 /**
  * Reads the Comments part related from the main document story.
  *
- * The people part is read whether or not there are comments: a document may carry one with no
- * comment left, and a comment added to it then has to be recorded in that part rather than in a
- * second one.
+ * The people part and the extended part are read whether or not there are comments: a document may
+ * carry either with no comment left, and a comment added to it then has to be written into the
+ * part it already has rather than into a second one beside it.
  */
 export function readComments(
   parts: Map<string, Uint8Array>,
   mainPartPath: string
 ): ImportedComments {
   const people = readPeople(parts, mainPartPath);
+  const extensions = readCommentExtensions(parts, mainPartPath);
+  const aside = {
+    people,
+    extendedPartPath: extensions.partPath,
+    extendedXml: extensions.xml,
+    extendedHadBom: extensions.hadBom,
+    extendedOrdered: extensions.ordered,
+  };
   const relationship = readRelationships(parts, relsPathOf(mainPartPath)).find(
     (entry) => entry.type === COMMENTS_REL_TYPE && !entry.external
   );
-  if (!relationship) return { ...NO_COMMENTS, people };
+  if (!relationship) return { ...NO_COMMENTS, ...aside };
 
   const partPath = resolveTarget(mainPartPath, relationship.target);
   const bytes = parts.get(partPath);
-  if (!bytes) return { ...NO_COMMENTS, partPath, people };
+  if (!bytes) return { ...NO_COMMENTS, partPath, ...aside };
 
   const { text, hadBom } = decodeUtf8(bytes);
   const root = parseXml(text).documentElement;
-  const extensions = readCommentExtensions(parts, mainPartPath);
   const base = elementChildren(root)
     .filter((el) => el.localName === "comment")
     .flatMap((el) => {
@@ -229,10 +236,6 @@ export function readComments(
     ordered,
     byId,
     repliesByParentId,
-    extendedPartPath: extensions.partPath,
-    extendedXml: extensions.xml,
-    extendedHadBom: extensions.hadBom,
-    extendedOrdered: extensions.ordered,
-    people,
+    ...aside,
   };
 }
