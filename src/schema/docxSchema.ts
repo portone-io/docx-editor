@@ -23,6 +23,12 @@ import {
   toTableFormat,
   toTableWidth,
 } from "../model/format";
+import {
+  ATTRIBUTES,
+  acceptRawXml,
+  ELEMENT,
+  type RawXmlShape,
+} from "../ooxml/fragment";
 import { toImageExtent, toImageSrc } from "../ooxml/image";
 import { editorAttributes, editorClassNames } from "../styles/classNames";
 import { DEFAULT_FONT_FALLBACKS } from "../styles/fontStack";
@@ -90,6 +96,21 @@ function srcIdOf(dom: HTMLElement): number | null {
   if (raw === null) return null;
   const parsed = Number.parseInt(raw, 10);
   return Number.isNaN(parsed) ? null : parsed;
+}
+
+/**
+ * The raw XML an attr carries, checked against the shape that attr goes back out as.
+ *
+ * `false` for a fragment that does not hold it, which every rule reading one answers `false` to in
+ * turn: the node or mark is then not read at all and its content settles one level plainer, rather
+ * than a string the writer would splice into the file arriving in the document.
+ */
+function rawXml(
+  dom: HTMLElement,
+  attribute: string,
+  shape: RawXmlShape
+): string | null | false {
+  return acceptRawXml(shape, dom.getAttribute(attribute));
 }
 
 const TABLE_PLACEHOLDER = "Table (unsupported layout, original is preserved)";
@@ -171,15 +192,22 @@ export const docxSchema = new Schema({
       parseDOM: [
         {
           tag: `p.${editorClassNames.paragraph}`,
-          getAttrs: (dom) => ({
-            srcId: srcIdOf(dom),
-            pAttrs: dom.getAttribute("data-pattrs"),
-            pPr: dom.getAttribute("data-ppr"),
-            format: toParagraphFormat(parseJson(dom.getAttribute("data-fmt"))),
-            styleRun: toRunFormat(
-              parseJson(dom.getAttribute("data-style-run"))
-            ),
-          }),
+          getAttrs: (dom) => {
+            const pAttrs = rawXml(dom, "data-pattrs", ATTRIBUTES);
+            const pPr = rawXml(dom, "data-ppr", ELEMENT("pPr"));
+            if (pAttrs === false || pPr === false) return false;
+            return {
+              srcId: srcIdOf(dom),
+              pAttrs,
+              pPr,
+              format: toParagraphFormat(
+                parseJson(dom.getAttribute("data-fmt"))
+              ),
+              styleRun: toRunFormat(
+                parseJson(dom.getAttribute("data-style-run"))
+              ),
+            };
+          },
         },
       ],
     },
@@ -497,7 +525,10 @@ export const docxSchema = new Schema({
       parseDOM: [
         {
           tag: "br",
-          getAttrs: (dom) => ({ brAttrs: dom.getAttribute("data-battrs") }),
+          getAttrs: (dom) => {
+            const brAttrs = rawXml(dom, "data-battrs", ATTRIBUTES);
+            return brAttrs === false ? false : { brAttrs };
+          },
         },
       ],
     },
@@ -901,11 +932,16 @@ export const docxSchema = new Schema({
       parseDOM: [
         {
           tag: `span.${editorClassNames.run}`,
-          getAttrs: (dom) => ({
-            rAttrs: dom.getAttribute("data-rattrs"),
-            rPr: dom.getAttribute("data-rpr"),
-            format: toRunFormat(parseJson(dom.getAttribute("data-fmt"))),
-          }),
+          getAttrs: (dom) => {
+            const rAttrs = rawXml(dom, "data-rattrs", ATTRIBUTES);
+            const rPr = rawXml(dom, "data-rpr", ELEMENT("rPr"));
+            if (rAttrs === false || rPr === false) return false;
+            return {
+              rAttrs,
+              rPr,
+              format: toRunFormat(parseJson(dom.getAttribute("data-fmt"))),
+            };
+          },
         },
       ],
     },
@@ -926,7 +962,10 @@ export const docxSchema = new Schema({
       parseDOM: [
         {
           tag: `span.${editorClassNames.tab}`,
-          getAttrs: (dom) => ({ tabAttrs: dom.getAttribute("data-tattrs") }),
+          getAttrs: (dom) => {
+            const tabAttrs = rawXml(dom, "data-tattrs", ATTRIBUTES);
+            return tabAttrs === false ? false : { tabAttrs };
+          },
         },
       ],
     },

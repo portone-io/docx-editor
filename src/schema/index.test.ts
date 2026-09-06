@@ -12,6 +12,7 @@ import {
   toRunFormat,
   toTableFormat,
 } from "../model/format";
+import { editorClassNames } from "../styles/classNames";
 import { docxSchema } from "./index";
 
 const serializer = DOMSerializer.fromSchema(docxSchema);
@@ -558,6 +559,71 @@ describe("parseDOM", () => {
     expect(parser.parse(host, { preserveWhitespace: true }).eq(withRaw)).toBe(
       true
     );
+  });
+});
+
+/**
+ * A preserved fragment goes back out spliced into a slot the writer opens and closes around it.
+ * One that closes that slot itself, or opens a sibling beside it, would write content into the
+ * exported file that never stood in the document, so a rule reading one turns it down instead.
+ */
+describe("raw XML coming in through the DOM", () => {
+  function parseHtml(html: string): PMNode {
+    const host = document.createElement("div");
+    host.innerHTML = html;
+    return parser.parse(host);
+  }
+
+  it("a paragraph whose data-ppr closes the paragraph is read as an unstyled paragraph", () => {
+    const parsed = parseHtml(
+      `<p class="${editorClassNames.paragraph}" data-ppr="&lt;/w:p&gt;&lt;w:p&gt;&lt;w:pPr&gt;&lt;w:jc w:val=&quot;center&quot;/&gt;&lt;/w:pPr&gt;">x</p>`
+    );
+
+    expect(parsed.firstChild?.attrs.pPr).toBeNull();
+    expect(parsed.textContent).toBe("x");
+  });
+
+  it("a paragraph whose data-pattrs closes the opening tag is read as an unstyled paragraph", () => {
+    const parsed = parseHtml(
+      `<p class="${editorClassNames.paragraph}" data-pattrs="w:rsidR=&quot;00A&quot;&gt;&lt;w:r&gt;&lt;w:t&gt;smuggled&lt;/w:t&gt;&lt;/w:r">x</p>`
+    );
+
+    expect(parsed.firstChild?.attrs.pAttrs).toBeNull();
+    expect(parsed.textContent).toBe("x");
+  });
+
+  it("keeps a paragraph whose only attribute is a w14 paraId", () => {
+    const parsed = parseHtml(
+      `<p class="${editorClassNames.paragraph}" data-pattrs="w14:paraId=&quot;1A2B3C4D&quot;">x</p>`
+    );
+
+    expect(parsed.firstChild?.attrs.pAttrs).toBe('w14:paraId="1A2B3C4D"');
+  });
+
+  it("a run whose data-rpr smuggles a w:t loses the mark and keeps the text", () => {
+    const parsed = parseHtml(
+      `<p class="${editorClassNames.paragraph}"><span class="${editorClassNames.run}" data-rpr="&lt;w:rPr&gt;&lt;w:b/&gt;&lt;/w:rPr&gt;&lt;w:t&gt;smuggled&lt;/w:t&gt;">x</span></p>`
+    );
+
+    expect(parsed.textContent).toBe("x");
+    expect(parsed.firstChild?.firstChild?.marks).toEqual([]);
+  });
+
+  it("a break whose data-battrs opens a child of its own is not read as a break", () => {
+    const parsed = parseHtml(
+      `<p class="${editorClassNames.paragraph}">a<br data-battrs="w:type=&quot;page&quot;&gt;&lt;w:t&gt;smuggled&lt;/w:t&gt;">b</p>`
+    );
+
+    expect(parsed.firstChild?.childCount).toBe(1);
+    expect(parsed.firstChild?.child(0).type.name).toBe("text");
+  });
+
+  it("a tab whose data-tattrs is not an attribute list loses the mark", () => {
+    const parsed = parseHtml(
+      `<p class="${editorClassNames.paragraph}"><span class="${editorClassNames.tab}" data-tattrs="&lt;w:tab/&gt;">\t</span></p>`
+    );
+
+    expect(parsed.firstChild?.firstChild?.marks).toEqual([]);
   });
 });
 

@@ -1,0 +1,107 @@
+/**
+ * The gate a raw OOXML string passes through on its way from the DOM into a node or mark attr.
+ *
+ * A preserved fragment goes back out the way it came, spliced into a slot the writer opens and
+ * closes around it (`docx/serializeParagraph`), so a fragment that closes that slot itself, opens
+ * a sibling beside it, or shows text of its own writes something the editor never modelled into
+ * the exported file. Reading one back is the only place such a string can arrive from outside, so
+ * every attr that carries one is read through here and a fragment that does not hold its shape is
+ * turned down rather than corrected.
+ *
+ * A refusal is not an error: `getAttrs` answers `false` with it, which drops the parse rule and
+ * leaves ProseMirror to settle the content one level plainer. Demotion, not contamination.
+ */
+
+import { elementChildren, namespaceDecls, parseXml, W_NS } from "./xml";
+
+/**
+ * What a raw XML string has to look like to be let into the attr that carries it.
+ *
+ * `element` is a whole element: a properties fragment, a drawing, an annotation reference.
+ * `attributes` is what stood inside an opening tag, as `attrString` writes it.
+ * `openTag` is an opening tag with everything it wrapped cut away, which the writer puts back by
+ * appending the closing text `closedBy` names.
+ */
+export type RawXmlShape =
+  | { kind: "element"; names: readonly string[] | "any" }
+  | { kind: "attributes" }
+  | { kind: "openTag"; name: string; closedBy: string };
+
+/** A single WordprocessingML element going by one of these local names */
+export function ELEMENT(...names: string[]): RawXmlShape {
+  return { kind: "element", names };
+}
+
+/**
+ * A single element of any name, in any namespace.
+ *
+ * What import could not model keeps its own XML (`rawInline`, `rawBlock`), and that is a
+ * `m:oMathPara`, a `mc:AlternateContent`, a `w:ins`, a bookmark: naming the ones allowed would
+ * turn a document the editor reads today into a demoted one.
+ */
+export const ANY_ELEMENT: RawXmlShape = { kind: "element", names: "any" };
+
+/** The attributes of an opening tag, with neither the tag nor anything it held */
+export const ATTRIBUTES: RawXmlShape = { kind: "attributes" };
+
+/**
+ * The one element this fragment holds. null when it holds anything else: nothing, more than one
+ * element, or a sibling of any other kind beside it.
+ *
+ * The wrapper is what makes a fragment parseable at all, since it carries no namespace
+ * declarations of its own, and it is also what catches a fragment that closes its own parent:
+ * that one no longer nests inside the wrapper and does not parse.
+ */
+function loneElement(xml: string): Element | null {
+  let root: Element;
+  try {
+    root = parseXml(`<x ${namespaceDecls(xml)}>${xml}</x>`).documentElement;
+  } catch {
+    return null;
+  }
+  if (root.childNodes.length !== 1) return null;
+  return elementChildren(root)[0] ?? null;
+}
+
+function isNamed(el: Element, names: readonly string[]): boolean {
+  return el.namespaceURI === W_NS && names.includes(el.localName);
+}
+
+function holdsShape(shape: RawXmlShape, value: string): boolean {
+  switch (shape.kind) {
+    case "element": {
+      const el = loneElement(value);
+      if (el === null) return false;
+      return shape.names === "any" || isNamed(el, shape.names);
+    }
+    case "attributes": {
+      try {
+        const root = parseXml(
+          `<x ${namespaceDecls(value)} ${value}/>`
+        ).documentElement;
+        // An attribute list that opened a child of its own ended the tag it was written into
+        return root.childNodes.length === 0;
+      } catch {
+        return false;
+      }
+    }
+    case "openTag": {
+      const el = loneElement(value + shape.closedBy);
+      return el !== null && isNamed(el, [shape.name]);
+    }
+  }
+}
+
+/**
+ * The value if it holds the shape, null if there was none, `false` if it does not.
+ *
+ * The three answers are what `getAttrs` needs: a value to carry, an absent attr, and a rule to
+ * give up on.
+ */
+export function acceptRawXml(
+  shape: RawXmlShape,
+  value: string | null
+): string | null | false {
+  if (value === null) return null;
+  return holdsShape(shape, value) ? value : false;
+}
