@@ -30,6 +30,7 @@ import {
   type Relationship,
   readRelationships,
   relsPathOf,
+  resolveTarget,
 } from "./relationships";
 import type { SessionStore } from "./session";
 import {
@@ -87,6 +88,33 @@ function sameBytes(before: Uint8Array, after: Uint8Array): boolean {
  * reader takes the first of each; excusing the rest would let a submission name any part it liked
  * and have it go uncompared.
  */
+/**
+ * Where this package's own relationships put each comment part, in the order `COMMENT_REL_TYPES`
+ * names them, and null for a kind it does not relate.
+ *
+ * The reader stops at the first relationship of each kind and reads no further, and it opens none
+ * of them at all when the file has no comments part to begin with (`comments/reading`). Read off
+ * the original, which is the file being trusted, this says which parts that file already called
+ * its own, whether or not anything was opened.
+ */
+function relatedCommentParts(
+  session: SessionStore
+): readonly (string | null)[] {
+  const related = readRelationships(
+    session.parts,
+    relsPathOf(session.mainPartPath)
+  );
+  return COMMENT_REL_TYPES.map((type) => {
+    const entry = related.find(
+      (candidate) => !candidate.external && candidate.type === type
+    );
+    return entry === undefined
+      ? null
+      : resolveTarget(session.mainPartPath, entry.target);
+  });
+}
+
+/** Where the reader found each comment part, in that same order */
 function commentPartsOf(session: SessionStore): readonly (string | null)[] {
   const { partPath, extendedPartPath, people } = session.comments;
   return [partPath, extendedPartPath, people.partPath];
@@ -209,9 +237,13 @@ function gainedCommentPartsAreNew(
   after: SessionStore
 ): boolean {
   const had = commentPartsOf(before);
+  const declared = relatedCommentParts(before);
   return commentPartsOf(after).every(
     (path, kind) =>
-      path === null || path === had[kind] || !before.parts.has(path)
+      path === null ||
+      path === had[kind] ||
+      path === declared[kind] ||
+      !before.parts.has(path)
   );
 }
 

@@ -616,6 +616,39 @@ describe("onlyCommentsChangedBy", () => {
         ).toEqual(allowed);
       });
 
+      /**
+       * The reader opens no comment part at all where the file has no comments part, so a comment
+       * part the original related is one the submission may be found holding for the first time.
+       */
+      it("holds for a first comment in a file that already related an extended comments part", () => {
+        const EXTENDED_REL =
+          "http://schemas.microsoft.com/office/2011/relationships/commentsExtended";
+        const plain = original();
+        const related = repacked(plain, {
+          [DOCUMENT_RELS_PART]: partText(plain, DOCUMENT_RELS_PART).replace(
+            "</Relationships>",
+            `<Relationship Id="rId8" Type="${EXTENDED_REL}"` +
+              ' Target="commentsExtended.xml"/></Relationships>'
+          ),
+          "word/commentsExtended.xml":
+            '<w15:commentsEx xmlns:w15="http://schemas.microsoft.com/office/word/2012/wordml"/>',
+        });
+        const { doc, session } = importDocx(related);
+        let state = createEditorState(doc);
+        const { from, to } = rangeOfText(state.doc, "beta");
+        state = state.apply(
+          state.tr.setSelection(TextSelection.create(state.doc, from, to))
+        );
+        addComment({ text: "note", author: "Someone", authorId: "me" })(
+          state,
+          (tr) => (state = state.apply(tr))
+        );
+
+        expect(
+          onlyCommentsChangedBy(related, exportDocx(state.doc, session), "me")
+        ).toEqual(allowed);
+      });
+
       it("does not hold for a comment relationship the submission points outside the package", () => {
         const { bytes, commented } = commentedBy("me");
         const outward = repacked(commented, {
