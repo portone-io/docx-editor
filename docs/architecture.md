@@ -9,6 +9,8 @@ Import keeps the original XML behind each document block. An untouched block is 
 
 Paragraphs and runs retain their original formatting XML while supported edits replace only the relevant values. Package parts outside the supported editing surface are repacked unchanged.
 
+Raw XML enters the model only through `ooxml/fragment`, which reads a fragment against the shape the attr carrying it goes back out as. The schema's `parseDOM` rules read every raw attr through it, and a rule that meets a refusal gives up, so the content settles one level plainer instead of carrying a fragment the writer would splice into the exported file.
+
 Each node and mark attr declares a role in `schema/attrRoles.ts`: `source` is what the writer writes from, `display` is worked out from the source and the formatting around it, and `session` identifies a block, control, or link of the open document.
 Export compares two nodes with `sameSource`, which reads the source and session attrs and ignores the display ones.
 The distinction matters because opening a document works its display values out again - a table's shared cell borders among them - and a block judged changed is a block rebuilt, which costs it the markup the writer does not model.
