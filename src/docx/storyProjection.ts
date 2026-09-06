@@ -10,12 +10,12 @@
  * reaches a fixed point on its own output: opening what it wrote and writing it again gives the
  * same text (the test beside this file holds that over every fixture).
  *
- * The price is that the comparison levels whatever the writer levels: two blocks the writer would
- * put out alike read alike here, however differently the two files worded them. Everything the
- * writer carries through is compared, and what falls out of the comparison is only what would have
- * been reworded on its way out anyway. What the writer builds afresh rather than reading is the
- * exception, a table's grid and a drawing's extent, and a difference inside those is not seen.
- * The test beside this file holds both halves, one case each.
+ * What falls out of the comparison is of two kinds, and the test beside this file keeps them
+ * apart. One is two spellings of a single thing, which the writer settles on one of; forgiving
+ * those is the point, and the set of them is open. The other is content the writer builds afresh
+ * instead of reading, a table's grid and a drawing's extent among it, which the comparison cannot
+ * report because it can no longer see it. That second set is enumerated and meant to shrink: a
+ * case joining it is a preservation defect in the writer, not a detail of the comparison.
  */
 
 import type { Node as PMNode } from "prosemirror-model";

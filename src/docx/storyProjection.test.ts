@@ -68,15 +68,13 @@ function storyOf(body: string): readonly string[] {
 }
 
 /**
- * The differences the writer levels, one case each.
+ * Two spellings of one thing, one case each.
  *
- * Writing both sides out through the same writer takes away every difference the writer itself
- * levels, and these are the ones known to fall under it: two spellings of one value, and content
- * the writer rebuilds from what it read rather than copying. The list is not a closed set, since
- * it is the writer that decides it, so `carries through` below holds the other half of the rule:
- * content the writer copies is compared, and smuggling bytes into a rebuilt block is refused.
+ * Writing both sides out through the same writer takes the wording out of the comparison, and
+ * these are the wordings known to fall under it. The set is open, since it is the writer that
+ * decides it, and it may safely be: a difference that says nothing is nothing to report.
  */
-describe("differences the writer levels", () => {
+describe("two spellings of the same thing", () => {
   it("reads a Word-ordered tcW and tblW and a writer-ordered one as the same block", () => {
     expect(
       storyOf(
@@ -117,20 +115,6 @@ describe("differences the writer levels", () => {
     );
   });
 
-  it("does not tell a table whose tblGridChange was dropped from the original", () => {
-    const revised = storyOf(
-      TABLE(
-        WIDTH,
-        CELL_WIDTH,
-        '<w:tblGrid><w:gridCol w:w="6500"/>' +
-          '<w:tblGridChange w:id="0"><w:tblGrid><w:gridCol w:w="4000"/>' +
-          "</w:tblGrid></w:tblGridChange></w:tblGrid>"
-      )
-    );
-    expect(revised.join("")).not.toContain("tblGridChange");
-    expect(revised).toEqual(storyOf(TABLE(WIDTH, CELL_WIDTH, GRID)));
-  });
-
   it("reads runs split by a producer and one run saying the same as the same paragraph", () => {
     expect(storyOf("<w:p><w:r><w:t>ab</w:t></w:r></w:p>")).toEqual(
       storyOf("<w:p><w:r><w:t>a</w:t></w:r><w:r><w:t>b</w:t></w:r></w:p>")
@@ -150,6 +134,31 @@ describe("differences the writer levels", () => {
       storyOf("<w:p><w:r><w:t>a</w:t><w:tab/><w:t>b</w:t></w:r></w:p>")
     );
   });
+});
+
+/**
+ * Content this editor does not keep, one case each.
+ *
+ * These are not two spellings of one thing. The writer builds them afresh and what it read is
+ * gone, so the comparison cannot report a difference it can no longer see. That makes this list
+ * the one to watch: it stands for what the editor loses when it rebuilds a block, it shrinks as
+ * the writer learns to carry more, and a case joining it is a preservation defect rather than a
+ * comparison detail. `site/content/docs/core.mdx` names the same three to a reader.
+ */
+describe("content this editor does not keep", () => {
+  it("does not tell a table whose tblGridChange was dropped from the original", () => {
+    const revised = storyOf(
+      TABLE(
+        WIDTH,
+        CELL_WIDTH,
+        '<w:tblGrid><w:gridCol w:w="6500"/>' +
+          '<w:tblGridChange w:id="0"><w:tblGrid><w:gridCol w:w="4000"/>' +
+          "</w:tblGrid></w:tblGridChange></w:tblGrid>"
+      )
+    );
+    expect(revised.join("")).not.toContain("tblGridChange");
+    expect(revised).toEqual(storyOf(TABLE(WIDTH, CELL_WIDTH, GRID)));
+  });
 
   it("reads a cell property the writer rebuilds from the model as the model says it", () => {
     // A vMerge on a cell nothing continues, and a gridSpan of one, say nothing the model records
@@ -163,11 +172,23 @@ describe("differences the writer levels", () => {
       )
     );
   });
+
+  it("does not tell a grid apart, which is built from the column widths alone", () => {
+    expect(storyOf(TABLE(WIDTH, CELL_WIDTH, GRID))).toEqual(
+      storyOf(
+        TABLE(
+          WIDTH,
+          CELL_WIDTH,
+          '<w:tblGrid><w:gridCol w:w="6500"><!-- unseen --></w:gridCol></w:tblGrid>'
+        )
+      )
+    );
+  });
 });
 
 /**
- * The other half of the rule. What the writer carries through rather than rebuilding is compared,
- * so a rebuilt block is not a place to put bytes the comparison cannot see.
+ * The other half of the rule. What the writer carries through is compared, so a rebuilt block is
+ * not a place to put bytes the comparison cannot see.
  */
 describe("differences the comparison sees", () => {
   it("tells two tables whose cells say different things apart", () => {
@@ -199,18 +220,6 @@ describe("differences the comparison sees", () => {
           WIDTH,
           '<w:tcW w:w="6500" w:type="dxa"><!-- smuggled --></w:tcW>',
           GRID
-        )
-      )
-    );
-  });
-
-  it("does not tell a grid apart, which is built from the column widths alone", () => {
-    expect(storyOf(TABLE(WIDTH, CELL_WIDTH, GRID))).toEqual(
-      storyOf(
-        TABLE(
-          WIDTH,
-          CELL_WIDTH,
-          '<w:tblGrid><w:gridCol w:w="6500"><!-- unseen --></w:gridCol></w:tblGrid>'
         )
       )
     );
