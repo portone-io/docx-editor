@@ -497,6 +497,57 @@ describe("onlyCommentsChangedBy", () => {
       });
     });
 
+    /**
+     * The excuse the three comment parts get is an excuse for those parts, not for whichever part
+     * a submission decides to relate under a comment type.
+     */
+    describe("for a part related as a comment part", () => {
+      const REL_BASE =
+        "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+      const COMMENTS_REL = `${REL_BASE}/comments`;
+      const PEOPLE_REL =
+        "http://schemas.microsoft.com/office/2011/relationships/people";
+
+      /** The submission's relationships with one more pointing where it says */
+      function alsoRelated(
+        bytes: Uint8Array,
+        type: string,
+        target: string
+      ): Uint8Array {
+        return repacked(bytes, {
+          [DOCUMENT_RELS_PART]: partText(bytes, DOCUMENT_RELS_PART).replace(
+            "</Relationships>",
+            `<Relationship Id="rId77" Type="${type}" Target="${target}"/>` +
+              "</Relationships>"
+          ),
+        });
+      }
+
+      it("does not hold for a styles part the submission related as a second comments part", () => {
+        const { bytes, commented } = commentedBy("me");
+        const related = alsoRelated(commented, COMMENTS_REL, "styles.xml");
+        const restyled = repacked(related, {
+          [STYLES_PART]: partText(related, STYLES_PART).replace(
+            'w:val="20"',
+            'w:val="48"'
+          ),
+        });
+        expect(onlyCommentsChangedBy(bytes, restyled, "me")).toEqual(
+          partRefused(STYLES_PART)
+        );
+      });
+
+      it("does not hold for a part the file already had, related as a people part", () => {
+        const { bytes, commented } = commentedBy("me");
+        const related = alsoRelated(commented, PEOPLE_REL, "styles.xml");
+        expect(onlyCommentsChangedBy(bytes, related, "me")).toEqual({
+          ok: false,
+          reason: "relationship-changed",
+          part: DOCUMENT_RELS_PART,
+        });
+      });
+    });
+
     it("holds for the parts a comment of one's own is written across", () => {
       const { bytes, commented } = commentedBy("me");
       const added = Object.keys(unzipSync(commented)).filter(

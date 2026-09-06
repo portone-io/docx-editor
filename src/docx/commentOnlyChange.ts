@@ -30,7 +30,6 @@ import {
   type Relationship,
   readRelationships,
   relsPathOf,
-  resolveTarget,
 } from "./relationships";
 import type { SessionStore } from "./session";
 import {
@@ -79,16 +78,21 @@ function sameBytes(before: Uint8Array, after: Uint8Array): boolean {
   );
 }
 
-/** Where the comment parts sit in this package, whether or not the file carries them yet */
+/**
+ * The comment parts of this package, which are the ones this judgement excuses from the byte
+ * comparison.
+ *
+ * They are the parts the reader actually opened as comment parts, not every part a comment
+ * relationship points at. A package is free to relate a second part under a comment type, and the
+ * reader takes the first of each; excusing the rest would let a submission name any part it liked
+ * and have it go uncompared.
+ */
 function commentPartPaths(session: SessionStore): Set<string> {
-  const related = readRelationships(
-    session.parts,
-    relsPathOf(session.mainPartPath)
-  ).filter(
-    (entry) => !entry.external && COMMENT_REL_TYPES.includes(entry.type)
-  );
+  const { partPath, extendedPartPath, people } = session.comments;
   return new Set(
-    related.map((entry) => resolveTarget(session.mainPartPath, entry.target))
+    [partPath, extendedPartPath, people.partPath].filter(
+      (path): path is string => path !== null
+    )
   );
 }
 
@@ -111,6 +115,10 @@ function aroundTheStory(session: SessionStore): string {
 /**
  * Whether the relationships of the main document part are the ones it arrived with, save for the
  * comment parts it may have gained. An id already handed out keeps pointing where it pointed.
+ *
+ * A comment part a file did not have it may gain, once. Writing a comment relates each of the
+ * three parts a single time, so a second one under the same type is not something this editor
+ * writes, and it is how a submission would otherwise name a part of its choosing.
  */
 function relationshipsKept(
   before: readonly Relationship[],
@@ -127,11 +135,16 @@ function relationshipsKept(
     );
   });
   const ids = new Set(before.map((entry) => entry.id));
+  const typesBefore = new Set(before.map((entry) => entry.type));
+  const gained = after.filter((entry) => !ids.has(entry.id));
+  const gainedTypes = gained.map((entry) => entry.type);
   return (
     kept &&
-    after.every(
-      (entry) => ids.has(entry.id) || COMMENT_REL_TYPES.includes(entry.type)
-    )
+    gained.every(
+      (entry) =>
+        COMMENT_REL_TYPES.includes(entry.type) && !typesBefore.has(entry.type)
+    ) &&
+    new Set(gainedTypes).size === gainedTypes.length
   );
 }
 
@@ -170,6 +183,22 @@ function contentTypesKept(
   return true;
 }
 
+/**
+ * Whether a comment part the submission relates for the first time is one it brought with it.
+ *
+ * Writing the first comment writes a new part. Relating a part the file already had turns this
+ * judgement's excuse for the comment parts into an excuse for that part, whatever it holds.
+ */
+function gainedCommentPartsAreNew(
+  before: SessionStore,
+  after: SessionStore
+): boolean {
+  const had = commentPartPaths(before);
+  return Array.from(commentPartPaths(after)).every(
+    (path) => had.has(path) || !before.parts.has(path)
+  );
+}
+
 /** Whether every part outside the document story is the one the file arrived with */
 function packageKept(
   before: SessionStore,
@@ -198,7 +227,8 @@ function packageKept(
     !relationshipsKept(
       readRelationships(before.parts, relsPath),
       readRelationships(after.parts, relsPath)
-    )
+    ) ||
+    !gainedCommentPartsAreNew(before, after)
   ) {
     return { ok: false, reason: "relationship-changed", part: relsPath };
   }
