@@ -100,6 +100,22 @@ export function elementChildren(el: Element): Element[] {
   return Array.from(el.children);
 }
 
+/**
+ * The value of the attribute with this local name, whatever prefix it was written under.
+ *
+ * A document is free to bind the WordprocessingML namespace to a prefix of its own, so an
+ * attribute is looked up by the name it carries rather than by the spelling a producer chose.
+ */
+export function attributeByLocalName(
+  el: Element,
+  localName: string
+): string | null {
+  return (
+    Array.from(el.attributes).find((entry) => entry.localName === localName)
+      ?.value ?? null
+  );
+}
+
 export function childByLocalName(el: Element, name: string): Element | null {
   return elementChildren(el).find((child) => child.localName === name) ?? null;
 }

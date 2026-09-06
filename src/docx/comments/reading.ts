@@ -3,6 +3,7 @@
  */
 
 import {
+  attributeByLocalName,
   decodeUtf8,
   elementChildren,
   parseXml,
@@ -17,13 +18,6 @@ import {
   NO_PEOPLE,
   readPeople,
 } from "./people";
-
-function attribute(el: Element, localName: string): string | null {
-  return (
-    Array.from(el.attributes).find((entry) => entry.localName === localName)
-      ?.value ?? null
-  );
-}
 
 function inlineCommentText(node: Element): string {
   if (node.localName === "t") return node.textContent ?? "";
@@ -92,11 +86,12 @@ export interface ImportedCommentExtension {
   xml: string;
 }
 
-function lastParagraphId(comment: Element): string | null {
+/** The thread key of a comment, which the writer puts on the last paragraph of its body */
+export function lastParagraphId(comment: Element): string | null {
   const paragraphs = Array.from(comment.getElementsByTagNameNS(W_NS, "p"));
   return paragraphs.length === 0
     ? null
-    : attribute(paragraphs[paragraphs.length - 1], "paraId");
+    : attributeByLocalName(paragraphs[paragraphs.length - 1], "paraId");
 }
 
 function readCommentExtensions(
@@ -138,13 +133,13 @@ function readCommentExtensions(
   const ordered: ImportedCommentExtension[] = [];
   for (const el of elementChildren(root)) {
     if (el.localName !== "commentEx") continue;
-    const paraId = attribute(el, "paraId");
+    const paraId = attributeByLocalName(el, "paraId");
     if (paraId === null) continue;
     const extension = {
       paraId,
-      parentParaId: attribute(el, "paraIdParent"),
+      parentParaId: attributeByLocalName(el, "paraIdParent"),
       resolved: ["1", "true", "on"].includes(
-        attribute(el, "done")?.toLowerCase() ?? ""
+        attributeByLocalName(el, "done")?.toLowerCase() ?? ""
       ),
       xml: serializeXml(el),
     };
@@ -188,18 +183,18 @@ export function readComments(
   const base = elementChildren(root)
     .filter((el) => el.localName === "comment")
     .flatMap((el) => {
-      const id = attribute(el, "id");
+      const id = attributeByLocalName(el, "id");
       if (id === null) return [];
       const paraId = lastParagraphId(el);
       const extension = paraId ? extensions.byParaId.get(paraId) : undefined;
-      const author = attribute(el, "author");
+      const author = attributeByLocalName(el, "author");
       return [
         {
           id,
           author,
           authorId: author === null ? null : commentAuthorId(people, author),
-          initials: attribute(el, "initials"),
-          date: attribute(el, "date"),
+          initials: attributeByLocalName(el, "initials"),
+          date: attributeByLocalName(el, "date"),
           text: commentText(el),
           xml: serializeXml(el),
           paraId,

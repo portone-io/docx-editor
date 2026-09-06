@@ -234,7 +234,7 @@ export function setCommentResolved(id: string, resolved: boolean): Command {
       if (node.attrs.resolved === resolved) return null;
       // The key the thread state hangs off is the one the comment already has, whether it arrived
       // with it or was given one on the way in. The entry keeps whatever it says, and the writer
-      // puts the key on it (`docx/comments/bodyGrammar`)
+      // puts the key on it (`docx/comments/grammar`)
       return {
         ...node.attrs,
         resolved,

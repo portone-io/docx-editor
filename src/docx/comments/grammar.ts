@@ -1,14 +1,16 @@
 /**
- * The one shape this editor writes a comment in, and the reading of that shape.
+ * The shapes this editor writes the three comment parts in, and the reading of those shapes.
  *
- * The writer settles on a single grammar, so a body written here can be told from one written by
- * hand: a paragraph holding a single run of text and line breaks, and nothing besides. `./reading`
- * keeps a lenient flattener for display, which takes whatever a producer wrote and shows what it
- * can; this one judges an entry that came back and has to say no to everything else.
+ * Each entry is written here and judged here, so the two halves cannot drift apart: a body written
+ * by hand can be told from one this editor put out only where the writer and the reader agree on
+ * what it puts out. `./reading` keeps a lenient flattener for display, which takes whatever a
+ * producer wrote and shows what it can; this one judges an entry that came back and says no to
+ * everything else.
  */
 
 import { escapeXml, W_NS } from "../../ooxml/xml";
-import { W14_NS, W15_NS } from "./constants";
+import { COMMENT_AUTHOR_PROVIDER, W14_NS, W15_NS } from "./constants";
+import type { CommentReferenceData, CommentReplyData } from "./model";
 
 const ELEMENT_NODE = 1;
 const TEXT_NODE = 3;
@@ -183,4 +185,37 @@ export function readStrictCommentBody(comment: Element): string | null {
   if (!isNamed(run, W_NS, "r")) return null;
   if (!attributesWithin(run, NO_ATTRIBUTES)) return null;
   return readRunText(run);
+}
+
+/** The thread state of one comment, as this editor writes it into the extended part */
+export function renderCommentExtension(
+  comment: CommentReferenceData | CommentReplyData
+): string {
+  if (comment.extensionXml !== null) return comment.extensionXml;
+  const parent =
+    "parentParaId" in comment
+      ? ` w15:paraIdParent="${escapeXml(comment.parentParaId)}"`
+      : "";
+  const done =
+    "resolved" in comment ? ` w15:done="${comment.resolved ? "1" : "0"}"` : "";
+  return `<w15:commentEx w15:paraId="${escapeXml(comment.paraId)}"${parent}${done}/>`;
+}
+
+/**
+ * The identity this editor records for an author, as it writes it into the people part.
+ *
+ * The prefix and the declaration come from the caller, which is writing into a part whose root
+ * already binds them or is being written from nothing.
+ */
+export function renderPerson(
+  author: string,
+  userId: string,
+  prefix: string,
+  declaration: string
+): string {
+  return (
+    `<${prefix}person${declaration} ${prefix}author="${escapeXml(author)}">` +
+    `<${prefix}presenceInfo ${prefix}providerId="${COMMENT_AUTHOR_PROVIDER}" ${prefix}userId="${escapeXml(userId)}"/>` +
+    `</${prefix}person>`
+  );
 }

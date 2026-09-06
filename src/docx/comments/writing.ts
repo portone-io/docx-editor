@@ -7,7 +7,6 @@ import { DocxExportError } from "../../ooxml/errors";
 import { encodeUtf8, escapeXml, W_NS } from "../../ooxml/xml";
 import { directoryOf, type RelationshipWriter } from "../relationships";
 import type { SessionStore } from "../session";
-import { renderCommentBody, withThreadKey } from "./bodyGrammar";
 import {
   COMMENTS_CONTENT_TYPE,
   COMMENTS_EXTENDED_CONTENT_TYPE,
@@ -19,6 +18,11 @@ import {
   W15_NS,
 } from "./constants";
 import { withContentType } from "./contentTypes";
+import {
+  renderCommentBody,
+  renderCommentExtension,
+  withThreadKey,
+} from "./grammar";
 import {
   type CommentReferenceData,
   type CommentReplyData,
@@ -70,19 +74,6 @@ function commentsChanged(doc: PMNode, session: SessionStore): boolean {
   return false;
 }
 
-function renderedExtension(
-  comment: CommentReferenceData | CommentReplyData
-): string {
-  if (comment.extensionXml !== null) return comment.extensionXml;
-  const parent =
-    "parentParaId" in comment
-      ? ` w15:paraIdParent="${escapeXml(comment.parentParaId)}"`
-      : "";
-  const done =
-    "resolved" in comment ? ` w15:done="${comment.resolved ? "1" : "0"}"` : "";
-  return `<w15:commentEx w15:paraId="${escapeXml(comment.paraId)}"${parent}${done}/>`;
-}
-
 function extensionsXml(
   references: ReadonlyMap<string, CommentReferenceData>,
   comments: ImportedComments,
@@ -102,7 +93,7 @@ function extensionsXml(
     const id = idByParaId.get(original.paraId);
     const item = id === undefined ? undefined : current.get(id);
     if (id !== undefined && item && !written.has(id)) {
-      pieces.push(renderedExtension(item));
+      pieces.push(renderCommentExtension(item));
       written.add(id);
     } else if (id === undefined || !originalThreads.has(id)) {
       pieces.push(original.xml);
@@ -111,7 +102,7 @@ function extensionsXml(
   for (const [id, comment] of current) {
     // A comment with no thread state carries no key for an entry here to name
     if (!written.has(id) && carriesThreadMetadata(comment)) {
-      pieces.push(renderedExtension(comment));
+      pieces.push(renderCommentExtension(comment));
     }
   }
 

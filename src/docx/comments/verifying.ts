@@ -12,19 +12,26 @@
  */
 
 import type { Node as PMNode } from "prosemirror-model";
-import { elementChildren, parseXml, serializeXml, W_NS } from "../../ooxml/xml";
+import {
+  attributeByLocalName,
+  elementChildren,
+  parseXml,
+  serializeXml,
+  W_NS,
+} from "../../ooxml/xml";
 import type { EditableComments } from "../../schema/protection";
 import type { CommentOnlyVerdict } from "../commentOnlyChange";
 import type { Story } from "../storyProjection";
+import { COMMENT_AUTHOR_PROVIDER, W14_NS, W15_NS } from "./constants";
 import {
   attributesWithin,
   COMMENT_ATTRIBUTES,
   COMMENT_EX_ATTRIBUTES,
   readStrictCommentBody,
-} from "./bodyGrammar";
-import { COMMENT_AUTHOR_PROVIDER, W14_NS, W15_NS } from "./constants";
+} from "./grammar";
 import { commentReferencesIn } from "./model";
 import { commentAuthorId, type ImportedPeople } from "./people";
+import { lastParagraphId } from "./reading";
 
 const PERSON_ATTRIBUTES: ReadonlySet<string> = new Set([`${W15_NS} author`]);
 
@@ -41,20 +48,14 @@ const COMMENT_IDENTITY: readonly string[] = [
   "initials",
 ];
 
-function attribute(el: Element, localName: string): string | null {
-  return (
-    Array.from(el.attributes).find((entry) => entry.localName === localName)
-      ?.value ?? null
-  );
-}
-
 function sameAttributes(
   entry: Element,
   original: Element,
   names: readonly string[]
 ): boolean {
   return names.every(
-    (name) => attribute(entry, name) === attribute(original, name)
+    (name) =>
+      attributeByLocalName(entry, name) === attributeByLocalName(original, name)
   );
 }
 
@@ -82,7 +83,7 @@ function arrivedEntries(
   if (xml === null) return entries;
   for (const el of elementChildren(parseXml(xml).documentElement)) {
     if (el.localName !== localName) continue;
-    const id = attribute(el, idAttr);
+    const id = attributeByLocalName(el, idAttr);
     if (id === null || entries.has(id)) continue;
     entries.set(id, { el, xml: serializeXml(el) });
   }
@@ -108,7 +109,7 @@ function submittedEntries(
   for (const el of elementChildren(parseXml(xml).documentElement)) {
     if (el.namespaceURI !== namespace || el.localName !== localName)
       return null;
-    const id = attribute(el, idAttr);
+    const id = attributeByLocalName(el, idAttr);
     if (id === null || seen.has(id)) return null;
     seen.add(id);
     entries.push({ id, el, xml: serializeXml(el) });
@@ -117,7 +118,7 @@ function submittedEntries(
 }
 
 /** Every comment the story stands for, replies included, which is every entry it still refers to */
-export function referencedCommentIds(doc: PMNode): ReadonlySet<string> {
+function referencedCommentIds(doc: PMNode): ReadonlySet<string> {
   const ids = new Set<string>();
   for (const [id, comment] of commentReferencesIn(doc)) {
     ids.add(id);
@@ -135,8 +136,8 @@ function personWellFormed(entry: Element): boolean {
     presence.namespaceURI === W15_NS &&
     presence.localName === "presenceInfo" &&
     attributesWithin(presence, PRESENCE_ATTRIBUTES) &&
-    attribute(presence, "providerId") === COMMENT_AUTHOR_PROVIDER &&
-    attribute(presence, "userId") !== null &&
+    attributeByLocalName(presence, "providerId") === COMMENT_AUTHOR_PROVIDER &&
+    attributeByLocalName(presence, "userId") !== null &&
     elementChildren(presence).length === 0
   );
 }
@@ -167,16 +168,6 @@ export function wellFormedEntry(entry: Element): boolean {
 }
 
 /**
- * The key a comment's thread state is written against, which the writer puts on the paragraph
- * rather than on the entry (`./bodyGrammar`). Read the way the importer reads it.
- */
-function commentParaId(entry: Element): string | null {
-  const paragraphs = Array.from(entry.getElementsByTagNameNS(W_NS, "p"));
-  const last = paragraphs[paragraphs.length - 1];
-  return last === undefined ? null : attribute(last, "paraId");
-}
-
-/**
  * The entry with the thread key taken off, which is what two files are compared by when the one
  * thing between them is that a thread was settled or replied to.
  *
@@ -196,7 +187,9 @@ function withoutThreadKey(entry: Element): string {
 
 function recordedIdentity(person: Element): string | null {
   const [presence] = elementChildren(person);
-  return presence === undefined ? null : attribute(presence, "userId");
+  return presence === undefined
+    ? null
+    : attributeByLocalName(presence, "userId");
 }
 
 /**
@@ -217,15 +210,15 @@ export function entryAllowed(
   people: ImportedPeople
 ): boolean {
   if (entry.namespaceURI === W_NS && entry.localName === "comment") {
-    const author = attribute(entry, "author");
+    const author = attributeByLocalName(entry, "author");
     const recorded = author === null ? null : commentAuthorId(people, author);
     if (original === null) return recorded === authorId;
     // A thread key appears the first time a comment is settled or replied to, but one already
     // written is what its thread state hangs off and is not re-pointed
-    const paraId = commentParaId(original);
+    const paraId = lastParagraphId(original);
     if (
       !sameAttributes(entry, original, COMMENT_IDENTITY) ||
-      (paraId !== null && commentParaId(entry) !== paraId)
+      (paraId !== null && lastParagraphId(entry) !== paraId)
     ) {
       return false;
     }
@@ -308,7 +301,7 @@ const COMMENT_PARTS: readonly PartKind[] = [
     referents: (story) =>
       new Set(
         commentEntries(story).flatMap((el) => {
-          const key = commentParaId(el);
+          const key = lastParagraphId(el);
           return key === null ? [] : [key];
         })
       ),
@@ -323,7 +316,7 @@ const COMMENT_PARTS: readonly PartKind[] = [
     referents: (story) =>
       new Set(
         commentEntries(story).flatMap((el) => {
-          const author = attribute(el, "author");
+          const author = attributeByLocalName(el, "author");
           return author === null ? [] : [author];
         })
       ),

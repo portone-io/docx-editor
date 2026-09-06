@@ -3,6 +3,7 @@
 import type { ParagraphAlign } from "../model/format";
 import { ALIGN_BY_JC } from "../ooxml/units";
 import {
+  attributeByLocalName,
   decodeUtf8,
   elementChildren,
   parseXml,
@@ -52,16 +53,9 @@ export const NO_HEADERS_FOOTERS: HeadersFooters = {
   pageNumberStart: 1,
 };
 
-function attribute(el: Element, localName: string): string | null {
-  return (
-    Array.from(el.attributes).find((entry) => entry.localName === localName)
-      ?.value ?? null
-  );
-}
-
 function isOn(el: Element | null): boolean {
   if (!el) return false;
-  const value = attribute(el, "val")?.toLowerCase();
+  const value = attributeByLocalName(el, "val")?.toLowerCase();
   return value !== "0" && value !== "false" && value !== "off";
 }
 
@@ -113,14 +107,14 @@ function paragraphSegments(paragraph: Element): HeaderFooterSegment[] {
       return;
     }
     if (el.namespaceURI === W_NS && el.localName === "fldSimple") {
-      const field = pageField(attribute(el, "instr") ?? "");
+      const field = pageField(attributeByLocalName(el, "instr") ?? "");
       if (field) dynamic(field);
       else for (const child of elementChildren(el)) visit(child);
       return;
     }
 
     if (el.namespaceURI === W_NS && el.localName === "fldChar") {
-      const kind = attribute(el, "fldCharType");
+      const kind = attributeByLocalName(el, "fldCharType");
       if (kind === "begin") {
         fields.push({ instruction: "", separated: false, field: null });
       } else if (kind === "separate") {
@@ -198,7 +192,9 @@ function readContent(bytes: Uint8Array): HeaderFooterContent {
     : undefined;
   return {
     segments,
-    align: jc ? (ALIGN_BY_JC[attribute(jc, "val") ?? ""] ?? null) : null,
+    align: jc
+      ? (ALIGN_BY_JC[attributeByLocalName(jc, "val") ?? ""] ?? null)
+      : null,
   };
 }
 
@@ -234,10 +230,11 @@ function readVariants(
   const variants: HeaderFooterVariants = { ...EMPTY_VARIANTS };
   for (const reference of elementChildren(sectPr)) {
     if (reference.localName !== `${kind}Reference`) continue;
-    const type = attribute(reference, "type") ?? "default";
+    const type = attributeByLocalName(reference, "type") ?? "default";
     if (type !== "default" && type !== "first" && type !== "even") continue;
     const id =
-      reference.getAttributeNS(R_NS, "id") ?? attribute(reference, "id");
+      reference.getAttributeNS(R_NS, "id") ??
+      attributeByLocalName(reference, "id");
     if (!id) continue;
     const relationship = relationships.get(id);
     if (
@@ -257,7 +254,7 @@ function pageNumberStart(sectPr: Element): number {
   const pgNumType = elementChildren(sectPr).find(
     (child) => child.localName === "pgNumType"
   );
-  const declared = pgNumType ? attribute(pgNumType, "start") : null;
+  const declared = pgNumType ? attributeByLocalName(pgNumType, "start") : null;
   if (declared === null) return 1;
   const start = Number(declared);
   return Number.isSafeInteger(start) && start >= 0 ? start : 1;

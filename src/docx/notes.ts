@@ -1,6 +1,7 @@
 /** Reads footnote and endnote bodies related from the main document story. */
 
 import {
+  attributeByLocalName,
   decodeUtf8,
   elementChildren,
   parseXml,
@@ -41,13 +42,6 @@ export const NO_NOTES: ImportedNotes = {
   endnotes: EMPTY_PART,
 };
 
-function attribute(el: Element, localName: string): string | null {
-  return (
-    Array.from(el.attributes).find((entry) => entry.localName === localName)
-      ?.value ?? null
-  );
-}
-
 function inlineText(node: Element): string {
   if (node.localName === "t") return node.textContent ?? "";
   if (node.localName === "tab") return "\t";
@@ -81,9 +75,9 @@ function notePart(
   const root = parseXml(decodeUtf8(bytes).text).documentElement;
   const elements = elementChildren(root).filter((el) => el.localName === kind);
   const ordered = elements.flatMap((el): ImportedNote[] => {
-    const id = attribute(el, "id");
+    const id = attributeByLocalName(el, "id");
     if (id === null) return [];
-    const type = attribute(el, "type");
+    const type = attributeByLocalName(el, "type");
     const regular = type === null || type === "normal";
     const label = regular ? "?" : "";
     return [{ kind, id, label, text: noteText(el), type }];

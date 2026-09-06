@@ -12,11 +12,11 @@
 
 import { DocxExportError } from "../../ooxml/errors";
 import {
+  attributeByLocalName,
   childByLocalName,
   decodeUtf8,
   elementChildren,
   encodeUtf8,
-  escapeXml,
   parseXml,
 } from "../../ooxml/xml";
 import {
@@ -35,6 +35,7 @@ import {
   W15_NS,
 } from "./constants";
 import { withContentType } from "./contentTypes";
+import { renderPerson } from "./grammar";
 import type { CommentReferenceData, CommentReplyData } from "./model";
 
 export interface ImportedPeople {
@@ -56,13 +57,6 @@ export const NO_PEOPLE: ImportedPeople = {
   byAuthor: new Map(),
 };
 
-function attribute(el: Element, localName: string): string | null {
-  return (
-    Array.from(el.attributes).find((entry) => entry.localName === localName)
-      ?.value ?? null
-  );
-}
-
 /** Reads the people part related from the main document story. */
 export function readPeople(
   parts: Map<string, Uint8Array>,
@@ -82,14 +76,17 @@ export function readPeople(
   const byAuthor = new Map<string, string | null>();
   for (const el of elementChildren(root)) {
     if (el.localName !== "person") continue;
-    const author = attribute(el, "author");
+    const author = attributeByLocalName(el, "author");
     if (author === null) continue;
     byAuthor.set(author, null);
     const presence = childByLocalName(el, "presenceInfo");
     if (presence === null) continue;
-    if (attribute(presence, "providerId") !== COMMENT_AUTHOR_PROVIDER) continue;
+    if (
+      attributeByLocalName(presence, "providerId") !== COMMENT_AUTHOR_PROVIDER
+    )
+      continue;
     const ids = ourIds.get(author) ?? new Set<string | null>();
-    ids.add(attribute(presence, "userId"));
+    ids.add(attributeByLocalName(presence, "userId"));
     ourIds.set(author, ids);
   }
   for (const [author, ids] of ourIds) {
@@ -108,19 +105,6 @@ export function commentAuthorId(
   author: string
 ): string | null {
   return people.byAuthor.get(author) ?? null;
-}
-
-function personXml(
-  author: string,
-  userId: string,
-  prefix: string,
-  declaration: string
-): string {
-  return (
-    `<${prefix}person${declaration} ${prefix}author="${escapeXml(author)}">` +
-    `<${prefix}presenceInfo ${prefix}providerId="${COMMENT_AUTHOR_PROVIDER}" ${prefix}userId="${escapeXml(userId)}"/>` +
-    `</${prefix}person>`
-  );
 }
 
 /**
@@ -218,7 +202,7 @@ function peopleXml(
   const xml = people.xml;
   if (xml === null) {
     const persons = Array.from(added, ([author, userId]) =>
-      personXml(author, userId, "w15:", "")
+      renderPerson(author, userId, "w15:", "")
     );
     return (
       '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
@@ -232,7 +216,7 @@ function peopleXml(
   }
   const prefix = w15Prefix(root);
   const persons = Array.from(added, ([author, userId]) =>
-    personXml(
+    renderPerson(
       author,
       userId,
       prefix ?? "w15:",
