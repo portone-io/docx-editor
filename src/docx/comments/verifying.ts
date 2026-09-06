@@ -22,7 +22,7 @@ import {
   COMMENT_EX_ATTRIBUTES,
   readStrictCommentBody,
 } from "./bodyGrammar";
-import { COMMENT_AUTHOR_PROVIDER, W15_NS } from "./constants";
+import { COMMENT_AUTHOR_PROVIDER, W14_NS, W15_NS } from "./constants";
 import { commentReferencesIn } from "./model";
 import { commentAuthorId, type ImportedPeople } from "./people";
 
@@ -176,6 +176,24 @@ function commentParaId(entry: Element): string | null {
   return last === undefined ? null : attribute(last, "paraId");
 }
 
+/**
+ * The entry with the thread key taken off, which is what two files are compared by when the one
+ * thing between them is that a thread was settled or replied to.
+ *
+ * The key is taken off and put back rather than copied away from: an entry carries prefixes the
+ * part root declares, so the fragment on its own does not parse.
+ */
+function withoutThreadKey(entry: Element): string {
+  const paragraphs = Array.from(entry.getElementsByTagNameNS(W_NS, "p"));
+  const last = paragraphs[paragraphs.length - 1];
+  const key = last?.getAttributeNodeNS(W14_NS, "paraId") ?? null;
+  if (last === undefined || key === null) return serializeXml(entry);
+  last.removeAttributeNode(key);
+  const said = serializeXml(entry);
+  last.setAttributeNodeNS(key);
+  return said;
+}
+
 function recordedIdentity(person: Element): string | null {
   const [presence] = elementChildren(person);
   return presence === undefined ? null : attribute(presence, "userId");
@@ -186,8 +204,10 @@ function recordedIdentity(person: Element): string | null {
  *
  * Permission alone: whether the shape is one this editor writes is `wellFormedEntry`'s question.
  * An entry that appeared has to be this author's. One that arrived keeps the identity it arrived
- * with, and only its body may differ, and only for the author it belongs to or for a moderator
- * reading every comment as theirs.
+ * with; settling its thread or replying to it belong to everyone and leave what it says alone,
+ * while rewriting what it says is its author's, a moderator's, or anyone's where no identity was
+ * recorded for it. That last is the rule the editor holds to (`schema/protection`), and the two
+ * have to answer alike or a file the editor wrote would be turned down here.
  */
 export function entryAllowed(
   entry: Element,
@@ -198,16 +218,20 @@ export function entryAllowed(
 ): boolean {
   if (entry.namespaceURI === W_NS && entry.localName === "comment") {
     const author = attribute(entry, "author");
-    const wrote =
-      author !== null && commentAuthorId(people, author) === authorId;
-    if (original === null) return wrote;
+    const recorded = author === null ? null : commentAuthorId(people, author);
+    if (original === null) return recorded === authorId;
     // A thread key appears the first time a comment is settled or replied to, but one already
     // written is what its thread state hangs off and is not re-pointed
     const paraId = commentParaId(original);
+    if (
+      !sameAttributes(entry, original, COMMENT_IDENTITY) ||
+      (paraId !== null && commentParaId(entry) !== paraId)
+    ) {
+      return false;
+    }
+    if (withoutThreadKey(entry) === withoutThreadKey(original)) return true;
     return (
-      sameAttributes(entry, original, COMMENT_IDENTITY) &&
-      (paraId === null || commentParaId(entry) === paraId) &&
-      (wrote || editableComments === "all")
+      editableComments === "all" || recorded === null || recorded === authorId
     );
   }
   if (entry.namespaceURI === W15_NS && entry.localName === "commentEx") {

@@ -356,31 +356,83 @@ describe("over the comment parts of a submitted file", () => {
     ).toEqual(refused);
   });
 
-  it("every entry the editing commands write is one this author may have written", () => {
-    const { commented } = commentedBy("me");
-    const { doc, session } = importDocx(commented);
-    const opened = createEditorState(doc, { editableComments: "all" });
+  /**
+   * The judgement has to take everything the editor itself writes, or a file a reader made in good
+   * faith is turned down. Each command is run over a comment of this author's, over one written by
+   * somebody else, and over one carrying no recorded identity, which is the shape a document that
+   * arrived from Word has and the one `editableComments: "own"` calls everyone's.
+   */
+  describe("what the editing commands write", () => {
+    const ME = { id: "me", name: "Someone" };
+    const REPLY = { text: "reply", author: "Someone", authorId: "me" };
 
     const edits: readonly (readonly [string, Command])[] = [
       ["rewritten body", updateComment("0", "rewritten")],
       ["settled thread", setCommentResolved("0", true)],
-      [
-        "added reply",
-        addCommentReply("0", {
-          text: "reply",
-          author: "Someone",
-          authorId: "me",
-        }),
-      ],
+      ["added reply", addCommentReply("0", REPLY)],
     ];
 
-    for (const [what, command] of edits) {
-      const state = applied(opened, command);
-      const submitted = exportDocx(state.doc, session);
-      expect([what, verdict(commented, submitted, "me")]).toEqual([
-        what,
-        allowed,
-      ]);
+    /** The file with a comment whose author this editor recorded no identity for */
+    function commentedAnonymously(): Uint8Array {
+      const { commented } = commentedBy("them", "Somebody Else");
+      const people = Object.keys(unzipSync(commented)).find((path) =>
+        path.endsWith("people.xml")
+      );
+      if (people === undefined) throw new Error("no people part");
+      const parts = unzipSync(commented);
+      delete parts[people];
+      return zipSync(parts);
     }
+
+    function holds(before: Uint8Array, editableComments: "own" | "all") {
+      const { doc, session } = importDocx(before);
+      const opened = createEditorState(doc, { author: ME, editableComments });
+      for (const [what, command] of edits) {
+        const state = applied(opened, command);
+        const submitted = exportDocx(state.doc, session);
+        expect([
+          what,
+          verdict(before, submitted, "me", editableComments),
+        ]).toEqual([what, allowed]);
+      }
+    }
+
+    it("holds for a comment of this author's", () => {
+      holds(commentedBy("me").commented, "own");
+    });
+
+    it("holds for a comment carrying no recorded identity", () => {
+      holds(commentedAnonymously(), "own");
+    });
+
+    it("holds for another author's comment under `all`", () => {
+      holds(commentedBy("them", "Somebody Else").commented, "all");
+    });
+
+    it("does not take another author's body rewritten under `own`", () => {
+      const before = commentedBy("them", "Somebody Else").commented;
+      const { doc, session } = importDocx(before);
+      const state = applied(
+        createEditorState(doc, { editableComments: "all" }),
+        updateComment("0", "rewritten")
+      );
+
+      expect(verdict(before, exportDocx(state.doc, session), "me")).toEqual(
+        refused
+      );
+    });
+
+    it("takes another author's thread settled under `own`, which is everyone's", () => {
+      const before = commentedBy("them", "Somebody Else").commented;
+      const { doc, session } = importDocx(before);
+      const state = applied(
+        createEditorState(doc, { author: ME }),
+        setCommentResolved("0", true)
+      );
+
+      expect(verdict(before, exportDocx(state.doc, session), "me")).toEqual(
+        allowed
+      );
+    });
   });
 });
