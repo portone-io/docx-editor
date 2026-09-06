@@ -261,5 +261,13 @@ Pass ProseMirror plugins through the `plugins` prop. Consumer keymaps receive ke
 before the built-in keymap, so an application can override bindings such as `Mod-k` without
 replacing the editor.
 
+A plugin that writes raw OOXML into a node or mark attr, such as a paragraph's `pPr`, a run's
+`rPr`, or a content control's opening tag, has to write the shape that attr goes back out as: a
+single element under the name the attr carries, the attributes of an opening tag on their own, or
+an opening tag with nothing inside it yet. The editor reads the page back after an IME composition
+or a browser edit, and a fragment that is none of those is turned down there, taking its node or
+mark down one level with it. A paragraph then keeps its text and loses its properties, a run loses
+its formatting, and a content control or a hyperlink loses its wrapper.
+
 See [Features](/docs/features) for behavioral limits and the published TypeScript declarations for
 complete signatures.

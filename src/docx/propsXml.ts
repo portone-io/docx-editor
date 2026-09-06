@@ -6,7 +6,12 @@
  * of the children, so the spot to insert a child that was not there is found by that same order.
  */
 
-import { elementChildren, localPart, parseXml, W_NS } from "../ooxml/xml";
+import {
+  elementChildren,
+  localPart,
+  namespaceDecls,
+  parseXml,
+} from "../ooxml/xml";
 
 export interface PropsChild {
   /** The name with its namespace prefix stripped off (e.g. `gridSpan`) */
@@ -438,30 +443,6 @@ export function propsChild(
   name: string
 ): PropsChild | undefined {
   return children.find((child) => child.name === name);
-}
-
-/**
- * Gathers the namespace prefixes used in the fragment and declares them.
- * Only `w` carries real meaning; the rest are placeholders that keep the parser from stopping.
- * All we read are element names and `w:` attributes, so placeholders still let the values be read as they are.
- */
-function namespaceDecls(xml: string): string {
-  const prefixes = new Set<string>(["w"]);
-  for (const [, prefix] of xml.matchAll(/<\/?([A-Za-z_][\w.-]*):/g)) {
-    prefixes.add(prefix);
-  }
-  for (const [, prefix] of xml.matchAll(/[\s"']([A-Za-z_][\w.-]*):[\w.-]+=/g)) {
-    prefixes.add(prefix);
-  }
-  // `xml` and `xmlns` are names that cannot be redeclared. Declaring them makes parsing fail
-  prefixes.delete("xml");
-  prefixes.delete("xmlns");
-  return Array.from(prefixes)
-    .map(
-      (prefix) =>
-        `xmlns:${prefix}="${prefix === "w" ? W_NS : `urn:docx-editor:${prefix}`}"`
-    )
-    .join(" ");
 }
 
 /**

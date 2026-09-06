@@ -175,6 +175,9 @@ person carry on editing.
 `missing-numbering-part` is the one an ordinary edit can reach: a document with no numbering part
 cannot take a new list, and the built-in list controls report that they do not apply for exactly
 that reason.
+`malformed-xml` is not: the editor turns a raw fragment down at the DOM boundary before it reaches
+the document, so this code names a fragment a plugin wrote or a bug in the editor rather than
+anything a person typed.
 
 ### In the React component
 

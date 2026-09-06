@@ -2,7 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { importErrorCode } from "../__testing__/docx";
 import { DocxImportError } from "./errors";
-import { escapeXml, parseXml, W_NS } from "./xml";
+import { escapeXml, namespaceDecls, parseXml, W_NS } from "./xml";
 
 describe("escapeXml", () => {
   it("turns the characters XML gives meaning to into entity references", () => {
@@ -87,5 +87,37 @@ describe("a part that declares no DTD", () => {
       "<?display <b ?>" +
       `<w:t xmlns:w="${W_NS}">fee</w:t>`;
     expect(parseXml(xml).documentElement.textContent).toBe("fee");
+  });
+});
+
+describe("namespaceDecls", () => {
+  it("declares every prefix a fragment uses, w to its namespace and the rest to placeholders", () => {
+    const decls = namespaceDecls(
+      '<w:pPr><w14:paraId w14:val="1"/><m:oMath/></w:pPr>'
+    );
+
+    expect(decls).toContain(`xmlns:w="${W_NS}"`);
+    expect(decls).toContain('xmlns:w14="urn:docx-editor:w14"');
+    expect(decls).toContain('xmlns:m="urn:docx-editor:m"');
+  });
+
+  it("declares w even for a fragment that never names it", () => {
+    expect(namespaceDecls("<m:oMathPara/>")).toContain(`xmlns:w="${W_NS}"`);
+  });
+
+  it("declares the prefix of an attribute that opens the string", () => {
+    const attrs = 'w14:paraId="1A2B3C4D" w:rsidR="00A1B2C3"';
+
+    expect(namespaceDecls(attrs)).toContain('xmlns:w14="urn:docx-editor:w14"');
+    expect(() =>
+      parseXml(`<x ${namespaceDecls(attrs)} ${attrs}/>`)
+    ).not.toThrow();
+  });
+
+  it("leaves out the two names a document may not redeclare", () => {
+    const decls = namespaceDecls('<w:t xml:space="preserve">a</w:t>');
+
+    expect(decls).not.toContain("xmlns:xml=");
+    expect(decls).not.toContain("xmlns:xmlns=");
   });
 });

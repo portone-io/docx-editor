@@ -12,6 +12,7 @@ import {
   toRunFormat,
   toTableFormat,
 } from "../model/format";
+import { editorClassNames } from "../styles/classNames";
 import { docxSchema } from "./index";
 
 const serializer = DOMSerializer.fromSchema(docxSchema);
@@ -558,6 +559,191 @@ describe("parseDOM", () => {
     expect(parser.parse(host, { preserveWhitespace: true }).eq(withRaw)).toBe(
       true
     );
+  });
+});
+
+/**
+ * A preserved fragment goes back out spliced into a slot the writer opens and closes around it.
+ * One that closes that slot itself, or opens a sibling beside it, would write content into the
+ * exported file that never stood in the document, so a rule reading one turns it down instead.
+ */
+describe("raw XML coming in through the DOM", () => {
+  function parseHtml(html: string): PMNode {
+    const host = document.createElement("div");
+    host.innerHTML = html;
+    return parser.parse(host);
+  }
+
+  it("a paragraph whose data-ppr closes the paragraph is read as an unstyled paragraph", () => {
+    const parsed = parseHtml(
+      `<p class="${editorClassNames.paragraph}" data-ppr="&lt;/w:p&gt;&lt;w:p&gt;&lt;w:pPr&gt;&lt;w:jc w:val=&quot;center&quot;/&gt;&lt;/w:pPr&gt;">x</p>`
+    );
+
+    expect(parsed.firstChild?.attrs.pPr).toBeNull();
+    expect(parsed.textContent).toBe("x");
+  });
+
+  it("a paragraph whose data-pattrs closes the opening tag is read as an unstyled paragraph", () => {
+    const parsed = parseHtml(
+      `<p class="${editorClassNames.paragraph}" data-pattrs="w:rsidR=&quot;00A&quot;&gt;&lt;w:r&gt;&lt;w:t&gt;smuggled&lt;/w:t&gt;&lt;/w:r">x</p>`
+    );
+
+    expect(parsed.firstChild?.attrs.pAttrs).toBeNull();
+    expect(parsed.textContent).toBe("x");
+  });
+
+  it("keeps a paragraph whose only attribute is a w14 paraId", () => {
+    const parsed = parseHtml(
+      `<p class="${editorClassNames.paragraph}" data-pattrs="w14:paraId=&quot;1A2B3C4D&quot;">x</p>`
+    );
+
+    expect(parsed.firstChild?.attrs.pAttrs).toBe('w14:paraId="1A2B3C4D"');
+  });
+
+  /**
+   * A producer is free to declare a namespace on the paragraph that uses it rather than on the
+   * root of the part, and .NET's `XmlWriter` does, so turning one down would drop the properties
+   * of every paragraph in such a file on the first re-read of the live DOM.
+   */
+  it("keeps a paragraph that declares the namespace its own attribute uses", () => {
+    const parsed = parseHtml(
+      `<p class="${editorClassNames.paragraph}" data-pattrs="xmlns:w14=&quot;u&quot; w14:paraId=&quot;1&quot;">x</p>`
+    );
+
+    expect(parsed.firstChild?.attrs.pAttrs).toBe(
+      'xmlns:w14="u" w14:paraId="1"'
+    );
+  });
+
+  it("a paragraph whose data-pattrs rebinds the relationship namespace is read as an unstyled paragraph", () => {
+    const parsed = parseHtml(
+      `<p class="${editorClassNames.paragraph}" data-pattrs="xmlns:r=&quot;urn:evil&quot;">x</p>`
+    );
+
+    expect(parsed.firstChild?.attrs.pAttrs).toBeNull();
+    expect(parsed.textContent).toBe("x");
+  });
+
+  it("a run whose data-rpr smuggles a w:t loses the mark and keeps the text", () => {
+    const parsed = parseHtml(
+      `<p class="${editorClassNames.paragraph}"><span class="${editorClassNames.run}" data-rpr="&lt;w:rPr&gt;&lt;w:b/&gt;&lt;/w:rPr&gt;&lt;w:t&gt;smuggled&lt;/w:t&gt;">x</span></p>`
+    );
+
+    expect(parsed.textContent).toBe("x");
+    expect(parsed.firstChild?.firstChild?.marks).toEqual([]);
+  });
+
+  it("a break whose data-battrs opens a child of its own is not read as a break", () => {
+    const parsed = parseHtml(
+      `<p class="${editorClassNames.paragraph}">a<br data-battrs="w:type=&quot;page&quot;&gt;&lt;w:t&gt;smuggled&lt;/w:t&gt;">b</p>`
+    );
+
+    expect(parsed.firstChild?.childCount).toBe(1);
+    expect(parsed.firstChild?.child(0).type.name).toBe("text");
+  });
+
+  it("a rawInline carrying a comment range marker beside its element is refused", () => {
+    const parsed = parseHtml(
+      `<p class="${editorClassNames.paragraph}"><span class="${editorClassNames.rawInline}" data-xml="&lt;w:bookmarkEnd w:id=&quot;1&quot;/&gt;&lt;w:commentRangeStart w:id=&quot;7&quot;/&gt;"></span>x</p>`
+    );
+
+    expect(parsed.firstChild?.childCount).toBe(1);
+    expect(parsed.textContent).toBe("x");
+  });
+
+  it("a rawInline keeps an element of a namespace the editor does not model", () => {
+    const parsed = parseHtml(
+      `<p class="${editorClassNames.paragraph}"><span class="${editorClassNames.rawInline}" data-xml="&lt;m:oMathPara/&gt;"></span></p>`
+    );
+
+    expect(parsed.firstChild?.firstChild?.attrs.xml).toBe("<m:oMathPara/>");
+  });
+
+  it("a comment marker whose data-xml is not a range marker is refused", () => {
+    const parsed = parseHtml(
+      `<p class="${editorClassNames.paragraph}"><span class="${editorClassNames.commentMarker}" data-comment-marker="start" data-comment-id="7" data-xml="&lt;w:p&gt;&lt;w:r&gt;&lt;w:t&gt;smuggled&lt;/w:t&gt;&lt;/w:r&gt;&lt;/w:p&gt;"></span>x</p>`
+    );
+
+    expect(parsed.firstChild?.childCount).toBe(1);
+    expect(parsed.textContent).toBe("x");
+  });
+
+  it("a comment reference whose reply carries a smuggled body is refused", () => {
+    const replies = JSON.stringify([
+      {
+        id: "2",
+        paraId: "0A0A0A0A",
+        parentParaId: "0B0B0B0B",
+        commentXml: '<w:comment w:id="2"/><w:comment w:id="3"/>',
+      },
+    ]);
+    const parsed = parseHtml(
+      `<p class="${editorClassNames.paragraph}"><span class="${editorClassNames.commentMarker}" data-comment-marker="reference" data-comment-id="1" data-comment-replies="${replies.replaceAll('"', "&quot;")}"></span>x</p>`
+    );
+
+    expect(parsed.firstChild?.childCount).toBe(1);
+    expect(parsed.textContent).toBe("x");
+  });
+
+  it("a note reference whose data-reference-xml names another element is refused", () => {
+    const parsed = parseHtml(
+      `<p class="${editorClassNames.paragraph}"><sup class="${editorClassNames.noteReference}" data-note-id="1" data-reference-xml="&lt;w:commentReference w:id=&quot;1&quot;/&gt;">1</sup></p>`
+    );
+
+    expect(parsed.firstChild?.child(0).type.name).not.toBe("noteReference");
+  });
+
+  it("an image whose data-xml is not a drawing is refused", () => {
+    const parsed = parseHtml(
+      `<p class="${editorClassNames.paragraph}"><img class="${editorClassNames.image}" src="data:image/png;base64,iVBORw0KGgo=" data-xml="&lt;w:drawing/&gt;&lt;w:t&gt;smuggled&lt;/w:t&gt;"></p>`
+    );
+
+    expect(parsed.firstChild?.childCount).toBe(0);
+  });
+
+  it("a preserved block whose data-xml opens a sibling is refused", () => {
+    const parsed = parseHtml(
+      `<div class="${editorClassNames.rawBlock} ${editorClassNames.rawXmlBlock}" data-xml="&lt;w:tbl/&gt;&lt;w:tbl/&gt;" data-name="w:tbl">placeholder</div>`
+    );
+
+    expect(parsed.firstChild?.type.name).not.toBe("rawBlock");
+  });
+
+  it("a cell whose data-tcpr closes the cell is read as a cell without properties", () => {
+    const parsed = parseHtml(
+      `<table class="${editorClassNames.table}"><tbody><tr><td class="${editorClassNames.tableCell}" data-tcpr="&lt;/w:tc&gt;&lt;w:tc&gt;&lt;w:tcPr/&gt;"><p class="${editorClassNames.paragraph}">x</p></td></tr></tbody></table>`
+    );
+
+    const cell = parsed.firstChild?.firstChild?.firstChild;
+    expect(cell?.type.name).toBe("tableCell");
+    expect(cell?.attrs.tcPr).toBeNull();
+    expect(parsed.textContent).toBe("x");
+  });
+
+  it("a control whose opening tag names another element loses the mark", () => {
+    const parsed = parseHtml(
+      `<p class="${editorClassNames.paragraph}"><span class="${editorClassNames.sdt}" data-sdt-prefix="&lt;w:tbl&gt;">x</span></p>`
+    );
+
+    expect(parsed.textContent).toBe("x");
+    expect(parsed.firstChild?.firstChild?.marks).toEqual([]);
+  });
+
+  it("a link whose opening tag does not close keeps neither the tag nor the address", () => {
+    const parsed = parseHtml(
+      `<p class="${editorClassNames.paragraph}"><span class="${editorClassNames.link}" data-link-prefix="&lt;w:hyperlink&gt;&lt;w:r&gt;" data-href="https://example.com">x</span></p>`
+    );
+
+    expect(parsed.textContent).toBe("x");
+    expect(parsed.firstChild?.firstChild?.marks).toEqual([]);
+  });
+
+  it("a tab whose data-tattrs is not an attribute list loses the mark", () => {
+    const parsed = parseHtml(
+      `<p class="${editorClassNames.paragraph}"><span class="${editorClassNames.tab}" data-tattrs="&lt;w:tab/&gt;">\t</span></p>`
+    );
+
+    expect(parsed.firstChild?.firstChild?.marks).toEqual([]);
   });
 });
 
