@@ -1,4 +1,11 @@
-import { Fragment, type Node as PMNode, Slice } from "prosemirror-model";
+import {
+  type DOMOutputSpec,
+  DOMSerializer,
+  Fragment,
+  type Mark,
+  type Node as PMNode,
+  Slice,
+} from "prosemirror-model";
 import { type EditorState, Plugin } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 import { effectiveParagraphFormat, styleIdOf } from "../docx/formatting";
@@ -77,13 +84,120 @@ interface BlockContext {
   paragraph: ParagraphProps | null;
 }
 
+/**
+ * What a copy is allowed to carry out of the editor.
+ *
+ * Everything a node or mark draws itself with is private until it is named here: the document's
+ * own XML, the identity behind a comment, the body of a comment or a note. A copy lands in
+ * whatever application somebody pastes into, so an attribute the schema gains later carries
+ * nothing outward until somebody decides it should.
+ */
+const PUBLIC_ATTRIBUTES: ReadonlySet<string> = new Set([
+  "alt",
+  "aria-label",
+  "class",
+  "colspan",
+  "height",
+  "href",
+  "lang",
+  "rowspan",
+  "src",
+  "style",
+  "width",
+]);
+
+/**
+ * The paragraph style a copy carries, which is the one thing a paste needs that the drawing does
+ * not already say. It is the style's id alone, where the editor draws the whole `w:pPr`.
+ */
+const COPIED_STYLE_ATTRIBUTE = "data-style";
+
+function isAttributes(value: unknown): value is Record<string, unknown> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    !(value instanceof Node)
+  );
+}
+
+function publicAttributes(
+  attrs: Record<string, unknown>
+): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(attrs).filter(([name]) => PUBLIC_ATTRIBUTES.has(name))
+  );
+}
+
+/** A drawing written as a tag name, the attributes it carries, and what stands inside it */
+function isSpecArray(value: unknown): value is [string, ...unknown[]] {
+  return Array.isArray(value) && typeof value[0] === "string";
+}
+
+/** The same drawing with everything the schema did not mean to publish taken off it */
+function stripPrivateAttributes(spec: DOMOutputSpec): DOMOutputSpec {
+  if (!isSpecArray(spec)) return spec;
+  const [tag, ...rest] = spec;
+  const attrs = isAttributes(rest[0]) ? publicAttributes(rest[0]) : null;
+  const children: unknown[] = (attrs === null ? rest : rest.slice(1)).map(
+    (child) => (isSpecArray(child) ? stripPrivateAttributes(child) : child)
+  );
+  return attrs === null ? [tag, ...children] : [tag, attrs, ...children];
+}
+
+function withAttribute(
+  spec: DOMOutputSpec,
+  name: string,
+  value: string
+): DOMOutputSpec {
+  if (!isSpecArray(spec)) return spec;
+  const [tag, ...rest] = spec;
+  return isAttributes(rest[0])
+    ? [tag, { ...rest[0], [name]: value }, ...rest.slice(1)]
+    : [tag, { [name]: value }, ...rest];
+}
+
+function copiedNodeSpec(node: PMNode, spec: DOMOutputSpec): DOMOutputSpec {
+  const stripped = stripPrivateAttributes(spec);
+  if (node.type !== docxSchema.nodes.paragraph) return stripped;
+  const styleId = styleIdOf(node.attrs.pPr);
+  return styleId === null
+    ? stripped
+    : withAttribute(stripped, COPIED_STYLE_ATTRIBUTE, styleId);
+}
+
+/**
+ * The serializer a copy is written with: what the editor draws, with the private attributes taken
+ * back off.
+ *
+ * Wrapping the schema's own drawing rather than declaring a second set of shapes keeps the two
+ * from drifting. A node drawn a new way is copied the new way, and only what it publishes changes.
+ */
+function clipboardSerializer(): DOMSerializer {
+  const drawn = DOMSerializer.fromSchema(docxSchema);
+  const nodes = Object.fromEntries(
+    Object.entries(drawn.nodes).map(([name, toDOM]) => [
+      name,
+      (node: PMNode) => copiedNodeSpec(node, toDOM(node)),
+    ])
+  );
+  const marks = Object.fromEntries(
+    Object.entries(drawn.marks).map(([name, toDOM]) => [
+      name,
+      (mark: Mark, inline: boolean) =>
+        stripPrivateAttributes(toDOM(mark, inline)),
+    ])
+  );
+  return new DOMSerializer(nodes, marks);
+}
+
 function normalizedStyleName(value: string): string {
   return value.toLowerCase().replace(/[\s_-]+/g, "");
 }
 
 function copiedStyleId(element: HTMLElement): string | null {
   return element.classList.contains(editorClassNames.paragraph)
-    ? styleIdOf(element.getAttribute("data-ppr"))
+    ? element.getAttribute(COPIED_STYLE_ATTRIBUTE)
     : null;
 }
 
@@ -389,8 +503,10 @@ export function insertClipboardData(
 }
 
 export function externalClipboard(): Plugin {
+  const serializer = clipboardSerializer();
   return new Plugin({
     props: {
+      clipboardSerializer: serializer,
       handlePaste(view, event) {
         insertClipboardData(view, {
           html: event.clipboardData?.getData("text/html"),
