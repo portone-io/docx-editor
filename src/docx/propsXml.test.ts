@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { childByLocalName } from "../ooxml/xml";
 import { readRunFormat } from "./formatting";
 import {
+  innerXml,
   P_PR_ORDER,
   parseProps,
   parsePropsXml,
@@ -75,11 +76,15 @@ describe("parseProps", () => {
 });
 
 describe("setPropsChild", () => {
-  const children = (xml: string) => parseProps(xml)?.children ?? [];
+  const propsOf = (xml: string) => {
+    const props = parseProps(xml);
+    if (!props) throw new Error("could not read the fragment");
+    return props;
+  };
 
   it("an existing child changes in place", () => {
     const next = setPropsChild(
-      children(
+      propsOf(
         '<w:tcPr><w:tcW w:w="1"/><w:gridSpan w:val="2"/>' +
           '<w:vAlign w:val="center"/></w:tcPr>'
       ),
@@ -87,7 +92,7 @@ describe("setPropsChild", () => {
       '<w:gridSpan w:val="3"/>',
       TC_PR_ORDER
     );
-    expect(next.map((child) => child.xml)).toEqual([
+    expect(next.children.map((child) => child.xml)).toEqual([
       '<w:tcW w:w="1"/>',
       '<w:gridSpan w:val="3"/>',
       '<w:vAlign w:val="center"/>',
@@ -96,24 +101,24 @@ describe("setPropsChild", () => {
 
   it("removes the child when it is null", () => {
     const next = setPropsChild(
-      children('<w:tcPr><w:gridSpan w:val="2"/><w:vMerge/></w:tcPr>'),
+      propsOf('<w:tcPr><w:gridSpan w:val="2"/><w:vMerge/></w:tcPr>'),
       "gridSpan",
       null,
       TC_PR_ORDER
     );
-    expect(next.map((child) => child.name)).toEqual(["vMerge"]);
+    expect(next.children.map((child) => child.name)).toEqual(["vMerge"]);
   });
 
   it("a child that was not there goes into the slot OOXML's order prescribes", () => {
     const next = setPropsChild(
-      children(
+      propsOf(
         '<w:tcPr><w:tcW w:w="1"/><w:tcBorders/><w:vAlign w:val="center"/></w:tcPr>'
       ),
       "vMerge",
       "<w:vMerge/>",
       TC_PR_ORDER
     );
-    expect(next.map((child) => child.name)).toEqual([
+    expect(next.children.map((child) => child.name)).toEqual([
       "tcW",
       "vMerge",
       "tcBorders",
@@ -123,17 +128,64 @@ describe("setPropsChild", () => {
 
   it("a child whose order is unknown stays behind the child ahead of it", () => {
     const next = setPropsChild(
-      children("<w:tcPr><w:tcW/><w:unknownThing/><w:vAlign/></w:tcPr>"),
+      propsOf("<w:tcPr><w:tcW/><w:unknownThing/><w:vAlign/></w:tcPr>"),
       "vMerge",
       "<w:vMerge/>",
       TC_PR_ORDER
     );
-    expect(next.map((child) => child.name)).toEqual([
+    expect(next.children.map((child) => child.name)).toEqual([
       "tcW",
       "unknownThing",
       "vMerge",
       "vAlign",
     ]);
+  });
+
+  it("a changed child keeps what stood in front of it", () => {
+    const next = setPropsChild(
+      propsOf('<w:tcPr>\n  <w:gridSpan w:val="2"/></w:tcPr>'),
+      "gridSpan",
+      '<w:gridSpan w:val="3"/>',
+      TC_PR_ORDER
+    );
+    expect(renderProps(next)).toBe(
+      '<w:tcPr>\n  <w:gridSpan w:val="3"/></w:tcPr>'
+    );
+  });
+
+  it("a removed child leaves what stood in front of it to the child that follows", () => {
+    const next = setPropsChild(
+      propsOf("<w:tcPr><!-- kept --><w:gridSpan/><w:vMerge/></w:tcPr>"),
+      "gridSpan",
+      null,
+      TC_PR_ORDER
+    );
+    expect(renderProps(next)).toBe("<w:tcPr><!-- kept --><w:vMerge/></w:tcPr>");
+  });
+
+  it("a removed last child leaves it to the tail", () => {
+    const next = setPropsChild(
+      propsOf("<w:tcPr><w:vMerge/><!-- kept --><w:gridSpan/></w:tcPr>"),
+      "gridSpan",
+      null,
+      TC_PR_ORDER
+    );
+    expect(renderProps(next)).toBe("<w:tcPr><w:vMerge/><!-- kept --></w:tcPr>");
+  });
+});
+
+describe("innerXml", () => {
+  it.each([
+    ['<w:tcW w:w="1"/>', ""],
+    ['<w:tcW w:w="1"></w:tcW>', ""],
+    ["<w:tcW><!-- why --></w:tcW>", "<!-- why -->"],
+    ["<w:tcW><!-- </x> --></w:tcW>", "<!-- </x> -->"],
+    // The opening tag is read rather than scanned for, so this `>` is not the end of it
+    ['<w:tcW w:w="1" w:note="a>b">text</w:tcW>', "text"],
+    ["<w:tcW><w:tcW/></w:tcW>", "<w:tcW/>"],
+    ["not an element", ""],
+  ])("reads what stood inside %s", (xml, inner) => {
+    expect(innerXml(xml)).toBe(inner);
   });
 });
 
@@ -148,6 +200,25 @@ describe("renderProps", () => {
     if (!props) throw new Error("could not read the fragment");
     expect(renderProps(props)).toBe(xml);
     expect(propsChild(props.children, "vMerge")?.xml).toBe("<w:vMerge/>");
+  });
+
+  it.each([
+    '<w:tcPr>\n  <w:tcW w:w="1"/>\n  <w:vMerge/>\n</w:tcPr>',
+    "<w:tcPr><!-- why --><w:vMerge/></w:tcPr>",
+    "<w:tcPr><w:vMerge/><?spell off?></w:tcPr>",
+    "<w:tcPr><![CDATA[note]]><w:vMerge/></w:tcPr>",
+  ])("writes %s back character for character", (xml) => {
+    const props = parseProps(xml);
+    if (!props) throw new Error("could not read the fragment");
+    expect(renderProps(props)).toBe(xml);
+  });
+
+  it("writes a fragment whose only content is a comment, and none for whitespace alone", () => {
+    const comment = parseProps("<w:tcPr><!-- why --></w:tcPr>");
+    const blank = parseProps("<w:tcPr>\n</w:tcPr>");
+    if (!comment || !blank) throw new Error("could not read the fragment");
+    expect(renderProps(comment)).toBe("<w:tcPr><!-- why --></w:tcPr>");
+    expect(renderProps(blank)).toBe("");
   });
 });
 

@@ -210,11 +210,12 @@ function editParagraphProps(
   const element = pPr === null ? null : parsePropsXml(pPr);
   if (!props || (pPr !== null && !element)) return null;
 
-  const children = plan(element).reduce(
-    (kept, [name, xml]) => setPropsChild(kept, name, xml, P_PR_ORDER),
-    props.children
+  const rendered = renderProps(
+    plan(element).reduce(
+      (kept, [name, xml]) => setPropsChild(kept, name, xml, P_PR_ORDER),
+      props
+    )
   );
-  const rendered = renderProps({ ...props, children });
   const next = rendered === "" ? null : rendered;
   return {
     pPr: next,

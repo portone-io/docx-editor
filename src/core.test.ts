@@ -8,6 +8,7 @@ import { TextSelection } from "prosemirror-state";
 import { describe, expect, it } from "vitest";
 import {
   decode,
+  fixtureNames,
   LETTER_SECT_PR,
   makeDocx,
   readFixture,
@@ -26,7 +27,11 @@ import {
   onlyCommentsChangedBy,
   toParagraphFormat,
 } from "./core";
-import { addComment, updateComment } from "./editor/commands/commentCommands";
+import {
+  addComment,
+  canAddComment,
+  updateComment,
+} from "./editor/commands/commentCommands";
 import { createEditorState } from "./editor/createEditor";
 import { isCommentNode } from "./schema/protection";
 
@@ -307,6 +312,100 @@ describe("onlyCommentsChangedBy", () => {
       expect(onlyCommentsChangedBy(theirs, stolen, "me")).toEqual(
         refusedFor("comment-author-forged")
       );
+    });
+  });
+
+  /**
+   * A comment is legitimate wherever a paragraph is, so the verdict has to hold over every
+   * paragraph of the corpus rather than over the two a hand-written case reaches. A paragraph
+   * inside a table is the one a comparison over the model turned down, since a commented table is
+   * rebuilt and comes back worded the way this editor words it.
+   */
+  describe("over every paragraph of every fixture", () => {
+    interface Spot {
+      from: number;
+      to: number;
+      text: string;
+    }
+
+    /** The first character of every paragraph carrying text, as a range a comment can be put over */
+    function everyParagraph(doc: PMNode): Spot[] {
+      const spots: Spot[] = [];
+      doc.descendants((node, pos) => {
+        if (node.type.name === "paragraph" && node.textContent.length > 0) {
+          spots.push({
+            from: pos + 1,
+            to: pos + 2,
+            text: node.textContent.slice(0, 40),
+          });
+        }
+        return node.type.name !== "paragraph";
+      });
+      return spots;
+    }
+
+    /**
+     * The paragraphs that take no comment, which are the ones a locked content control holds.
+     *
+     * Named rather than counted, so a change that starts refusing comments elsewhere fails here
+     * instead of quietly shrinking what the sweep below covers.
+     */
+    const LOCKED: Readonly<Record<string, readonly string[]>> = {
+      "kitchen-sink.docx": ["Settled"],
+    };
+
+    it.each(fixtureNames)(
+      "holds for a comment of one's own in every paragraph of %s, table cells included",
+      (name) => {
+        const bytes = readFixture(name);
+        const { doc, session } = importDocx(bytes);
+        const spots = everyParagraph(doc);
+        expect(spots.length).toBeGreaterThan(0);
+
+        const refused: string[] = [];
+        for (const { from, to, text } of spots) {
+          // A state of its own for each, so every submission differs in that one comment alone
+          let state = createEditorState(doc);
+          state = state.apply(
+            state.tr.setSelection(TextSelection.create(state.doc, from, to))
+          );
+          if (!canAddComment(state)) {
+            refused.push(text);
+            continue;
+          }
+          const before = state.doc;
+          expect(
+            addComment({ text: "note", author: "Someone", authorId: "me" })(
+              state,
+              (tr) => (state = state.apply(tr))
+            )
+          ).toBe(true);
+          expect(state.doc.eq(before)).toBe(false);
+          expect(
+            onlyCommentsChangedBy(bytes, exportDocx(state.doc, session), "me")
+          ).toEqual(allowed);
+        }
+        expect(refused).toEqual(LOCKED[name] ?? []);
+      }
+    );
+
+    it("still does not hold for a cell whose text was typed into", () => {
+      const bytes = readFixture(FIXTURE);
+      const { doc, session } = importDocx(bytes);
+      let state = createEditorState(doc);
+      const inACell = everyParagraph(state.doc).find(
+        (spot) =>
+          state.doc.resolve(spot.from).node(-1).type.name === "tableCell"
+      );
+      if (inACell === undefined)
+        throw new Error("the fixture has no table text");
+      state = state.apply(
+        state.tr.insertText(EDITED, inACell.from, inACell.to)
+      );
+
+      expect(
+        onlyCommentsChangedBy(bytes, exportDocx(state.doc, session), "me")
+      ).toEqual(refusedFor("body-changed"));
     });
   });
 

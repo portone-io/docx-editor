@@ -24,9 +24,9 @@ export function serializeBlock(
 ): string {
   if (node.type.name === "paragraph") return serializeParagraph(node, refs);
   if (node.type.name === "table") return serializeTable(node, refs);
+  // The one preserved block that carries its XML on itself rather than pointing at the original
   if (node.type.name === "rawBlock") return preservedXml(node);
-  if (node.type.name === "bookmarkBlock") return serializeRaw(node, session);
-  if (node.type.name === "docxRaw") return serializeRaw(node, session);
+  if (node.type.isInGroup("preserved")) return serializeRaw(node, session);
   throw new DocxExportError(
     "unsupported-content",
     `block we cannot serialize: ${node.type.name}`

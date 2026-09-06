@@ -65,7 +65,7 @@ Four things have to hold for a file to be accepted:
   the people part.
 - The main document part reads as it did outside its body blocks.
 - Its relationships and `[Content_Types].xml` gain only what those three parts need.
-- The text reads as it did with the comments taken out, and every comment that changed is this
+- The story reads as it did with the comments taken out, and every comment that changed is this
   author's.
 
 `editableComments` says whose comments may have changed.
@@ -95,6 +95,23 @@ type CommentOnlyVerdict =
 | `comment-author-forged` | A comment that appeared claims another identity, or a comment that was already there had its author rewritten. |
 | `part-changed` | A part outside the comment parts differs, or the main part changed outside its body blocks. `part` names the package path. |
 | `relationship-changed` | The main part's relationships gained, lost, or repointed something that is not a comment part. `part` names the relationship part. |
+
+Two files can say the same thing in different words, so the story is compared as this editor
+writes it back rather than as the two files worded it.
+Two blocks this editor would write alike read alike here: the attribute order inside a `w:tcW` or
+a `w:tblW`, for instance, a percentage width written as `100%` or as `5000`, runs a producer split
+that say the same text, or a table's `w:tblGridChange`, which this editor drops whenever it
+rebuilds a table.
+A submission that changed only such a difference is accepted.
+
+Content this editor carries through is compared, down to a comment a producer left between two
+properties.
+What it builds afresh is not, and there are three of those: a table's `w:tblGrid` is written from
+the column widths alone, a drawing's extent from the size the model holds, and a table property the
+model no longer needs is dropped along with anything inside it.
+A difference confined to one of those three is not seen.
+Where a file's integrity has to be checked to the byte, compare the parts themselves rather than
+asking this question of them.
 
 [Modes and protection](/docs/custom-controls#modes-and-protection) describes the ownership rule
 this holds to.

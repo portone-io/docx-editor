@@ -51,7 +51,7 @@ export function isCommentNode(node: PMNode): boolean {
  * `Fragment.fromArray` joins the text a marker had split, so a document a comment was put into
  * reads the same as it did before the comment, and the two compare equal.
  */
-function withoutComments(node: PMNode): PMNode {
+export function withoutComments(node: PMNode): PMNode {
   if (node.isLeaf) return node;
   const kept: PMNode[] = [];
   node.forEach((child) => {

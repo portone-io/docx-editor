@@ -19,8 +19,10 @@ import {
 import { DocxExportError } from "../ooxml/errors";
 import { type ExportRefs, NO_EXPORT_REFS } from "./exportRefs";
 import {
+  innerXml,
   type Props,
   parseProps,
+  propsChild,
   renderProps,
   setPropsChild,
   TBL_PR_ORDER,
@@ -43,9 +45,31 @@ function propsOf(xml: unknown, tag: string): Props {
   return parsed;
 }
 
+/**
+ * An element whose attributes the model decides, keeping whatever stood inside the one it replaces.
+ *
+ * These elements carry attributes alone in the schema, so what a producer put inside is nothing
+ * this package models. It is still content the file arrived with, and a rebuilt block that quietly
+ * dropped it would be a block the verifier (`./storyProjection`) cannot see all of.
+ */
+function modelled(
+  name: string,
+  attrs: string,
+  replacing: string | undefined
+): string {
+  const inner = replacing === undefined ? "" : innerXml(replacing);
+  const open = attrs === "" ? `<w:${name}` : `<w:${name} ${attrs}`;
+  return inner === "" ? `${open}/>` : `${open}>${inner}</w:${name}>`;
+}
+
 /** A width that carries no number goes out with the 0 Word writes in its place */
-function widthXml(name: string, width: TableWidth): string {
-  return `<w:${name} w:w="${widthNumber(width) ?? 0}" w:type="${width.type}"/>`;
+function widthXml(
+  name: string,
+  width: TableWidth,
+  replacing: string | undefined
+): string {
+  const attrs = `w:w="${widthNumber(width) ?? 0}" w:type="${width.type}"`;
+  return modelled(name, attrs, replacing);
 }
 
 /**
@@ -61,10 +85,8 @@ function withWidth(
   order: readonly string[]
 ): Props {
   if (!width) return props;
-  return {
-    ...props,
-    children: setPropsChild(props.children, name, widthXml(name, width), order),
-  };
+  const replacing = propsChild(props.children, name)?.xml;
+  return setPropsChild(props, name, widthXml(name, width, replacing), order);
 }
 
 function tablePropsXml(table: PMNode): string {
@@ -88,25 +110,31 @@ function cellPropsXml(cell: PMNode, role: CellRole): string {
   const colspan = spanCount(cell.attrs.colspan);
   const rowspan = spanCount(cell.attrs.rowspan);
 
-  const gridSpan = colspan > 1 ? `<w:gridSpan w:val="${colspan}"/>` : null;
+  const gridSpan =
+    colspan > 1
+      ? modelled(
+          "gridSpan",
+          `w:val="${colspan}"`,
+          propsChild(props.children, "gridSpan")?.xml
+        )
+      : null;
+  // A continuing cell is written from the starting cell's properties, so it has nothing of its
+  // own to keep, and keeping the starting cell's would copy it down the whole merge
   const vMerge =
     role === "continue"
       ? "<w:vMerge/>"
       : rowspan > 1
-        ? '<w:vMerge w:val="restart"/>'
+        ? modelled(
+            "vMerge",
+            'w:val="restart"',
+            propsChild(props.children, "vMerge")?.xml
+          )
         : null;
 
-  let children = setPropsChild(
-    props.children,
-    "gridSpan",
-    gridSpan,
-    TC_PR_ORDER
-  );
-  children = setPropsChild(children, "vMerge", vMerge, TC_PR_ORDER);
+  const spanned = setPropsChild(props, "gridSpan", gridSpan, TC_PR_ORDER);
+  const merged = setPropsChild(spanned, "vMerge", vMerge, TC_PR_ORDER);
   const width = toTableWidth(cell.attrs.tcW);
-  return renderProps(
-    withWidth({ ...props, children }, "tcW", width, TC_PR_ORDER)
-  );
+  return renderProps(withWidth(merged, "tcW", width, TC_PR_ORDER));
 }
 
 function cellBlockXml(block: PMNode, refs: ExportRefs): string {

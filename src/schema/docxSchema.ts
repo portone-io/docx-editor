@@ -1,6 +1,12 @@
 /**
  * ProseMirror schema joining preserved DOCX fragments with validated display values. Original XML
  * remains on nodes and marks so untouched content can round-trip verbatim.
+ *
+ * Every block sits in one of two groups beside `block`. A `modelled` block is one the editor
+ * takes apart and writes back out itself, so the writer decides what it says; a `preserved` one
+ * goes back out as the XML it arrived as. Which of the two a block is decides how it is written
+ * (`docx/serializeBlock`) and how a submitted file is compared against the original
+ * (`docx/storyProjection`), so a new block node has to name one of them.
  */
 
 import { Schema } from "prosemirror-model";
@@ -121,7 +127,7 @@ export const docxSchema = new Schema({
   nodes: {
     doc: { content: "block+" },
     paragraph: {
-      group: "block",
+      group: "block modelled",
       content: "inline*",
       // Leading and trailing whitespace carries meaning in docx text, so it is not stripped when the DOM is read back
       whitespace: "pre",
@@ -182,7 +188,7 @@ export const docxSchema = new Schema({
      * edited table is written back the new XML is built from those two.
      */
     table: {
-      group: "block",
+      group: "block modelled",
       content: "tableRow+",
       tableRole: "table",
       isolating: true,
@@ -379,7 +385,7 @@ export const docxSchema = new Schema({
      * XML around with it.
      */
     rawBlock: {
-      group: "block",
+      group: "block preserved",
       atom: true,
       selectable: false,
       attrs: {
@@ -410,7 +416,7 @@ export const docxSchema = new Schema({
     },
     /** The node that carries a non-paragraph body block (a table we could not model, sectPr, an unknown element) exactly as it came */
     docxRaw: {
-      group: "block",
+      group: "block preserved",
       atom: true,
       selectable: false,
       attrs: {
@@ -443,7 +449,7 @@ export const docxSchema = new Schema({
     },
     /** A bookmark range marker that occurs directly under w:body rather than inside a paragraph */
     bookmarkBlock: {
-      group: "block",
+      group: "block preserved",
       atom: true,
       isolating: true,
       selectable: false,

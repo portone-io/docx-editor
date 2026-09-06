@@ -13,6 +13,12 @@ export interface PropsChild {
   name: string;
   /** This child's original XML fragment exactly as it was */
   xml: string;
+  /**
+   * Whatever stood between the child before this one and this one: line breaks a producer laid
+   * out, comments, anything that is not an element. Carried so that rewriting one child does not
+   * quietly drop the rest of what the fragment said. Absent rather than empty when nothing did.
+   */
+  before?: string;
 }
 
 export interface Props {
@@ -20,6 +26,8 @@ export interface Props {
   tag: string;
   attrs: string | null;
   children: PropsChild[];
+  /** The same, for what stood between the last child and the closing tag */
+  tail?: string;
 }
 
 /** The order the children are laid out in under `w:rPr` (CT_RPr) */
@@ -230,6 +238,19 @@ function attrsOf(source: string, tag: Tag): string | null {
 }
 
 /**
+ * What stood inside a single element, and "" for one that stood empty or cannot be made out.
+ *
+ * The opening tag is read rather than scanned for, so a `>` inside an attribute value does not
+ * pass for the end of it.
+ */
+export function innerXml(xml: string): string {
+  const open = readTag(xml, 0);
+  if (!open || xml[0] !== "<" || open.kind !== "open") return "";
+  const close = xml.lastIndexOf("</");
+  return close > open.end ? xml.slice(open.end, close) : "";
+}
+
+/**
  * Splits a formatting fragment into its opening tag and its list of children.
  * null if its shape cannot be made out (in which case leaving the original untouched is the safe move).
  */
@@ -249,6 +270,12 @@ export function parseProps(xml: string): Props | null {
   let childStart = -1;
   let childName = "";
   let i = open.end;
+  // Everything since the last child ended, which is picked up whole when the next one starts
+  let gapStart = open.end;
+  const gapBefore = (start: number): { before?: string } => {
+    const gap = xml.slice(gapStart, start);
+    return gap.length > 0 ? { before: gap } : {};
+  };
 
   while (i < xml.length) {
     const lt = xml.indexOf("<", i);
@@ -264,7 +291,10 @@ export function parseProps(xml: string): Props | null {
     if (depth === 0) {
       if (tag.kind === "close") {
         if (tag.name !== open.name || tag.end !== xml.length) return null;
-        return { tag: open.name, attrs, children };
+        const tail = xml.slice(gapStart, lt);
+        return tail.length > 0
+          ? { tag: open.name, attrs, children, tail }
+          : { tag: open.name, attrs, children };
       }
       childStart = lt;
       childName = tag.name;
@@ -272,7 +302,9 @@ export function parseProps(xml: string): Props | null {
         children.push({
           name: localPart(childName),
           xml: xml.slice(childStart, tag.end),
+          ...gapBefore(childStart),
         });
+        gapStart = tag.end;
       } else {
         depth = 1;
       }
@@ -284,7 +316,9 @@ export function parseProps(xml: string): Props | null {
         children.push({
           name: localPart(childName),
           xml: xml.slice(childStart, tag.end),
+          ...gapBefore(childStart),
         });
+        gapStart = tag.end;
       }
     }
     i = tag.end;
@@ -292,13 +326,18 @@ export function parseProps(xml: string): Props | null {
   return null;
 }
 
-/** With no children at all, the formatting fragment itself is not written */
+/**
+ * With nothing to say, the formatting fragment itself is not written. A fragment holding only
+ * whitespace says nothing; one holding a comment does, so it is written back.
+ */
 export function renderProps(props: Props): string {
-  if (props.children.length === 0) return "";
+  const tail = props.tail ?? "";
+  if (props.children.length === 0 && tail.trim().length === 0) return "";
   const open = props.attrs ? `<${props.tag} ${props.attrs}>` : `<${props.tag}>`;
-  return (
-    open + props.children.map((child) => child.xml).join("") + `</${props.tag}>`
-  );
+  const inner = props.children
+    .map((child) => (child.before ?? "") + child.xml)
+    .join("");
+  return open + inner + tail + `</${props.tag}>`;
 }
 
 /**
@@ -323,30 +362,75 @@ function insertIndex(
 }
 
 /**
+ * Drops every child of this name, carrying what stood in front of each onto whatever follows.
+ * A gap belongs to the fragment rather than to the child it happened to sit in front of, so
+ * removing a child does not take a producer's comment away with it.
+ */
+function dropChildren(
+  children: readonly PropsChild[],
+  name: string
+): { kept: PropsChild[]; carried: string } {
+  const kept: PropsChild[] = [];
+  let carried = "";
+  for (const child of children) {
+    const before = carried + (child.before ?? "");
+    if (child.name === name) {
+      carried = before;
+      continue;
+    }
+    carried = "";
+    kept.push(
+      before === ""
+        ? { name: child.name, xml: child.xml }
+        : { ...child, before }
+    );
+  }
+  return { kept, carried };
+}
+
+/** What a dropped child left in front of it, with nothing left to follow, belongs to the tail */
+function tailWith(props: Props, carried: string): { tail?: string } {
+  const tail = carried + (props.tail ?? "");
+  return tail === "" ? {} : { tail };
+}
+
+/**
  * Replaces a single child with new XML.
  * A null `xml` removes that child. A child that was not there goes into the spot the order calls for.
  */
 export function setPropsChild(
-  children: PropsChild[],
+  props: Props,
   name: string,
   xml: string | null,
   order: readonly string[]
-): PropsChild[] {
-  const without = children.filter((child) => child.name !== name);
-  if (xml === null) return without;
+): Props {
+  const at = props.children.findIndex((entry) => entry.name === name);
 
-  const child: PropsChild = { name, xml };
-  const at = children.findIndex((entry) => entry.name === name);
-  if (at === -1) {
-    const index = insertIndex(without, name, order);
-    return [...without.slice(0, index), child, ...without.slice(index)];
+  // Keeps the spot it originally occupied, and what stood in front of it. If the same name
+  // appears several times, only the first spot survives
+  if (at !== -1 && xml !== null) {
+    const rest = dropChildren(props.children.slice(at + 1), name);
+    return {
+      ...props,
+      children: [
+        ...props.children.slice(0, at),
+        { ...props.children[at], xml },
+        ...rest.kept,
+      ],
+      ...tailWith(props, rest.carried),
+    };
   }
-  // Keeps the spot it originally occupied. If the same name appears several times, only the first spot survives
-  return [
-    ...children.slice(0, at),
-    child,
-    ...children.slice(at + 1).filter((entry) => entry.name !== name),
-  ];
+
+  const { kept, carried } = dropChildren(props.children, name);
+  if (xml === null) {
+    return { ...props, children: kept, ...tailWith(props, carried) };
+  }
+  const index = insertIndex(kept, name, order);
+  return {
+    ...props,
+    children: [...kept.slice(0, index), { name, xml }, ...kept.slice(index)],
+    ...tailWith(props, carried),
+  };
 }
 
 export function propsChild(
