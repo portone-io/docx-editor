@@ -188,6 +188,84 @@ describe("copying out of the editor", () => {
     view.destroy();
   });
 
+  it("copied text keeps tabs, breaks and cell boundaries", () => {
+    const cell = (text: string) =>
+      docxSchema.nodes.tableCell.create(null, [
+        docxSchema.nodes.paragraph.create(null, [docxSchema.text(text)]),
+      ]);
+    const row = (left: string, right: string) =>
+      docxSchema.nodes.tableRow.create(null, [cell(left), cell(right)]);
+    const tabbed = docxSchema.nodes.paragraph.create(null, [
+      docxSchema.text("before"),
+      docxSchema.text("\t", [docxSchema.marks.tab.create({})]),
+      docxSchema.text("after"),
+      docxSchema.nodes.hardBreak.create({ brAttrs: null }),
+      docxSchema.text("next line"),
+      docxSchema.nodes.hardBreak.create({ brAttrs: 'w:type="page"' }),
+      docxSchema.text("next page"),
+    ]);
+    const view = createEditorView({
+      mount: document.createElement("div"),
+      state: createEditorState(
+        docxSchema.nodes.doc.create(null, [
+          tabbed,
+          docxSchema.nodes.table.create(null, [
+            row("one", "two"),
+            row("three", "four"),
+          ]),
+        ])
+      ),
+      defaults: NO_DOCUMENT_DEFAULTS,
+      onStateChange: () => {},
+    });
+    view.dispatch(view.state.tr.setSelection(new AllSelection(view.state.doc)));
+    const { text } = view.serializeForClipboard(view.state.selection.content());
+
+    expect(text).toContain("before\tafter");
+    expect(text).toContain("after\nnext line");
+    expect(text).toContain("next line\fnext page");
+    expect(text).toContain("one\ttwo");
+    expect(text).toContain("one\ttwo\nthree\tfour");
+    view.destroy();
+  });
+
+  it("copied text says nothing for a comment marker and speaks for an image", () => {
+    const paragraph = docxSchema.nodes.paragraph.create(null, [
+      docxSchema.nodes.commentStart.create({ id: "0" }),
+      docxSchema.text("body"),
+      docxSchema.nodes.commentEnd.create({ id: "0" }),
+      docxSchema.nodes.commentReference.create({
+        id: "0",
+        author: "Jane Doe",
+        text: "what the comment says",
+      }),
+      docxSchema.nodes.image.create({
+        src: TINY_PNG_DATA_URL,
+        alt: "a picture of a cat",
+      }),
+      docxSchema.nodes.noteReference.create({
+        id: "2",
+        kind: "footnote",
+        label: "7",
+        text: "what the footnote says",
+      }),
+    ]);
+    const view = createEditorView({
+      mount: document.createElement("div"),
+      state: createEditorState(docxSchema.nodes.doc.create(null, [paragraph])),
+      defaults: NO_DOCUMENT_DEFAULTS,
+      onStateChange: () => {},
+    });
+    view.dispatch(view.state.tr.setSelection(new AllSelection(view.state.doc)));
+    const { text } = view.serializeForClipboard(view.state.selection.content());
+
+    expect(text).toBe("bodya picture of a cat7");
+    expect(text).not.toContain("Jane Doe");
+    expect(text).not.toContain("what the comment says");
+    expect(text).not.toContain("what the footnote says");
+    view.destroy();
+  });
+
   it("pasting copied HTML keeps the paragraph style", () => {
     const source = openStyledEditor();
     source.view.dispatch(

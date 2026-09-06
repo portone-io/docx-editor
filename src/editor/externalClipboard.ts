@@ -11,7 +11,7 @@ import type { EditorView } from "prosemirror-view";
 import { effectiveParagraphFormat, styleIdOf } from "../docx/formatting";
 import { type ParagraphProps, withParagraphStyle } from "../docx/paraProps";
 import { type ListKind, MAX_ILVL, nextNumId } from "../numbering/listTemplate";
-import { docxSchema } from "../schema";
+import { docxSchema, isPageBreak } from "../schema";
 import { editorClassNames } from "../styles/classNames";
 import { PASTED_IMAGE_ATTRIBUTE } from "./clipboard/images";
 import {
@@ -189,6 +189,80 @@ function clipboardSerializer(): DOMSerializer {
     ])
   );
   return new DOMSerializer(nodes, marks);
+}
+
+/** The blocks that stand for something the editor never read, which read as nothing at all */
+const UNREADABLE_BLOCKS: ReadonlySet<string> = new Set([
+  "bookmarkBlock",
+  "docxRaw",
+  "rawBlock",
+]);
+
+function stringAttr(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+/**
+ * What one inline node says when the copy is read as text.
+ *
+ * A comment marker and a preserved fragment say nothing: they stand for something around the
+ * text rather than in it. An image says what it was given to say instead.
+ */
+function inlineText(node: PMNode): string {
+  if (node.isText) {
+    return node.marks.some((mark) => mark.type === docxSchema.marks.tab)
+      ? "\t"
+      : (node.text ?? "");
+  }
+  if (node.type === docxSchema.nodes.hardBreak) {
+    return isPageBreak(node.attrs.brAttrs) ? "\f" : "\n";
+  }
+  if (node.type === docxSchema.nodes.image) return stringAttr(node.attrs.alt);
+  if (node.type === docxSchema.nodes.noteReference) {
+    return stringAttr(node.attrs.label);
+  }
+  return "";
+}
+
+function rowsText(table: PMNode): string {
+  const rows: string[] = [];
+  table.forEach((row) => {
+    const cells: string[] = [];
+    row.forEach((cell) => {
+      cells.push(fragmentText(cell.content));
+    });
+    rows.push(cells.join("\t"));
+  });
+  return rows.join("\n");
+}
+
+function blockText(node: PMNode): string {
+  if (node.type === docxSchema.nodes.table) return rowsText(node);
+  if (UNREADABLE_BLOCKS.has(node.type.name)) return "";
+  return fragmentText(node.content);
+}
+
+/**
+ * A fragment read as text. Its children are all inline or all block, which is what decides
+ * whether they run together or stand on lines of their own.
+ */
+function fragmentText(fragment: Fragment): string {
+  const pieces: string[] = [];
+  fragment.forEach((child) => {
+    pieces.push(child.isInline ? inlineText(child) : blockText(child));
+  });
+  return pieces.join(fragment.firstChild?.isInline === true ? "" : "\n");
+}
+
+/**
+ * The plain text a copy leaves beside the HTML.
+ *
+ * Prosemirror's own answer is the text content with a line between blocks, which loses a tab, a
+ * page break, and the difference between the next cell and the next row. Somewhere those are the
+ * whole of what was copied, a table pasted into a spreadsheet above all.
+ */
+function clipboardText(slice: Slice): string {
+  return fragmentText(slice.content);
 }
 
 function normalizedStyleName(value: string): string {
@@ -507,6 +581,7 @@ export function externalClipboard(): Plugin {
   return new Plugin({
     props: {
       clipboardSerializer: serializer,
+      clipboardTextSerializer: clipboardText,
       handlePaste(view, event) {
         insertClipboardData(view, {
           html: event.clipboardData?.getData("text/html"),
