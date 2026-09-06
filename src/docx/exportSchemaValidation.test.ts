@@ -42,10 +42,12 @@ import {
   activeLineSpacing,
   activeParagraphAlign,
   addComment,
+  documentComments,
   type ImageToInsert,
   insertImage,
   insertTable,
   lockSelection,
+  setCommentResolved,
   setLineSpacing,
   setLink,
   setParagraphAlign,
@@ -70,13 +72,14 @@ import {
   setCellPadding,
   setCellVerticalAlign,
 } from "../table";
+import { withoutIgnorableMarkup } from "./__testing__/mce";
+import { MC_NS, W14_NS } from "./comments/constants";
 import { exportDocx } from "./exportDocx";
 import { importDocx } from "./importDocx";
 import { documentNumbering, type SessionStore } from "./session";
 
 const XSD_NS = "http://www.w3.org/2001/XMLSchema";
 const XML_NS = "http://www.w3.org/XML/1998/namespace";
-const MC_NS = "http://schemas.openxmlformats.org/markup-compatibility/2006";
 
 const wmlPath = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -206,28 +209,21 @@ function validate(path: string, xml: string): Validation {
 }
 
 /**
- * Markup compatibility (ECMA-376 part 3) has a consumer drop the compatibility attributes
- * before reading a part against the part 1 schemas, which know nothing of that namespace.
- * Word writes `mc:Ignorable` on the root of every part it saves, so our fixtures carry it too.
+ * The parts of an exported package that WordprocessingML describes, preprocessed as ECMA-376
+ * part 3 has a consumer preprocess them and ready to validate.
  *
- * Only attributes in that one namespace go; markup an ignorable namespace holds, such as a
- * `mc:AlternateContent` a document brought in from elsewhere, is left standing and fails
- * validation, which is the report we want rather than a quiet pass.
+ * Word writes `mc:Ignorable` on the root of every part it saves, so our fixtures carry it too,
+ * and the thread markup this package writes for a comment declares `w14` ignorable in the same
+ * way. Reading either against the part 1 schemas without that step reports a document a
+ * conforming consumer accepts.
  */
-function withoutCompatibilityAttributes(xml: string): string {
-  const prefix = new RegExp(`xmlns:([\\w-]+)="${MC_NS}"`).exec(xml)?.[1];
-  if (prefix === undefined) return xml;
-  return xml.replaceAll(new RegExp(`\\s${prefix}:[A-Za-z]+="[^"]*"`, "g"), "");
-}
-
-/** The parts of an exported package that WordprocessingML describes, ready to validate */
 function wordprocessingParts(bytes: Uint8Array): Map<string, string> {
   const parts = new Map<string, string>();
   for (const [path, data] of Object.entries(unzipSync(bytes))) {
     if (!path.endsWith(".xml")) continue;
     const xml = decode(data);
     if (parseXml(xml).documentElement.namespaceURI === W_NS) {
-      parts.set(path, withoutCompatibilityAttributes(xml));
+      parts.set(path, withoutIgnorableMarkup(xml));
     }
   }
   return parts;
@@ -843,6 +839,102 @@ describe("the exported package against the OOXML schemas", () => {
     expect(valid).toBe(false);
     expect(report).toContain(session.mainPartPath);
     expect(report).toContain("notInWml");
+  });
+});
+
+describe("the markup-compatibility preprocessing", () => {
+  const IGNORED_NS = W14_NS;
+  const KEPT_NS = "urn:example:declared-but-not-ignorable";
+
+  /** A body carrying one attribute from each namespace, ignorable named on the root */
+  function documentWith(attributes: string): string {
+    return (
+      `<w:document xmlns:w="${W_NS}" xmlns:w14="${IGNORED_NS}"` +
+      ` xmlns:x="${KEPT_NS}" xmlns:mc="${MC_NS}" mc:Ignorable="w14">` +
+      `<w:body><w:p ${attributes}/></w:body></w:document>`
+    );
+  }
+
+  /**
+   * The negative control of the preprocessing: it is the declaration that decides, not the
+   * namespace being foreign, so an attribute no `mc:Ignorable` covers still reaches the
+   * validator and is still turned down.
+   */
+  it("removes an attribute an ignorable namespace holds and keeps one no declaration covers", () => {
+    const both = withoutIgnorableMarkup(
+      documentWith('w14:paraId="410A1204" x:kept="yes"')
+    );
+    expect(both).not.toContain("paraId");
+    expect(both).not.toContain("Ignorable");
+    expect(both).toContain('x:kept="yes"');
+
+    const rejected = validate("word/document.xml", both);
+    expect(rejected.valid, rejected.report).toBe(false);
+    expect(rejected.report).toContain("kept");
+
+    const ignorableOnly = withoutIgnorableMarkup(
+      documentWith('w14:paraId="410A1204"')
+    );
+    const accepted = validate("word/document.xml", ignorableOnly);
+    expect(accepted.valid, accepted.report).toBe(true);
+  });
+
+  /**
+   * Part 3 has the consumer that understands none of the alternatives read the fallback, so the
+   * markup validated is the markup such a consumer sees. Word writes `mc:AlternateContent` around
+   * a shape it draws two ways, and leaving it standing would turn down every document that
+   * carries one rather than reporting anything about this package's own writing.
+   */
+  it("reads an alternate-content block as the fallback a part 1 consumer takes", () => {
+    const processed = withoutIgnorableMarkup(
+      `<w:document xmlns:w="${W_NS}" xmlns:w14="${IGNORED_NS}" xmlns:mc="${MC_NS}" mc:Ignorable="w14">` +
+        "<w:body><w:p><w:r><mc:AlternateContent>" +
+        '<mc:Choice Requires="w14"><w:t xml:space="preserve">the choice</w:t></mc:Choice>' +
+        '<mc:Fallback><w:t xml:space="preserve">the fallback</w:t></mc:Fallback>' +
+        "</mc:AlternateContent></w:r></w:p></w:body></w:document>"
+    );
+
+    expect(processed).toContain("the fallback");
+    expect(processed).not.toContain("the choice");
+    expect(processed).not.toContain("AlternateContent");
+
+    const { valid, report } = validate("word/document.xml", processed);
+    expect(valid, report).toBe(true);
+  });
+
+  /**
+   * The comment writer declares `w14` ignorable and hangs the thread key off `w14:paraId`
+   * (`docx/comments/writing`), which is markup this suite read against the part 1 schemas until
+   * the preprocessing above arrived. Every command that resolves, replies to or edits a thread
+   * writes it, so this stands for all of them.
+   */
+  it("accepts a resolved thread the editor wrote", () => {
+    const { doc, session } = importDocx(readFixture("kitchen-sink.docx"));
+    const state = openState(doc, session);
+    const commented = ran(
+      textOf(state, nth(plainParagraphIndices(state.doc), 0)),
+      "add a comment to a stretch of text",
+      addComment({
+        text: "The comment whose thread is resolved",
+        author: "Schema test",
+        initials: "ST",
+        date: "2026-08-22T00:00:00Z",
+      })
+    );
+    const added = documentComments(commented);
+    const comment = added[added.length - 1];
+    if (comment === undefined) throw new Error("no comment was added");
+    const resolved = ran(
+      commented,
+      "resolve the thread",
+      setCommentResolved(comment.id, true)
+    );
+
+    const parts = wordprocessingParts(exportDocx(resolved.doc, session));
+    const commentsXml = parts.get("word/comments.xml");
+    expect(commentsXml, "the export wrote no comments part").toBeDefined();
+    expect(commentsXml).toContain("The comment whose thread is resolved");
+    expectPartsValidate("a resolved thread", parts);
   });
 });
 
