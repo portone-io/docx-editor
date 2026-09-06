@@ -438,7 +438,9 @@ describe("reopening a regenerated table gives the same model", () => {
       const xml = serializeTable(table);
       const again = reopenIn(name, xml);
       expect(shapeOf(again)).toEqual(shapeOf(table));
-      // Building it once more gives the same text down to the character (regeneration reaches a fixed point)
+      // Building it once more gives the same text down to the character. The verifier compares two
+      // files by writing both out through this writer (`docx/storyProjection`), which rests on that
+      // fixed point: a table Word worded one way and this editor another have to come out alike
       expect(serializeTable(again)).toBe(xml);
     }
   });

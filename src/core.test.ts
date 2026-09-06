@@ -8,6 +8,7 @@ import { TextSelection } from "prosemirror-state";
 import { describe, expect, it } from "vitest";
 import {
   decode,
+  fixtureNames,
   LETTER_SECT_PR,
   makeDocx,
   readFixture,
@@ -307,6 +308,83 @@ describe("onlyCommentsChangedBy", () => {
       expect(onlyCommentsChangedBy(theirs, stolen, "me")).toEqual(
         refusedFor("comment-author-forged")
       );
+    });
+  });
+
+  /**
+   * A comment is legitimate wherever a paragraph is, so the verdict has to hold over every
+   * paragraph of every fixture rather than over the two a hand-written case reaches. The
+   * paragraphs inside a table are the ones a comparison over the model turned down, since a
+   * commented table is rebuilt and comes back worded the way this editor words it.
+   */
+  describe("over every paragraph of every fixture", () => {
+    /** The first character of every paragraph carrying text, as a range a comment can be put over */
+    function firstCharacterOfEveryParagraph(
+      doc: PMNode
+    ): { from: number; to: number }[] {
+      const ranges: { from: number; to: number }[] = [];
+      doc.descendants((node, pos) => {
+        if (node.type.name === "paragraph" && node.textContent.length > 0) {
+          ranges.push({ from: pos + 1, to: pos + 2 });
+        }
+        return node.type.name !== "paragraph";
+      });
+      return ranges;
+    }
+
+    /** The first paragraph standing in a table cell, as that same range */
+    function firstCharacterInACell(doc: PMNode): { from: number; to: number } {
+      let found: { from: number; to: number } | null = null;
+      doc.descendants((node, pos, parent) => {
+        if (found !== null) return false;
+        if (
+          node.type.name === "paragraph" &&
+          parent?.type.name === "tableCell" &&
+          node.textContent.length > 0
+        ) {
+          found = { from: pos + 1, to: pos + 2 };
+        }
+        return true;
+      });
+      if (found === null) throw new Error("the fixture has no table cell text");
+      return found;
+    }
+
+    it.each(fixtureNames)(
+      "holds for a comment of one's own in every paragraph of %s, table cells included",
+      (name) => {
+        const bytes = readFixture(name);
+        const { doc, session } = importDocx(bytes);
+        const spots = firstCharacterOfEveryParagraph(doc);
+        expect(spots.length).toBeGreaterThan(0);
+
+        for (const { from, to } of spots) {
+          // A state of its own for each, so every submission differs from the original in one comment
+          let state = createEditorState(doc, { protection: "none" });
+          state = state.apply(
+            state.tr.setSelection(TextSelection.create(state.doc, from, to))
+          );
+          addComment({ text: "note", author: "Someone", authorId: "me" })(
+            state,
+            (tr) => (state = state.apply(tr))
+          );
+          expect(
+            onlyCommentsChangedBy(bytes, exportDocx(state.doc, session), "me")
+          ).toEqual(allowed);
+        }
+      }
+    );
+
+    it("still does not hold for a cell whose text was typed into", () => {
+      const bytes = readFixture(FIXTURE);
+      const { doc, session } = importDocx(bytes);
+      let state = createEditorState(doc, { protection: "none" });
+      const { from, to } = firstCharacterInACell(state.doc);
+      state = state.apply(state.tr.insertText(EDITED, from, to));
+
+      expect(
+        onlyCommentsChangedBy(bytes, exportDocx(state.doc, session), "me")
+      ).toEqual(refusedFor("body-changed"));
     });
   });
 

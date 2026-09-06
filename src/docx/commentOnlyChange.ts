@@ -8,14 +8,13 @@
  * styles, its headers - and a document comparison would see none of it.
  */
 
-import type { Node as PMNode } from "prosemirror-model";
 import { decodeUtf8, elementChildren, parseXml } from "../ooxml/xml";
 import {
-  changesOnlyComments,
   commentAdditionsBy,
   commentEditsOwned,
   commentIdentitiesKept,
   type EditableComments,
+  withoutComments,
 } from "../schema/protection";
 import {
   COMMENTS_CONTENT_TYPE,
@@ -34,7 +33,11 @@ import {
   resolveTarget,
 } from "./relationships";
 import type { SessionStore } from "./session";
-import { isModelledBlock } from "./storyProjection";
+import {
+  comparableStory,
+  isModelledBlock,
+  type Story,
+} from "./storyProjection";
 
 /**
  * Why a file is not the one it claims to be. `part-changed` and `relationship-changed` name the
@@ -213,21 +216,39 @@ function packageKept(
   return { ok: true };
 }
 
+/**
+ * Whether the two stories say the same thing once the comments are taken out of them.
+ *
+ * The two files were written by different hands, so they are compared as this editor's writer
+ * puts them out rather than as they are worded (`./storyProjection`). A story the writer cannot
+ * put out at all is answered the way a changed one is: there is nothing to compare it against.
+ */
+function sameBody(before: Story, after: Story): boolean {
+  const was = comparableStory(before, withoutComments);
+  const now = comparableStory(after, withoutComments);
+  return (
+    was !== null &&
+    now !== null &&
+    was.length === now.length &&
+    was.every((block, at) => block === now[at])
+  );
+}
+
 function storyKept(
-  before: PMNode,
-  after: PMNode,
+  before: Story,
+  after: Story,
   authorId: string,
   editableComments: EditableComments
 ): CommentOnlyVerdict {
-  if (!changesOnlyComments(before, after)) return refused("body-changed");
+  if (!sameBody(before, after)) return refused("body-changed");
   if (
-    !commentIdentitiesKept(before, after) ||
-    !commentAdditionsBy(before, after, authorId)
+    !commentIdentitiesKept(before.doc, after.doc) ||
+    !commentAdditionsBy(before.doc, after.doc, authorId)
   ) {
     return refused("comment-author-forged");
   }
   if (
-    !commentEditsOwned(before, after, {
+    !commentEditsOwned(before.doc, after.doc, {
       protection: "comments",
       authorId,
       editableComments,
@@ -244,7 +265,9 @@ function storyKept(
  *
  * Every part of the package has to arrive as it left, save for the three a comment is written
  * across and the relationship and content type they are declared with; the document story itself
- * has to read as it did, comments aside. A comment carrying no recorded identity is everyone's to
+ * has to read as it did, comments aside. Reading the same is judged by writing both stories out
+ * through this editor's writer, so the wording the two files chose is not compared and neither is
+ * markup the writer does not put back at all. A comment carrying no recorded identity is everyone's to
  * edit here as it is in the editor (`schema/protection`), while a comment that appeared has to
  * carry this identity: a file can claim any author, and the editor's own hand in writing it is
  * not there to vouch for it. An identity already recorded is nobody's to rewrite.
@@ -265,6 +288,6 @@ export function onlyCommentsChangedBy(
   const after = importDocx(submitted);
   const packaged = packageKept(before.session, after.session);
   return packaged.ok
-    ? storyKept(before.doc, after.doc, authorId, editableComments)
+    ? storyKept(before, after, authorId, editableComments)
     : packaged;
 }
