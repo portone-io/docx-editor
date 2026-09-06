@@ -251,7 +251,7 @@ function editedBorders(
   if (!props || (current !== null && !borders)) return null;
 
   const sides = edit.kind === "line" ? edit.sides : ALL_CELL_SIDES;
-  const children = sides.reduce((kept, side) => {
+  const edited = sides.reduce((kept, side) => {
     const { write, drop } = sideNames(borders, side);
     const currentSide = borders ? childByLocalName(borders, write) : null;
     const attrs = sideAttrs(currentSide, edit, defaults[side]);
@@ -267,9 +267,9 @@ function editedBorders(
     return drop === null
       ? written
       : setPropsChild(written, drop, null, TC_BORDERS_ORDER);
-  }, props.children);
+  }, props);
 
-  const xml = renderProps({ ...props, children });
+  const xml = renderProps(edited);
   return { xml: xml === "" ? null : xml };
 }
 
@@ -355,7 +355,7 @@ function paddingChange(
       ? { tag: "w:tcMar", attrs: null, children: [] }
       : parseProps(current);
   if (!parsed || (current !== null && !margins)) return null;
-  let children = parsed.children;
+  let edited = parsed;
   let wrote = false;
   for (const side of ALL_CELL_SIDES) {
     const points = values[side];
@@ -379,8 +379,8 @@ function paddingChange(
       "type",
       "dxa"
     );
-    children = setPropsChild(
-      children,
+    edited = setPropsChild(
+      edited,
       name,
       elementXml(existing?.nodeName ?? `w:${side}`, attrs),
       TC_MAR_ORDER
@@ -388,7 +388,7 @@ function paddingChange(
     wrote = true;
   }
   if (!wrote) return null;
-  return { name: "tcMar", xml: renderProps({ ...parsed, children }) };
+  return { name: "tcMar", xml: renderProps(edited) };
 }
 
 /** Which child of the tcPr one job changes and how. null for a value that cannot be written down */
@@ -457,13 +457,9 @@ export function editCellProps(
   const change = childChange(edit, props, defaults);
   if (!change) return null;
 
-  const children = setPropsChild(
-    props.children,
-    change.name,
-    change.xml,
-    TC_PR_ORDER
+  const rendered = renderProps(
+    setPropsChild(props, change.name, change.xml, TC_PR_ORDER)
   );
-  const rendered = renderProps({ ...props, children });
   const next = rendered === "" ? null : rendered;
   if (next === tcPr) return null;
   return { tcPr: next, format: readCellProps(next, defaults, margins) };
@@ -517,10 +513,9 @@ export function editRowHeight(
     writtenRule === "exact" ? "exact" : "atLeast"
   );
   const child = elementXml(element?.nodeName ?? "w:trHeight", nextAttrs);
-  const rendered = renderProps({
-    ...props,
-    children: setPropsChild(props.children, "trHeight", child, TR_PR_ORDER),
-  });
+  const rendered = renderProps(
+    setPropsChild(props, "trHeight", child, TR_PR_ORDER)
+  );
   if (rendered === trPr) return null;
   const parsed = parsePropsXml(rendered);
   const format = parsed ? readRowFormat(parsed) : null;

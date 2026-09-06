@@ -61,10 +61,7 @@ function withWidth(
   order: readonly string[]
 ): Props {
   if (!width) return props;
-  return {
-    ...props,
-    children: setPropsChild(props.children, name, widthXml(name, width), order),
-  };
+  return setPropsChild(props, name, widthXml(name, width), order);
 }
 
 function tablePropsXml(table: PMNode): string {
@@ -96,17 +93,10 @@ function cellPropsXml(cell: PMNode, role: CellRole): string {
         ? '<w:vMerge w:val="restart"/>'
         : null;
 
-  let children = setPropsChild(
-    props.children,
-    "gridSpan",
-    gridSpan,
-    TC_PR_ORDER
-  );
-  children = setPropsChild(children, "vMerge", vMerge, TC_PR_ORDER);
+  const spanned = setPropsChild(props, "gridSpan", gridSpan, TC_PR_ORDER);
+  const merged = setPropsChild(spanned, "vMerge", vMerge, TC_PR_ORDER);
   const width = toTableWidth(cell.attrs.tcW);
-  return renderProps(
-    withWidth({ ...props, children }, "tcW", width, TC_PR_ORDER)
-  );
+  return renderProps(withWidth(merged, "tcW", width, TC_PR_ORDER));
 }
 
 function cellBlockXml(block: PMNode, refs: ExportRefs): string {

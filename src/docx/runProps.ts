@@ -297,11 +297,12 @@ export function editRunProps(
   const edits = childEdits(edit, inherited, rFonts);
   if (!edits) return null;
 
-  const children = edits.reduce(
-    (kept, [name, xml]) => setPropsChild(kept, name, xml, RUN_PR_ORDER),
-    props.children
+  const rPr = renderProps(
+    edits.reduce(
+      (kept, [name, xml]) => setPropsChild(kept, name, xml, RUN_PR_ORDER),
+      props
+    )
   );
-  const rPr = renderProps({ ...props, children });
   return nextProps(rPr === "" ? null : rPr, current);
 }
 

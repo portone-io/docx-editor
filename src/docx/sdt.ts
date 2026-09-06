@@ -103,7 +103,10 @@ export function newControlId(): number {
 
 function renderPrefix(props: Props): string {
   const open = props.attrs ? `<${props.tag} ${props.attrs}>` : `<${props.tag}>`;
-  return open + props.children.map((child) => child.xml).join("");
+  const inner = props.children
+    .map((child) => (child.before ?? "") + child.xml)
+    .join("");
+  return open + inner + (props.tail ?? "");
 }
 
 /** What text one child of the control's `w:sdtPr` is to be changed to. A null xml removes that child */
@@ -146,20 +149,20 @@ export function editSdtPrefix(
   const props = sdtPr ? parseProps(sdtPr.xml) : null;
   if (!sdt || !props) return null;
 
-  const children = edits.reduce(
-    (kept, [name, xml]) => setPropsChild(kept, name, xml, SDT_PR_ORDER),
-    props.children
+  const rendered = renderProps(
+    edits.reduce(
+      (kept, [name, xml]) => setPropsChild(kept, name, xml, SDT_PR_ORDER),
+      props
+    )
   );
-  const rendered = renderProps({ ...props, children });
-  return renderPrefix({
-    ...sdt,
-    children: setPropsChild(
-      sdt.children,
+  return renderPrefix(
+    setPropsChild(
+      sdt,
       "sdtPr",
       rendered === "" ? emptyProps(props) : rendered,
       SDT_ORDER
-    ),
-  });
+    )
+  );
 }
 
 /**

@@ -16,7 +16,7 @@ export interface PropsChild {
   /**
    * Whatever stood between the child before this one and this one: line breaks a producer laid
    * out, comments, anything that is not an element. Carried so that rewriting one child does not
-   * quietly drop the rest of what the fragment said.
+   * quietly drop the rest of what the fragment said. Absent rather than empty when nothing did.
    */
   before?: string;
 }
@@ -349,34 +349,75 @@ function insertIndex(
 }
 
 /**
+ * Drops every child of this name, carrying what stood in front of each onto whatever follows.
+ * A gap belongs to the fragment rather than to the child it happened to sit in front of, so
+ * removing a child does not take a producer's comment away with it.
+ */
+function dropChildren(
+  children: readonly PropsChild[],
+  name: string
+): { kept: PropsChild[]; carried: string } {
+  const kept: PropsChild[] = [];
+  let carried = "";
+  for (const child of children) {
+    const before = carried + (child.before ?? "");
+    if (child.name === name) {
+      carried = before;
+      continue;
+    }
+    carried = "";
+    kept.push(
+      before === ""
+        ? { name: child.name, xml: child.xml }
+        : { ...child, before }
+    );
+  }
+  return { kept, carried };
+}
+
+/** What a dropped child left in front of it, with nothing left to follow, belongs to the tail */
+function tailWith(props: Props, carried: string): { tail?: string } {
+  const tail = carried + (props.tail ?? "");
+  return tail === "" ? {} : { tail };
+}
+
+/**
  * Replaces a single child with new XML.
  * A null `xml` removes that child. A child that was not there goes into the spot the order calls for.
  */
 export function setPropsChild(
-  children: PropsChild[],
+  props: Props,
   name: string,
   xml: string | null,
   order: readonly string[]
-): PropsChild[] {
-  const without = children.filter((child) => child.name !== name);
-  if (xml === null) return without;
+): Props {
+  const at = props.children.findIndex((entry) => entry.name === name);
 
-  const at = children.findIndex((entry) => entry.name === name);
-  if (at === -1) {
-    const index = insertIndex(without, name, order);
-    const child: PropsChild = { name, xml };
-    return [...without.slice(0, index), child, ...without.slice(index)];
-  }
   // Keeps the spot it originally occupied, and what stood in front of it. If the same name
   // appears several times, only the first spot survives
-  const kept = children[at].before;
-  const child: PropsChild =
-    kept === undefined ? { name, xml } : { name, xml, before: kept };
-  return [
-    ...children.slice(0, at),
-    child,
-    ...children.slice(at + 1).filter((entry) => entry.name !== name),
-  ];
+  if (at !== -1 && xml !== null) {
+    const rest = dropChildren(props.children.slice(at + 1), name);
+    return {
+      ...props,
+      children: [
+        ...props.children.slice(0, at),
+        { ...props.children[at], xml },
+        ...rest.kept,
+      ],
+      ...tailWith(props, rest.carried),
+    };
+  }
+
+  const { kept, carried } = dropChildren(props.children, name);
+  if (xml === null) {
+    return { ...props, children: kept, ...tailWith(props, carried) };
+  }
+  const index = insertIndex(kept, name, order);
+  return {
+    ...props,
+    children: [...kept.slice(0, index), { name, xml }, ...kept.slice(index)],
+    ...tailWith(props, carried),
+  };
 }
 
 export function propsChild(
