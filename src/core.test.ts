@@ -358,11 +358,12 @@ describe("onlyCommentsChangedBy", () => {
       return spots;
     }
 
-    /** What makes one paragraph a different case from another: the kinds of inline node it holds */
+    /** What makes one paragraph a different case from another: the inline nodes and marks it holds */
     function inlineKinds(paragraph: PMNode): string {
       const kinds = new Set<string>();
       paragraph.forEach((child) => {
         kinds.add(child.type.name);
+        for (const mark of child.marks) kinds.add(mark.type.name);
       });
       return Array.from(kinds).sort().join(" ");
     }

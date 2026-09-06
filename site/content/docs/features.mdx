@@ -58,7 +58,7 @@ binding such as `Mod+K` without replacing the editor.
 | Additional Word character formatting and character styles | Existing formatting that the editor does not display or edit is preserved. |
 | Bookmarks | Existing bookmark ranges are preserved at their document positions but are not displayed or editable. |
 | Document fields | Existing fields in the document body are preserved but not displayed or editable. |
-| Tracked changes | Existing revision markup is preserved but not displayed or editable, save for a table's `w:tblGridChange`, which a rebuilt table loses. |
+| Tracked changes | Existing revision markup is preserved but not displayed or editable. A rebuilt table is the exception: it loses its `w:tblGridChange`, and the properties of the cells continuing a vertical merge. |
 
 ## Current limitations
 

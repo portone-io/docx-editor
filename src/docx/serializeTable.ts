@@ -19,6 +19,7 @@ import {
 import { DocxExportError } from "../ooxml/errors";
 import { type ExportRefs, NO_EXPORT_REFS } from "./exportRefs";
 import {
+  innerXml,
   type Props,
   parseProps,
   propsChild,
@@ -56,12 +57,7 @@ function modelled(
   attrs: string,
   replacing: string | undefined
 ): string {
-  const opens = replacing?.indexOf(">") ?? -1;
-  const closes = replacing?.lastIndexOf("</") ?? -1;
-  const inner =
-    replacing !== undefined && opens !== -1 && closes > opens
-      ? replacing.slice(opens + 1, closes)
-      : "";
+  const inner = replacing === undefined ? "" : innerXml(replacing);
   const open = attrs === "" ? `<w:${name}` : `<w:${name} ${attrs}`;
   return inner === "" ? `${open}/>` : `${open}>${inner}</w:${name}>`;
 }
@@ -122,12 +118,18 @@ function cellPropsXml(cell: PMNode, role: CellRole): string {
           propsChild(props.children, "gridSpan")?.xml
         )
       : null;
-  const merging =
-    role === "continue" ? "" : rowspan > 1 ? 'w:val="restart"' : null;
+  // A continuing cell is written from the starting cell's properties, so it has nothing of its
+  // own to keep, and keeping the starting cell's would copy it down the whole merge
   const vMerge =
-    merging === null
-      ? null
-      : modelled("vMerge", merging, propsChild(props.children, "vMerge")?.xml);
+    role === "continue"
+      ? "<w:vMerge/>"
+      : rowspan > 1
+        ? modelled(
+            "vMerge",
+            'w:val="restart"',
+            propsChild(props.children, "vMerge")?.xml
+          )
+        : null;
 
   const spanned = setPropsChild(props, "gridSpan", gridSpan, TC_PR_ORDER);
   const merged = setPropsChild(spanned, "vMerge", vMerge, TC_PR_ORDER);

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { childByLocalName } from "../ooxml/xml";
 import { readRunFormat } from "./formatting";
 import {
+  innerXml,
   P_PR_ORDER,
   parseProps,
   parsePropsXml,
@@ -170,6 +171,21 @@ describe("setPropsChild", () => {
       TC_PR_ORDER
     );
     expect(renderProps(next)).toBe("<w:tcPr><w:vMerge/><!-- kept --></w:tcPr>");
+  });
+});
+
+describe("innerXml", () => {
+  it.each([
+    ['<w:tcW w:w="1"/>', ""],
+    ['<w:tcW w:w="1"></w:tcW>', ""],
+    ["<w:tcW><!-- why --></w:tcW>", "<!-- why -->"],
+    ["<w:tcW><!-- </x> --></w:tcW>", "<!-- </x> -->"],
+    // The opening tag is read rather than scanned for, so this `>` is not the end of it
+    ['<w:tcW w:w="1" w:note="a>b">text</w:tcW>', "text"],
+    ["<w:tcW><w:tcW/></w:tcW>", "<w:tcW/>"],
+    ["not an element", ""],
+  ])("reads what stood inside %s", (xml, inner) => {
+    expect(innerXml(xml)).toBe(inner);
   });
 });
 

@@ -238,6 +238,19 @@ function attrsOf(source: string, tag: Tag): string | null {
 }
 
 /**
+ * What stood inside a single element, and "" for one that stood empty or cannot be made out.
+ *
+ * The opening tag is read rather than scanned for, so a `>` inside an attribute value does not
+ * pass for the end of it.
+ */
+export function innerXml(xml: string): string {
+  const open = readTag(xml, 0);
+  if (!open || xml[0] !== "<" || open.kind !== "open") return "";
+  const close = xml.lastIndexOf("</");
+  return close > open.end ? xml.slice(open.end, close) : "";
+}
+
+/**
  * Splits a formatting fragment into its opening tag and its list of children.
  * null if its shape cannot be made out (in which case leaving the original untouched is the safe move).
  */
