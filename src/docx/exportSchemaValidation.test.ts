@@ -80,6 +80,7 @@ import { documentNumbering, type SessionStore } from "./session";
 
 const XSD_NS = "http://www.w3.org/2001/XMLSchema";
 const XML_NS = "http://www.w3.org/XML/1998/namespace";
+const CONTENT_TYPES_PATH = "[Content_Types].xml";
 
 const wmlPath = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -238,6 +239,50 @@ function expectPartsValidate(name: string, parts: Map<string, string>): void {
   expect(rejected, `${name}: parts the schemas turned down`).toEqual([]);
 }
 
+/**
+ * Every part of a package that holds XML, whichever vocabulary it is written in.
+ *
+ * The schemas committed here describe the wordprocessing vocabulary alone, so `.rels`, the
+ * content types, and the parts the comment writer adds beside `word/comments.xml` are validated
+ * by nothing. Reading each one back is the least that can be said of them, and it is what catches
+ * a writer that emitted a package no reader gets past at all.
+ */
+function xmlParts(bytes: Uint8Array): Map<string, string> {
+  const parts = new Map<string, string>();
+  for (const [path, data] of Object.entries(unzipSync(bytes))) {
+    if (path.endsWith(".xml") || path.endsWith(".rels")) {
+      parts.set(path, decode(data));
+    }
+  }
+  return parts;
+}
+
+/**
+ * The parts of an exported package that no committed schema describes, which the test below
+ * holds the package to holding. Without the list, a package that stopped writing one of them
+ * would still pass a test that only reads what it finds.
+ */
+const UNDESCRIBED_PARTS: readonly string[] = [
+  CONTENT_TYPES_PATH,
+  "_rels/.rels",
+  "word/_rels/document.xml.rels",
+  "word/comments.xml",
+];
+
+function expectEveryXmlPartParses(name: string, bytes: Uint8Array): void {
+  const parts = xmlParts(bytes);
+  expect(parts.size).toBeGreaterThan(0);
+  const unreadable = Array.from(parts).flatMap(([path, xml]) => {
+    try {
+      parseXml(xml);
+      return [];
+    } catch (error) {
+      return [`${name} ${path}: ${String(error)}`];
+    }
+  });
+  expect(unreadable, `${name}: parts no reader gets past`).toEqual([]);
+}
+
 const EDITED = "edited before the export was validated";
 
 function withEditedText(paragraph: PMNode): PMNode {
@@ -293,8 +338,6 @@ const TEXT_COLOR = "#1F4E79";
 
 /** The address the battery links a stretch of text to, which the export writes a relationship for */
 const LINK_ADDRESS = "https://example.com/battery?a=1&b=2";
-
-const CONTENT_TYPES_PATH = "[Content_Types].xml";
 
 const A_PICTURE: ImageToInsert = {
   src: TINY_PNG_DATA_URL,
@@ -943,6 +986,28 @@ describe("the exported package after an edit battery", () => {
     const { doc, session } = importDocx(readFixture(name));
     expectBatteryValidates(name, doc, session);
   });
+
+  /**
+   * The parts no committed schema describes. The battery is what puts most of them in the
+   * package: a comment brings `word/comments.xml` and the thread part beside it, an image brings
+   * a media relationship, and every one of them is named in the content types.
+   */
+  it.each(fixtureNames)(
+    "%s: every XML part of the exported package parses",
+    (name) => {
+      const { doc, session } = importDocx(readFixture(name));
+      const bytes = exportDocx(
+        afterTheBattery(openState(doc, session)).doc,
+        session
+      );
+
+      const parts = xmlParts(bytes);
+      for (const path of UNDESCRIBED_PARTS) {
+        expect(parts.has(path), `${name} wrote no ${path}`).toBe(true);
+      }
+      expectEveryXmlPartParses(name, bytes);
+    }
+  );
 
   /** The same battery over a body holding no table at all, so the one it inserts is the first */
   it.each(fixtureNames)(
