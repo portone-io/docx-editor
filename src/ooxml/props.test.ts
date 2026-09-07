@@ -6,6 +6,7 @@ import {
   childElement,
   editChild,
   innerXml,
+  orderedElement,
   parseProps,
   parsePropsXml,
   propsChild,
@@ -137,6 +138,29 @@ describe("setChild", () => {
       "vMerge",
       "vAlign",
     ]);
+  });
+
+  /**
+   * The order mirrors the schema for the parent, so a name it does not know is a registry entry
+   * that is missing or a child the parent may not hold. Either is a defect to hear about, not one
+   * to write on the end of the fragment.
+   */
+  it("refuses a child that was not there and that the order does not know", () => {
+    expect(() =>
+      setChild(
+        propsOf("<w:tcPr><w:tcW/></w:tcPr>"),
+        "tcMargins",
+        "<w:tcMargins/>"
+      )
+    ).toThrow(/tcMargins is not a child the order of w:tcPr knows/);
+    // One already there is changed or removed in place, which asks nothing of the order
+    expect(
+      setChild(
+        propsOf("<w:tcPr><w:unknownThing/></w:tcPr>"),
+        "unknownThing",
+        null
+      ).children
+    ).toEqual([]);
   });
 
   it("a changed child keeps what stood in front of it", () => {
@@ -278,6 +302,40 @@ describe("renderElement", () => {
   });
 });
 
+describe("orderedElement", () => {
+  it("writes the children in the order the registry lays down, whatever order they came in", () => {
+    expect(
+      orderedElement(
+        "w:tcPr",
+        [],
+        [
+          { name: "vAlign", xml: '<w:vAlign w:val="center"/>' },
+          { name: "tcW", xml: '<w:tcW w:w="1"/>' },
+          { name: "shd", xml: '<w:shd w:fill="FF0000"/>' },
+        ]
+      )
+    ).toBe(
+      '<w:tcPr><w:tcW w:w="1"/><w:shd w:fill="FF0000"/><w:vAlign w:val="center"/></w:tcPr>'
+    );
+    expect(orderedElement("w:tcPr", [["w:x", "1"]], [])).toBe(
+      '<w:tcPr w:x="1"/>'
+    );
+  });
+
+  it("refuses a child the registry does not know for that parent", () => {
+    expect(() =>
+      orderedElement(
+        "w:tcPr",
+        [],
+        [
+          { name: "foo", xml: "<w:foo/>" },
+          { name: "tcW", xml: "<w:tcW/>" },
+        ]
+      )
+    ).toThrow(/foo is not a child the order of w:tcPr knows/);
+  });
+});
+
 describe("editChild", () => {
   const tcPr = (children: string) => `<w:tcPr>${children}</w:tcPr>`;
   const propsOf = (xml: string) => {
@@ -285,6 +343,22 @@ describe("editChild", () => {
     if (!props) throw new Error("could not read the fragment");
     return props;
   };
+
+  /**
+   * A paragraph mark's `w:rPr` is CT_ParaRPr, which puts the track-change record ahead of what a
+   * run's own `w:rPr` holds and which a run's order does not know at all. The enclosing element is
+   * what picks that order, so it has to travel down the path.
+   */
+  it("places a nested child by the order its enclosing element picks", () => {
+    const edited = editChild(
+      propsOf('<w:pPr><w:rPr><w:b/></w:rPr><w:jc w:val="both"/></w:pPr>'),
+      ["rPr", "ins"],
+      () => ({ tag: "w:ins", attrs: 'w:id="1"', children: [] })
+    );
+    expect(edited && renderProps(edited)).toBe(
+      '<w:pPr><w:rPr><w:ins w:id="1"/><w:b/></w:rPr><w:jc w:val="both"/></w:pPr>'
+    );
+  });
 
   it("edits a nested child along its path and leaves the siblings byte for byte", () => {
     const original = tcPr(

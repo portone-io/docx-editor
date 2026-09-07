@@ -144,24 +144,28 @@ export function renderProps(props: Props): string {
 }
 
 /**
- * The spot this child goes into within the prescribed order.
- * A child whose place in the order we do not know is treated as sitting right behind the child before it.
+ * The spot this child goes into within the prescribed order: ahead of the first child the order
+ * puts after it. A child already there that the order does not know decides nothing, so a new
+ * child lands behind it when it stands ahead of the spot and ahead of it otherwise.
+ *
+ * Throws for a name the order does not know at all. The order mirrors the schema for its parent,
+ * so such a name is either an entry the registry is missing or a child the parent may not hold,
+ * and writing it on the end would hide either one behind an export a validator may refuse.
  */
 function insertIndex(
-  children: PropsChild[],
+  children: readonly PropsChild[],
   name: string,
-  order: readonly string[]
+  order: readonly string[],
+  tag: string
 ): number {
   const target = order.indexOf(name);
-  if (target === -1) return children.length;
-  let previous = -1;
-  for (const [index, child] of children.entries()) {
-    const known = order.indexOf(child.name);
-    const effective = known === -1 ? previous : known;
-    if (effective > target) return index;
-    previous = effective;
+  if (target === -1) {
+    throw new Error(
+      `${name} is not a child the order of ${tag} knows; add it to CHILD_ORDER`
+    );
   }
-  return children.length;
+  const at = children.findIndex((child) => order.indexOf(child.name) > target);
+  return at === -1 ? children.length : at;
 }
 
 /**
@@ -233,7 +237,7 @@ export function setChild(
   if (xml === null) {
     return { ...props, children: kept, ...tailWith(props, carried) };
   }
-  const index = insertIndex(kept, name, order);
+  const index = insertIndex(kept, name, order, props.tag);
   return {
     ...props,
     children: [...kept.slice(0, index), { name, xml }, ...kept.slice(index)],
@@ -298,7 +302,7 @@ export function renderElement(props: Props): string {
 /**
  * An element whose children go in the order `CHILD_ORDER` lays down, whatever order they are
  * handed in. This is how a fragment written from scratch follows the same order an edited one
- * is held to.
+ * is held to, and a child the order does not know is refused the same way.
  */
 export function orderedElement(
   tag: string,
