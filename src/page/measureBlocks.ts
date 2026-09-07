@@ -2,6 +2,8 @@
  * Measures the sheet as drawn on screen: the height of each body block, the gap above it, and
  * where the page breaks inside it stand, with nothing computed line by line.
  *
+ * Every place a block may be parted at is read as a break candidate (`page/blockKinds`), whatever
+ * shape of block it is: a page break for a paragraph, a safe row boundary for a table.
  * The engine's own marks are taken back off as they are read, so a block already pushed and a
  * break already given its space read as they would with neither applied. A measurement that read
  * them in would add to what is already there, and the layout would creep on every pass.
@@ -10,8 +12,16 @@
 
 import type { EditorView } from "prosemirror-view";
 import { editorAttributes } from "../styles/classNames";
-import type { MeasuredBlock } from "./pageLayout";
+import type { BreakCandidate, MeasuredBlock } from "./blockKinds";
+import { pageBreaksIn } from "./pageDecorations";
 import { measureTable } from "./tableMeasurements";
+
+/** What a table continuation still needs from the measurement to be drawn */
+export interface TableHeaderProjection {
+  headerRows: readonly number[];
+  headerSignature: string;
+  columns: number;
+}
 
 /**
  * The measurements taken in order to draw the page overlay. Positions are relative to
@@ -25,6 +35,11 @@ export interface SheetMeasure {
   contentTop: number;
   contentBottom: number;
   blocks: MeasuredBlock[];
+  /**
+   * The header facts of every table block, by the table's position, for the adapter that turns
+   * cuts back into table continuations (`page/usePageLayout`)
+   */
+  tables: ReadonlyMap<number, TableHeaderProjection>;
 }
 
 const PAGE_BREAK_BR = `br[${editorAttributes.breakType}="page"]`;
@@ -57,7 +72,8 @@ function drawnBlocks(view: EditorView): { pos: number; dom: HTMLElement }[] {
 
 /**
  * A break with no space of its own sits somewhere the space could not be opened, inside a table
- * cell (`page/pageDecorations`). Those still start a new page, but only after the whole block.
+ * cell (`page/pageDecorations`). Those still start a new page, but only after the whole block,
+ * which the layout answers from `breakAfter`.
  */
 function breakWithoutSpace(dom: HTMLElement, spaces: number): boolean {
   return dom.querySelectorAll(PAGE_BREAK_BR).length > spaces;
@@ -77,10 +93,10 @@ export function measureSheet(
   const sheetY = (viewportY: number) => (viewportY - sheetRect.top) / scale;
 
   const blocks: MeasuredBlock[] = [];
+  const tables = new Map<number, TableHeaderProjection>();
   let previousBottom = contentTop;
   /** Everything the engine has opened up above the point being read */
   let applied = 0;
-  let breakAfterPrevious = false;
 
   for (const { pos, dom } of drawnBlocks(view)) {
     const node = view.state.doc.nodeAt(pos);
@@ -91,28 +107,46 @@ export function measureSheet(
       ? measureTable(view, node, pos, dom, scale)
       : null;
 
-    const breaks: number[] = [];
+    // Each space element is the one the break at the same ordinal was given
+    const breaks = node ? pageBreaksIn(node, pos) : [];
     const spaces = Array.from(dom.querySelectorAll(BREAK_SPACE));
-    for (const space of spaces) {
+    const forced: BreakCandidate[] = [];
+    spaces.forEach((space, index) => {
       const box = space.getBoundingClientRect();
-      breaks.push(sheetY(box.top) - applied - top);
+      const found = breaks.at(index);
+      if (found) {
+        forced.push({
+          at: found.at,
+          offset: sheetY(box.top) - applied - top,
+          forced: true,
+          repeatHeight: 0,
+        });
+      }
       applied += box.height / scale;
-    }
+    });
 
     applied += measuredTable?.appliedHeight ?? 0;
     const bottom = sheetY(rect.bottom) - applied;
+    const height = bottom - top;
+    if (measuredTable) {
+      tables.set(pos, {
+        headerRows: measuredTable.headerRows,
+        headerSignature: measuredTable.headerSignature,
+        columns: measuredTable.columns,
+      });
+    }
     blocks.push({
       pos,
       gap: top - previousBottom,
-      height: bottom - top,
-      breakBefore:
-        breakAfterPrevious ||
-        dom.hasAttribute(editorAttributes.pageBreakBefore),
-      breaks,
-      ...(measuredTable ? { table: measuredTable.table } : {}),
+      height,
+      breakBefore: dom.hasAttribute(editorAttributes.pageBreakBefore),
+      breakAfter: breakWithoutSpace(dom, spaces.length),
+      // A space is never opened inside a table, so at most one of the two lists holds anything
+      candidates: [...forced, ...(measuredTable?.candidates ?? [])],
+      minFirstPiece:
+        measuredTable?.minFirstPiece ?? forced[0]?.offset ?? height,
     });
     previousBottom = bottom;
-    breakAfterPrevious = breakWithoutSpace(dom, spaces.length);
   }
 
   return {
@@ -122,5 +156,6 @@ export function measureSheet(
     contentTop,
     contentBottom,
     blocks,
+    tables,
   };
 }

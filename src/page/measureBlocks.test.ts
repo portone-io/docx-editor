@@ -8,6 +8,7 @@ import { editorAttributes } from "../styles/classNames";
 import { measureSheet } from "./measureBlocks";
 import { setPageBreakSpaces, setPagePushes } from "./pageDecorations";
 import { type MeasuredBlock, pageLayout } from "./pageLayout";
+import { cutsToLegacyMarks } from "./usePageLayout";
 
 const PAGE = 500;
 const STEP = 100;
@@ -41,6 +42,15 @@ function editor(doc: PMNode): EditorView {
 
 function pageBreak(): PMNode {
   return docxSchema.nodes.hardBreak.create({ brAttrs: 'w:type="page"' });
+}
+
+/** Where the page break in the first block stands, as the measurement names it */
+function breakPos(live: EditorView): number {
+  let found = -1;
+  live.state.doc.child(0).forEach((child, offset) => {
+    if (child.type === docxSchema.nodes.hardBreak) found = 1 + offset;
+  });
+  return found;
 }
 
 function number(value: string | null): number {
@@ -113,6 +123,32 @@ const SHAPES: readonly BlockShape[] = [
   { gap: 0, height: PAGE, breaks: [] },
 ];
 
+/** `SHAPES` as the blocks a measurement of them comes to */
+function measuredShapes(live: EditorView): MeasuredBlock[] {
+  return [
+    {
+      pos: 0,
+      gap: 0,
+      height: 40,
+      breakBefore: false,
+      breakAfter: false,
+      candidates: [
+        { at: breakPos(live), offset: 20, forced: true, repeatHeight: 0 },
+      ],
+      minFirstPiece: 20,
+    },
+    {
+      pos: live.state.doc.child(0).nodeSize,
+      gap: 0,
+      height: PAGE,
+      breakBefore: false,
+      breakAfter: false,
+      candidates: [],
+      minFirstPiece: PAGE,
+    },
+  ];
+}
+
 describe("measureSheet", () => {
   it("gives every page break a space to be measured at, before any measurement", () => {
     const live = editor(brokenParagraph());
@@ -125,16 +161,7 @@ describe("measureSheet", () => {
   it("reads a break where it stands in its own block", () => {
     const live = editor(brokenParagraph());
     draw(live, SHAPES);
-    expect(measureSheet(live, live.dom).blocks).toEqual([
-      { pos: 0, gap: 0, height: 40, breakBefore: false, breaks: [20] },
-      {
-        pos: live.state.doc.child(0).nodeSize,
-        gap: 0,
-        height: PAGE,
-        breakBefore: false,
-        breaks: [],
-      },
-    ]);
+    expect(measureSheet(live, live.dom).blocks).toEqual(measuredShapes(live));
   });
 
   it("normalizes measurements taken from a visually scaled sheet", () => {
@@ -142,16 +169,7 @@ describe("measureSheet", () => {
     live.dom.style.zoom = "0.6";
     draw(live, SHAPES, 0.6);
 
-    expect(measureSheet(live, live.dom).blocks).toEqual([
-      { pos: 0, gap: 0, height: 40, breakBefore: false, breaks: [20] },
-      {
-        pos: live.state.doc.child(0).nodeSize,
-        gap: 0,
-        height: PAGE,
-        breakBefore: false,
-        breaks: [],
-      },
-    ]);
+    expect(measureSheet(live, live.dom).blocks).toEqual(measuredShapes(live));
   });
 
   /**
@@ -163,18 +181,19 @@ describe("measureSheet", () => {
     const live = editor(brokenParagraph());
     draw(live, SHAPES);
 
-    const first = measureSheet(live, live.dom).blocks;
-    const applied = layoutOf(first);
-    expect(applied.spaces).toHaveLength(1);
+    const first = measureSheet(live, live.dom);
+    const applied = layoutOf(first.blocks);
+    expect(applied.cuts).toHaveLength(1);
     expect(applied.pushes).toHaveLength(1);
 
+    const marks = cutsToLegacyMarks(applied.cuts, first.tables, live.state.doc);
     setPagePushes(live, applied.pushes);
-    setPageBreakSpaces(live, applied.spaces);
+    setPageBreakSpaces(live, marks.spaces);
     draw(live, SHAPES);
 
-    const again = measureSheet(live, live.dom).blocks;
-    expect(again).toEqual(first);
-    expect(layoutOf(again)).toEqual(applied);
+    const again = measureSheet(live, live.dom);
+    expect(again.blocks).toEqual(first.blocks);
+    expect(layoutOf(again.blocks)).toEqual(applied);
   });
 
   it("leaves a break inside a table to the block it sits in", () => {
@@ -200,8 +219,10 @@ describe("measureSheet", () => {
       { gap: 0, height: 20, breaks: [] },
     ]);
     const blocks = measureSheet(live, live.dom).blocks;
-    expect(blocks[0]?.breaks).toEqual([]);
-    // The break still starts a new page, but only after the whole table
-    expect(blocks[1]?.breakBefore).toBe(true);
+    expect(blocks[0]?.candidates).toEqual([]);
+    // The break still starts a new page, but only after the whole table, which the block it
+    // sits in reports and the layout answers
+    expect(blocks[0]?.breakAfter).toBe(true);
+    expect(blocks[1]?.breakBefore).toBe(false);
   });
 });

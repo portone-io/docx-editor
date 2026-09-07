@@ -9,6 +9,7 @@
  * measurement is taken while a composition is open: the frame is taken again until it is over.
  */
 
+import type { Node as PMNode } from "prosemirror-model";
 import type { EditorView } from "prosemirror-view";
 import {
   type RefObject,
@@ -20,17 +21,21 @@ import {
 } from "react";
 import type { PageGeometry } from "../docx/pageGeometry";
 import { editorCssVariables } from "../styles/classNames";
-import { measureSheet } from "./measureBlocks";
+import type { PageCut } from "./blockKinds";
+import { measureSheet, type TableHeaderProjection } from "./measureBlocks";
 import {
+  pageBreaksIn,
   setPageBreakSpaces,
   setPagePushes,
   setTableContinuations,
 } from "./pageDecorations";
 import {
   A4_PAGE_PIXELS,
+  type BreakSpace,
   PAGE_SPLIT_PX,
   pageLayout,
   pagePixels,
+  type TableContinuation,
 } from "./pageLayout";
 
 /** One place where a page parts from the next. The position is measured on the sheet */
@@ -139,6 +144,39 @@ function sameOverlay(a: PageOverlay | null, b: PageOverlay): boolean {
   );
 }
 
+/**
+ * The layout's cuts as the two kinds of mark the decorations still take.
+ *
+ * A cut names the position the continued piece starts at, and which of the two it is follows from
+ * what stands there: a page `br` the block it sits in counted, or a table row. This stands in
+ * until the decorations take the cuts themselves.
+ */
+export function cutsToLegacyMarks(
+  cuts: readonly PageCut[],
+  tables: ReadonlyMap<number, TableHeaderProjection>,
+  doc: PMNode
+): { spaces: BreakSpace[]; tableContinuations: TableContinuation[] } {
+  const spaces: BreakSpace[] = [];
+  const tableContinuations: TableContinuation[] = [];
+  for (const cut of cuts) {
+    const pos = doc.resolve(cut.at).before(1);
+    const block = doc.nodeAt(pos);
+    if (!block) continue;
+    const index = pageBreaksIn(block, pos).findIndex(
+      (found) => found.at === cut.at
+    );
+    if (index >= 0) {
+      spaces.push({ pos, index, height: cut.height });
+      continue;
+    }
+    const headers = tables.get(pos);
+    if (headers) {
+      tableContinuations.push({ pos: cut.at, height: cut.height, ...headers });
+    }
+  }
+  return { spaces, tableContinuations };
+}
+
 export function usePageLayout({
   view,
   layer,
@@ -164,9 +202,14 @@ export function usePageLayout({
         pageBodyHeight: page.bodyHeight,
         pageStep: page.pageStep,
       });
+      const marks = cutsToLegacyMarks(
+        layout.cuts,
+        measured.tables,
+        view.state.doc
+      );
       setPagePushes(view, layout.pushes);
-      setPageBreakSpaces(view, layout.spaces);
-      setTableContinuations(view, layout.tableContinuations);
+      setPageBreakSpaces(view, marks.spaces);
+      setTableContinuations(view, marks.tableContinuations);
 
       // Stretch the sheet to the number of pages so the last one also looks like a full page
       const sheetHeight =

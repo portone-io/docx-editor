@@ -18,6 +18,9 @@ import {
   twipsToPx,
 } from "../docx/pageGeometry";
 import { editorCssVariables } from "../styles/classNames";
+import type { MeasuredBlock, PageCut } from "./blockKinds";
+
+export type { MeasuredBlock };
 
 /** The paper measured in the pixels the sheet is drawn with */
 export interface PagePixels {
@@ -94,47 +97,6 @@ export function pageGeometryStyle(page: PagePixels): string {
  */
 const TOLERANCE_PX = 0.5;
 
-/** One body block as drawn on screen */
-export interface MeasuredBlock {
-  /** The position where this block starts in the document */
-  pos: number;
-  /** The height that naturally opens up between the previous block and this one */
-  gap: number;
-  height: number;
-  /** Set when the document records that a new page starts at this block */
-  breakBefore: boolean;
-  /**
-   * Every page break inside the block, in document order, each measured from the block's own top
-   * so that the block can be laid out wherever it lands.
-   * That top is the one the block would be drawn at with no space in it, so a space opened at one
-   * break shifts the ones after it.
-   */
-  breaks: readonly number[];
-  /** Row boundaries available when this block is an editable table */
-  table?: MeasuredTable;
-}
-
-/** A row that may start the continued part of a table */
-export interface TableBoundary {
-  /** The row's document position */
-  pos: number;
-  /** Its top measured from the table's natural top */
-  offset: number;
-}
-
-/** The measurements needed to continue a table without changing the document */
-export interface MeasuredTable {
-  boundaries: readonly TableBoundary[];
-  /** The smallest useful first piece: headers followed by one body row group */
-  firstPageMinimum: number;
-  repeatHeaderHeight: number;
-  /** Document positions of the contiguous header rows at the start of the table */
-  headerRows: readonly number[];
-  /** Changes when any projected header content or formatting changes */
-  headerSignature: string;
-  columns: number;
-}
-
 /** The space opened up at one page break, so that what follows it starts the next page */
 export interface BreakSpace {
   /** The position where the block holding the break starts */
@@ -205,8 +167,8 @@ export interface PageStart {
 export interface PageLayout {
   /** Only the blocks to be moved down to the next page */
   pushes: BlockPush[];
-  spaces: BreakSpace[];
-  tableContinuations: TableContinuation[];
+  /** Where the layout parted a block, and the space it opened before the continued piece */
+  cuts: PageCut[];
   splits: PageSplit[];
   /** One per page, the first page included */
   pages: PageStart[];
@@ -232,9 +194,10 @@ function round(value: number): number {
  * blocks below it move down by the same amount.
  * A block taller than one page cannot be pushed, so it is left where it is and only the
  * places it crosses are reported.
- * A page break inside a block is filled out to the end of the page it falls on, which carries
- * the rest of that block - the rest of the sentence, the rest of the list item - to the top of
- * the next page while the block itself stays whole.
+ * A block is parted only where its measurer offered a candidate. A forced one - a page break
+ * written into the text - is filled out to the end of the page it falls on, which carries the rest
+ * of that block to the top of the next page while the block itself stays whole. An optional one -
+ * a row boundary in a table - is taken only where the piece after it would run off the page.
  */
 export function pageLayout({
   blocks,
@@ -242,8 +205,7 @@ export function pageLayout({
   pageStep,
 }: PageLayoutInput): PageLayout {
   const pushes: BlockPush[] = [];
-  const spaces: BreakSpace[] = [];
-  const tableContinuations: TableContinuation[] = [];
+  const cuts: PageCut[] = [];
   const splits: PageSplit[] = [];
   const firstPage: PageStart = {
     page: 1,
@@ -253,14 +215,7 @@ export function pageLayout({
   };
   const pages: PageStart[] = [firstPage];
   if (!(pageBodyHeight > 0)) {
-    return {
-      pushes,
-      spaces,
-      tableContinuations,
-      splits,
-      pages,
-      bodyHeight: 0,
-    };
+    return { pushes, cuts, splits, pages, bodyHeight: 0 };
   }
 
   let pageStart = 0;
@@ -283,13 +238,16 @@ export function pageLayout({
     }
   };
 
+  let breakAfterPrevious = false;
+
   for (const block of blocks) {
     const pageEnd = pageStart + pageBodyHeight;
     const top = cursor + block.gap;
-    const startsPage = block.breakBefore && top > pageStart + TOLERANCE_PX;
-    // Only the part up to the first break has to fit on the page the block starts on
-    const first =
-      block.breaks[0] ?? block.table?.firstPageMinimum ?? block.height;
+    const startsPage =
+      (block.breakBefore || breakAfterPrevious) &&
+      top > pageStart + TOLERANCE_PX;
+    // Only the piece up to the first candidate has to fit on the page the block starts on
+    const first = block.minFirstPiece;
     const overflows = top + first > pageEnd + TOLERANCE_PX;
     const fits = first <= pageBodyHeight + TOLERANCE_PX;
 
@@ -306,63 +264,44 @@ export function pageLayout({
       });
     }
 
-    // Offsets are read off the block with no space in it, so each space shifts the ones after it
-    let contentTop = top + push;
-    for (const [index, offset] of block.breaks.entries()) {
-      const breakY = contentTop + offset;
-      crossTo(breakY);
-      split(pageStart + pageBodyHeight, false, true);
-      const height = Math.max(0, pageStart - breakY);
-      spaces.push({ pos: block.pos, index, height: round(height) });
-      contentTop += height;
-    }
-
-    let tableAdded = 0;
-    if (block.table) {
-      let segmentStart = 0;
-      for (let index = 0; index <= block.table.boundaries.length; index += 1) {
-        const segmentEnd =
-          block.table.boundaries[index]?.offset ?? block.height;
-        const segmentTop = contentTop + segmentStart + tableAdded;
-        let segmentBottom = contentTop + segmentEnd + tableAdded;
-        const pageEnd = pageStart + pageBodyHeight;
-        const overflows = segmentBottom > pageEnd + TOLERANCE_PX;
-        const boundary = index === 0 ? null : block.table.boundaries[index - 1];
-        const segmentHeight = segmentEnd - segmentStart;
-
-        if (
-          overflows &&
-          boundary &&
-          segmentTop > pageStart + TOLERANCE_PX &&
-          segmentHeight <= pageBodyHeight + TOLERANCE_PX
-        ) {
-          split(pageEnd, false, false);
-          const height = Math.max(0, pageStart - segmentTop);
-          tableContinuations.push({
-            pos: boundary.pos,
-            height: round(height),
-            headerRows: block.table.headerRows,
-            headerSignature: block.table.headerSignature,
-            columns: block.table.columns,
-          });
-          tableAdded += height + block.table.repeatHeaderHeight;
-          segmentBottom = contentTop + segmentEnd + tableAdded;
+    // Offsets are read off the block with no space in it, so each cut shifts the ones after it
+    const contentTop = top + push;
+    let added = 0;
+    let pieceStart = 0;
+    for (let index = 0; index <= block.candidates.length; index += 1) {
+      const cut = index === 0 ? null : block.candidates[index - 1];
+      const pieceEnd = block.candidates[index]?.offset ?? block.height;
+      const pieceTop = contentTop + pieceStart + added;
+      let pieceBottom = contentTop + pieceEnd + added;
+      if (cut) {
+        // A forced cut is answered from the page its own place stands on, however many pages
+        // the piece before it crossed to get there
+        if (cut.forced) crossTo(pieceTop);
+        const pageBottom = pageStart + pageBodyHeight;
+        const cutHere =
+          cut.forced ||
+          (pieceBottom > pageBottom + TOLERANCE_PX &&
+            pieceTop > pageStart + TOLERANCE_PX &&
+            pieceEnd - pieceStart <= pageBodyHeight + TOLERANCE_PX);
+        if (cutHere) {
+          split(pageBottom, false, cut.forced);
+          const height = Math.max(0, pageStart - pieceTop);
+          cuts.push({ at: cut.at, height: round(height) });
+          added += height + cut.repeatHeight;
+          pieceBottom += height + cut.repeatHeight;
         }
-
-        crossTo(segmentBottom);
-        segmentStart = segmentEnd;
       }
+      crossTo(pieceBottom);
+      pieceStart = pieceEnd;
     }
 
-    const bottom = contentTop + block.height + tableAdded;
-    crossTo(bottom);
-    cursor = bottom;
+    cursor = contentTop + block.height + added;
+    breakAfterPrevious = block.breakAfter;
   }
 
   return {
     pushes,
-    spaces,
-    tableContinuations,
+    cuts,
     splits,
     pages,
     bodyHeight: round(pageStart + pageBodyHeight),

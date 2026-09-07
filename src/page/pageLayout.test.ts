@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { LETTER_GEOMETRY } from "../__testing__/docx";
 import { editorClassNames, editorCssVariables } from "../styles/classNames";
+import type { BreakCandidate } from "./blockKinds";
 import {
   A4_PAGE_PIXELS,
   type MeasuredBlock,
@@ -21,13 +22,49 @@ const STEP = 200;
 function blocks(
   ...heights: readonly (number | Partial<MeasuredBlock>)[]
 ): MeasuredBlock[] {
-  return heights.map((entry, index) => ({
-    pos: index * 10,
-    gap: 0,
-    height: typeof entry === "number" ? entry : 0,
-    breakBefore: false,
-    breaks: [],
-    ...(typeof entry === "number" ? {} : entry),
+  return heights.map((entry, index) => {
+    const shape = typeof entry === "number" ? { height: entry } : entry;
+    const height = shape.height ?? 0;
+    return {
+      pos: index * 10,
+      gap: 0,
+      breakBefore: false,
+      breakAfter: false,
+      candidates: [],
+      minFirstPiece: height,
+      ...shape,
+      height,
+    };
+  });
+}
+
+/** A block parted where the text says it is, the way a paragraph's page breaks are measured */
+function broken(
+  height: number,
+  ...offsets: readonly number[]
+): Partial<MeasuredBlock> {
+  return {
+    height,
+    candidates: offsets.map((offset, index) => ({
+      at: 100 + index,
+      offset,
+      forced: true,
+      repeatHeight: 0,
+    })),
+    minFirstPiece: offsets[0] ?? height,
+  };
+}
+
+/** Row boundaries as a table offers them: taken only where the piece after one would overflow */
+function rowBoundaries(
+  repeatHeight: number,
+  ...offsets: readonly number[]
+): BreakCandidate[] {
+  return offsets.map((offset, index) => ({
+    at: 101 + index,
+    offset,
+    forced: false,
+    repeatHeight,
   }));
 }
 
@@ -93,11 +130,9 @@ describe("pageLayout", () => {
   });
 
   it("a page break inside a block fills out the page, so the rest of the block starts the next one", () => {
-    const result = layout(blocks({ height: 300, breaks: [100] }));
+    const result = layout(blocks(broken(300, 100)));
     // The 900 left on the page, plus the step over to the next page's body
-    expect(result.spaces).toEqual([
-      { pos: 0, index: 0, height: PAGE - 100 + STEP },
-    ]);
+    expect(result.cuts).toEqual([{ at: 100, height: PAGE - 100 + STEP }]);
     expect(result.pushes).toEqual([]);
     expect(result.splits).toMatchObject([
       { y: PAGE, page: 2, forced: true, crossed: false },
@@ -107,48 +142,42 @@ describe("pageLayout", () => {
 
   it("only the part of a block before its first break has to fit on the page it starts on", () => {
     // The 50 up to the break fits in the 100 left over, where the whole 300 would not
-    const result = layout(blocks(900, { height: 300, breaks: [50] }));
+    const result = layout(blocks(900, broken(300, 50)));
     expect(result.pushes).toEqual([]);
-    expect(result.spaces).toEqual([
-      { pos: 10, index: 0, height: PAGE - 950 + STEP },
-    ]);
+    expect(result.cuts).toEqual([{ at: 100, height: PAGE - 950 + STEP }]);
   });
 
   it("a break at the end of a block puts the block after it at the top of the next page", () => {
     // The second block is a page tall, so it only fits at all where the break left it
-    const result = layout(blocks({ height: 300, breaks: [300] }, PAGE));
-    expect(result.spaces).toEqual([
-      { pos: 0, index: 0, height: PAGE - 300 + STEP },
-    ]);
+    const result = layout(blocks(broken(300, 300), PAGE));
+    expect(result.cuts).toEqual([{ at: 100, height: PAGE - 300 + STEP }]);
     expect(result.pushes).toEqual([]);
     expect(result.splits).toHaveLength(1);
     expect(result.bodyHeight).toBe(PAGE + STEP + PAGE);
   });
 
   it("each break in a block fills out the page it lands on", () => {
-    const result = layout(blocks({ height: 400, breaks: [100, 250] }));
+    const result = layout(blocks(broken(400, 100, 250)));
     // The second break stands 150 into the page the first one opened, not 250 into the block
-    expect(result.spaces).toEqual([
-      { pos: 0, index: 0, height: PAGE - 100 + STEP },
-      { pos: 0, index: 1, height: PAGE - 150 + STEP },
+    expect(result.cuts).toEqual([
+      { at: 100, height: PAGE - 100 + STEP },
+      { at: 101, height: PAGE - 150 + STEP },
     ]);
     expect(result.splits.map((split) => split.forced)).toEqual([true, true]);
     expect(result.pages).toHaveLength(3);
   });
 
   it("a break inside a block taller than a page is answered from the page it stands on", () => {
-    const result = layout(blocks({ height: 2500, breaks: [1500] }));
+    const result = layout(blocks(broken(2500, 1500)));
     expect(result.splits).toMatchObject([
       { y: PAGE, page: 2, crossed: true },
       { y: 2 * PAGE, page: 3, forced: true, crossed: false },
     ]);
-    expect(result.spaces).toEqual([
-      { pos: 0, index: 0, height: 2 * PAGE - 1500 + STEP },
-    ]);
+    expect(result.cuts).toEqual([{ at: 100, height: 2 * PAGE - 1500 + STEP }]);
   });
 
   it("a page split by a break inside a block has an exact number", () => {
-    const result = layout(blocks({ height: 300, breaks: [100] }));
+    const result = layout(blocks(broken(300, 100)));
     expect(result.pages.map((start) => start.exactPage)).toEqual([true, true]);
   });
 
@@ -216,63 +245,26 @@ describe("pageLayout", () => {
     const result = layout(
       blocks({
         height: 1500,
-        table: {
-          boundaries: [
-            { pos: 101, offset: 300 },
-            { pos: 102, offset: 600 },
-            { pos: 103, offset: 900 },
-            { pos: 104, offset: 1200 },
-          ],
-          firstPageMinimum: 300,
-          repeatHeaderHeight: 0,
-          headerRows: [],
-          headerSignature: "",
-          columns: 2,
-        },
+        candidates: rowBoundaries(0, 300, 600, 900, 1200),
+        minFirstPiece: 300,
       })
     );
 
-    expect(result.tableContinuations).toEqual([
-      {
-        pos: 103,
-        height: 300,
-        headerRows: [],
-        headerSignature: "",
-        columns: 2,
-      },
-    ]);
+    expect(result.cuts).toEqual([{ at: 103, height: 300 }]);
     expect(result.splits).toMatchObject([{ y: PAGE, crossed: false }]);
   });
 
   it("moves a long table first when its first row does not fit the current page", () => {
     const table = blocks({
       height: 1200,
-      table: {
-        boundaries: [
-          { pos: 101, offset: 300 },
-          { pos: 102, offset: 600 },
-          { pos: 103, offset: 900 },
-        ],
-        firstPageMinimum: 300,
-        repeatHeaderHeight: 0,
-        headerRows: [],
-        headerSignature: "",
-        columns: 2,
-      },
+      candidates: rowBoundaries(0, 300, 600, 900),
+      minFirstPiece: 300,
     })[0];
     if (!table) throw new Error("table block not built");
     const result = layout([...blocks(800), { ...table, pos: 10 }]);
 
     expect(result.pushes.map((push) => push.pos)).toEqual([10]);
-    expect(result.tableContinuations).toEqual([
-      {
-        pos: 103,
-        height: 300,
-        headerRows: [],
-        headerSignature: "",
-        columns: 2,
-      },
-    ]);
+    expect(result.cuts).toEqual([{ at: 103, height: 300 }]);
     expect(result.splits).toHaveLength(2);
   });
 
@@ -280,31 +272,12 @@ describe("pageLayout", () => {
     const result = layout(
       blocks({
         height: 1300,
-        table: {
-          boundaries: [
-            { pos: 101, offset: 100 },
-            { pos: 102, offset: 400 },
-            { pos: 103, offset: 700 },
-            { pos: 104, offset: 1000 },
-          ],
-          firstPageMinimum: 400,
-          repeatHeaderHeight: 100,
-          headerRows: [100],
-          headerSignature: "header",
-          columns: 3,
-        },
+        candidates: rowBoundaries(100, 100, 400, 700, 1000),
+        minFirstPiece: 400,
       })
     );
 
-    expect(result.tableContinuations).toEqual([
-      {
-        pos: 104,
-        height: STEP,
-        headerRows: [100],
-        headerSignature: "header",
-        columns: 3,
-      },
-    ]);
+    expect(result.cuts).toEqual([{ at: 104, height: STEP }]);
     expect(result.bodyHeight).toBe(PAGE + STEP + PAGE);
   });
 
@@ -312,19 +285,99 @@ describe("pageLayout", () => {
     const result = layout(
       blocks({
         height: 1600,
-        table: {
-          boundaries: [{ pos: 104, offset: 1300 }],
-          firstPageMinimum: 1300,
-          repeatHeaderHeight: 0,
-          headerRows: [],
-          headerSignature: "",
-          columns: 2,
-        },
+        candidates: rowBoundaries(0, 1300),
+        minFirstPiece: 1300,
       })
     );
 
-    expect(result.tableContinuations).toEqual([]);
+    expect(result.cuts).toEqual([]);
     expect(result.splits.map((split) => split.crossed)).toEqual([true]);
+  });
+
+  it("leaves a candidate uncut when the piece after it is taller than a page", () => {
+    const result = layout(
+      blocks({
+        height: 1600,
+        candidates: rowBoundaries(0, 300),
+        minFirstPiece: 300,
+      })
+    );
+
+    // Cutting here would open a space the piece cannot be made to fit behind, and the text would
+    // cross the next boundary anyway: one more page for nothing
+    expect(result.cuts).toEqual([]);
+    expect(result.splits.map((split) => split.crossed)).toEqual([true]);
+    expect(result.pages).toHaveLength(2);
+    expect(result.bodyHeight).toBe(2 * PAGE);
+  });
+
+  it("a forced candidate and an optional one in the same block cut in document order", () => {
+    const result = layout(
+      blocks({
+        height: 1400,
+        candidates: [
+          { at: 7, offset: 300, forced: true, repeatHeight: 0 },
+          { at: 105, offset: 900, forced: false, repeatHeight: 0 },
+        ],
+        minFirstPiece: 300,
+      })
+    );
+
+    // The optional cut is answered from where the forced one left the piece before it, not from
+    // the block's own top: one running total carries both
+    expect(result.cuts).toEqual([
+      { at: 7, height: PAGE - 300 + STEP },
+      { at: 105, height: 600 },
+    ]);
+    expect(result.splits.map((split) => split.forced)).toEqual([true, false]);
+  });
+
+  it("an optional candidate is answered before the forced one that follows it", () => {
+    const result = layout(
+      blocks({
+        height: 1400,
+        candidates: [
+          { at: 100, offset: 300, forced: false, repeatHeight: 0 },
+          { at: 200, offset: 1200, forced: true, repeatHeight: 0 },
+        ],
+        minFirstPiece: 300,
+      })
+    );
+
+    // Reading the block as breaks first and boundaries second would carry the forced cut's space
+    // back to a piece that stands before it, leaving the optional one uncut and crossed instead
+    expect(result.cuts).toEqual([
+      { at: 100, height: 900 },
+      { at: 200, height: 300 },
+    ]);
+    expect(result.splits.map((split) => split.forced)).toEqual([false, true]);
+    expect(result.splits.map((split) => split.crossed)).toEqual([false, false]);
+  });
+
+  it("an optional candidate with a repeat height carries it onto the next page before the piece", () => {
+    const result = layout(
+      blocks({
+        height: 2000,
+        candidates: rowBoundaries(200, 900, 1400),
+        minFirstPiece: 900,
+      })
+    );
+
+    // The 200 of repeated header stands above the continued piece, so the piece starts 200
+    // lower and the cut after it opens that much less space
+    expect(result.cuts).toEqual([
+      { at: 101, height: 300 },
+      { at: 102, height: 500 },
+    ]);
+  });
+
+  it("a block with breakAfter starts the next block on a new page", () => {
+    const result = layout(blocks({ height: 200, breakAfter: true }, 200));
+
+    expect(result.pushes).toEqual([
+      { pos: 10, marginTop: PAGE + STEP - 200, push: PAGE + STEP - 200 },
+    ]);
+    expect(result.splits).toMatchObject([{ page: 2, forced: true }]);
   });
 
   it("does nothing for a page height that cannot be measured", () => {
