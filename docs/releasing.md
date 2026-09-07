@@ -13,6 +13,10 @@ Merging that pull request publishes, and everything on `main` ships with it: a f
 Its Actions runs wait for approval, since the workflow opened the pull request rather than a person.
 **Approve workflows to run**, in the merge box, starts them; every rewrite re-arms it.
 
+## The version the site's demo runs
+
+Changesets preserves the published demo pins during release preparation through `bumpVersionsWithWorkspaceProtocolOnly`. After publishing succeeds, a separate workflow updates the site. See [automatic site updates and recovery](../site/README.md#automatic-updates-after-publishing).
+
 ## What the workflow decides
 
 Every push to `main` runs the workflow, which first works out which of three things this push is.

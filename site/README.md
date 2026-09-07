@@ -19,7 +19,26 @@ The landing page needs the same `demo.docx` the editor is developed against, and
 
 The demo arrives through a client-only dynamic import. The editor builds a ProseMirror view against the DOM, so it cannot render on the server.
 
-`next.config.mjs` lists `@portone/docx-editor` and `@portone/docx-editor-demo` in `transpilePackages`: both resolve to TypeScript sources through the workspace link rather than to built output.
+`next.config.mjs` lists `@portone/docx-editor-demo` in `transpilePackages`, because that package is a workspace link resolving to TypeScript sources.
+The library it imports is deliberately not listed: the site installs it from npm, and the published package ships built JavaScript.
+
+## The version the demo runs
+
+| Command or deployment | Site and docs | Editor library |
+| --- | --- | --- |
+| `pnpm dev` / `pnpm build:demo` | Development demo | Current `src/` |
+| `pnpm dev:site` | Current working tree, with hot reload | npm `latest`, resolved at startup |
+| `pnpm build:site` / Vercel | Checked-out site and docs | Exact committed release pin |
+
+The site and demo pin the same published library version, including its CSS and version badge. Local site startup needs network access and may update `site/package.json`, `demo/package.json`, and `pnpm-lock.yaml` when a newer release exists. The running server keeps that version until restarted.
+
+### Automatic updates after publishing
+
+After npm publishing succeeds, [Update site release](../.github/workflows/site-release.yml) installs that exact version and builds the current site. On success it commits the two manifests and lockfile; Vercel's existing Git integration deploys the commit. Keep that integration enabled for production `main`. Failed updates leave the previous demo version in place.
+
+If the update fails before committing, run **Update site release** on `main` in GitHub Actions with the already published version. If the commit exists but its deployment failed, retry in Vercel. Neither requires republishing npm.
+
+To check a specific release locally, run `pnpm pin:demo-library 0.3.0` followed by `pnpm build:site`. If installation fails, run `pnpm install` before retrying.
 
 ## Markdown for AI agents
 
