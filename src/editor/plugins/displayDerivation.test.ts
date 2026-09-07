@@ -351,6 +351,75 @@ const BODY_WITH_LINED_TABLE =
   `<w:tr>${cellXml("a1")}${cellXml("b1")}</w:tr>` +
   `<w:tr>${cellXml("a2")}${cellXml("b2")}</w:tr></w:tbl>`;
 
+/** A table style that dresses the header row of the tables that wear it */
+const REPORT_STYLE =
+  '<w:style w:type="table" w:styleId="Report">' +
+  '<w:tblStylePr w:type="firstRow"><w:rPr><w:i/></w:rPr>' +
+  '<w:pPr><w:spacing w:before="120"/></w:pPr></w:tblStylePr></w:style>';
+
+/** The body and a two by two table taking the header row of the style it wears */
+const BODY_WITH_STYLED_TABLE =
+  BODY +
+  '<w:tbl><w:tblPr><w:tblStyle w:val="Report"/>' +
+  '<w:tblLook w:firstRow="1" w:noHBand="1" w:noVBand="1"/></w:tblPr>' +
+  `${GRID}<w:tr>${cellXml("a1")}${cellXml("b1")}</w:tr>` +
+  `<w:tr>${cellXml("a2")}${cellXml("b2")}</w:tr></w:tbl>`;
+
+describe("a paragraph in a cell of a table that wears a style", () => {
+  function stateWithStyledTable(): EditorState {
+    const { doc, session } = importDocx(
+      makeStyledDocx(BODY_WITH_STYLED_TABLE, NORMAL_STYLE + REPORT_STYLE)
+    );
+    return editorStateForSession({ doc, session });
+  }
+
+  /** The spot just after the paragraph holding this text */
+  function afterParagraphOf(doc: PMNode, text: string): number {
+    let at = -1;
+    doc.descendants((node, pos) => {
+      if (at < 0 && node.isText && node.text === text) at = pos;
+    });
+    const $at = doc.resolve(at);
+    return $at.after($at.depth);
+  }
+
+  it("wears what the style dresses the part of the table it stands in with", () => {
+    const header = cellParagraph(stateWithStyledTable().doc, 0, 0);
+    expect(header.styleRun).toEqual({
+      bold: true,
+      italic: true,
+      fontSizePt: 11,
+    });
+    // The paragraph style still decides what it speaks about, the table style what it does not
+    expect(header.format).toEqual({ align: "center", spaceBeforePt: 6 });
+  });
+
+  it("wears nothing of it in a row the style dresses no part of", () => {
+    const body = cellParagraph(stateWithStyledTable().doc, 1, 0);
+    expect(body.styleRun).toEqual({ bold: true, fontSizePt: 11 });
+    expect(body.format).toEqual({ align: "center" });
+  });
+
+  it("dresses a paragraph an edit built in the header row the same way", () => {
+    const state = stateWithStyledTable();
+    const at = afterParagraphOf(state.doc, "a1");
+    const put = state.apply(
+      state.tr.insert(at, docxSchema.nodes.paragraph.create())
+    );
+    const built = put.doc.child(1).child(0).child(0).child(1);
+
+    expect(toRunFormat(built.attrs.styleRun)).toEqual({
+      bold: true,
+      italic: true,
+      fontSizePt: 11,
+    });
+    expect(toParagraphFormat(built.attrs.format)).toEqual({
+      align: "center",
+      spaceBeforePt: 6,
+    });
+  });
+});
+
 describe("what the state is built over", () => {
   it.each(fixtureNames)(
     "%s: opened under its own session, every paragraph is the very node the import built",

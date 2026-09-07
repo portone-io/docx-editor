@@ -5,7 +5,7 @@
  * them last touched it.
  */
 
-import type { Mark } from "prosemirror-model";
+import { Fragment, type Mark, type Node as PMNode } from "prosemirror-model";
 import type { ParagraphFormat, RunFormat } from "../../model/format";
 import { docxSchema } from "../../schema";
 import type { FormattingContext } from "./context";
@@ -63,4 +63,40 @@ export function runMarkUnder(
   return format === null
     ? null
     : docxSchema.marks.run.create({ rPr: null, rAttrs: null, format });
+}
+
+/**
+ * The paragraph with the values the hierarchy gives it, and the text inside it wearing the run
+ * mark that goes with them.
+ *
+ * The style's run values are also laid on the paragraph itself, so that text carrying no run of
+ * its own - typed in the editor - is drawn in them (`styleRun` in `schema`).
+ * Where the paragraph stands in a table cell, `placement` is the part of the table it belongs to,
+ * which the table style dresses on top of everything else it lays down.
+ */
+export function styledParagraph(
+  node: PMNode,
+  context: FormattingContext,
+  placement: ParagraphPlacement | null = null
+): PMNode {
+  const pPr: unknown = node.attrs.pPr;
+  const paragraph = resolveParagraph(
+    typeof pPr === "string" ? pPr : null,
+    context,
+    placement
+  );
+  const inline = node.children.map((child) => {
+    const mark = runMarkUnder(
+      child.marks.find((entry) => entry.type === docxSchema.marks.run) ?? null,
+      child.isText,
+      paragraph,
+      context
+    );
+    return mark ? child.mark(mark.addToSet(child.marks)) : child;
+  });
+  return node.type.create(
+    { ...node.attrs, ...paragraphAttrsOf(paragraph) },
+    Fragment.fromArray(inline),
+    node.marks
+  );
 }

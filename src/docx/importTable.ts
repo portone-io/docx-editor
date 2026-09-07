@@ -22,7 +22,9 @@ import {
   type FormattingContext,
   layerTableFormat,
   NO_FORMATTING,
-  type StyleFormat,
+  type ParagraphPlacement,
+  styledParagraph,
+  tableStyleFor,
 } from "./formatting";
 import {
   buildParagraph,
@@ -281,11 +283,20 @@ function gridWidthOf(rows: RawRow[]): number | null {
   return widths.every((width) => width === first) ? first : null;
 }
 
-/** A single block inside a cell. If it is not a paragraph, or the paragraph cannot be modelled, it holds on to its original XML as is */
-function buildCellBlock(el: Element, sources: ImportSources): PMNode {
+/**
+ * A single block inside a cell, dressed by the parts of the table the cell belongs to.
+ * If it is not a paragraph, or the paragraph cannot be modelled, it holds on to its original XML
+ * as is.
+ */
+function buildCellBlock(
+  el: Element,
+  sources: ImportSources,
+  context: FormattingContext,
+  placement: ParagraphPlacement
+): PMNode {
   if (el.localName === "p") {
     const paragraph = buildParagraph(el, null, sources);
-    if (paragraph) return paragraph;
+    if (paragraph) return styledParagraph(paragraph, context, placement);
   }
   return docxSchema.nodes.rawBlock.create({
     xml: serializeXml(el),
@@ -307,16 +318,17 @@ function cellRect(draft: CellDraft): GridRect {
 function buildCell(
   draft: CellDraft,
   table: TableCells,
-  sources: ImportSources
+  sources: ImportSources,
+  context: FormattingContext
 ): PMNode | null {
   const tcPr = childByLocalName(draft.el, "tcPr");
+  const defaults = cellDefaultsFor(cellRect(draft), table.grid, table.sources);
   const blocks: PMNode[] = [];
   for (const child of elementChildren(draft.el)) {
     if (child.localName === "tcPr") continue;
-    blocks.push(buildCellBlock(child, sources));
+    blocks.push(buildCellBlock(child, sources, context, defaults.placement));
   }
   if (blocks.length === 0) return null;
-  const defaults = cellDefaultsFor(cellRect(draft), table.grid, table.sources);
 
   return docxSchema.nodes.tableCell.create(
     {
@@ -345,11 +357,12 @@ function buildRow(
   row: RawRow,
   drafts: CellDraft[],
   table: TableCells,
-  sources: ImportSources
+  sources: ImportSources,
+  context: FormattingContext
 ): PMNode | null {
   const cells: PMNode[] = [];
   for (const draft of drafts) {
-    const cell = buildCell(draft, table, sources);
+    const cell = buildCell(draft, table, sources, context);
     if (!cell) return null;
     cells.push(cell);
   }
@@ -363,27 +376,6 @@ function buildRow(
     },
     cells
   );
-}
-
-/**
- * The style whose values lie underneath this table's own formatting.
- *
- * A table that points at no style, or at one that is not defined, falls back on the document's
- * default table style, which is what OOXML applies to an object with no style of its own.
- * A style that does resolve needs no fallback underneath it, because a real table style is based on
- * the default one anyway.
- */
-export function tableStyleOf(
-  tblPr: Element | null,
-  context: FormattingContext
-): StyleFormat | undefined {
-  const styleId = tblStyleIdOf(tblPr);
-  const named = styleId === null ? undefined : context.styles.get(styleId);
-  const fallback =
-    context.defaultTableStyleId === null
-      ? undefined
-      : context.styles.get(context.defaultTableStyleId);
-  return named ?? fallback;
 }
 
 /** Moves a `<w:tbl>` into a table node. null if it cannot be modelled */
@@ -405,7 +397,8 @@ export function buildTable(
   const drafts = resolveVerticalMerges(parts.rows, width);
   if (!drafts) return null;
 
-  const style = tableStyleOf(parts.tblPr, context);
+  const styleId = tblStyleIdOf(parts.tblPr);
+  const style = tableStyleFor(styleId, context);
   const tableFormat = layerTableFormat(
     style?.table ?? {},
     readTableFormat(parts.tblPr)
@@ -431,13 +424,13 @@ export function buildTable(
       look: readTableLook(parts.tblPr),
       bands,
       conditions,
-      styleId: tblStyleIdOf(parts.tblPr),
+      styleId,
     },
   };
 
   const rows: PMNode[] = [];
   for (const [index, row] of parts.rows.entries()) {
-    const built = buildRow(row, drafts[index], table, sources);
+    const built = buildRow(row, drafts[index], table, sources, context);
     if (!built) return null;
     rows.push(built);
   }

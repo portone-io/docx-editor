@@ -18,7 +18,10 @@ import {
   type NumberingLevel,
 } from "../../numbering/parseNumbering";
 import { parsePropsXml } from "../../ooxml/props";
-import type { TableStyleOverrideType } from "../tableFormatting";
+import type {
+  ConditionalTableFormat,
+  TableStyleOverrideType,
+} from "../tableFormatting";
 import type { FormattingContext } from "./context";
 import { readParagraphFormat, readRunFormat, runStyleIdOf } from "./direct";
 import {
@@ -30,11 +33,9 @@ import type { ParagraphFormatLayer } from "./tabStops";
 
 /** Where a paragraph sits when it is inside a table cell. null for body text */
 export interface ParagraphPlacement {
+  /** What the table's `w:tblStyle` names. null for a table naming none, which wears the default one */
   tableStyleId: string | null;
-  /**
-   * The conditional formats the cell takes, lowest first. Not read yet: a table style
-   * contributes the values it lays down for the whole table alone
-   */
+  /** The parts of the table the cell belongs to, lowest first (`docx/tableFormatting/conditions`) */
   conditions: readonly TableStyleOverrideType[];
 }
 
@@ -70,12 +71,38 @@ function directLayer(pPr: string | null): ParagraphFormatLayer {
   return pPr === null ? {} : (readParagraphFormat(parsePropsXml(pPr)) ?? {});
 }
 
-function tableStyleOf(
-  placement: ParagraphPlacement | null,
+/**
+ * The table style an object wearing this one is dressed by.
+ *
+ * A table that points at no style, or at one that is not defined, falls back on the document's
+ * default table style, which is what OOXML applies to an object with no style of its own.
+ */
+export function tableStyleFor(
+  styleId: string | null,
   context: FormattingContext
 ): StyleFormat | undefined {
-  const id = placement?.tableStyleId ?? null;
-  return id === null ? undefined : context.styles.get(id);
+  const named = styleId === null ? undefined : context.styles.get(styleId);
+  const fallback =
+    context.defaultTableStyleId === null
+      ? undefined
+      : context.styles.get(context.defaultTableStyleId);
+  return named ?? fallback;
+}
+
+/**
+ * What the table style dresses the parts this cell belongs to with, lowest first.
+ * A paragraph in a header row wears what the style wrote for the whole table and then what it
+ * wrote for the header row, in the order §17.7.6 lays them over one another.
+ */
+function conditionsOf(
+  style: StyleFormat | undefined,
+  placement: ParagraphPlacement | null
+): ConditionalTableFormat[] {
+  if (!style || !placement) return [];
+  return placement.conditions.flatMap((type) => {
+    const format = style.tableConditions[type];
+    return format ? [format] : [];
+  });
 }
 
 /** The list slot the layers settle on. `numId` 0 at any layer takes away the one below it (§17.9.18) */
@@ -174,16 +201,26 @@ export function resolveParagraph(
   context: FormattingContext,
   placement: ParagraphPlacement | null = null
 ): ResolvedParagraph {
-  const tableStyle = tableStyleOf(placement, context);
+  const tableStyle =
+    placement === null
+      ? undefined
+      : tableStyleFor(placement.tableStyleId, context);
+  const conditions = conditionsOf(tableStyle, placement);
   const style = paragraphStyleFormat(
     pPr,
     context.styles,
     context.defaultParagraphStyleId
   );
   const direct = directLayer(pPr);
+  const table: Layer[] = [
+    { values: tableStyle?.paragraph ?? {}, stops: "style" },
+    ...conditions.map(
+      (condition): Layer => ({ values: condition.paragraph, stops: "style" })
+    ),
+  ];
   const explicit: Layer[] = [
     { values: context.paragraphDefaults, stops: "style" },
-    { values: tableStyle?.paragraph ?? {}, stops: "style" },
+    ...table,
     { values: style?.paragraph ?? {}, stops: "style" },
     { values: direct, stops: "direct" },
   ];
@@ -191,10 +228,12 @@ export function resolveParagraph(
     explicit.map((layer) => layer.values),
     context
   );
+  // The numbering level sits above the table style and below the paragraph style (§17.7.2)
+  const belowNumbering = 1 + table.length;
   const layers: Layer[] = [
-    ...explicit.slice(0, 2),
+    ...explicit.slice(0, belowNumbering),
     { values: numberingLayer(level), stops: "numbering" },
-    ...explicit.slice(2),
+    ...explicit.slice(belowNumbering),
   ];
   const values = layers.reduce<ParagraphFormatLayer>(
     (base, layer) => layerValues(base, layer.values),
@@ -219,8 +258,10 @@ export function resolveParagraph(
     ...displayDefaults
   } = context.runDefaults;
   const styleRun: RunFormat = {
-    ...displayDefaults,
-    ...tableStyle?.run,
+    ...conditions.reduce<RunFormat>(
+      (run, condition) => ({ ...run, ...condition.run }),
+      { ...displayDefaults, ...tableStyle?.run }
+    ),
     ...style?.run,
   };
   return {

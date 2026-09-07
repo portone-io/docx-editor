@@ -1105,6 +1105,26 @@ describe("the parts of a table its style dresses on their own", () => {
     });
   });
 
+  it("dresses the text inside a cell with what the part it stands in gives it", () => {
+    const node = styledTable(
+      looking('w:firstRow="1" w:firstColumn="1" w:noHBand="1"', 3),
+      LIST_TABLE
+    );
+    const paragraphOf = (rowIndex: number, col: number) =>
+      node.child(rowIndex).child(col).child(0);
+
+    // The header row and the first column are both dressed in bold
+    expect(paragraphOf(0, 1).attrs.styleRun).toEqual({ bold: true });
+    expect(paragraphOf(1, 0).attrs.styleRun).toEqual({ bold: true });
+    // and the text inside them is drawn in it
+    expect(paragraphOf(0, 1).child(0).marks[0].attrs.format).toEqual({
+      bold: true,
+    });
+    // A cell belonging to neither wears nothing of the style
+    expect(paragraphOf(1, 1).attrs.styleRun).toBeNull();
+    expect(paragraphOf(1, 1).child(0).marks[0].attrs.format).toBeNull();
+  });
+
   it("dresses the corner where a row and a column the table takes meet", () => {
     const node = styledTable(
       looking('w:firstRow="1" w:lastColumn="1" w:noHBand="1"', 3),
