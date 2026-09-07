@@ -256,7 +256,7 @@ function runMark(style: InlineStyle): Mark | null {
     format: null,
   };
   for (const edit of edits) {
-    const next = editRunProps(props, null, edit);
+    const next = editRunProps(props, {}, edit);
     if (next) props = next;
   }
   return props.rPr === null

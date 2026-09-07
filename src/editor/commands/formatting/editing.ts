@@ -2,6 +2,7 @@
 
 import type { Mark } from "prosemirror-model";
 import type { Command, EditorState, Transaction } from "prosemirror-state";
+import { inheritedRunFormat, resolveParagraph } from "../../../docx/formatting";
 import {
   editRunProps,
   isRunToggleOn,
@@ -11,6 +12,7 @@ import {
 } from "../../../docx/runProps";
 import { docxSchema } from "../../../schema";
 import { editShut, openStretches } from "../../../schema/guards";
+import { documentFormatting } from "../../documentStyles";
 import {
   activePieces,
   caretPiece,
@@ -21,10 +23,16 @@ import {
 
 export type { RunToggle } from "../../../docx/runProps";
 
-function editedMark(target: TextPiece, edit: RunEdit): Mark | null {
+function editedMark(
+  state: EditorState,
+  target: TextPiece,
+  edit: RunEdit
+): Mark | null {
+  const context = documentFormatting(state);
+  const rPr = text(target.mark?.attrs.rPr);
   const next = editRunProps(
-    { rPr: text(target.mark?.attrs.rPr), format: target.format },
-    target.pPr,
+    { rPr, format: target.format },
+    inheritedRunFormat(rPr, resolveParagraph(target.pPr, context), context),
     edit
   );
   if (!next) return null;
@@ -43,10 +51,14 @@ interface MarkChange {
 }
 
 /** Builds the new mark for every piece up front. If even one cannot be edited, the whole thing is abandoned */
-function planChanges(pieces: TextPiece[], edit: RunEdit): MarkChange[] | null {
+function planChanges(
+  state: EditorState,
+  pieces: TextPiece[],
+  edit: RunEdit
+): MarkChange[] | null {
   const changes: MarkChange[] = [];
   for (const target of pieces) {
-    const mark = editedMark(target, edit);
+    const mark = editedMark(state, target, edit);
     if (!mark) return null;
     changes.push({ from: target.from, to: target.to, mark });
   }
@@ -64,7 +76,7 @@ function applyToSelection(
     textPieces(state).filter((target) => !matchesRunEdit(target.format, edit)),
     "mark"
   );
-  const changes = pieces.length > 0 ? planChanges(pieces, edit) : null;
+  const changes = pieces.length > 0 ? planChanges(state, pieces, edit) : null;
   if (!changes) return false;
   if (dispatch) {
     const tr = state.tr;
@@ -90,7 +102,7 @@ function applyToCaret(
   }
   const target = caretPiece(state);
   if (matchesRunEdit(target.format, edit)) return false;
-  const mark = editedMark(target, edit);
+  const mark = editedMark(state, target, edit);
   if (!mark) return false;
   if (dispatch) {
     const marks = state.storedMarks ?? state.selection.$from.marks();

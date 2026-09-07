@@ -29,6 +29,7 @@ import {
   setParagraphAlign,
   setParagraphStyle,
 } from "./paragraphCommands";
+import { setLineSpacing } from "./spacingCommands";
 
 function paragraph(text: string, pPr = ""): string {
   return `<w:p>${pPr}<w:r><w:t xml:space="preserve">${text}</w:t></w:r></w:p>`;
@@ -497,6 +498,37 @@ describe("the default paragraph style", () => {
     expect(displayValuesOf(right.doc, 0)).toEqual({
       format: { align: "right", spaceAfterPt: 12 },
       styleRun: { fontSizePt: 11 },
+    });
+  });
+
+  it("keeps the spacing the document defaults lay down when a style is applied", () => {
+    const { state } = openedStyled(
+      paragraph("Body"),
+      "<w:docDefaults><w:pPrDefault><w:pPr>" +
+        '<w:spacing w:after="160"/></w:pPr></w:pPrDefault></w:docDefaults>' +
+        '<w:style w:type="paragraph" w:styleId="Normal" w:default="1">' +
+        '<w:name w:val="Normal"/></w:style>' +
+        HEADING_STYLE
+    );
+    expect(displayValuesOf(state.doc, 0).format).toEqual({ spaceAfterPt: 8 });
+
+    const heading = runCommand(
+      at(state, "Body"),
+      setParagraphStyle("Heading1")
+    );
+    expect(displayValuesOf(heading.doc, 0)).toEqual({
+      format: { align: "left", spaceAfterPt: 8 },
+      styleRun: { bold: true, fontSizePt: 20 },
+    });
+
+    const spaced = runCommand(
+      heading,
+      setLineSpacing({ rule: "auto", lines: 1.5 })
+    );
+    expect(displayValuesOf(spaced.doc, 0).format).toEqual({
+      align: "left",
+      spaceAfterPt: 8,
+      lineSpacing: { rule: "auto", lines: 1.5 },
     });
   });
 });
