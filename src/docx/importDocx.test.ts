@@ -136,7 +136,7 @@ describe("document default formatting", () => {
     const expected = {
       tabStops: [{ positionPt: 72, align: "center" }],
     };
-    expect(session.paragraphDefaults).toEqual(expected);
+    expect(session.formatting.paragraphDefaults).toEqual(expected);
     expect(toParagraphFormat(doc.child(0).attrs.format)).toEqual(expected);
   });
 });
@@ -197,13 +197,13 @@ const GRID_LINE = "0.5pt solid #000000";
 describe("resolving the style chain", () => {
   it("the styles are empty too when there is no styles.xml", () => {
     const { session } = importDocx(makeDocx("<w:p/>"));
-    expect(session.styles.size).toBe(0);
+    expect(session.formatting.styles.size).toBe(0);
   });
 
   it("layers the values of the style the paragraph points at underneath the display values", () => {
     // The title paragraph is the only one in the fixture that points at a style
     const { doc, session } = importDocx(readFixture("kitchen-sink.docx"));
-    expect(session.styles.get("Heading1")?.run).toEqual({
+    expect(session.formatting.styles.get("Heading1")?.run).toEqual({
       color: "#2E74B5",
       fontSizePt: 16,
     });
@@ -268,7 +268,7 @@ describe("resolving the style chain", () => {
         '<w:rPr><w:sz w:val="22"/></w:rPr></w:style>'
     );
     const { doc, session } = importDocx(bytes);
-    expect(session.defaultParagraphStyleId).toBe("Normal");
+    expect(session.formatting.defaultParagraphStyleId).toBe("Normal");
 
     const body = doc.child(1);
     expect(toParagraphFormat(body.attrs.format)).toEqual({ align: "center" });
@@ -286,7 +286,7 @@ describe("resolving the style chain", () => {
 
   it("has no default paragraph style where the document marks none", () => {
     const { session } = importDocx(makeDocx("<w:p/>"));
-    expect(session.defaultParagraphStyleId).toBeNull();
+    expect(session.formatting.defaultParagraphStyleId).toBeNull();
   });
 
   it("a table pointing at nothing but a table style still draws its grid", () => {

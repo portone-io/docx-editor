@@ -35,6 +35,22 @@ import { childByLocalName } from "../../ooxml/xml";
 
 export type { CellMargins, InsideBorders } from "../../model/format";
 
+/** The parts of a table a table style formats conditionally (`w:tblStylePr/@w:type`, ST_TblStyleOverrideType) */
+export type TableStyleOverrideType =
+  | "wholeTable"
+  | "firstRow"
+  | "lastRow"
+  | "firstCol"
+  | "lastCol"
+  | "band1Vert"
+  | "band2Vert"
+  | "band1Horz"
+  | "band2Horz"
+  | "neCell"
+  | "nwCell"
+  | "seCell"
+  | "swCell";
+
 /** A `pct` width counts in fiftieths of a percent, so 2500 and `50%` are the same width */
 const FIFTIETHS_PER_PERCENT = 50;
 

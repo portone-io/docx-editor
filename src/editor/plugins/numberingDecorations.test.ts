@@ -4,6 +4,7 @@ import type { Node as PMNode } from "prosemirror-model";
 import { afterEach, describe, expect, it } from "vitest";
 import { bytesEqual, readFixture } from "../../__testing__/docx";
 import { exportDocx } from "../../docx/exportDocx";
+import { NO_FORMATTING } from "../../docx/formatting";
 import { importDocx } from "../../docx/importDocx";
 import { toParagraphFormat } from "../../model/format";
 import { type Numbering, parseNumbering } from "../../numbering/parseNumbering";
@@ -195,7 +196,10 @@ describe("the indentation the level specifies", () => {
   const numbered = { numbering: { numId: 1, ilvl: 0 } };
 
   /** A document that knows these level definitions and nothing else */
-  const withLevels: EditorDocument = { ...NO_DOCUMENT, numbering };
+  const withLevels: EditorDocument = {
+    ...NO_DOCUMENT,
+    formatting: { ...NO_FORMATTING, numbering },
+  };
 
   it("overlays the level's indentation on screen when the paragraph has no ind", () => {
     const [marker] = paragraphMarkers(listDoc(numbered), numbering);

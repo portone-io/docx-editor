@@ -281,6 +281,23 @@ export function readDefaultParagraphFormat(
   );
 }
 
+/** Reads the run-property layer at the base of the OOXML hierarchy (`rPrDefault`) in full */
+export function readRunDefaults(
+  styles: Document,
+  themeFonts: ThemeFonts = NO_THEME_FONTS
+): RunFormat {
+  return (
+    readRunFormat(defaultProperties(styles, "rPrDefault", "rPr"), themeFonts) ??
+    {}
+  );
+}
+
+/** The character style a run's formatting points at (`w:rStyle`). null when it points at none */
+export function runStyleIdOf(rPr: Element | null): string | null {
+  const id = rPr ? childValue(rPr, "rStyle") : null;
+  return id !== null && id.length > 0 ? id : null;
+}
+
 /**
  * Reads the document default font size, font, and line spacing from docDefaults in styles.xml.
  * What is absent is left as null, and the on-screen fallback is decided by the display layer.

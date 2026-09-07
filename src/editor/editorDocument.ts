@@ -1,7 +1,7 @@
 /**
- * What the opened document laid down, held as one value: the style table and the list
- * definitions, the paper the body is written on, the paragraph defaults every value is resolved
- * against, and the identifiers its comment parts have already spent.
+ * What the opened document laid down, held as one value: the formatting context every display
+ * value is resolved against, the paper the body is written on, and the identifiers its comment
+ * parts have already spent.
  *
  * Commands and the toolbar know nothing about the session, so the snapshot stands for it on their
  * behalf, and `editorDocumentOf` is the one place a session is read into editor values: a screen
@@ -12,36 +12,24 @@ import type { Node as PMNode } from "prosemirror-model";
 import { type EditorState, Plugin, PluginKey } from "prosemirror-state";
 import { DEFAULT_TAB_STOP_PT } from "../docx/documentSettings";
 import {
+  type FormattingContext,
   NO_DOCUMENT_DEFAULTS,
-  NO_STYLES,
-  type ParagraphFormatLayer,
+  NO_FORMATTING,
   type ParagraphStyleOption,
-  type StyleTable,
 } from "../docx/formatting";
 import { A4_PORTRAIT, type PageGeometry } from "../docx/pageGeometry";
-import {
-  type SessionStore,
-  documentNumbering as sessionNumbering,
-} from "../docx/session";
+import type { SessionStore } from "../docx/session";
 import type { DocumentDefaults } from "../model/format";
-import { EMPTY_NUMBERING, type Numbering } from "../numbering/parseNumbering";
 
 /** The document-level values one editing state is built on */
 export interface EditorDocument {
   /** The document these values were read from. Null for a state built without one */
   readonly session: SessionStore | null;
-  readonly styles: StyleTable;
+  /** The style chain, the defaults and the list definitions a paragraph's and a run's display values are resolved against */
+  readonly formatting: FormattingContext;
   readonly defaults: DocumentDefaults;
-  /** Paragraph properties from the styles.xml docDefaults */
-  readonly paragraphDefaults: ParagraphFormatLayer;
   /** The styles the document defines for the style picker to offer */
   readonly paragraphStyles: ParagraphStyleOption[];
-  /**
-   * The style a paragraph pointing at none of its own wears (`w:default="1"`). Null when the
-   * document marks none
-   */
-  readonly defaultParagraphStyleId: string | null;
-  readonly numbering: Numbering;
   /**
    * Whether the document has a place (numbering.xml) to write the definition of a new list.
    * A state built without opening a document assumes that place exists and behaves as every
@@ -66,12 +54,9 @@ const NO_PARAGRAPH_STYLES: ParagraphStyleOption[] = [];
 /** What a state built without an opened document answers: the same as nothing being written down */
 export const NO_DOCUMENT: EditorDocument = {
   session: null,
-  styles: NO_STYLES,
+  formatting: NO_FORMATTING,
   defaults: NO_DOCUMENT_DEFAULTS,
-  paragraphDefaults: {},
   paragraphStyles: NO_PARAGRAPH_STYLES,
-  defaultParagraphStyleId: null,
-  numbering: EMPTY_NUMBERING,
   canStartNewList: true,
   geometry: A4_PORTRAIT,
   defaultTabStopPt: DEFAULT_TAB_STOP_PT,
@@ -98,12 +83,9 @@ function reservedParaIds(session: SessionStore): Set<string> {
 export function editorDocumentOf(session: SessionStore): EditorDocument {
   return {
     session,
-    styles: session.styles,
+    formatting: session.formatting,
     defaults: session.defaults,
-    paragraphDefaults: session.paragraphDefaults,
     paragraphStyles: session.paragraphStyles,
-    defaultParagraphStyleId: session.defaultParagraphStyleId,
-    numbering: sessionNumbering(session),
     canStartNewList: session.numberingPartPath !== null,
     geometry: session.geometry,
     defaultTabStopPt: session.defaultTabStopPt,

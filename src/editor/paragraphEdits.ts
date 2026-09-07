@@ -9,15 +9,11 @@
 
 import type { Node as PMNode } from "prosemirror-model";
 import type { EditorState, Transaction } from "prosemirror-state";
-import { effectiveParagraphFormat, type StyleTable } from "../docx/formatting";
+import { resolveParagraph, type StyleTable } from "../docx/formatting";
 import type { ParagraphProps } from "../docx/paraProps";
 import { docxSchema } from "../schema";
 import { editShut } from "../schema/guards";
-import {
-  defaultParagraphStyleId,
-  documentParagraphFormatting,
-  documentStyles,
-} from "./documentStyles";
+import { documentFormatting } from "./documentStyles";
 
 export interface ParagraphSpot {
   pos: number;
@@ -83,12 +79,12 @@ function writeChanges(
   changed: readonly PlannedChange[]
 ): Transaction {
   const tr = state.tr;
-  const formatting = documentParagraphFormatting(state);
+  const formatting = documentFormatting(state);
   for (const { spot, props } of changed) {
     tr.setNodeMarkup(tr.mapping.map(spot.pos), undefined, {
       ...spot.node.attrs,
       pPr: props.pPr,
-      format: effectiveParagraphFormat(props.pPr, formatting),
+      format: resolveParagraph(props.pPr, formatting).format,
       styleRun: props.styleRun,
     });
   }
@@ -101,10 +97,9 @@ export function editParagraphs(
   dispatch: ((tr: Transaction) => void) | undefined,
   surgery: ParagraphSurgery
 ): boolean {
-  const styles = documentStyles(state);
-  const defaultStyleId = defaultParagraphStyleId(state);
+  const { styles, defaultParagraphStyleId } = documentFormatting(state);
   const changed = editableParagraphs(state).flatMap((spot) => {
-    const props = surgery(spot.node, styles, defaultStyleId);
+    const props = surgery(spot.node, styles, defaultParagraphStyleId);
     return props ? [{ spot, props }] : [];
   });
   if (changed.length === 0) return false;

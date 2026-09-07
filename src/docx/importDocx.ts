@@ -21,22 +21,20 @@ import {
 import { docxSchema } from "../schema";
 import { commentReferencesIn, readComments } from "./comments";
 import { openParts } from "./container";
-import { DEFAULT_TAB_STOP_PT, readDefaultTabStop } from "./documentSettings";
+import {
+  DEFAULT_TAB_STOP_PT,
+  readCompatSettings,
+  readDefaultTabStop,
+} from "./documentSettings";
 import { type FidelityNote, fidelityNotesOf } from "./fidelity";
 import {
-  defaultParagraphStyleIdOf,
-  defaultTableStyleIdOf,
-  effectiveParagraphFormat,
-  effectiveParagraphStyle,
+  type FormattingContext,
+  formattingContextOf,
   layerRunFormat,
   NO_DOCUMENT_DEFAULTS,
-  NO_STYLES,
-  type ParagraphFormattingContext,
-  readDefaultParagraphFormat,
   readDocumentDefaults,
   readParagraphStyles,
-  readStyles,
-  type StyleTable,
+  resolveParagraph,
 } from "./formatting";
 import { readHeadersFooters } from "./headersFooters";
 import { readLinkTargets } from "./hyperlink";
@@ -120,8 +118,7 @@ function buildBlock(
   el: Element,
   srcId: string,
   sources: ImportSources,
-  styles: StyleTable,
-  defaultTableStyleId: string | null
+  context: FormattingContext
 ): PMNode {
   if (el.localName === "bookmarkStart" || el.localName === "bookmarkEnd") {
     return docxSchema.nodes.bookmarkBlock.create({
@@ -134,7 +131,13 @@ function buildBlock(
     if (paragraph) return paragraph;
   }
   if (el.localName === "tbl") {
-    const table = buildTable(el, srcId, sources, styles, defaultTableStyleId);
+    const table = buildTable(
+      el,
+      srcId,
+      sources,
+      context.styles,
+      context.defaultTableStyleId
+    );
     if (table) return table;
   }
   return docxSchema.nodes.docxRaw.create({ srcId, name: el.nodeName });
@@ -156,19 +159,21 @@ function styledInline(node: PMNode, style: RunFormat): PMNode {
  * The style's run values are also baked onto the paragraph itself, so that text carrying no run
  * of its own - typed in the editor - is drawn in them (`styleRun` in `schema`).
  */
-function styledParagraph(
-  node: PMNode,
-  context: ParagraphFormattingContext
-): PMNode {
-  const style = effectiveParagraphStyle(node.attrs.pPr, context);
-  const inline = style
-    ? node.children.map((child) => styledInline(child, style.run))
+function styledParagraph(node: PMNode, context: FormattingContext): PMNode {
+  const pPr: unknown = node.attrs.pPr;
+  const paragraph = resolveParagraph(
+    typeof pPr === "string" ? pPr : null,
+    context
+  );
+  const styleRun = paragraph.styleRun;
+  const inline = styleRun
+    ? node.children.map((child) => styledInline(child, styleRun))
     : node.children;
   return node.type.create(
     {
       ...node.attrs,
-      format: effectiveParagraphFormat(node.attrs.pPr, context),
-      styleRun: style ? layerRunFormat(style.run, null) : null,
+      format: paragraph.format,
+      styleRun: paragraph.styleRun,
     },
     Fragment.fromArray(inline),
     node.marks
@@ -181,10 +186,7 @@ function styledParagraph(
  * These values are used for display only, so the original XML fragments are left untouched.
  * We walk down through the blocks so that paragraphs inside table cells take the same path.
  */
-function withStyleFormats(
-  node: PMNode,
-  context: ParagraphFormattingContext
-): PMNode {
+function withStyleFormats(node: PMNode, context: FormattingContext): PMNode {
   if (node.type === docxSchema.nodes.paragraph) {
     return styledParagraph(node, context);
   }
@@ -310,9 +312,9 @@ function readDocx(input: DocxBytes): {
     parts,
     relatedPartPath(parts, mainPartPath, SETTINGS_REL)
   );
+  const settingsDom = settingsXml === null ? null : parseXml(settingsXml);
   const defaultTabStopPt =
-    readDefaultTabStop(settingsXml === null ? null : parseXml(settingsXml)) ??
-    DEFAULT_TAB_STOP_PT;
+    readDefaultTabStop(settingsDom) ?? DEFAULT_TAB_STOP_PT;
   const numberingPartPath = relatedPartPath(parts, mainPartPath, NUMBERING_REL);
   const themeXml = readPart(
     parts,
@@ -322,24 +324,13 @@ function readDocx(input: DocxBytes): {
   // reference itself back out untouched
   const themeFonts =
     themeXml === null ? NO_THEME_FONTS : readThemeFonts(parseXml(themeXml));
-  const styles = stylesDom ? readStyles(stylesDom, themeFonts) : NO_STYLES;
-  const defaultTableStyleId = stylesDom
-    ? defaultTableStyleIdOf(stylesDom)
-    : null;
-  const defaultParagraphStyleId = stylesDom
-    ? defaultParagraphStyleIdOf(stylesDom)
-    : null;
-  const paragraphDefaults = stylesDom
-    ? readDefaultParagraphFormat(stylesDom)
-    : {};
   const numberingXml = readPart(parts, numberingPartPath);
-  const numbering = parseNumbering(numberingXml);
-  const paragraphFormatting: ParagraphFormattingContext = {
-    styles,
-    defaultStyleId: defaultParagraphStyleId,
-    defaults: paragraphDefaults,
-    numbering,
-  };
+  const formatting = formattingContextOf(
+    stylesDom,
+    parseNumbering(numberingXml),
+    themeFonts,
+    readCompatSettings(settingsDom)
+  );
   const comments = readComments(parts, mainPartPath);
   const notes = readNotes(parts, mainPartPath);
   const noteLabels = {
@@ -370,10 +361,9 @@ function readDocx(input: DocxBytes): {
         el,
         blockKey({ sessionId }, BODY_STORY_KEY, i),
         sources,
-        styles,
-        defaultTableStyleId
+        formatting
       ),
-      paragraphFormatting
+      formatting
     )
   );
   const doc = docxSchema.nodes.doc.create(null, blockNodes);
@@ -392,11 +382,9 @@ function readDocx(input: DocxBytes): {
         ? readDocumentDefaults(stylesDom, themeFonts)
         : NO_DOCUMENT_DEFAULTS,
       defaultTabStopPt,
-      paragraphDefaults,
       geometry,
-      styles,
+      formatting,
       paragraphStyles: stylesDom ? readParagraphStyles(stylesDom) : [],
-      defaultParagraphStyleId,
       numberingXml,
       numberingPartPath,
       comments,

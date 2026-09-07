@@ -143,7 +143,7 @@ const numberingKey = new PluginKey<DecorationSet>("docxEditorNumbering");
 
 /** This document's list definitions. Empty when the editor does not know them */
 export function documentNumbering(state: EditorState): Numbering {
-  return documentOf(state).numbering;
+  return documentOf(state).formatting.numbering;
 }
 
 /**
@@ -162,10 +162,10 @@ export function numberingMarkers(): Plugin<DecorationSet> {
     key: numberingKey,
     state: {
       init: (_config, state) =>
-        markerDecorations(state.doc, documentOf(state).numbering),
+        markerDecorations(state.doc, documentOf(state).formatting.numbering),
       apply: (tr, current, _old, state) =>
         tr.docChanged
-          ? markerDecorations(tr.doc, documentOf(state).numbering)
+          ? markerDecorations(tr.doc, documentOf(state).formatting.numbering)
           : current,
     },
     props: {

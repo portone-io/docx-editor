@@ -8,7 +8,7 @@ import {
 } from "prosemirror-model";
 import { type EditorState, Plugin } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
-import { effectiveParagraphFormat, styleIdOf } from "../docx/formatting";
+import { resolveParagraph, styleIdOf } from "../docx/formatting";
 import { type ParagraphProps, withParagraphStyle } from "../docx/paraProps";
 import { type ListKind, MAX_ILVL, nextNumId } from "../numbering/listTemplate";
 import { elementXml } from "../ooxml/element";
@@ -26,12 +26,7 @@ import {
   withInlineStyle,
 } from "./clipboard/inlineFormatting";
 import { listRefOf } from "./commands/listCommands";
-import {
-  defaultParagraphStyleId,
-  documentParagraphFormatting,
-  documentParagraphStyles,
-  documentStyles,
-} from "./documentStyles";
+import { documentFormatting, documentParagraphStyles } from "./documentStyles";
 import type { ImageToInsert } from "./insertImage";
 import { insertPlainText } from "./plainText";
 import { moveCaretToDrop } from "./plugins/dropCaret";
@@ -387,14 +382,15 @@ function blockContext(
     };
   }
   const styleId = destinationStyleId(state, sourceStyleId, level);
+  const formatting = documentFormatting(state);
   const paragraph =
     styleId === null
       ? null
       : withParagraphStyle(
           null,
           styleId,
-          documentStyles(state),
-          defaultParagraphStyleId(state)
+          formatting.styles,
+          formatting.defaultParagraphStyleId
         );
   const usesDestinationStyle =
     editorParagraph && (sourceStyleId === null || paragraph !== null);
@@ -430,7 +426,7 @@ function listParagraphAttrs(
   );
   return {
     pPr,
-    format: effectiveParagraphFormat(pPr, documentParagraphFormatting(state)),
+    format: resolveParagraph(pPr, documentFormatting(state)).format,
   };
 }
 
@@ -444,10 +440,8 @@ function paragraphAttrs(
   return paragraph
     ? {
         pPr: paragraph.pPr,
-        format: effectiveParagraphFormat(
-          paragraph.pPr,
-          documentParagraphFormatting(state)
-        ),
+        format: resolveParagraph(paragraph.pPr, documentFormatting(state))
+          .format,
         styleRun: paragraph.styleRun,
       }
     : null;

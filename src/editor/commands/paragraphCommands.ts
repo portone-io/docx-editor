@@ -25,7 +25,7 @@ import {
 } from "../../model/format";
 import { docxSchema } from "../../schema";
 import { lockedMarkOf } from "../../schema/locks";
-import { defaultParagraphStyleId, documentStyles } from "../documentStyles";
+import { documentFormatting } from "../documentStyles";
 import {
   editableParagraphs,
   editParagraphs,
@@ -179,8 +179,8 @@ function writeStyleChanges(
  */
 export function setParagraphStyle(styleId: string | null): Command {
   return (state, dispatch) => {
-    const styles = documentStyles(state);
-    const defaultStyleId = defaultParagraphStyleId(state);
+    const { styles, defaultParagraphStyleId: defaultStyleId } =
+      documentFormatting(state);
     // This writer is its own, so it leaves the locked paragraphs out itself, exactly as
     // `editParagraphs` does for every other paragraph edit
     const changed = editableParagraphs(state).flatMap((spot) => {

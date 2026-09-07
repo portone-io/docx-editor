@@ -4,16 +4,15 @@
  *
  * Commands and the toolbar know nothing about the session, so they read the snapshot
  * `editor/editorDocument` holds on their behalf: deriving the display values again after a
- * formatting edit needs the values the style laid down, the toolbar needs the size a run is
- * rendered at where nobody wrote a size down, and a new table is fitted to the width of the body
- * the paper leaves.
+ * formatting edit needs the context the hierarchy is resolved against, the toolbar needs the size
+ * a run is rendered at where nobody wrote a size down, and a new table is fitted to the width of
+ * the body the paper leaves.
  */
 
 import type { EditorState } from "prosemirror-state";
 import type {
-  ParagraphFormattingContext,
+  FormattingContext,
   ParagraphStyleOption,
-  StyleTable,
 } from "../docx/formatting";
 import {
   bodyHeightTwips,
@@ -24,9 +23,9 @@ import {
 import type { DocumentDefaults } from "../model/format";
 import { documentOf } from "./editorDocument";
 
-/** This document's style table. Empty when the editor does not know the table */
-export function documentStyles(state: EditorState): StyleTable {
-  return documentOf(state).styles;
+/** Everything a paragraph's or a run's display values are resolved against. Empty when the editor does not know the document */
+export function documentFormatting(state: EditorState): FormattingContext {
+  return documentOf(state).formatting;
 }
 
 /** The default formatting this document wrote down. When the editor does not know it, it is the same as nothing being specified */
@@ -34,32 +33,11 @@ export function documentDefaults(state: EditorState): DocumentDefaults {
   return documentOf(state).defaults;
 }
 
-/** The values required to resolve the OOXML paragraph-property hierarchy. */
-export function documentParagraphFormatting(
-  state: EditorState
-): ParagraphFormattingContext {
-  const document = documentOf(state);
-  return {
-    styles: document.styles,
-    defaultStyleId: document.defaultParagraphStyleId,
-    defaults: document.paragraphDefaults,
-    numbering: document.numbering,
-  };
-}
-
 /** The paragraph styles this document defines. Empty when the editor does not know them */
 export function documentParagraphStyles(
   state: EditorState
 ): ParagraphStyleOption[] {
   return documentOf(state).paragraphStyles;
-}
-
-/**
- * The style a paragraph pointing at none of its own wears (`w:default="1"`). Null when the
- * document marks none.
- */
-export function defaultParagraphStyleId(state: EditorState): string | null {
-  return documentOf(state).defaultParagraphStyleId;
 }
 
 /**
