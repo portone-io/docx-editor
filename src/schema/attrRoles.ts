@@ -1,36 +1,17 @@
 /**
- * What each attr of the schema is for, so that a judgement about a node can say which of them it
- * is judging, and so that a consumer can tell which of them are theirs to rely on.
+ * Each attr has two independent classifications. Its role controls source comparison: `source`
+ * values feed serialization, `display` values are derived, and `session` values distinguish
+ * imported content or tell export how to handle it. `sourceEquality` compares source and session
+ * values so a display refresh does not rebuild an untouched block.
  *
- * Two things are said about every attr, because they answer different questions.
+ * Its class records provenance: `preserved` holds XML, `derived` is calculated from other data,
+ * `identity` identifies content (imported or allocated here), and `model` holds editable values.
+ * Classification alone does not promise a public API; the plugin guide defines that boundary.
  *
- * Its **role** is what a comparison does with it. A `source` attr is what the exporter writes
- * from: the XML the file arrived as, or a value the model owns that replaces part of it. A
- * `display` attr is worked out from the source and the formatting around it, is never written, and
- * is free to change the moment the surroundings do. A `session` attr says which block, control or
- * link of the open document this is, and is never written either.
- *
- * The split exists because a display value changing is not the document changing. Opening a file
- * in the editor re-derives a table's cell borders (`table/gridBorders`), and a comparison that
- * counted that as an edit would rewrite a table nobody touched, losing the markup the writer does
- * not model. `./sourceEquality` leaves display attrs out for that reason, and keeps session attrs
- * in: two blocks that came from different places in the file are different blocks.
- *
- * Its **class** is where the value comes from, which is the line the published boundary is drawn
- * along. A `preserved` attr holds OOXML the file arrived as and export writes that string back as
- * it stands. A `derived` attr is worked out again from another attr or from the formatting around
- * it and never reaches the file. An `identity` attr says where the node came from or what it
- * stands for, and the editor does not make the value up. Everything else is `model`: a value the
- * editor owns and the commands change.
- *
- * The two are not one column under two names. A lock flag is `derived`, since import reads it once
- * out of the control's own XML, but its role is `source`: leaving it out of a comparison would let
- * a step that unlocks a cell pass as a re-derivation. `imported` and `threadImported` are `derived`
- * for the same reason and `session` by role.
- *
- * `attrClasses.test.ts` and `attrRoles.test.ts` hold this table against the schema in both
- * directions, so an attr added without an entry fails there before it can reach a judgement that
- * does not know what to do with it.
+ * Lock flags are derived from control XML but have the source role: ignoring them in a comparison
+ * would let an unlock pass as a display refresh. The imported flags are derived with the session
+ * role because export reads them to decide whether to rewrite comment parts.
+ * Both columns are checked against the schema by the adjacent tests.
  */
 
 import { type MarkType, NodeType } from "prosemirror-model";

@@ -8,11 +8,8 @@
  * (`docx/serializeBlock`) and how a submitted file is compared against the original
  * (`docx/storyProjection`), so a new block node has to name one of them.
  *
- * What kind of value each attr below holds - markup carried verbatim, a value worked out again for
- * display, what the node came from, or a value the editor owns - is declared once in
- * `./attrRoles`, and the boundary the documentation draws between what a consumer may rely on and
- * what is this editor's bookkeeping is read from there. An attr added here without an entry there
- * fails `./attrClasses.test.ts`.
+ * `./attrRoles` declares each attr's provenance and comparison role; `attrClasses.test.ts`
+ * checks coverage. The plugin guide defines the supported public surface.
  */
 
 import { Schema } from "prosemirror-model";
@@ -208,13 +205,11 @@ export const docxSchema = new Schema({
         pAttrs: { default: null },
         /** The whole `<w:pPr>...</w:pPr>` XML. null when there is none */
         pPr: { default: null },
-        /** The display values derived from reading pPr */
+        /** Derived paragraph formatting; see `./attrRoles`. */
         format: { default: null },
         /**
-         * The character formatting the style this paragraph wears lays down, drawn as the
-         * paragraph's own CSS so that text carrying no run of its own inherits it.
-         * It is derived from the style table the same way `format` is, and like `format` it never
-         * goes back into the document.
+         * Derived character formatting drawn on the paragraph so unmarked text inherits it.
+         * Its comparison role and provenance are declared in `./attrRoles`.
          */
         styleRun: { default: null },
       },
@@ -1058,7 +1053,7 @@ export const docxSchema = new Schema({
       attrs: {
         rPr: { default: null },
         rAttrs: { default: null },
-        /** The display values derived from reading rPr */
+        /** Derived run formatting; see `./attrRoles`. */
         format: { default: null },
       },
       toDOM(mark) {

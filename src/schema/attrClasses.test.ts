@@ -1,12 +1,5 @@
 // @vitest-environment jsdom
-/**
- * The classification held against the schema and against the writers, rather than against itself.
- *
- * `attrRoles.ts` is the one place that says which attrs a consumer may rely on and which are this
- * editor's bookkeeping, and the published boundary is written from it. An attr added to the schema
- * without a class would land on the wrong side of that boundary silently, so the sweeps below walk
- * the schema and the two block writers rather than the table.
- */
+/** Checks attr provenance against the schema and the direct reads of the two block writers. */
 import { readFileSync } from "node:fs";
 import type { MarkType, NodeType } from "prosemirror-model";
 import { describe, expect, it } from "vitest";
@@ -209,7 +202,7 @@ describe("reading a class", () => {
     expect(attrsOfClass(docxSchema.nodes.paragraph, "model")).toEqual([]);
   });
 
-  it("tells a mark from a node of the same name", () => {
+  it("reads the derived attrs of marks and nodes separately", () => {
     expect(attrsOfClass(docxSchema.marks.sdt, "derived")).toEqual([
       "contentsLocked",
       "deletionLocked",
