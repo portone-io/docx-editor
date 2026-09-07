@@ -280,6 +280,48 @@ describe("the fixture sanitize script", () => {
     expect(JSON.stringify(parts)).not.toMatch(/2026-0[89]/);
   });
 
+  it("strips what a Word package names beyond its authors", () => {
+    const parts = sanitizedParts(
+      packageOf({
+        ...WORD_PROPERTIES,
+        "docProps/core.xml": WORD_PROPERTIES["docProps/core.xml"].replace(
+          "</cp:coreProperties>",
+          "<dc:title>Fixture O'Example's notes</dc:title><dc:subject>Example Ltd</dc:subject>" +
+            "<cp:keywords>example; fixture</cp:keywords><dc:description>Sent by Fixture O'Example</dc:description>" +
+            "<cp:category>Example</cp:category></cp:coreProperties>"
+        ),
+        "docProps/app.xml": WORD_PROPERTIES["docProps/app.xml"].replace(
+          "</Properties>",
+          "<Manager>Fixture O'Example</Manager><HyperlinkBase>C:\\Users\\example\\Documents</HyperlinkBase></Properties>"
+        ),
+        "word/people.xml":
+          `<w15:people xmlns:w15="${W15_NS}"><w15:person w15:author="Fixture O'Example">` +
+          '<w15:presenceInfo w15:providerId="AD" w15:userId="S::example@example.com::00000000-0000-0000-0000-000000000000"/>' +
+          "</w15:person></w15:people>",
+        "word/_rels/settings.xml.rels":
+          `${XML_DECLARATION}<Relationships xmlns="${REL_NS}">` +
+          `<Relationship Id="rId1" Type="${OFFICE_REL}/attachedTemplate" Target="file:///C:\\Users\\example\\AppData\\Roaming\\Microsoft\\Templates\\Normal.dotm" TargetMode="External"/>` +
+          "</Relationships>",
+      })
+    );
+
+    expect(parts["docProps/core.xml"]).toContain(
+      "<dc:title></dc:title><dc:subject></dc:subject><cp:keywords></cp:keywords>" +
+        "<dc:description></dc:description><cp:category></cp:category>"
+    );
+    expect(parts["docProps/app.xml"]).toContain(
+      "<Manager></Manager><HyperlinkBase></HyperlinkBase>"
+    );
+    expect(parts["word/people.xml"]).toContain(
+      '<w15:person w15:author="Reviewer A"><w15:presenceInfo w15:providerId="AD" w15:userId="reviewer-a"/>'
+    );
+    expect(parts["word/_rels/settings.xml.rels"]).toContain(
+      `<Relationship Id="rId1" Type="${OFFICE_REL}/attachedTemplate" Target="Normal.dotm" TargetMode="External"/>`
+    );
+    expect(danglingReferences(parts)).toEqual([]);
+    expect(JSON.stringify(parts)).not.toMatch(/[Ee]xample|Users/);
+  });
+
   it("refuses a zip that is not a package rather than writing an empty one", () => {
     const run = runScript(zipSync({}));
 

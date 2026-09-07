@@ -66,9 +66,17 @@ Google Docs writes no `docProps/` at all, so this file cannot testify to its own
 node scripts/sanitize-fixture.mjs downloaded.docx __fixtures__/producers/<name>.docx
 ```
 
-The script sets `dc:creator` and `cp:lastModifiedBy` to `Fixture Author`, empties `Company`, empties `docProps/custom.xml` of its properties while keeping the part that `_rels/.rels` and the content types name, rewrites every `w:author`, `w:initials`, and `w15:author` in every part to `Reviewer A` and `RA`, and pins every `w:date` and the `dcterms:created` and `dcterms:modified` timestamps to `2026-01-01T00:00:00Z`, the day the zip entries are stamped with, since when somebody was editing is authoring metadata as much as who. A part the producer did not write is skipped rather than treated as missing, and a zip holding no `[Content_Types].xml` is refused rather than written out empty.
+The script rewrites what names a person, an account, a machine, or a moment, and leaves the rest of the package as the producer wrote it:
 
-It leaves rsids, `w14:paraId`, and `docProps/app.xml`'s `Application` and `AppVersion` alone: the first two are the markup the lane exists to test, and the last is how a package names the software that wrote it.
+- In every part: `w:author` and `w15:author` to `Reviewer A`, `w:initials` to `RA`, `w15:userId` to `reviewer-a`, and `w:date` to `2026-01-01T00:00:00Z`, the day the zip entries are stamped with, since when somebody was editing is authoring metadata as much as who. Only the quote that opened an attribute value closes it, and whitespace around `=` is allowed, as XML allows both.
+- In `docProps/core.xml`: `dc:creator` and `cp:lastModifiedBy` to `Fixture Author`, `dcterms:created` and `dcterms:modified` to the same instant, and `dc:title`, `dc:subject`, `dc:description`, `cp:keywords`, and `cp:category` emptied, since they hold whatever the author typed.
+- In `docProps/app.xml`: `Company`, `Manager`, and `HyperlinkBase` emptied. `Application` and `AppVersion` stay, because they are how a package names the software that wrote it.
+- In `docProps/custom.xml`: every property removed, keeping the part itself, because `_rels/.rels` and `[Content_Types].xml` name it and a package pointing at a part it does not hold is one no producer saved.
+- In any `.rels` part: the target of an `attachedTemplate` relationship cut down to its file name, since Word writes the path under the user's profile. The relationship stays, because `w:attachedTemplate` in the settings part points at it.
+
+A part the producer did not write is skipped rather than treated as missing, and a zip holding no `[Content_Types].xml` is refused rather than written out empty. rsids and `w14:paraId` are left alone: they are the markup the lane exists to test.
+
+The list above is what the script has met in a Google Docs package and in the Word-shaped packages `src/sanitizeFixture.test.ts` builds; no Word or LibreOffice download has been through it yet. Before committing the first one, unzip the output and read every part for a name, an account, a path, or a date the list does not cover, and add what turns up to the script and to this list rather than editing the fixture by hand.
 
 Because it repacks with the settings every fixture uses, running it over its own output gives back the same bytes. That equality is the producer-lane replacement for the rebuild-without-edits check above, and it is what to run after replacing a file. `src/sanitizeFixture.test.ts` runs the script over packages shaped like what a producer saves, and over every committed file in the lane, which the script has to give back byte for byte.
 

@@ -5,10 +5,12 @@
  *     node scripts/sanitize-fixture.mjs in.docx out.docx
  *
  * `__fixtures__/README.md` forbids real people and authoring metadata in a fixture, and a file
- * that came out of Word, LibreOffice, or Google Docs carries the name of whoever saved it in
- * several places at once. Everything else is left exactly as the producer wrote it: rsids and
- * `w14:paraId` are markup the producer lane exists to test, and `docProps/app.xml` keeps its
- * `Application` and `AppVersion` so the file testifies to its own origin.
+ * that came out of Word, LibreOffice, or Google Docs carries the name of whoever saved it, their
+ * account, the moment they saved, and paths under their profile in several places at once.
+ * Everything else is left exactly as the producer wrote it: rsids and `w14:paraId` are markup the
+ * producer lane exists to test, and `docProps/app.xml` keeps its `Application` and `AppVersion`
+ * so the file testifies to its own origin. The README lists every rewrite, and what to do before
+ * the first Word or LibreOffice file goes through.
  *
  * The repack settings match the ones `__fixtures__/README.md` prescribes for every fixture, so
  * sanitizing an already sanitized file gives back the same bytes.
@@ -21,6 +23,8 @@ const IDENTITY = {
   author: "Fixture Author",
   reviewer: "Reviewer A",
   initials: "RA",
+  /** The account Word records for a person in `word/people.xml`, which names a user or a directory entry */
+  userId: "reviewer-a",
 };
 
 /**
@@ -77,7 +81,28 @@ function withoutReviewerIdentity(xml) {
   const named = withAttribute(xml, "w:author", IDENTITY.reviewer);
   const initialled = withAttribute(named, "w:initials", IDENTITY.initials);
   const dated = withAttribute(initialled, "w:date", INSTANT);
-  return withAttribute(dated, "w15:author", IDENTITY.reviewer);
+  const person = withAttribute(dated, "w15:author", IDENTITY.reviewer);
+  return withAttribute(person, "w15:userId", IDENTITY.userId);
+}
+
+/**
+ * The template a Word document was made from, whose target is a path under the user's own
+ * profile. The relationship stays, because `w:attachedTemplate` in the settings part points at
+ * it, and only the file name is kept of the path.
+ */
+function withTemplateFileName(xml) {
+  return xml.replace(
+    /<Relationship\b[^>]*\/attachedTemplate"[^>]*>/g,
+    (relationship) =>
+      relationship.replace(
+        /(\sTarget\s*=\s*)("[^"]*"|'[^']*')/,
+        (_match, prefix, quoted) => {
+          const quote = quoted[0];
+          const fileName = quoted.slice(1, -1).split(/[\\/]/).pop();
+          return `${prefix}${quote}${fileName}${quote}`;
+        }
+      )
+  );
 }
 
 /**
@@ -95,8 +120,20 @@ const DOCUMENT_PROPERTIES = {
       ["cp:lastModifiedBy", IDENTITY.author],
       ["dcterms:created", INSTANT],
       ["dcterms:modified", INSTANT],
+      // What the author typed into the document's properties, which may name anyone
+      ["dc:title", ""],
+      ["dc:subject", ""],
+      ["dc:description", ""],
+      ["cp:keywords", ""],
+      ["cp:category", ""],
     ].reduce((part, [name, text]) => withElementText(part, name, text), xml),
-  "docProps/app.xml": (xml) => withElementText(xml, "Company", ""),
+  "docProps/app.xml": (xml) =>
+    [
+      ["Company", ""],
+      ["Manager", ""],
+      // The base every relative hyperlink resolves against, which Word fills with a local path
+      ["HyperlinkBase", ""],
+    ].reduce((part, [name, text]) => withElementText(part, name, text), xml),
   "docProps/custom.xml": (xml) => withoutChildren(xml, "Properties"),
 };
 
@@ -119,7 +156,7 @@ function sanitizePackage(bytes) {
     const xml = decoder.decode(content);
     const properties = DOCUMENT_PROPERTIES[path];
     const rewritten = withoutReviewerIdentity(
-      properties === undefined ? xml : properties(xml)
+      withTemplateFileName(properties === undefined ? xml : properties(xml))
     );
     sanitized[path] = xml === rewritten ? content : encoder.encode(rewritten);
   }
