@@ -150,8 +150,9 @@ function withInserted(
     .map((child) => ({
       at: insertionAt(children, child.name, order, root, inner.length),
       xml: child.xml,
+      rank: order.indexOf(child.name),
     }))
-    .sort((a, b) => a.at - b.at);
+    .sort((a, b) => a.at - b.at || a.rank - b.rank);
   let out = "";
   let from = 0;
   for (const { at, xml } of placed) {
@@ -252,7 +253,9 @@ function withDeclarations(
     if (ignoring === null) {
       additions.push(["mc:Ignorable", ignorable.join(" ")]);
     } else {
-      const had = ignoring[2].split(/\s+/).filter(Boolean);
+      const had = (attrs.find(([name]) => name === "mc:Ignorable")?.[1] ?? "")
+        .split(/\s+/)
+        .filter(Boolean);
       const missing = ignorable.filter((token) => !had.includes(token));
       if (missing.length > 0) tokens = [...had, ...missing];
     }

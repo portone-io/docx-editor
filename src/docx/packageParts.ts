@@ -59,9 +59,10 @@ export function availablePartPath(
   stem: string
 ): string {
   const directory = directoryOf(mainPartPath);
+  const taken = new Set(Array.from(parts.keys(), (path) => path.toLowerCase()));
   for (let suffix = 0; ; suffix += 1) {
     const path = `${directory}${stem}${suffix === 0 ? "" : suffix + 1}.xml`;
-    if (!parts.has(path)) return path;
+    if (!taken.has(path.toLowerCase())) return path;
   }
 }
 
@@ -97,6 +98,8 @@ export interface ContentTypeWriter {
 function declaredIn(text: string): {
   defaults: Set<string>;
   overrides: Set<string>;
+  xmlDefaults: Set<string>;
+  xmlOverrides: Set<string>;
 } {
   let root: Element;
   try {
@@ -110,30 +113,60 @@ function declaredIn(text: string): {
   }
   const defaults = new Set<string>();
   const overrides = new Set<string>();
+  const xmlDefaults = new Set<string>();
+  const xmlOverrides = new Set<string>();
   for (const el of elementChildren(root)) {
     const extension = el.getAttribute("Extension");
     const partName = el.getAttribute("PartName");
+    const contentType = (el.getAttribute("ContentType") ?? "")
+      .split(";")[0]
+      .trim()
+      .toLowerCase();
+    const xml =
+      contentType === "application/xml" ||
+      contentType === "text/xml" ||
+      contentType.endsWith("+xml");
     if (el.localName === "Default" && extension !== null) {
       defaults.add(extension.toLowerCase());
+      if (xml) xmlDefaults.add(extension.toLowerCase());
     }
     if (el.localName === "Override" && partName !== null) {
       overrides.add(partName.toLowerCase());
+      if (xml) xmlOverrides.add(partName.toLowerCase());
     }
   }
-  return { defaults, overrides };
+  return { defaults, overrides, xmlDefaults, xmlOverrides };
+}
+
+/** XML parts named by OPC content types, even when their URI has no .xml suffix. */
+export function declaredXmlParts(
+  types: Uint8Array,
+  paths: Iterable<string>
+): ReadonlySet<string> {
+  const declared = declaredIn(decodeUtf8(types).text);
+  return new Set(
+    Array.from(paths).filter((path) => {
+      const name = `/${path}`.toLowerCase();
+      if (declared.overrides.has(name)) return declared.xmlOverrides.has(name);
+      const extension = path.slice(path.lastIndexOf(".") + 1).toLowerCase();
+      return declared.xmlDefaults.has(extension);
+    })
+  );
 }
 
 export function contentTypeWriter(
   parts: ReadonlyMap<string, Uint8Array>
 ): ContentTypeWriter {
-  const overrides = new Map<string, string>();
-  const defaults = new Map<string, string>();
+  const overrides = new Map<string, readonly [string, string]>();
+  const defaults = new Map<string, readonly [string, string]>();
   return {
     addOverride: (partPath, contentType) => {
-      if (!overrides.has(partPath)) overrides.set(partPath, contentType);
+      const key = partPath.toLowerCase();
+      if (!overrides.has(key)) overrides.set(key, [partPath, contentType]);
     },
     addDefault: (extension, contentType) => {
-      if (!defaults.has(extension)) defaults.set(extension, contentType);
+      const key = extension.toLowerCase();
+      if (!defaults.has(key)) defaults.set(key, [extension, contentType]);
     },
     part: () => {
       if (overrides.size === 0 && defaults.size === 0) return null;
@@ -150,7 +183,7 @@ export function contentTypeWriter(
       const declared = declaredIn(text);
       const prefix = rootPrefixOf(text);
       const declarations = [
-        ...Array.from(defaults)
+        ...Array.from(defaults.values())
           .filter(
             ([extension]) => !declared.defaults.has(extension.toLowerCase())
           )
@@ -160,7 +193,7 @@ export function contentTypeWriter(
               ["ContentType", contentType],
             ])
           ),
-        ...Array.from(overrides)
+        ...Array.from(overrides.values())
           .filter(
             ([partPath]) =>
               !declared.overrides.has(`/${partPath}`.toLowerCase())

@@ -1,8 +1,15 @@
 // @vitest-environment jsdom
-import { unzipSync } from "fflate";
+import { unzipSync, zipSync } from "fflate";
+import { Fragment } from "prosemirror-model";
 import { describe, expect, it } from "vitest";
-import { exportErrorCode, makeDocx, TINY_PNG } from "../__testing__/docx";
+import {
+  exportErrorCode,
+  makeDocx,
+  TINY_PNG,
+  TINY_PNG_DATA_URL,
+} from "../__testing__/docx";
 import { encodeUtf8 } from "../ooxml/xml";
+import { docxSchema } from "../schema";
 import { exportThroughPlanners } from "./exportDocx";
 import { importDocx } from "./importDocx";
 import { CONTENT_TYPES_PATH, contentTypeWriter } from "./packageParts";
@@ -107,7 +114,11 @@ describe("runPartPlanners", () => {
 
   it("refuses a planner that writes a part the context's writers own", () => {
     const { doc, session } = opened();
-    for (const path of [CONTENT_TYPES_PATH, "word/_rels/document.xml.rels"]) {
+    for (const path of [
+      CONTENT_TYPES_PATH,
+      "word/_rels/document.xml.rels",
+      session.mainPartPath,
+    ]) {
       expect(() =>
         runPartPlanners(
           [writing("rogue", { [path]: "<Types/>" })],
@@ -134,6 +145,51 @@ describe("the export over its planners", () => {
     expect(() => exportThroughPlanners([rogue], doc, session)).toThrow(
       "word/rogue.xml as written could not be parsed"
     );
+  });
+
+  it("refuses a planner that overwrites media already written by the export", () => {
+    const original = unzipSync(makeDocx("<w:p/>"));
+    original[CONTENT_TYPES_PATH] = new TextEncoder().encode(
+      '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>'
+    );
+    const opened = importDocx(zipSync(original));
+    const image = docxSchema.nodes.image.create({
+      src: TINY_PNG_DATA_URL,
+      extent: { cx: 9525, cy: 9525 },
+    });
+    const doc = opened.doc.copy(
+      Fragment.from(opened.doc.child(0).copy(Fragment.from(image)))
+    );
+    const written = unzipSync(exportThroughPlanners([], doc, opened.session));
+    const path = Object.keys(written).find((path) =>
+      path.startsWith("word/media/")
+    );
+    if (!path) throw new Error("expected exported image part");
+    expect(() =>
+      exportThroughPlanners(
+        [writing("rogue", { [path]: "<not-an-image/>" })],
+        doc,
+        opened.session
+      )
+    ).toThrow(/rogue planner wrote/);
+  });
+
+  it("reads a rewritten XML part identified by content type rather than its file extension", () => {
+    const { doc, session } = opened();
+    session.parts.set(
+      CONTENT_TYPES_PATH,
+      encodeUtf8(
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>',
+        false
+      )
+    );
+    expect(() =>
+      exportThroughPlanners(
+        [writing("renamed", { "word/custom.data": "<broken>" })],
+        doc,
+        session
+      )
+    ).toThrow("word/custom.data as written could not be parsed");
   });
 
   it("repacks a part a planner wrote that reads back", () => {

@@ -6,4 +6,6 @@ A relationships part whose root carries a namespace prefix, or that arrived as a
 
 When one export adds several parts, `[Content_Types].xml` now declares them in the order they were added, a media type's `Default` ahead of any `Override`; each writer used to put its own declaration first, so the declarations came out in the reverse order of adding. Every declaration is still placed right after the opening tag, and the rest of the part is left as it arrived.
 
-Every part the export rewrites is now read back as XML before the file is repacked, so a part that would not open is refused with `malformed-xml` naming the part rather than handed back.
+Every XML part the export rewrites is now read back before the file is repacked, so a part that would not open is refused with `malformed-xml` naming the part rather than handed back.
+
+New part names and content-type requests recognize names differing only in case, avoiding duplicate package entries and declarations.

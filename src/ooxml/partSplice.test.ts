@@ -108,6 +108,24 @@ describe("splicePart", () => {
     );
   });
 
+  it("orders a batch inserted at the same spot, including an empty root", () => {
+    for (const xml of [
+      "<w:numbering/>",
+      '<w:numbering><w:numIdMacAtCleanup w:val="1"/></w:numbering>',
+    ]) {
+      const written = splicePart(xml, {
+        root: "numbering",
+        insert: [
+          { name: "num", xml: '<w:num w:numId="1"/>' },
+          { name: "abstractNum", xml: '<w:abstractNum w:abstractNumId="0"/>' },
+        ],
+      });
+      expect(written).toContain(
+        '<w:abstractNum w:abstractNumId="0"/><w:num w:numId="1"/>'
+      );
+    }
+  });
+
   it("replaces every child and keeps the prolog", () => {
     const xml =
       `${PROLOG}\n<!-- kept --><w:comments ${xmlnsDecl("w")}>` +
@@ -162,6 +180,11 @@ describe("ensureRootDeclarations", () => {
         "<w:comment/></w:comments>"
     );
     expect(ensureRootDeclarations(declared, THREAD_MARKUP)).toBe(declared);
+  });
+
+  it("recognizes an existing ignorable token written with a character reference", () => {
+    const xml = `<w:comments ${xmlnsDecl("w")} ${xmlnsDecl("w14")} ${xmlnsDecl("mc")} mc:Ignorable="w&#49;4"/>`;
+    expect(ensureRootDeclarations(xml, THREAD_MARKUP)).toBe(xml);
   });
 
   it("adds a token to the mc:Ignorable the root already carries, keeping its quoting", () => {

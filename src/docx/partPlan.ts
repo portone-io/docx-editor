@@ -10,7 +10,11 @@
 import type { Node as PMNode } from "prosemirror-model";
 import { DocxExportError } from "../ooxml/errors";
 import { decodeUtf8, parseXml } from "../ooxml/xml";
-import { CONTENT_TYPES_PATH, type ContentTypeWriter } from "./packageParts";
+import {
+  CONTENT_TYPES_PATH,
+  type ContentTypeWriter,
+  declaredXmlParts,
+} from "./packageParts";
 import { type RelationshipWriter, relsPathOf } from "./relationships";
 import type { SessionStore } from "./session";
 
@@ -32,31 +36,42 @@ export interface PartPlanner {
 /**
  * Every part the planners write, folded into one map in planner order.
  *
- * A planner writing the content types part or the main part's relationships, which the context's
- * writers own, or a part an earlier planner wrote already, is a planner written wrong: either
- * would be written over in silence, so it is refused where it can be seen.
+ * The body and context-owned parts are reserved. Earlier writes include media planned before
+ * the body, so no later planner can overwrite those bytes either. Part names are compared
+ * without regard to case, as package part names are.
  */
 export function runPartPlanners(
   planners: readonly PartPlanner[],
   doc: PMNode,
   session: SessionStore,
-  context: PartPlanContext
+  context: PartPlanContext,
+  prior: ReadonlyMap<string, Uint8Array> = new Map()
 ): Map<string, Uint8Array> {
-  const owned = new Set([CONTENT_TYPES_PATH, relsPathOf(session.mainPartPath)]);
-  const parts = new Map<string, Uint8Array>();
+  const owned = new Set(
+    [
+      CONTENT_TYPES_PATH,
+      relsPathOf(session.mainPartPath),
+      session.mainPartPath,
+    ].map((path) => path.toLowerCase())
+  );
+  const parts = new Map(prior);
+  const written = new Set(
+    Array.from(prior.keys(), (path) => path.toLowerCase())
+  );
   for (const planner of planners) {
     for (const [path, bytes] of planner.plan(doc, session, context) ?? []) {
-      if (owned.has(path)) {
+      if (owned.has(path.toLowerCase())) {
         throw new Error(
-          `the ${planner.name} planner wrote ${path}, which the context's writers own`
+          `the ${planner.name} planner wrote ${path}, which another export writer owns`
         );
       }
-      if (parts.has(path)) {
+      if (written.has(path.toLowerCase())) {
         throw new Error(
-          `the ${planner.name} planner wrote ${path}, which an earlier planner wrote already`
+          `the ${planner.name} planner wrote ${path}, which an earlier writer wrote already`
         );
       }
       parts.set(path, bytes);
+      written.add(path.toLowerCase());
     }
   }
   return parts;
@@ -71,10 +86,16 @@ const XML_PART = /\.(?:xml|rels)$/i;
  * before the package is repacked rather than when somebody opens it.
  */
 export function assertPartsParse(
-  replacements: ReadonlyMap<string, Uint8Array>
+  replacements: ReadonlyMap<string, Uint8Array>,
+  contentTypes?: Uint8Array
 ): void {
+  const paths = [...replacements.keys()];
+  const declared =
+    contentTypes && paths.some((path) => !XML_PART.test(path))
+      ? declaredXmlParts(contentTypes, paths)
+      : new Set<string>();
   for (const [path, bytes] of replacements) {
-    if (!XML_PART.test(path)) continue;
+    if (!XML_PART.test(path) && !declared.has(path)) continue;
     try {
       parseXml(decodeUtf8(bytes).text);
     } catch (cause) {

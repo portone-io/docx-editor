@@ -26,6 +26,7 @@ import {
   availablePartPath,
   CONTENT_TYPES_PATH,
   contentTypeWriter,
+  declaredXmlParts,
   readPart,
   relatedPartPath,
 } from "./packageParts";
@@ -78,6 +79,15 @@ describe("relatedPartPath", () => {
 });
 
 describe("availablePartPath", () => {
+  it("does not allocate a name equivalent to an existing part under case folding", () => {
+    const parts = new Map([
+      ["WORD/COMMENTS.XML", encoder.encode("<comments/>")],
+    ]);
+    expect(availablePartPath(parts, MAIN_PART, "comments")).toBe(
+      "word/comments2.xml"
+    );
+  });
+
   it("allocates comments.xml then comments2.xml", () => {
     const parts = new Map<string, Uint8Array>();
     expect(availablePartPath(parts, MAIN_PART, "comments")).toBe(
@@ -117,6 +127,19 @@ describe("contentTypeWriter", () => {
       `<Types xmlns="${TYPES_NS}">` +
         `<Override PartName="/word/comments.xml" ContentType="${COMMENTS_TYPE}"/>` +
         `${DOCUMENT_OVERRIDE}</Types>`
+    );
+  });
+
+  it("deduplicates new requests case-insensitively while keeping the first spelling", () => {
+    const writer = contentTypeWriter(
+      packageWith(`<Types xmlns="${TYPES_NS}"/>`)
+    );
+    writer.addDefault("PNG", "image/png");
+    writer.addDefault("png", "image/png");
+    writer.addOverride("word/Comments.xml", COMMENTS_TYPE);
+    writer.addOverride("WORD/comments.XML", COMMENTS_TYPE);
+    expect(written(writer.part())).toBe(
+      `<Types xmlns="${TYPES_NS}"><Default Extension="PNG" ContentType="image/png"/><Override PartName="/word/Comments.xml" ContentType="${COMMENTS_TYPE}"/></Types>`
     );
   });
 
@@ -244,5 +267,16 @@ describe("contentTypeWriter", () => {
         `<Override PartName="/word/people.xml" ContentType="${PEOPLE_TYPE}"/>` +
         `${DOCUMENT_OVERRIDE}</Types>`
     );
+  });
+});
+
+describe("XML content types", () => {
+  it("uses a Default for a renamed XML part and lets a binary Override take precedence", () => {
+    const types = encoder.encode(
+      `<Types xmlns="${TYPES_NS}"><Default Extension="DATA" ContentType="application/xml"/><Override PartName="/word/b.data" ContentType="application/octet-stream"/></Types>`
+    );
+    expect([
+      ...declaredXmlParts(types, ["word/a.data", "WORD/B.DATA", "word/c.png"]),
+    ]).toEqual(["word/a.data"]);
   });
 });

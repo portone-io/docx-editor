@@ -249,16 +249,13 @@ function writeDocx(
   });
   assertBookmarkPairs(documentXml);
 
-  const parts = new Map(media?.parts ?? []);
-  for (const [path, bytes] of runPartPlanners(planners, doc, store, context)) {
-    parts.set(path, bytes);
-  }
+  const parts = runPartPlanners(planners, doc, store, context, media?.parts);
   const rels = context.relationships.part(store.parts.get(relsPath));
   if (rels) parts.set(relsPath, rels);
   const contentTypes = context.contentTypes.part();
   if (contentTypes) parts.set(CONTENT_TYPES_PATH, contentTypes);
   // The body was read back by assertBookmarkPairs; every other rewritten part is read back here
-  assertPartsParse(parts);
+  assertPartsParse(parts, contentTypes ?? store.parts.get(CONTENT_TYPES_PATH));
 
   return repackParts(
     store.parts,
