@@ -43,6 +43,8 @@ const { doc, session } = importDocx(source, { xmlParser: new DOMParser() });
 `importDocx`, `exportDocx`, and `onlyCommentsChangedBy` all take `xmlParser`, and the parser one
 of them is given reads every part it touches, including both of the files `onlyCommentsChangedBy`
 opens for itself.
+`documentNumbering` and `parseNumbering` read XML of their own rather than through one of those
+calls, so they take the option as a second argument.
 The option asks only for `parseFromString(source, "application/xml")` returning a DOM document.
 The package bundles no parser of its own, so the choice is yours: jsdom is the obvious one on a
 long-running Node server, while on serverless functions it adds noticeable bundle weight and

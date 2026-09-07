@@ -12,6 +12,7 @@ import {
   importErrorCode,
   LETTER_SECT_PR,
   makeDocx,
+  ONE_LIST_NUMBERING,
   readFixture,
 } from "./__testing__/docx";
 import { rangeOfText } from "./__testing__/editing";
@@ -26,6 +27,7 @@ import {
   importDocx,
   type NumberingRef,
   onlyCommentsChangedBy,
+  parseNumbering,
   toParagraphFormat,
   type XmlParser,
 } from "./core";
@@ -882,6 +884,39 @@ describe("without a DOM", () => {
         importDocx(readFixture(FIXTURE), { xmlParser: throwing })
       )
     ).toBe("malformed-xml");
+  });
+
+  /**
+   * A session hands its numbering out through a reader of its own, and the parser it was opened
+   * through is long out of scope by the time a consumer asks for it
+   */
+  it("reads an opened document's numbering through the same option", () => {
+    const { session } = importDocx(readFixture(FIXTURE), { xmlParser });
+
+    expect(
+      documentNumbering(session, { xmlParser }).lists.size
+    ).toBeGreaterThan(0);
+    expect(importErrorCode(() => documentNumbering(session))).toBe(
+      "no-xml-parser"
+    );
+  });
+
+  it("reads a numbering part handed over on its own through the same option", () => {
+    expect(parseNumbering(ONE_LIST_NUMBERING, { xmlParser }).lists.size).toBe(
+      1
+    );
+    expect(importErrorCode(() => parseNumbering(ONE_LIST_NUMBERING))).toBe(
+      "no-xml-parser"
+    );
+  });
+
+  // A document with no numbering part defines no lists, and there is nothing there to read
+  it("answers a document carrying no numbering with no parser at all", () => {
+    const bare = makeDocx(`<w:p>${LETTER_SECT_PR}</w:p>`);
+    const { session } = importDocx(bare, { xmlParser });
+
+    expect(documentNumbering(session).lists.size).toBe(0);
+    expect(parseNumbering(null).lists.size).toBe(0);
   });
 
   it("writes the file back out with the same option", () => {

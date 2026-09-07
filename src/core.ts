@@ -55,6 +55,7 @@ export type {
   Numbering,
   NumberingLevel,
   NumberingList,
+  NumberingOptions,
 } from "./numbering/parseNumbering";
 export { parseNumbering } from "./numbering/parseNumbering";
 export type {

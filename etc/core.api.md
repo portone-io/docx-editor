@@ -65,7 +65,7 @@ export interface DocumentDefaults {
 }
 
 // @public
-export function documentNumbering(session: DocxSession): Numbering;
+export function documentNumbering(session: DocxSession, options?: NumberingOptions): Numbering;
 
 // @public
 export function documentPartPath(session: DocxSession): string;
@@ -198,6 +198,11 @@ export interface NumberingList {
 }
 
 // @public
+export interface NumberingOptions {
+    xmlParser?: XmlParser;
+}
+
+// @public
 export interface NumberingRef {
     // (undocumented)
     ilvl: number;
@@ -261,8 +266,8 @@ export interface ParagraphStyleOption {
     primary: boolean;
 }
 
-// @public (undocumented)
-export function parseNumbering(xml: string | null): Numbering;
+// @public
+export function parseNumbering(xml: string | null, options?: NumberingOptions): Numbering;
 
 // @public (undocumented)
 export function pxToEmu(px: number): number;
