@@ -30,6 +30,10 @@ Replacing an existing run mark is also display-only when its source and session 
 
 The re-derivation after an edit goes to the history with that edit; the one after a snapshot change goes to the history not at all, since the values follow the snapshot.
 
+Export writes every part beside the body through a list of part planners (`docx/partPlan`).
+A planner answers with the parts it rewrites and declares what a part it adds needs through the one relationships writer and the one content types writer every planner shares, so those two parts are written once from everything asked for; a part's children are put in by `ooxml/partSplice`, which cuts the original text at its root and leaves every other byte as it arrived.
+Every rewritten part is parsed before the package is repacked.
+
 A protection level is a policy object in `docx/protectionPolicy`: the package parts it lets a change rewrite, the grammar their entries are written in, and how the document story is compared once its own markup is taken out.
 The part planners and the server verifier read the same object, so a part the writer starts adding is a part the verifier already excuses from the byte comparison and judges entry by entry.
 
@@ -43,7 +47,7 @@ A folder may import itself and folders with a lower rank only.
 | --- | --- | --- |
 | 0 | `model` | Shared format values and validation |
 | 1 | `styles` | Visual styles, presets, and font fallbacks |
-| 2 | `ooxml` | XML reading and writing primitives, child order, errors, units, and image primitives |
+| 2 | `ooxml` | XML reading and writing primitives, child order, part splicing, errors, units, and image primitives |
 | 3 | `numbering` | Numbering definitions and list markers |
 | 4 | `schema` | ProseMirror nodes, marks, rendering, locks, and edit guards |
 | 5 | `docx` | Import, export, session state, and page geometry |
