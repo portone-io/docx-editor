@@ -19,7 +19,7 @@ import {
   widthNumber,
   withWidthNumber,
 } from "../model/format";
-import { transactionAllowed } from "../schema/guards";
+import { guardedCommand } from "../schema/guards";
 import { inheritCellAttrs, type TableRect } from "./format";
 import { cellWidthForGridCol, gridSpanWidth, tableGridCols } from "./widths";
 
@@ -49,28 +49,30 @@ function cellAt(rect: TableRect, row: number, col: number): PMNode | null {
 }
 
 /**
+ * The two queries are the very commands `./commands` exports, asked without a dispatch, so they
+ * cannot drift from what running them does. They live here rather than beside the commands because
+ * `./commands` imports these builders, and the other way round would turn that import around.
+ */
+const merging = guardedCommand(buildMergeCellsTransaction);
+const splitting = guardedCommand(buildSplitCellTransaction);
+
+/**
  * Whether several cells can be merged into one.
  * The selection has to be a rectangle spanning more than one cell, no merged cell may stick out
  * past that rectangle, and the guards have to let the merge through: a locked cell may not be
- * swallowed by another (`schema/locks`).
- *
- * The two queries are defined from the very transaction the commands run, so they cannot drift
- * from them. They live here rather than beside the commands because `./commands` imports these
- * builders, and the other way round would turn that import around.
+ * swallowed by another (`schema/guards`).
  */
 export function canMergeCells(state: EditorState): boolean {
-  const tr = buildMergeCellsTransaction(state);
-  return tr !== null && transactionAllowed(tr, state);
+  return merging(state);
 }
 
 /**
  * Whether a split is possible. The cursor has to sit inside a cell that is merged horizontally or
  * vertically, and the guards have to let the split through: the cells a split makes would each
- * carry the original's lock, which is a lock planted in places it was never put (`schema/locks`).
+ * carry the original's lock, which is a lock planted in places it was never put (`schema/guards`).
  */
 export function canSplitCell(state: EditorState): boolean {
-  const tr = buildSplitCellTransaction(state);
-  return tr !== null && transactionAllowed(tr, state);
+  return splitting(state);
 }
 
 /**

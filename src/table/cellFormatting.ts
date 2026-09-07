@@ -23,9 +23,7 @@ import {
   NO_FILL,
   toCellFormat,
 } from "../model/format";
-import { transactionAllowed } from "../schema/guards";
-import { isLockedCell } from "../schema/locks";
-import { editsShut } from "../schema/protectionState";
+import { editShut, guardedCommand } from "../schema/guards";
 import type { TableCommand } from "./commands";
 import type { NodeAttrs, TableRect } from "./format";
 import { cellDefaultsAt, tableCellSources } from "./gridBorders";
@@ -100,26 +98,21 @@ function planChanges(
   return changes;
 }
 
+/**
+ * The command reads the very query the menu is drawn from, so an entry cannot be offered and then
+ * refuse the click. What is left to the guard list is the transaction itself.
+ */
 function cellFormatCommand(
   edit: (rect: TableRect, pos: number) => CellFormatEdit
 ): TableCommand {
-  return (state, dispatch) => {
-    if (!pmIsInTable(state)) return false;
+  return guardedCommand((state) => {
+    if (!canSetCellFormatting(state)) return null;
     const rect: TableRect = selectedRect(state);
-    if (
-      rect.map
-        .cellsInRect(rect)
-        .some((pos) => isLockedCell(rect.table.nodeAt(pos)))
-    ) {
-      return false;
-    }
     const changes = planChanges(rect, edit);
-    if (changes.length === 0) return false;
-    const transaction = applyChanges(state.tr, rect.tableStart, changes);
-    if (!transactionAllowed(transaction, state)) return false;
-    dispatch?.(transaction);
-    return true;
-  };
+    return changes.length === 0
+      ? null
+      : applyChanges(state.tr, rect.tableStart, changes);
+  });
 }
 
 export type MixedCellValue<T> = T | "mixed" | null;
@@ -198,27 +191,44 @@ export function setCellBackground(hex: string | null): TableCommand {
   return cellFormatCommand(() => ({ kind: "background", hex }));
 }
 
+/** One cell the current selection acts on, and where in the document it stands */
+interface SelectedCell {
+  node: PMNode;
+  pos: number;
+}
+
 /** The cells the current selection acts on. Empty outside a table */
-function selectedCells(state: EditorState): PMNode[] {
+function selectedCells(state: EditorState): SelectedCell[] {
   if (!pmIsInTable(state)) return [];
   const rect: TableRect = selectedRect(state);
-  const cells: PMNode[] = [];
+  const cells: SelectedCell[] = [];
   for (const pos of rect.map.cellsInRect(rect)) {
     const cell = rect.table.nodeAt(pos);
-    if (cell) cells.push(cell);
+    if (cell) cells.push({ node: cell, pos: rect.tableStart + pos });
   }
   return cells;
 }
 
 function cellFormats(state: EditorState): (CellFormat | null)[] {
-  return selectedCells(state).map((cell) => toCellFormat(cell.attrs.format));
+  return selectedCells(state).map(({ node }) =>
+    toCellFormat(node.attrs.format)
+  );
 }
 
-/** Whether direct cell formatting can act on the whole current cell selection. */
+/**
+ * Whether direct cell formatting can act on the whole current cell selection.
+ *
+ * What a cell records about itself is rewritten around its content, which is the block intent the
+ * guards answer (`schema/guards`): a cell a control shuts is refused, and so is every cell while a
+ * protection shuts the body. The spot asked about stands inside the cell, since that is where the
+ * control wrapping it is an ancestor.
+ */
 export function canSetCellFormatting(state: EditorState): boolean {
-  if (editsShut(state)) return false;
   const cells = selectedCells(state);
-  return cells.length > 0 && cells.every((cell) => !isLockedCell(cell));
+  return (
+    cells.length > 0 &&
+    cells.every(({ pos }) => !editShut(state, { kind: "block", at: pos + 1 }))
+  );
 }
 
 /** Null when the selected cells do not share one value. The palette shows that as "nothing picked" */

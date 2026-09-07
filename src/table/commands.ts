@@ -10,7 +10,7 @@ import {
   deleteTable as pmDeleteTable,
   isInTable as pmIsInTable,
 } from "prosemirror-tables";
-import { transactionAllowed } from "../schema/guards";
+import { guardedCommand } from "../schema/guards";
 import {
   buildAddColumnAfterTransaction,
   buildAddColumnBeforeTransaction,
@@ -33,42 +33,23 @@ export function isInTable(state: EditorState): boolean {
   return pmIsInTable(state);
 }
 
-/**
- * A table command out of the transaction it builds, refused where a guard would turn that
- * transaction down (`schema/guards`).
- *
- * A structural edit is refused whole rather than trimmed: half a row cannot be deleted, and half a
- * block of cells cannot be merged into one. That is the opposite of a paragraph or character edit,
- * which leaves the locked stretches out and applies to the rest (`editor/paragraphEdits`).
- *
- * The answer is the same whether or not `dispatch` was passed. The transaction is built before
- * either way, so asking the guard costs nothing more, and a command reporting one thing to a button
- * and doing another would be worse than the button being wrong.
- */
-function toCommand(
-  build: (state: EditorState) => Transaction | null
-): TableCommand {
-  return (state, dispatch) => {
-    const tr = build(state);
-    if (!tr || !transactionAllowed(tr, state)) return false;
-    dispatch?.(tr);
-    return true;
-  };
-}
-
-export const addRowBefore: TableCommand = toCommand(
+export const addRowBefore: TableCommand = guardedCommand(
   buildAddRowBeforeTransaction
 );
-export const addRowAfter: TableCommand = toCommand(buildAddRowAfterTransaction);
-export const deleteRow: TableCommand = toCommand(buildDeleteRowTransaction);
+export const addRowAfter: TableCommand = guardedCommand(
+  buildAddRowAfterTransaction
+);
+export const deleteRow: TableCommand = guardedCommand(
+  buildDeleteRowTransaction
+);
 
-export const addColumnBefore: TableCommand = toCommand(
+export const addColumnBefore: TableCommand = guardedCommand(
   buildAddColumnBeforeTransaction
 );
-export const addColumnAfter: TableCommand = toCommand(
+export const addColumnAfter: TableCommand = guardedCommand(
   buildAddColumnAfterTransaction
 );
-export const deleteColumn: TableCommand = toCommand(
+export const deleteColumn: TableCommand = guardedCommand(
   buildDeleteColumnTransaction
 );
 
@@ -79,7 +60,13 @@ function buildDeleteTableTransaction(state: EditorState): Transaction | null {
   return captured[0] ?? null;
 }
 
-export const deleteTable: TableCommand = toCommand(buildDeleteTableTransaction);
+export const deleteTable: TableCommand = guardedCommand(
+  buildDeleteTableTransaction
+);
 
-export const mergeCells: TableCommand = toCommand(buildMergeCellsTransaction);
-export const splitCell: TableCommand = toCommand(buildSplitCellTransaction);
+export const mergeCells: TableCommand = guardedCommand(
+  buildMergeCellsTransaction
+);
+export const splitCell: TableCommand = guardedCommand(
+  buildSplitCellTransaction
+);
