@@ -38,6 +38,7 @@ export const NODE_ATTR_ROLES: AttrRoles = {
     tblPr: "source",
     tblW: "source",
     gridCols: "source",
+    gridChange: "source",
     format: "display",
     styleInside: "display",
     styleCellMargins: "display",

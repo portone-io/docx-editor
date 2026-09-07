@@ -54,7 +54,7 @@ import { withUniqueControls } from "./uniqueControls";
  *
  * Unchanged is judged by `sameSource` rather than by `Node.eq`, because opening a file works the
  * display attrs out again (`schema/attrRoles`) and a block rebuilt over that would lose the markup
- * the writer does not model, `w:tblGridChange` among it.
+ * the writer does not model, the properties of a cell continuing a vertical merge among it.
  */
 function blockXml(
   node: PMNode,

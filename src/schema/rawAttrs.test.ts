@@ -105,6 +105,14 @@ const NODE_FRAGMENTS: RawAttrTable = {
       adversarial: withSibling("<w:tblPr/>"),
       draw: (xml) => table({ tblPr: xml }, [row({})]),
     },
+    gridChange: {
+      attribute: "data-gridchange",
+      sound:
+        '<w:tblGridChange w:id="0"><w:tblGrid><w:gridCol w:w="900"/>' +
+        "</w:tblGrid></w:tblGridChange>",
+      adversarial: withSibling("<w:tblGridChange/>"),
+      draw: (xml) => table({ gridChange: xml }, [row({})]),
+    },
     tblW: null,
     gridCols: null,
   },

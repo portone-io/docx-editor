@@ -305,7 +305,7 @@ describe("a cell that starts a vertical merge inside a content control", () => {
 });
 
 describe("rewriting the table width and the grid", () => {
-  it("rebuilds the grid from the column widths and throws the revision markup away", () => {
+  it("rebuilds the grid from the column widths and keeps the revision markup after the columns", () => {
     const table = openTable(
       "<w:tbl>" +
         '<w:tblGrid><w:gridCol w:w="1000"/><w:gridCol w:w="500"/>' +
@@ -314,11 +314,25 @@ describe("rewriting the table width and the grid", () => {
         row(cell("", "a"), cell("", "b")) +
         "</w:tbl>"
     );
-    const xml = serializeTable(table);
-    expect(xml).toContain(
-      '<w:tblGrid><w:gridCol w:w="1000"/><w:gridCol w:w="500"/></w:tblGrid>'
+
+    expect(serializeTable(table)).toContain(
+      '<w:tblGrid><w:gridCol w:w="1000"/><w:gridCol w:w="500"/>' +
+        '<w:tblGridChange w:id="0"><w:tblGrid><w:gridCol w:w="900"/>' +
+        "</w:tblGrid></w:tblGridChange></w:tblGrid>"
     );
-    expect(xml).not.toContain("tblGridChange");
+  });
+
+  it("a table opened without a grid change writes none", () => {
+    const table = openTable(
+      "<w:tbl>" +
+        '<w:tblGrid><w:gridCol w:w="1000"/></w:tblGrid>' +
+        row(cell("", "a")) +
+        "</w:tbl>"
+    );
+
+    expect(serializeTable(table)).toContain(
+      '<w:tblGrid><w:gridCol w:w="1000"/></w:tblGrid>'
+    );
   });
 
   it("rewrites tblW inside tblPr when the table width changes", () => {

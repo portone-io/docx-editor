@@ -102,14 +102,23 @@ function tablePropsXml(table: PMNode): string {
   return renderProps(withWidth(props, "tblW", width, TBL_PR_ORDER));
 }
 
-/** The grid is always built fresh from the column widths the model holds. Revision markup does not come along */
+/**
+ * The grid, built fresh from the column widths the model holds, closed by the revision markup the
+ * file arrived with.
+ *
+ * CT_TblGrid is `gridCol*` followed by an optional `tblGridChange` (ECMA-376 Part 1 17.4.49), so
+ * the record of an earlier grid goes back where it stood however many columns now precede it. It
+ * says what the grid was before it was last revised, which a column edit here does not change.
+ */
 function tableGridXml(table: PMNode): string {
   const gridCols = toGridCols(table.attrs.gridCols);
-  if (gridCols.length === 0) return "";
+  const gridChange =
+    typeof table.attrs.gridChange === "string" ? table.attrs.gridChange : "";
+  if (gridCols.length === 0 && gridChange === "") return "";
   const cols = gridCols
     .map((w) => elementXml(wName("gridCol"), [[wName("w"), `${w}`]]))
     .join("");
-  return elementXml(wName("tblGrid"), [], [cols]);
+  return elementXml(wName("tblGrid"), [], [cols + gridChange]);
 }
 
 type CellRole = "start" | "continue";
