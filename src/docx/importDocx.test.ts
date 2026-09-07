@@ -367,6 +367,25 @@ describe("resolving the style chain", () => {
   });
 });
 
+describe("the fixture holding two sections and a revised table", () => {
+  it("sections-and-revisions.docx opens with the table carrying tblGridChange and the mid-body section paragraph as a paragraph", () => {
+    const { doc } = importDocx(readFixture("sections-and-revisions.docx"));
+    const blocks = doc.children;
+
+    const table = blocks.find((block) => block.type.name === "table");
+    expect(table?.attrs.gridChange).toContain("<w:tblGridChange");
+
+    const sectionParagraphs = blocks.filter((block) => {
+      const pPr: unknown = block.attrs.pPr;
+      return typeof pPr === "string" && pPr.includes("<w:sectPr");
+    });
+    expect(sectionParagraphs.map((block) => block.type.name)).toEqual([
+      "paragraph",
+    ]);
+    expect(blocks.map((block) => block.type.name)).not.toContain("docxRaw");
+  });
+});
+
 /** The Japanese and Chinese fixture, the one document whose fonts come out of a theme */
 const CJK_FIXTURE = "east-asian.docx";
 
