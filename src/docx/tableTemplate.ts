@@ -11,7 +11,7 @@ import type { Node as PMNode } from "prosemirror-model";
 import type { CellFormat, TableWidth } from "../model/format";
 import { elementXml } from "../ooxml/element";
 import { wName } from "../ooxml/names";
-import { parsePropsXml } from "../ooxml/props";
+import { orderedElement, parsePropsXml } from "../ooxml/props";
 import { docxSchema } from "../schema";
 import { A4_PORTRAIT, bodyWidth, type PageGeometry } from "./pageGeometry";
 import {
@@ -39,7 +39,7 @@ export function isTableSide(value: number): boolean {
 /** The border thickness of a new table. `w:sz` is in 1/8 of a point, so 4 is 0.5pt */
 const BORDER_EIGHTHS = 4;
 
-/** The four outer sides and the two lines between cells. The order is the one CT_TblBorders lays down */
+/** The four outer sides and the two lines between cells */
 const BORDER_SIDES = [
   "top",
   "left",
@@ -59,20 +59,25 @@ function borderXml(side: string): string {
 }
 
 /**
- * The order of the children is the one CT_TblPr lays down.
- *
  * The widths are pinned to the grid (`tblLayout`).
  * Our screen always draws to the grid, so writing it this way makes Word draw the same widths.
  */
 function tablePropsXml(width: number): string {
-  const borders = BORDER_SIDES.map(borderXml).join("");
-  return elementXml(
+  const borders = orderedElement(
+    wName("tblBorders"),
+    [],
+    BORDER_SIDES.map((side) => ({ name: side, xml: borderXml(side) }))
+  );
+  return orderedElement(
     wName("tblPr"),
     [],
     [
-      widthXml("tblW", width),
-      elementXml(wName("tblBorders"), [], [borders]),
-      elementXml(wName("tblLayout"), [[wName("type"), "fixed"]]),
+      { name: "tblW", xml: widthXml("tblW", width) },
+      { name: "tblBorders", xml: borders },
+      {
+        name: "tblLayout",
+        xml: elementXml(wName("tblLayout"), [[wName("type"), "fixed"]]),
+      },
     ]
   );
 }
@@ -86,7 +91,11 @@ function widthXml(name: "tblW" | "tcW", width: number): string {
 }
 
 function cellPropsXml(width: number): string {
-  return elementXml(wName("tcPr"), [], [widthXml("tcW", width)]);
+  return orderedElement(
+    wName("tcPr"),
+    [],
+    [{ name: "tcW", xml: widthXml("tcW", width) }]
+  );
 }
 
 /**
