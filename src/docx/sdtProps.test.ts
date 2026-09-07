@@ -50,6 +50,21 @@ describe("a control property the order once had in the wrong spot", () => {
       ])
     ).toBe(prefix(`${ID}<w:temporary/><w:showingPlcHdr/>`));
   });
+
+  /**
+   * The type a control declares stands last in CT_SdtPr, after the lock. An order table that did
+   * not know these names at all left the lock behind whichever of them the control carried.
+   */
+  it.each([
+    '<w:date w:fullDate="2026-01-01T00:00:00Z"/>',
+    '<w:comboBox><w:listItem w:value="a"/></w:comboBox>',
+    "<w:text/>",
+    '<w:label w:val="3"/>',
+  ])("writes the lock ahead of %s", (declared) => {
+    expect(withContentLock(prefix(ID + declared), true)).toBe(
+      prefix(ID + LOCK + declared)
+    );
+  });
 });
 
 describe("lifting a control's lock", () => {

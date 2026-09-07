@@ -27,7 +27,7 @@ A folder may import itself and folders with a lower rank only.
 | --- | --- | --- |
 | 0 | `model` | Shared format values and validation |
 | 1 | `styles` | Visual styles, presets, and font fallbacks |
-| 2 | `ooxml` | XML, errors, units, and image primitives |
+| 2 | `ooxml` | XML reading and writing primitives, child order, errors, units, and image primitives |
 | 3 | `numbering` | Numbering definitions and list markers |
 | 4 | `schema` | ProseMirror nodes, marks, rendering, locks, and edit guards |
 | 5 | `docx` | Import, export, session state, and page geometry |
