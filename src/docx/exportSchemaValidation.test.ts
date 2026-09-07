@@ -29,11 +29,13 @@ import {
   makeNotesDocx,
   readFixture,
 } from "../__testing__/docx";
+import { posOfText } from "../__testing__/editing";
 import {
   addComment,
   documentComments,
   setCommentResolved,
 } from "../editor/commands";
+import { createEditorState } from "../editor/createEditor";
 import { parseXml, W_NS } from "../ooxml/xml";
 import { docxSchema } from "../schema";
 import { setCellPadding } from "../table";
@@ -381,6 +383,74 @@ describe("the exported package against the OOXML schemas", () => {
     const { doc, session } = importDocx(readFixture(name));
     expectPartsValidate(name, wordprocessingParts(exportDocx(doc, session)));
   });
+
+  it.each([
+    {
+      name: "a prefix inherited from the grid",
+      declarations: `xmlns:g="${W_NS}"`,
+      revision:
+        '<g:tblGridChange g:id="0"><g:tblGrid><g:gridCol g:w="900"/>' +
+        "</g:tblGrid></g:tblGridChange>",
+    },
+    {
+      name: "the default namespace inherited from the grid",
+      declarations: `xmlns="${W_NS}"`,
+      revision:
+        '<tblGridChange w:id="0"><tblGrid><gridCol w:w="900"/>' +
+        "</tblGrid></tblGridChange>",
+    },
+    {
+      name: "a binding overridden by the revision itself",
+      declarations: 'xmlns:g="urn:unused"',
+      revision:
+        `<g:tblGridChange xmlns:g="${W_NS}" g:id="0">` +
+        '<g:tblGrid><g:gridCol g:w="900"/></g:tblGrid></g:tblGridChange>',
+    },
+    {
+      name: "a binding overridden inside the revision",
+      declarations: 'xmlns:g="urn:unused"',
+      revision:
+        `<w:tblGridChange w:id="0"><g:tblGrid xmlns:g="${W_NS}">` +
+        '<g:gridCol g:w="900"/></g:tblGrid></w:tblGridChange>',
+    },
+  ])(
+    "a rebuilt grid revision keeps $name",
+    ({ name, declarations, revision }) => {
+      const bytes = makeDocx(
+        `<w:tbl><w:tblPr/><w:tblGrid ${declarations}>` +
+          `<w:gridCol w:w="1000"/>${revision}</w:tblGrid>` +
+          '<w:tr><w:tc><w:tcPr><w:tcW w:w="1000" w:type="dxa"/></w:tcPr>' +
+          "<w:p><w:r><w:t>a</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:p/>"
+      );
+      expectPartsValidate(name, wordprocessingParts(bytes));
+      const { doc, session } = importDocx(bytes);
+      const state = createEditorState(doc);
+      const edited = state.apply(
+        state.tr.insertText("edited", posOfText(state.doc, "a"))
+      );
+      const written = exportDocx(edited.doc, session);
+      const parts = wordprocessingParts(written);
+
+      expectPartsValidate(name, parts);
+      const xml = parts.get(session.mainPartPath);
+      if (xml === undefined)
+        throw new Error("the exported body part is missing");
+      const gridChange = parseXml(xml).getElementsByTagNameNS(
+        W_NS,
+        "tblGridChange"
+      );
+      expect(gridChange).toHaveLength(1);
+      const columns = gridChange[0].getElementsByTagNameNS(W_NS, "gridCol");
+      expect(columns).toHaveLength(1);
+      expect(columns[0].getAttributeNS(W_NS, "w")).toBe("900");
+      const reopened = importDocx(written);
+      expect(reopened.doc.textContent).toContain("edited");
+      expect(reopened.doc.firstChild?.type.name).toBe("table");
+      expect(reopened.doc.firstChild?.attrs.gridChange).toEqual(
+        expect.any(String)
+      );
+    }
+  );
 
   it("a body-level bookmark remains valid after a surrounding paragraph edit", () => {
     const opened = importDocx(

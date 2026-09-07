@@ -207,7 +207,7 @@ describe("the row and cell wrappers we carry along without reading them", () => 
     `<w:tc><w:p><w:r><w:t xml:space="preserve">${text}</w:t></w:r></w:p></w:tc>`;
 
   const original =
-    "<w:tbl>" +
+    "<w:tbl><w:tblPr/>" +
     grid(1000, 1000) +
     `<w:tr>${TBL_PR_EX}${TR_PR}` +
     `${SDT_PREFIX}<w:sdtContent>${exportedCell("value")}</w:sdtContent></w:sdt>` +
@@ -283,7 +283,7 @@ describe("a cell that starts a vertical merge inside a content control", () => {
     `<w:p><w:r><w:t xml:space="preserve">${text}</w:t></w:r></w:p></w:tc>`;
 
   const original =
-    "<w:tbl>" +
+    "<w:tbl><w:tblPr/>" +
     grid(1000, 1000) +
     `<w:tr>${SDT_PREFIX}<w:sdtContent>${START_CELL}</w:sdtContent></w:sdt>` +
     `${plainCell("a")}</w:tr>` +

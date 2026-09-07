@@ -99,14 +99,18 @@ function withWidth(
 function tablePropsXml(table: PMNode): string {
   const props = propsOf(table.attrs.tblPr, "w:tblPr");
   const width = toTableWidth(table.attrs.tblW);
-  return renderProps(withWidth(props, "tblW", width, TBL_PR_ORDER));
+  // CT_Tbl requires tblPr even when the table has no properties (ECMA-376 Part 1, Annex A.1).
+  return (
+    renderProps(withWidth(props, "tblW", width, TBL_PR_ORDER)) ||
+    elementXml(wName("tblPr"), [])
+  );
 }
 
 /**
  * The grid, built fresh from the column widths the model holds, closed by the revision markup the
  * file arrived with.
  *
- * CT_TblGrid is `gridCol*` followed by an optional `tblGridChange` (ECMA-376 Part 1 17.4.49), so
+ * CT_TblGrid is `gridCol*` followed by an optional `tblGridChange` (ECMA-376 Part 1 17.4.48), so
  * the record of an earlier grid goes back where it stood however many columns now precede it. It
  * says what the grid was before it was last revised, which a column edit here does not change.
  */

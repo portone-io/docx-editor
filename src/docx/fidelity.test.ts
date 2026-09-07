@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { fixtureNames, makeDocx, readFixture } from "../__testing__/docx";
 import { documentFidelity } from "../editor/commands/fidelityQueries";
 import { createEditorState } from "../editor/createEditor";
+import { exportDocxReport } from "./exportDocx";
 import { fidelityNotesOf } from "./fidelity";
 import { importDocx } from "./importDocx";
 
@@ -104,6 +105,39 @@ describe("the notes a document opens with", () => {
     expect(
       notesOf(`<w:p>${run("a")}<w:r><w:rPr><w:b/></w:rPr></w:r></w:p>`)
     ).toEqual([]);
+  });
+
+  it("reports a preserved block inside a cell through import, the editor and export", () => {
+    const { doc, session, notes } = importDocx(
+      makeDocx(
+        `<w:p>${run("First")}</w:p>` +
+          '<w:tbl><w:tblPr/><w:tblGrid><w:gridCol w:w="1000"/></w:tblGrid>' +
+          "<w:tr><w:tc><w:tcPr/><w:p><w:r>" +
+          '<w:sym w:font="Wingdings" w:char="F0E0"/>' +
+          "</w:r></w:p></w:tc></w:tr></w:tbl>"
+      )
+    );
+    const expected = {
+      severity: "placeholder",
+      code: "preserved-block",
+      part: "word/document.xml",
+      block: 1,
+      pos: 10,
+      element: "w:p",
+    };
+    expect(notes).toEqual([expected]);
+
+    const state = createEditorState(doc);
+    expect(documentFidelity(state)).toEqual([{ ...expected, part: null }]);
+    expect(exportDocxReport(state.doc, session).notes).toEqual([expected]);
+
+    const edited = state.apply(state.tr.insertText("More ", 1));
+    expect(documentFidelity(edited)).toEqual([
+      { ...expected, part: null, pos: 15 },
+    ]);
+    expect(exportDocxReport(edited.doc, session).notes).toEqual([
+      { ...expected, pos: 15 },
+    ]);
   });
 
   it("reports nothing for a document made of modelled nodes only", () => {

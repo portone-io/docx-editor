@@ -278,7 +278,7 @@ export const docxSchema = new Schema({
          * The whole `<w:tblGridChange>...</w:tblGridChange>` XML, the record of the grid this
          * table had before it was last revised. Carried as it arrived because the grid around it
          * is rebuilt from `gridCols`, and CT_TblGrid takes it after the columns however wide
-         * those turn out to be (ECMA-376 Part 1 17.4.49)
+         * those turn out to be (ECMA-376 Part 1 17.4.48)
          */
         gridChange: { default: null },
         format: { default: null },

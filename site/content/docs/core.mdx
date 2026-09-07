@@ -57,8 +57,13 @@ its position in the document (`pos`, which a reader can select), and the origina
 for a piece of a run, and `paragraph-demoted` or `table-demoted` for a paragraph or table this
 editor could not model at all.
 
-`exportDocxReport` writes the file and answers the same question about the document it wrote, so a
-server handing the file on can say what it no longer holds without opening it again:
+Currently, notes cover preserved block and inline nodes, including hidden bookmarks and
+placeholders. `preserved-run-content` and `approximated` are reserved for future reporting;
+neither is emitted yet. An empty list does not guarantee a lossless round trip: the writer's
+known losses described below are not included in these notes.
+
+`exportDocxReport` writes the file and returns the notes for the document it wrote, so a server
+can report its preserved content without opening the file again:
 
 ```ts
 import { exportDocxReport } from "@portone/docx-editor/core";

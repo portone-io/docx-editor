@@ -175,6 +175,26 @@ interface TableParts {
   rows: RawRow[];
 }
 
+/** Keeps the revision's namespace context when its parent grid is rebuilt. */
+function gridRevisionXml(grid: Element): string | null {
+  const revision = childByLocalName(grid, "tblGridChange");
+  if (revision === null) return null;
+  // The rebuilt grid no longer supplies these bindings. Keep all of them, including prefixes
+  // used only in QName-valued attributes, without overriding declarations inside the revision.
+  const declarations = Array.from(grid.attributes).filter(
+    (attr) =>
+      attr.namespaceURI === "http://www.w3.org/2000/xmlns/" &&
+      !revision.hasAttribute(attr.name)
+  );
+  if (declarations.length === 0) return serializeXml(revision);
+
+  const preserved = revision.ownerDocument.importNode(revision, true);
+  for (const attr of declarations) {
+    preserved.setAttributeNS(attr.namespaceURI, attr.name, attr.value);
+  }
+  return serializeXml(preserved);
+}
+
 /** Splits a table into the three pieces it is made of. null if a child we do not know is mixed in */
 function readTableParts(el: Element): TableParts | null {
   let tblPr: Element | null = null;
@@ -188,8 +208,7 @@ function readTableParts(el: Element): TableParts | null {
     }
     if (child.localName === "tblGrid") {
       tblGrid = child;
-      const revision = childByLocalName(child, "tblGridChange");
-      gridChange = revision ? serializeXml(revision) : null;
+      gridChange = gridRevisionXml(child);
       continue;
     }
     if (child.localName !== "tr") return null;
