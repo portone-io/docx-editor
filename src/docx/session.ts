@@ -40,9 +40,31 @@ export interface DocxSession {
   readonly kind: "docxSession";
 }
 
+/** What names one open document, which a block key is written against */
+export interface SessionIdentity {
+  readonly sessionId: string;
+}
+
+let sessionsOpened = 0;
+
+/**
+ * A name for one open document.
+ *
+ * Opening the same bytes twice opens two documents, so this is drawn fresh each time rather than
+ * worked out from what was opened. It carries no `:`, which is what lets a block key be read back
+ * however many colons the story it names holds.
+ */
+export function newSessionId(): string {
+  sessionsOpened += 1;
+  // The counter alone would repeat across two copies of this module, a worker's among them
+  return `d${sessionsOpened}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 /** What the package's own layers read the open document off */
-export class SessionStore implements DocxSession {
+export class SessionStore implements DocxSession, SessionIdentity {
   readonly kind = "docxSession";
+  /** Which open document this is. Every block key of it names it, so a block of another document is not taken for one of this one */
+  readonly sessionId: string;
   readonly parts: Map<string, Uint8Array>;
   readonly mainPartPath: string;
   readonly documentPrefix: string;
@@ -78,6 +100,7 @@ export class SessionStore implements DocxSession {
   readonly headersFooters: HeadersFooters;
 
   constructor(opened: Omit<SessionStore, "kind">) {
+    this.sessionId = opened.sessionId;
     this.parts = opened.parts;
     this.mainPartPath = opened.mainPartPath;
     this.documentPrefix = opened.documentPrefix;
@@ -123,11 +146,61 @@ export function documentNumbering(
   return parseNumbering(sessionOf(session).numberingXml, options);
 }
 
-/** Finds which original block a node came from. undefined for a node newly created during editing */
+/** The story a block key names when the block stood in the main document body */
+export const BODY_STORY_KEY = "body";
+
+/** A block key read back: which open document the block came from, which story of it, and where in that story */
+export interface BlockKey {
+  sessionId: string;
+  storyKey: string;
+  index: number;
+}
+
+/** Where a block stands, as the one string a node carries on its `srcId` */
+export function blockKey(
+  session: SessionIdentity,
+  storyKey: string,
+  index: number
+): string {
+  return `${session.sessionId}:${storyKey}:${index}`;
+}
+
+/**
+ * The three parts of a block key, or null for a string that is not one.
+ *
+ * A story key holds colons of its own (`comment:4`), so the key is read from both ends rather
+ * than split: the first segment is the document, the last is the place in the story, and
+ * everything between them is the story itself.
+ */
+export function splitBlockKey(key: string): BlockKey | null {
+  const first = key.indexOf(":");
+  const last = key.lastIndexOf(":");
+  if (first < 1 || last <= first + 1) return null;
+  const indexText = key.slice(last + 1);
+  if (!/^\d+$/.test(indexText)) return null;
+  const index = Number(indexText);
+  if (!Number.isSafeInteger(index)) return null;
+  return {
+    sessionId: key.slice(0, first),
+    storyKey: key.slice(first + 1, last),
+    index,
+  };
+}
+
+/**
+ * Finds which original block a node came from. undefined for a node newly created during editing,
+ * and for one that came in from another document, whose original is in that file and not this one.
+ */
 export function originalBlock(
   node: PMNode,
   session: SessionStore
 ): ImportedBlock | undefined {
   const srcId: unknown = node.attrs.srcId;
-  return typeof srcId === "number" ? session.blocks[srcId] : undefined;
+  if (typeof srcId !== "string") return undefined;
+  const key = splitBlockKey(srcId);
+  if (key === null || key.sessionId !== session.sessionId) return undefined;
+  // The body is the only story a session holds blocks of
+  return key.storyKey === BODY_STORY_KEY
+    ? session.blocks[key.index]
+    : undefined;
 }

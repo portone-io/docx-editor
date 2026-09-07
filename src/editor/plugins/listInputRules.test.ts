@@ -138,12 +138,12 @@ function markerTexts({ view, numbering }: Opened): string[] {
   );
 }
 
-/** The same body turned into a list by the toolbar button, with the caret in the first paragraph */
-function listedByButton(body: string): {
-  doc: PMNode;
-  session: SessionStore;
-} {
-  const { state, session } = openState(makeNumberedDocx(body));
+/**
+ * The same document turned into a list by the toolbar button, with the caret in the first
+ * paragraph. It is the state the editor opened rather than a second import, because a block of
+ * one import is not a block of another (`docx/session`).
+ */
+function listedByButton(state: EditorState): PMNode {
   const selected = state.apply(
     state.tr.setSelection(TextSelection.create(state.doc, 1))
   );
@@ -153,7 +153,7 @@ function listedByButton(body: string): {
       listed = selected.apply(tr);
     })
   ).toBe(true);
-  return { doc: listed.doc, session };
+  return listed.doc;
 }
 
 describe('typing "1. " at the start of a line', () => {
@@ -188,23 +188,21 @@ describe('typing "1. " at the start of a line', () => {
 
   it("leaves the document the list button leaves", () => {
     const { view } = open(bodyParagraph("Body text"));
+    const byButton = listedByButton(view.state);
     caretAt(view, 0, 0);
     type(view, "1. ");
 
-    expect(
-      view.state.doc.eq(listedByButton(bodyParagraph("Body text")).doc)
-    ).toBe(true);
+    expect(view.state.doc.eq(byButton)).toBe(true);
   });
 
   it("exports the same xml a list made with the button does", () => {
-    const body = bodyParagraph("Body text");
-    const { view, session } = open(body);
+    const { view, session } = open(bodyParagraph("Body text"));
+    const byButton = listedByButton(view.state);
     caretAt(view, 0, 0);
     type(view, "1. ");
-    const byButton = listedByButton(body);
     const xml = documentXmlOf(view.state.doc, session);
 
-    expect(xml).toBe(documentXmlOf(byButton.doc, byButton.session));
+    expect(xml).toBe(documentXmlOf(byButton, session));
     expect(xml).toContain("<w:numPr>");
     expect(xml).not.toContain("<w:ind");
     expect(xml).not.toContain("1. ");
