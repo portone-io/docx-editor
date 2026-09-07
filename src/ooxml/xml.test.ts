@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { importErrorCode } from "../__testing__/docx";
 import { DocxImportError } from "./errors";
+import { NAMESPACES } from "./names";
 import {
   escapeXml,
   namespaceDecls,
@@ -215,14 +216,22 @@ describe("a part that declares no DTD", () => {
 });
 
 describe("namespaceDecls", () => {
-  it("declares every prefix a fragment uses, w to its namespace and the rest to placeholders", () => {
+  it("binds every prefix it knows to its own namespace and the rest to placeholders", () => {
     const decls = namespaceDecls(
       '<w:pPr><w14:paraId w14:val="1"/><m:oMath/></w:pPr>'
     );
 
     expect(decls).toContain(`xmlns:w="${W_NS}"`);
-    expect(decls).toContain('xmlns:w14="urn:docx-editor:w14"');
+    expect(decls).toContain(`xmlns:w14="${NAMESPACES.w14}"`);
     expect(decls).toContain('xmlns:m="urn:docx-editor:m"');
+  });
+
+  it("reads an attribute of a known prefix under the namespace it stands for", () => {
+    const xml = '<w:p w14:paraId="1A2B3C4D"/>';
+    const el = parseXml(`<x ${namespaceDecls(xml)}>${xml}</x>`).documentElement
+      .firstElementChild;
+
+    expect(el?.getAttributeNS(NAMESPACES.w14, "paraId")).toBe("1A2B3C4D");
   });
 
   it("declares w even for a fragment that never names it", () => {
@@ -232,9 +241,17 @@ describe("namespaceDecls", () => {
   it("declares the prefix of an attribute that opens the string", () => {
     const attrs = 'w14:paraId="1A2B3C4D" w:rsidR="00A1B2C3"';
 
-    expect(namespaceDecls(attrs)).toContain('xmlns:w14="urn:docx-editor:w14"');
+    expect(namespaceDecls(attrs)).toContain(`xmlns:w14="${NAMESPACES.w14}"`);
     expect(() =>
       parseXml(`<x ${namespaceDecls(attrs)} ${attrs}/>`)
+    ).not.toThrow();
+  });
+
+  it("keeps a prefix it does not know parseable rather than refusing the fragment", () => {
+    const xml = '<o:idmap v:ext="edit" data="1"/>';
+
+    expect(() =>
+      parseXml(`<x ${namespaceDecls(xml)}>${xml}</x>`)
     ).not.toThrow();
   });
 

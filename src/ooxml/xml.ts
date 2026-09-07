@@ -1,15 +1,7 @@
 import { DocxImportError } from "./errors";
+import { isKnownPrefix, NAMESPACES, R_NS, W_NS, W_PREFIX } from "./names";
 
-/** The wordprocessing namespace that every element we read lives in */
-export const W_NS =
-  "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
-
-/**
- * The relationship namespace. It is both where the `r:embed` attributes live and the base
- * every relationship type name is built on
- */
-export const R_NS =
-  "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+export { R_NS, W_NS };
 
 /**
  * The prefixes whose meaning the editor depends on, and the namespace each one has to carry.
@@ -173,14 +165,18 @@ export function parseXml(source: string): Document {
 
 /**
  * Gathers the namespace prefixes used in the fragment and declares them.
- * Only `w` carries real meaning; the rest are placeholders that keep the parser from stopping.
- * All we read are element names and `w:` attributes, so placeholders still let the values be read as they are.
+ *
+ * A prefix `NAMESPACES` knows is bound to the namespace it stands for, so an attribute read off
+ * the fragment by namespace answers what it would in the part the fragment came out of. A prefix
+ * it does not know is bound to a placeholder, which carries no meaning but keeps the parser going:
+ * a fragment naming `o:`, `v:` or `wne:` would otherwise fail to parse and be refused whole
+ * (`ooxml/fragment`), taking the node that held it with it.
  *
  * An attribute standing at the very start of the string counts too, since a fragment may be an
  * attribute list of its own (`attrString`) rather than an element.
  */
 export function namespaceDecls(xml: string): string {
-  const prefixes = new Set<string>(["w"]);
+  const prefixes = new Set<string>([W_PREFIX]);
   for (const [, prefix] of xml.matchAll(/<\/?([A-Za-z_][\w.-]*):/g)) {
     prefixes.add(prefix);
   }
@@ -193,10 +189,12 @@ export function namespaceDecls(xml: string): string {
   prefixes.delete("xml");
   prefixes.delete("xmlns");
   return Array.from(prefixes)
-    .map(
-      (prefix) =>
-        `xmlns:${prefix}="${prefix === "w" ? W_NS : `urn:docx-editor:${prefix}`}"`
-    )
+    .map((prefix) => {
+      const namespace = isKnownPrefix(prefix)
+        ? NAMESPACES[prefix]
+        : `urn:docx-editor:${prefix}`;
+      return `xmlns:${prefix}="${namespace}"`;
+    })
     .join(" ");
 }
 
