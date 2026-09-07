@@ -166,11 +166,6 @@ function offEdit(name: string, value: string, pinned: boolean): ChildEdit {
   return [name, pinned ? valXml(name, value) : null];
 }
 
-/** Whether the layers below the run leave one of the toggled formats switched on */
-function toggleInherited(inherited: RunFormat, toggle: RunToggle): boolean {
-  return isRunToggleOn(inherited, toggle);
-}
-
 /** Which children of the rPr one job changes and how. null for a value whose meaning cannot be made out */
 function childEdits(
   edit: RunEdit,
@@ -185,7 +180,7 @@ function childEdits(
         return names.map((name) => [name, valXml(name, value)]);
       }
       const off = TOGGLE_OFF_VALUE[edit.toggle];
-      const pinned = toggleInherited(inherited, edit.toggle);
+      const pinned = isRunToggleOn(inherited, edit.toggle);
       return names.map((name) => offEdit(name, off, pinned));
     }
     case "fontSize": {
