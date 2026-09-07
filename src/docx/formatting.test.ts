@@ -355,10 +355,22 @@ describe("readParagraphFormat", () => {
     ).toEqual({});
   });
 
+  it("a paragraph kept with the next one carries it in the display values", () => {
+    expect(paragraphFormat("<w:pPr><w:keepNext/></w:pPr>")).toEqual({
+      keepNext: true,
+    });
+    expect(paragraphFormat('<w:pPr><w:keepNext w:val="1"/></w:pPr>')).toEqual({
+      keepNext: true,
+    });
+    expect(paragraphFormat('<w:pPr><w:keepNext w:val="0"/></w:pPr>')).toEqual(
+      {}
+    );
+  });
+
   it("formatting we do not handle yet does not slip into the display values", () => {
     expect(
       paragraphFormat(
-        '<w:pPr><w:keepNext/><w:widowControl w:val="0"/>' +
+        '<w:pPr><w:keepLines/><w:widowControl w:val="0"/>' +
           '<w:pStyle w:val="Heading1"/></w:pPr>'
       )
     ).toEqual({});

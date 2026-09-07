@@ -61,6 +61,17 @@ const HEADING_STYLE =
 
 const BODY = '<w:p><w:r><w:t xml:space="preserve">body</w:t></w:r></w:p>';
 
+/** A heading style that asks for its paragraphs to stand on the same page as what follows them */
+const KEEPING_HEADING_STYLE =
+  '<w:style w:type="paragraph" w:styleId="Heading1">' +
+  '<w:name w:val="heading 1"/>' +
+  "<w:pPr><w:keepNext/></w:pPr></w:style>";
+
+const HEADING_THEN_BODY =
+  '<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr>' +
+  "<w:r><w:t>heading</w:t></w:r></w:p>" +
+  BODY;
+
 /** The state built out of everything the document told us, the same as `DocxEditor` builds it */
 function opened(styles = NORMAL_STYLE): {
   state: EditorState;
@@ -387,12 +398,15 @@ describe("what the state is built over", () => {
  * all, whose session answers with the document's own once the snapshot is derived again.
  */
 describe("the snapshot being replaced under the document", () => {
-  function underNothing(body = BODY_WITH_LOCKED_CELL): {
+  function underNothing(
+    body = BODY_WITH_LOCKED_CELL,
+    styles = NORMAL_STYLE
+  ): {
     doc: PMNode;
     state: EditorState;
     appended: Transaction[];
   } {
-    const { doc, session } = importDocx(makeStyledDocx(body, NORMAL_STYLE));
+    const { doc, session } = importDocx(makeStyledDocx(body, styles));
     const document: EditorDocument = {
       ...editorDocumentOf(session),
       formatting: NO_FORMATTING,
@@ -438,6 +452,35 @@ describe("the snapshot being replaced under the document", () => {
         align: "center",
       });
       expect(paragraph.attrs.pPr).toBe(paragraphsOf(doc)[at]?.attrs.pPr);
+    });
+  });
+
+  /**
+   * The page guides read a paragraph's keep with next off its display values, so the value has to
+   * come back with the rest of them, whichever layer of the hierarchy laid it down
+   */
+  it("works a keep with next the style lays down out again, and an edit keeps it", () => {
+    const { doc, state } = underNothing(
+      HEADING_THEN_BODY,
+      NORMAL_STYLE + KEEPING_HEADING_STYLE
+    );
+    expect(toParagraphFormat(doc.child(0).attrs.format)).toEqual({
+      keepNext: true,
+    });
+    expect(toParagraphFormat(state.doc.child(0).attrs.format)).toBeNull();
+
+    const derived = restyled(state);
+    expect(toParagraphFormat(derived.doc.child(0).attrs.format)).toEqual({
+      keepNext: true,
+    });
+    expect(toParagraphFormat(derived.doc.child(1).attrs.format)).toEqual({
+      align: "center",
+    });
+
+    const aligned = ran(select(derived, 2), setParagraphAlign("right"));
+    expect(toParagraphFormat(aligned.doc.child(0).attrs.format)).toEqual({
+      align: "right",
+      keepNext: true,
     });
   });
 
