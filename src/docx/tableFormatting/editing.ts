@@ -281,7 +281,8 @@ function editedPadding(
     ) {
       return null;
     }
-    // The spelling the document already used for this side, else the newer one of the two
+    // The spelling the document already used for this side, else the side's own name, which is
+    // the older `left`/`right` spelling
     const name =
       MARGIN_SIDE_NAMES[side].find(
         (spelling) => propsChild(margins.children, spelling) !== undefined
