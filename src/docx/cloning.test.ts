@@ -19,7 +19,7 @@ function paragraphOf(body: string) {
 /** A paragraph carrying both identifiers, a section break, and formatting beside them */
 function sectionParagraph() {
   return paragraphOf(
-    '<w:p w14:paraId="DEADBEEF" w14:textId="77777777">' +
+    '<w:p w14:paraId="1EADBEEF" w14:textId="77777777">' +
       `<w:pPr><w:jc w:val="center"/>${SECT_PR}</w:pPr>` +
       '<w:r><w:t xml:space="preserve">text</w:t></w:r></w:p>'
   );
@@ -95,7 +95,7 @@ describe("the attrs a paragraph made from another paragraph carries", () => {
 
   it("keeps the attributes standing beside the ids it takes away", () => {
     const paragraph = paragraphOf(
-      '<w:p w:rsidR="00AB12CD" w14:paraId="DEADBEEF" w14:textId="77777777"/>'
+      '<w:p w:rsidR="00AB12CD" w14:paraId="1EADBEEF" w14:textId="77777777"/>'
     );
 
     expect(splitParagraphAttrs(paragraph).after.pAttrs).toBe(

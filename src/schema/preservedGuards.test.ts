@@ -222,6 +222,18 @@ describe("a guard over the sections a document was opened with", () => {
     expect(editShut(state, { kind: "mark", ...range })).toBe(false);
   });
 
+  it("allows replacing text inside a section paragraph", () => {
+    const state = sectioned();
+    const at = sectionParagraphAt(state.doc);
+
+    expect(editShut(state, { kind: "replace", from: at + 1, to: at + 4 })).toBe(
+      false
+    );
+    expect(
+      transactionAllowed(state.tr.insertText("new", at + 1, at + 4), state)
+    ).toBe(true);
+  });
+
   it("does not read the section break a tracked change kept", () => {
     const state = createEditorState(
       importDocx(

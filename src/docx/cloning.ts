@@ -3,7 +3,7 @@
  *
  * A paragraph built from another one - either half of the two Enter leaves behind, or a copy - used
  * to arrive holding every attr of the original. Two paragraphs then claimed the same `w14:paraId`,
- * which is the name a comment anchors to, and a paragraph-level `w:sectPr` went out twice, which
+ * and a paragraph-level `w:sectPr` went out twice, which
  * gives the document a section break it never had.
  *
  * `CLONE_POLICIES` is the one place that answers what becomes of each attr, and it answers per
@@ -129,7 +129,7 @@ export const CLONE_POLICIES: Readonly<
     {
       // The half that carries on where the original stood keeps the original's name. The one the
       // edit made is a new paragraph and goes out with none, so no two ever claim the same
-      // identity and the comment anchored to it still reaches one paragraph.
+      // paragraph identity.
       pAttrs: (value, side) =>
         side === "before" ? value : withoutParagraphIds(value),
       // A paragraph-level `w:sectPr` ends the section it stands in, so it belongs to whichever

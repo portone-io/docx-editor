@@ -147,7 +147,14 @@ export const sectionGuard: ChangeGuard = {
   change: (tr) =>
     !transactionReaches(tr, endsASection) ||
     sectionBreaks(tr.doc) >= sectionBreaks(tr.before),
-  shuts: (intent, state) =>
-    intent.kind === "replace" &&
-    rangeHolds(state.doc, intent.from, intent.to, endsASection),
+  shuts: (intent, state) => {
+    if (intent.kind !== "replace") return false;
+    const $from = state.doc.resolve(intent.from);
+    const $to = state.doc.resolve(intent.to);
+    // Replacing inline content leaves the paragraph and its section properties standing.
+    if ($from.parent.type.name === "paragraph" && $from.sameParent($to)) {
+      return false;
+    }
+    return rangeHolds(state.doc, intent.from, intent.to, endsASection);
+  },
 };
