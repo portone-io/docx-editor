@@ -1,19 +1,25 @@
 /**
- * Decorations that move content to the next page: block pushes, page-break spaces, and table
- * continuation rows.
+ * Decorations that move content to the next page: the push above a block, and whatever the block's
+ * own kind draws the cuts inside it as (`page/kinds`).
  *
- * The document model is left untouched, so no trace of them is left in
- * the exported XML or in the edit history.
+ * The kinds the editor was built with are held here, so the measurement and the decorations read
+ * one registry and a block is measured by the same kind that draws it.
+ * The document model is left untouched, so no trace of any of it is left in the exported XML or
+ * in the edit history.
  */
 
 import type { Node as PMNode } from "prosemirror-model";
-import { Plugin, PluginKey } from "prosemirror-state";
+import {
+  type EditorState,
+  Plugin,
+  PluginKey,
+  type Transaction,
+} from "prosemirror-state";
 import { Decoration, DecorationSet, type EditorView } from "prosemirror-view";
-import { docxSchema, isPageBreak } from "../schema";
 import { editorAttributes } from "../styles/classNames";
-import type { PageCut } from "./blockKinds";
+import { type BlockKind, blockKindFor, type PageCut } from "./blockKinds";
+import { DEFAULT_BLOCK_KINDS } from "./kinds";
 import type { BlockPush } from "./pageLayout";
-import { columnCount, headerRowsOf } from "./tableMeasurements";
 
 /** Everything one measurement has to say about the page (`page/pageLayout`) */
 export interface PageMarksInput {
@@ -29,6 +35,7 @@ export interface PageMarksInput {
 }
 
 interface PageMarks extends PageMarksInput {
+  kinds: readonly BlockKind[];
   decorations: DecorationSet;
 }
 
@@ -43,51 +50,6 @@ const marksKey = new PluginKey<PageMarks>("docxPageDecorations");
  */
 function pushStyle(marginTop: number): string {
   return `margin-block-start:${marginTop}px`;
-}
-
-/**
- * A block box around the `br`, so what follows the break is laid out below it and a height moves
- * it down by exactly that much. An empty one redraws the paragraph as it stood, except one holding
- * nothing but the break, which loses the line the `br` alone occupied.
- */
-function spaceStyle(height: number): string {
-  return `display:block;height:${height}px`;
-}
-
-function isPageBreakNode(node: PMNode | null | undefined): boolean {
-  return (
-    node?.type === docxSchema.nodes.hardBreak && isPageBreak(node.attrs.brAttrs)
-  );
-}
-
-function isRow(node: PMNode | null | undefined): boolean {
-  return node?.type.spec.tableRole === "row";
-}
-
-/** One page break inside a block, where it stands and how much room the `br` itself takes */
-interface BreakAt {
-  at: number;
-  size: number;
-}
-
-/**
- * Every page break inside this block, in document order.
- * A space is put on the breaks of a top-level paragraph alone: inside a table cell it would grow
- * the cell rather than the page, so a break there is left to the whole-block rule in
- * `page/measureBlocks`, and none is found here.
- *
- * The measurement reads the same list to pair each space element it finds with the break it
- * belongs to (`page/measureBlocks`).
- */
-export function pageBreaksIn(block: PMNode, blockPos: number): BreakAt[] {
-  const found: BreakAt[] = [];
-  if (block.type !== docxSchema.nodes.paragraph) return found;
-  block.forEach((child, offset) => {
-    if (isPageBreakNode(child)) {
-      found.push({ at: blockPos + 1 + offset, size: child.nodeSize });
-    }
-  });
-  return found;
 }
 
 /** The cuts of each top-level block, keyed by the position that block starts at */
@@ -107,97 +69,15 @@ function cutsByBlock(
   return byBlock;
 }
 
-function breakSpaces(
-  block: PMNode,
-  blockPos: number,
-  cuts: readonly PageCut[],
-  into: Decoration[]
-): void {
-  const heights = new Map(cuts.map((cut) => [cut.at, cut.height]));
-  for (const { at, size } of pageBreaksIn(block, blockPos)) {
-    const height = heights.get(at) ?? 0;
-    into.push(
-      Decoration.inline(at, at + size, {
-        nodeName: "span",
-        style: spaceStyle(height),
-        [editorAttributes.pageBreakSpace]: `${height}`,
-      })
-    );
-  }
-}
-
-function tableSpace(height: number, columns: number): HTMLElement {
-  const row = document.createElement("tr");
-  row.setAttribute(editorAttributes.tablePageSpace, `${height}`);
-  row.setAttribute("aria-hidden", "true");
-  row.setAttribute("contenteditable", "false");
-  row.style.height = `${height}px`;
-
-  const cell = document.createElement("td");
-  cell.colSpan = columns;
-  cell.style.height = `${height}px`;
-  row.append(cell);
-  return row;
-}
-
-function repeatedHeader(view: EditorView, rowPos: number): HTMLElement {
-  const source = view.nodeDOM(rowPos);
-  const row =
-    source instanceof HTMLElement && source.tagName === "TR"
-      ? (source.cloneNode(true) as HTMLElement)
-      : document.createElement("tr");
-  row.setAttribute(editorAttributes.tableRepeatedHeader, "");
-  row.setAttribute("aria-hidden", "true");
-  row.setAttribute("contenteditable", "false");
-  row.removeAttribute("id");
-  row.querySelectorAll("[id]").forEach((element) => {
-    element.removeAttribute("id");
-  });
-  return row;
-}
-
 /**
- * The spacer and the repeated headers a table's cuts are drawn as.
- *
- * What each one needs beyond the cut itself - which rows repeat, how wide a spacer has to be - is
- * read back off the table as it stands now, so an edit to a header row redraws the projection of
- * it without the layout having to be run again.
- */
-function tableContinuations(
-  table: PMNode,
-  tablePos: number,
-  cuts: readonly PageCut[],
-  into: Decoration[]
-): void {
-  if (cuts.length === 0 || table.type.spec.tableRole !== "table") return;
-  const headerRows = headerRowsOf(table, tablePos);
-  const columns = columnCount(table);
-  for (const cut of cuts) {
-    into.push(
-      Decoration.widget(cut.at, () => tableSpace(cut.height, columns), {
-        key: `table-page-space-${cut.at}-${cut.height}-${columns}`,
-        side: -100,
-      })
-    );
-    headerRows.forEach((rowPos, headerIndex) => {
-      into.push(
-        // No `key`: a keyed widget is held to be the same one and left alone, and this one is a
-        // copy of a row that the very edit rebuilding these decorations may have just changed
-        Decoration.widget(cut.at, (view) => repeatedHeader(view, rowPos), {
-          side: -90 + headerIndex,
-        })
-      );
-    });
-  }
-}
-
-/**
- * Every page break carries a space, an empty one until a measurement says otherwise: the
- * measurement reads where a break stands off that very element, so it has to be there before the
- * first one is taken.
+ * Every block is handed to its kind whether the layout gave it a cut or not, because a kind draws
+ * what its own measurement reads: a paragraph's page break carries an empty space until a
+ * measurement says otherwise, and the measurement reads where the break stands off that very
+ * element.
  */
 function decorationsFor(
   doc: PMNode,
+  kinds: readonly BlockKind[],
   pushes: readonly BlockPush[],
   cuts: readonly PageCut[]
 ): DecorationSet {
@@ -214,19 +94,53 @@ function decorationsFor(
         })
       );
     }
-    const blockCuts = byBlock.get(offset) ?? [];
-    breakSpaces(node, offset, blockCuts, decorations);
-    tableContinuations(node, offset, blockCuts, decorations);
+    blockKindFor(kinds, node).decorate(
+      offset,
+      node,
+      byBlock.get(offset) ?? [],
+      decorations
+    );
   });
   return DecorationSet.create(doc, decorations);
 }
 
 function marksFor(
   doc: PMNode,
+  kinds: readonly BlockKind[],
   pushes: readonly BlockPush[],
   cuts: readonly PageCut[]
 ): PageMarks {
-  return { pushes, cuts, decorations: decorationsFor(doc, pushes, cuts) };
+  return {
+    kinds,
+    pushes,
+    cuts,
+    decorations: decorationsFor(doc, kinds, pushes, cuts),
+  };
+}
+
+/** Whether the block the cut stands in still holds a place its kind can cut at */
+function stillCuts(
+  kinds: readonly BlockKind[],
+  doc: PMNode,
+  at: number
+): boolean {
+  const $at = doc.resolve(at);
+  if ($at.depth === 0) return false;
+  const block = doc.nodeAt($at.before(1));
+  return block !== null && blockKindFor(kinds, block).holdsCut(doc, at);
+}
+
+/**
+ * Whether the node the cut named is still there after an edit that replaced its opening token,
+ * as `setNodeMarkup` does to a row. Such an edit maps the node's own position as deleted, and
+ * what tells it apart from a node that really went away is the content: this one still has its
+ * content boundary just inside it.
+ */
+function retainsContent(tr: Transaction, at: number, mapped: number): boolean {
+  const node = tr.before.nodeAt(at);
+  if (!node || node.isLeaf) return false;
+  const content = tr.mapping.mapResult(at + 1, -1);
+  return !content.deletedAcross && content.pos === mapped + 1;
 }
 
 function samePageMarks(a: PageMarksInput, b: PageMarksInput): boolean {
@@ -253,11 +167,13 @@ function samePageMarks(a: PageMarksInput, b: PageMarksInput): boolean {
   );
 }
 
-export function pageDecorations(): Plugin<PageMarks> {
+export function pageDecorations(
+  kinds: readonly BlockKind[] = DEFAULT_BLOCK_KINDS
+): Plugin<PageMarks> {
   return new Plugin<PageMarks>({
     key: marksKey,
     state: {
-      init: (_config, state) => marksFor(state.doc, [], []),
+      init: (_config, state) => marksFor(state.doc, kinds, [], []),
       apply(tr, value) {
         const next = tr.getMeta(marksKey);
         if (next) return next;
@@ -268,25 +184,15 @@ export function pageDecorations(): Plugin<PageMarks> {
         // points at
         return marksFor(
           tr.doc,
+          value.kinds,
           value.pushes.map((push) => ({
             ...push,
             pos: tr.mapping.map(push.pos),
           })),
           value.cuts.flatMap((cut) => {
             const mapped = tr.mapping.mapResult(cut.at, 1);
-            const node = tr.doc.nodeAt(mapped.pos);
-            const kept = isPageBreakNode(node) || isRow(node);
-            // setNodeMarkup replaces a row's opening token while retaining its content.
-            // Unlike a deleted row, its content boundary still maps just inside that row.
-            const content = isRow(tr.before.nodeAt(cut.at))
-              ? tr.mapping.mapResult(cut.at + 1, -1)
-              : null;
-            const rowRetained =
-              isRow(node) &&
-              content !== null &&
-              !content.deletedAcross &&
-              content.pos === mapped.pos + 1;
-            return !kept || (mapped.deleted && !rowRetained)
+            return !stillCuts(value.kinds, tr.doc, mapped.pos) ||
+              (mapped.deleted && !retainsContent(tr, cut.at, mapped.pos))
               ? []
               : [{ ...cut, at: mapped.pos }];
           })
@@ -299,8 +205,13 @@ export function pageDecorations(): Plugin<PageMarks> {
   });
 }
 
-function current(view: EditorView): PageMarks {
-  return marksKey.getState(view.state) ?? marksFor(view.state.doc, [], []);
+/** The kinds the editor was built with, which the measurement reads to match them */
+export function blockKindsOf(state: EditorState): readonly BlockKind[] {
+  return marksKey.getState(state)?.kinds ?? DEFAULT_BLOCK_KINDS;
+}
+
+function current(view: EditorView): PageMarksInput {
+  return marksKey.getState(view.state) ?? { pushes: [], cuts: [] };
 }
 
 /** One transaction, or none when the same marks are already applied */
@@ -308,7 +219,15 @@ export function setPageMarks(view: EditorView, next: PageMarksInput): void {
   if (samePageMarks(current(view), next)) return;
   view.dispatch(
     view.state.tr
-      .setMeta(marksKey, marksFor(view.state.doc, next.pushes, next.cuts))
+      .setMeta(
+        marksKey,
+        marksFor(
+          view.state.doc,
+          blockKindsOf(view.state),
+          next.pushes,
+          next.cuts
+        )
+      )
       .setMeta("addToHistory", false)
   );
 }

@@ -66,6 +66,32 @@ function _firstTextRange(doc: PMNode): {
   return found;
 }
 
+describe("reading formatting under document protection", () => {
+  it.each(["readOnly", "comments"] as const)(
+    "reads selected formatting under %s while refusing edits",
+    (protection) => {
+      const opened = importDocx(
+        makeDocx(
+          '<w:p><w:r><w:rPr><w:b/><w:rFonts w:ascii="Arial"/><w:sz w:val="32"/><w:color w:val="FF0000"/></w:rPr><w:t>text</w:t></w:r></w:p>'
+        )
+      );
+      const state = select(editorStateForSession(opened, { protection }), 1, 5);
+      expect(isBoldActive(state)).toBe(true);
+      expect(activeFontSize(state)).toEqual({ kind: "size", pt: 16 });
+      expect(activeFontFamily(state)).toEqual({ kind: "font", name: "Arial" });
+      expect(activeTextColor(state)).toBe("#FF0000");
+      expect(toggleBold(state)).toBe(false);
+      const dispatched: unknown[] = [];
+      expect(
+        toggleBold(state, (tr) => {
+          dispatched.push(tr);
+        })
+      ).toBe(false);
+      expect(dispatched).toEqual([]);
+    }
+  );
+});
+
 describe("toggle direction", () => {
   const mixed =
     "<w:p>" +

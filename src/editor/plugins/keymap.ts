@@ -5,9 +5,11 @@
 import { chainCommands } from "prosemirror-commands";
 import { undoInputRule } from "prosemirror-inputrules";
 import { keydownHandler } from "prosemirror-keymap";
+import type { Attrs, Node as PMNode } from "prosemirror-model";
 import { type Command, Plugin } from "prosemirror-state";
 import { goToNextCell } from "prosemirror-tables";
 import { canSplit } from "prosemirror-transform";
+import { splitParagraphAttrs } from "../../docx/cloning";
 import { toParagraphFormat } from "../../model/format";
 import { docxSchema } from "../../schema";
 import { insertLineBreak, insertPageBreak } from "../commands/breakCommands";
@@ -44,8 +46,13 @@ function listLevelCommand(command: Command): Command {
 
 /**
  * Splits the paragraph on Enter.
+ *
  * The newly created paragraph inherits the original paragraph's formatting as is (the same
- * behavior as Word).
+ * behavior as Word), but not what named the original: `docx/cloning` decides which half carries
+ * the identifiers and which one carries the section break.
+ *
+ * The half left standing is rewritten only where the policy actually changed something, so an
+ * ordinary Enter stays the single step it was and reaches no further than the spot it split.
  */
 const splitParagraph: Command = (state, dispatch) => {
   if (state.selection.$from.parent.type !== docxSchema.nodes.paragraph) {
@@ -55,14 +62,36 @@ const splitParagraph: Command = (state, dispatch) => {
   const tr = state.tr;
   if (!state.selection.empty) tr.deleteSelection();
   const at = tr.mapping.map(state.selection.$from.pos);
-  const parent = tr.doc.resolve(at).parent;
+  const $at = tr.doc.resolve(at);
+  const parent = $at.parent;
   if (parent.type !== docxSchema.nodes.paragraph) return false;
 
-  const types = [{ type: docxSchema.nodes.paragraph, attrs: parent.attrs }];
+  const { before, after } = splitParagraphAttrs(parent);
+  const types = [{ type: docxSchema.nodes.paragraph, attrs: after }];
   if (!canSplit(tr.doc, at, 1, types)) return false;
-  if (dispatch) dispatch(tr.split(at, 1, types).scrollIntoView());
+  if (dispatch) {
+    const beforePos = $at.before();
+    tr.split(at, 1, types);
+    if (!keptEveryAttr(parent, before)) {
+      tr.setNodeMarkup(beforePos, null, before);
+    }
+    dispatch(tr.scrollIntoView());
+  }
   return true;
 };
+
+/**
+ * Whether the policy handed back every attr of the paragraph exactly as it stood.
+ *
+ * A rewritten value is a fresh string or null where the original held something else, and a value
+ * carried over is the very one the node holds, so identity answers this without walking into the
+ * derived display values.
+ */
+function keptEveryAttr(paragraph: PMNode, attrs: Attrs): boolean {
+  return Object.keys(paragraph.attrs).every(
+    (name) => attrs[name] === paragraph.attrs[name]
+  );
+}
 
 const preserveTableFollowingParagraph: Command = (state) => {
   const { $from } = state.selection;

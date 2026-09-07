@@ -190,6 +190,19 @@ describe("the lock state of the selection", () => {
     `<w:p>${run("a")}${sdt(run("bc"))}${run("d")}</w:p>` +
     `<w:p>${run("ef")}</w:p>`;
 
+  it.each(["readOnly", "comments"] as const)(
+    "offers no lock edit under %s",
+    (protection) => {
+      const state = selected(
+        editorStateForSession(importDocx(makeDocx(BODY)), { protection }),
+        2,
+        4
+      );
+      expect(selectionLock(state)).toBe("none");
+      expect(unlockSelection(state)).toBe(false);
+    }
+  );
+
   it("is none where the selection reaches neither a lock nor text to lock", () => {
     expect(selectionLock(selected(opened(BODY), 8, 8))).toBe("none");
   });

@@ -15,12 +15,12 @@ import { withContentLock } from "../../docx/sdtProps";
 import { elementXml, openTagXml } from "../../ooxml/element";
 import { wName } from "../../ooxml/names";
 import { docxSchema } from "../../schema";
+import { guardedCommand, openStretches } from "../../schema/guards";
 import {
   type ControlSpan,
   carriesLock,
   controlSpans,
   isLockedCell,
-  rangeTouchesLocked,
   selectionShut,
   type Textblock,
   unlockAllowed,
@@ -134,14 +134,14 @@ interface LockedCell {
 function takeover(
   met: readonly ControlSpan[],
   stretch: Stretch,
-  open: (at: Stretch) => boolean
+  open: boolean
 ): LockEdit | null {
   const only = met.length === 1 ? met[0] : null;
   const prefix = only && prefixOf(only.mark.attrs);
   if (!only || isLocked(only.mark) || !prefix || !namesNothing(prefix)) {
     return null;
   }
-  const mark = open(stretch) ? withLock(only.mark, true) : null;
+  const mark = open ? withLock(only.mark, true) : null;
   return mark
     ? {
         from: Math.min(stretch.from, only.from),
@@ -156,27 +156,30 @@ function takeover(
  * selection no control stands in, and the lock shut on each open control it covers.
  */
 function blockLockEdits(
-  doc: PMNode,
+  state: EditorState,
   block: Textblock,
   spans: readonly ControlSpan[],
   reach: Stretch
 ): LockEdit[] {
   const stretch = stretchIn(block, reach);
   if (!stretch) return [];
-  // Inside a locked cell neither step is possible, since the guard refuses both
-  const open = (at: Stretch) => !rangeTouchesLocked(doc, at.from, at.to);
+  // Shutting a control over a stretch marks that stretch, so a stretch the guards shut - inside a
+  // locked cell, or anywhere at all under a protection that shuts the body - offers nothing
+  const open = <S extends Stretch>(of: readonly S[]) =>
+    openStretches(state, of, "mark");
   const met = spans.filter((span) => overlaps(span, stretch));
-  const taken = takeover(met, stretch, open);
+  const taken = takeover(met, stretch, open([stretch]).length > 0);
   if (taken) return [taken];
-  const shut = met
-    .filter((span) => !isLocked(span.mark) && open(span))
-    .flatMap((span) => {
+  const shut = open(met.filter((span) => !isLocked(span.mark))).flatMap(
+    (span) => {
       const mark = withLock(span.mark, true);
       return mark ? [{ from: span.from, to: span.to, mark }] : [];
-    });
-  const fresh = gapsIn(stretch, spans)
-    .filter(open)
-    .map((gap) => ({ ...gap, mark: lockedControlMark(newControlId()) }));
+    }
+  );
+  const fresh = open(gapsIn(stretch, spans)).map((gap) => ({
+    ...gap,
+    mark: lockedControlMark(newControlId()),
+  }));
   return [...shut, ...fresh];
 }
 
@@ -223,11 +226,11 @@ type SelectionLockDetail =
  * Only a text selection has anything to lock; a whole selected image or a block of table cells
  * is not a stretch of text a control can hold.
  *
- * Settling a lock is an edit of the body, so a protection that shuts the body leaves neither
- * anything to lock nor a lock to lift (`schema/protection`).
+ * This reads what the two edits would cover and settles nothing about whether they may run: the
+ * commands hand what they build to the guards (`schema/guards`), which is the only place either
+ * can be refused.
  */
 function selectionLockDetail(state: EditorState): SelectionLockDetail {
-  if (editsShut(state)) return { kind: "none" };
   const selection = state.selection;
   const locking = !selection.empty && selection instanceof TextSelection;
   const edits: LockEdit[] = [];
@@ -246,7 +249,7 @@ function selectionLockDetail(state: EditorState): SelectionLockDetail {
         if (isLocked(span.mark) && reaches(span, reach)) spans.push(span);
       }
       if (locking) {
-        edits.push(...blockLockEdits(state.doc, block, controls, reach));
+        edits.push(...blockLockEdits(state, block, controls, reach));
       }
       return false;
     });
@@ -267,7 +270,8 @@ function selectionLockDetail(state: EditorState): SelectionLockDetail {
 
 /** What locking and unlocking would do where the selection stands */
 export function selectionLock(state: EditorState): SelectionLock {
-  return selectionLockDetail(state).kind;
+  // This query describes the lock actions a control can offer, including document protection.
+  return editsShut(state) ? "none" : selectionLockDetail(state).kind;
 }
 
 /** The stretches locking would shut. Empty where the selection offers nothing to lock */
@@ -302,16 +306,13 @@ function lockedOf(lock: SelectionLockDetail): Locked {
  * shutting a control that already stands there is the very same step as wrapping a new one.
  * A selection that also reaches a lock still locks what that lock leaves open.
  */
-export const lockSelection: Command = (state, dispatch) => {
+export const lockSelection: Command = guardedCommand((state) => {
   const edits = lockEditsOf(selectionLockDetail(state));
-  if (edits.length === 0) return false;
-  if (dispatch) {
-    const tr = state.tr;
-    for (const edit of edits) tr.addMark(edit.from, edit.to, edit.mark);
-    dispatch(tr);
-  }
-  return true;
-};
+  if (edits.length === 0) return null;
+  const tr = state.tr;
+  for (const edit of edits) tr.addMark(edit.from, edit.to, edit.mark);
+  return tr;
+});
 
 /**
  * Lifts the lock off a cell, leaving the control that wrapped it in the file standing.
@@ -328,23 +329,26 @@ function unlockCell(tr: Transaction, cell: LockedCell): void {
   });
 }
 
-/** Lifts the lock off every control the selection reaches, over that control's whole stretch */
-export const unlockSelection: Command = (state, dispatch) => {
+/**
+ * Lifts the lock off every control the selection reaches, over that control's whole stretch.
+ *
+ * The transaction carries the pass that lets it reach past the very locks it lifts, which is the
+ * one thing the pass is for; every other guard still has its say, so lifting a lock stays shut
+ * under a protection that shuts the body (`schema/guards`).
+ */
+export const unlockSelection: Command = guardedCommand((state) => {
   const { spans, cells } = lockedOf(selectionLockDetail(state));
-  if (spans.length === 0 && cells.length === 0) return false;
-  if (dispatch) {
-    const tr = state.tr.setMeta(unlockAllowed, true);
-    for (const span of spans) {
-      const opened = withLock(span.mark, false);
-      // A control we cannot rewrite goes away instead, which beats a lock that cannot be lifted
-      if (opened) tr.addMark(span.from, span.to, opened);
-      else tr.removeMark(span.from, span.to, span.mark);
-    }
-    for (const cell of cells) unlockCell(tr, cell);
-    dispatch(tr);
+  if (spans.length === 0 && cells.length === 0) return null;
+  const tr = state.tr.setMeta(unlockAllowed, true);
+  for (const span of spans) {
+    const opened = withLock(span.mark, false);
+    // A control we cannot rewrite goes away instead, which beats a lock that cannot be lifted
+    if (opened) tr.addMark(span.from, span.to, opened);
+    else tr.removeMark(span.from, span.to, span.mark);
   }
-  return true;
-};
+  for (const cell of cells) unlockCell(tr, cell);
+  return tr;
+});
 
 /**
  * Whether editing where the selection stands is shut.

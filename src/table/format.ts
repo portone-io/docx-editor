@@ -2,9 +2,13 @@
  * Newly created cells and rows inherit only the formatting of the cell or row they
  * are based on. Values that have to be recomputed from the grid (colspan, rowspan,
  * colwidth) are not inherited.
+ *
+ * What that comes to per attr is `docx/cloning`, which answers the same question for a
+ * paragraph an edit makes out of another paragraph.
  */
 
 import type { Node as PMNode } from "prosemirror-model";
+import { CLONE_POLICIES } from "../docx/cloning";
 import type { GridRect } from "../docx/tableFormatting";
 
 export type NodeAttrs = Record<string, unknown>;
@@ -42,40 +46,18 @@ export function colwidthOf(cell: PMNode): number[] | null {
   return isNumberArray(value) ? value : null;
 }
 
-/**
- * Everything a new cell inherits.
- *
- * The content control around a cell (`sdtPrefix`, and the two locks that come out of it) is
- * deliberately left out: a new cell must not quietly come into the document carrying a copy of
- * somebody else's control, let alone that control's lock.
- */
-const INHERITED_CELL_ATTRS = ["tcAttrs", "tcPr", "tcW", "format"] as const;
-
 /** Copies only the formatting of the reference cell. Values passed in `overrides` win */
 export function inheritCellAttrs(
   cell: PMNode,
   overrides: NodeAttrs = {}
 ): NodeAttrs {
-  const attrs: NodeAttrs = {};
-  for (const key of INHERITED_CELL_ATTRS) attrs[key] = cell.attrs[key];
-  return { ...attrs, ...overrides };
+  return { ...CLONE_POLICIES.tableCell.attrs(cell, "copy"), ...overrides };
 }
-
-/**
- * Everything a new row inherits. The row height lives inside `trPr`.
- *
- * The property exceptions (`tblPrEx`) stay behind: we never read them, so a new row simply
- * follows the table's own values.
- */
-const INHERITED_ROW_ATTRS = ["trAttrs", "trPr", "format"] as const;
 
 /**
  * Copies only the formatting of the reference row. `null` when there is no reference
  * row, meaning the schema defaults should be used
  */
 export function inheritRowAttrs(row: PMNode | null): NodeAttrs | null {
-  if (!row) return null;
-  const attrs: NodeAttrs = {};
-  for (const key of INHERITED_ROW_ATTRS) attrs[key] = row.attrs[key];
-  return attrs;
+  return row ? CLONE_POLICIES.tableRow.attrs(row, "copy") : null;
 }

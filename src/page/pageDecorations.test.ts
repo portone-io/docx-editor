@@ -267,6 +267,20 @@ describe("setPageMarks", () => {
     expect(live.state.doc).toBe(doc);
   });
 
+  it("forgets a cut when a page break becomes a line break", () => {
+    const live = brokenEditor();
+    const at = firstBreak(live);
+    setPageMarks(live, { pushes: [], cuts: twoSpaces(live) });
+
+    live.dispatch(live.state.tr.setNodeAttribute(at, "brAttrs", null));
+    expect(spaceHeights(live)).toEqual(["222"]);
+    // Restoring the break before a new measurement must not resurrect its stale height.
+    live.dispatch(
+      live.state.tr.setNodeAttribute(at, "brAttrs", 'w:type="page"')
+    );
+    expect(spaceHeights(live)).toEqual(["0", "222"]);
+  });
+
   it("opens each break the height it was given", () => {
     const live = brokenEditor();
     setPageMarks(live, { pushes: [], cuts: twoSpaces(live) });

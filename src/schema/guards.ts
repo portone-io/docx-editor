@@ -12,15 +12,22 @@
  * `./editGuard` so that a module writing a guard need not read this one, and is handed on from
  * here so that a caller has one door to the whole seam.
  *
- * `editShut` is not yet what every command asks. Only `editor/commands/breakCommands`,
- * `editor/commands/tabCommands` and `editor/insertImage` ask it today; the rest still compose
- * `editsShut` with a lock predicate of their own (`./locks`), and each decides for itself whether
- * a stretch a guard shuts is trimmed out of the edit or refuses the whole of it. Until they move
- * over, a guard added to the list below reaches those commands through `transactionAllowed` alone,
- * which refuses the transaction they built rather than telling them not to build it.
+ * A command decides nothing of its own about any of this. It takes one of the two shapes an edit
+ * comes in - `guardedCommand`, which builds the whole edit and is refused whole, and
+ * `openStretches`, which leaves the shut stretches out and applies to the rest - and both ask the
+ * list below. A guard registered here therefore reaches every command by being registered, rather
+ * than by each command being taught about it.
+ *
+ * `editsShut` (`./protectionState`) stays what it was, the view-level question of whether the body
+ * is open at all, which is a question about the editor rather than about an edit.
  */
 
-import type { EditorState, Selection, Transaction } from "prosemirror-state";
+import type {
+  Command,
+  EditorState,
+  Selection,
+  Transaction,
+} from "prosemirror-state";
 import {
   type ChangeGuard,
   type EditGuard,
@@ -29,7 +36,7 @@ import {
   transactionReaches,
 } from "./editGuard";
 import { lockGuard } from "./locks";
-import { bookmarkGuard, noteGuard } from "./preservedGuards";
+import { bookmarkGuard, noteGuard, sectionGuard } from "./preservedGuards";
 import {
   isCommentNode,
   type ProtectionState,
@@ -98,6 +105,7 @@ export const EDIT_GUARDS: readonly EditGuard[] = [
   lockGuard,
   bookmarkGuard,
   noteGuard,
+  sectionGuard,
 ];
 
 function judgesSteps(guard: EditGuard): guard is StepGuard {
@@ -155,19 +163,66 @@ export function editShut(state: EditorState, intent: EditIntent): boolean {
 }
 
 /**
- * What a command doing this to whatever is selected means to do, one intent per selected stretch.
+ * What a command doing this to one stretch means to do.
  *
  * A stretch of no length holds nothing to mark or to put away, so whatever the command would do to
  * a stretch it is an insertion there.
  */
+function intentOver(
+  from: number,
+  to: number,
+  kind: "mark" | "replace"
+): EditIntent {
+  return from === to ? { kind: "insert", at: from } : { kind, from, to };
+}
+
+/** What a command doing this to whatever is selected means to do, one intent per selected stretch */
 export function selectionIntents(
   selection: Selection,
   kind: "mark" | "replace"
 ): EditIntent[] {
-  return selection.ranges.map(
-    (range): EditIntent =>
-      range.$from.pos === range.$to.pos
-        ? { kind: "insert", at: range.$from.pos }
-        : { kind, from: range.$from.pos, to: range.$to.pos }
+  return selection.ranges.map((range) =>
+    intentOver(range.$from.pos, range.$to.pos, kind)
+  );
+}
+
+/**
+ * Build, guard, dispatch: the one shape of a command that is refused whole.
+ *
+ * A structural edit has no smaller piece to fall back on - half a row cannot be deleted, and half a
+ * block of cells cannot be merged into one - so the whole transaction is built, handed to the whole
+ * guard list, and dispatched only if it comes back allowed. A character or a paragraph edit does
+ * the opposite and leaves the shut stretches out (`openStretches`).
+ *
+ * The answer is the same whether or not `dispatch` was passed. The transaction is built before
+ * either way, so asking the guard costs nothing more, and a command reporting one thing to a button
+ * and doing another would be worse than the button being wrong.
+ */
+export function guardedCommand(
+  build: (state: EditorState) => Transaction | null
+): Command {
+  return (state, dispatch) => {
+    const tr = build(state);
+    if (tr === null || !transactionAllowed(tr, state)) return false;
+    dispatch?.(tr);
+    return true;
+  };
+}
+
+/**
+ * The stretches the guards leave open, which is the one shape of a command that is trimmed.
+ *
+ * A shut stretch is left out rather than the whole edit refused: a guard turns down the whole
+ * transaction, so asking for the shut stretch as well would leave the rest of the selection
+ * unedited too. A selection the guards leave nothing of edits nothing, and the command reports that
+ * of its own accord, which is the disabled state of the control that runs it.
+ */
+export function openStretches<S extends { from: number; to: number }>(
+  state: EditorState,
+  stretches: readonly S[],
+  kind: "mark" | "replace"
+): S[] {
+  return stretches.filter(
+    (stretch) => !editShut(state, intentOver(stretch.from, stretch.to, kind))
   );
 }

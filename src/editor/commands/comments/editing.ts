@@ -9,7 +9,7 @@ import {
 } from "prosemirror-state";
 import { commentParaId } from "../../../docx/comments";
 import { docxSchema } from "../../../schema";
-import { transactionAllowed } from "../../../schema/guards";
+import { guardedCommand } from "../../../schema/guards";
 import {
   reservedCommentIds,
   reservedCommentParaIds,
@@ -144,38 +144,34 @@ function addCommentTransaction(
     null,
     startMarks
   );
-  const transaction = state.tr
+  return state.tr
     .insert(to, end)
     .insert(to + 1, reference)
     .insert(from, start);
-  return transactionAllowed(transaction, state) ? transaction : null;
-}
-
-/** Whether a non-empty selection in one paragraph can receive a comment. */
-export function canAddComment(state: EditorState): boolean {
-  return (
-    addCommentTransaction(state, {
-      text: "comment",
-      author: "Author",
-      date: "1970-01-01T00:00:00.000Z",
-    }) !== null
-  );
 }
 
 /** Adds a plain-text comment to the current text selection. */
 export function addComment(comment: NewComment): Command {
-  return (state, dispatch) => {
-    const transaction = addCommentTransaction(state, comment);
-    if (!transaction) return false;
-    dispatch?.(transaction);
-    return true;
-  };
+  return guardedCommand((state) => addCommentTransaction(state, comment));
+}
+
+/**
+ * Whether a non-empty selection in one paragraph can receive a comment.
+ * This is the command itself asked without a dispatch, over a comment standing in for the one the
+ * user would write, so the button and the click cannot answer differently.
+ */
+export function canAddComment(state: EditorState): boolean {
+  return addComment({
+    text: "comment",
+    author: "Author",
+    date: "1970-01-01T00:00:00.000Z",
+  })(state);
 }
 
 /** Replaces the plain-text body of one comment, retaining its author and anchor. */
 export function updateComment(id: string, text: string): Command {
-  return (state, dispatch) => {
-    if (text.trim().length === 0) return false;
+  return guardedCommand((state) => {
+    if (text.trim().length === 0) return null;
     let transaction = state.tr;
     let changed = false;
     state.doc.descendants((node, pos) => {
@@ -194,17 +190,15 @@ export function updateComment(id: string, text: string): Command {
       }
       return true;
     });
-    if (!changed || !transactionAllowed(transaction, state)) return false;
-    dispatch?.(transaction);
-    return true;
-  };
+    return changed ? transaction : null;
+  });
 }
 
 function updateReference(
   id: string,
   change: (node: PMNode) => Record<string, unknown> | null
 ): Command {
-  return (state, dispatch) => {
+  return guardedCommand((state) => {
     let transaction = state.tr;
     let changed = false;
     state.doc.descendants((node, pos) => {
@@ -221,10 +215,8 @@ function updateReference(
       }
       return false;
     });
-    if (!changed || !transactionAllowed(transaction, state)) return false;
-    dispatch?.(transaction);
-    return true;
-  };
+    return changed ? transaction : null;
+  });
 }
 
 /** Marks a comment thread resolved or open without deleting it. */
@@ -346,7 +338,7 @@ export function removeCommentReply(
 
 /** Removes a comment's range markers, reference and Comments-part entry. */
 export function removeComment(id: string): Command {
-  return (state, dispatch) => {
+  return guardedCommand((state) => {
     const positions: Array<{ pos: number; size: number }> = [];
     state.doc.descendants((node, pos) => {
       if (
@@ -359,15 +351,13 @@ export function removeComment(id: string): Command {
       }
       return true;
     });
-    if (positions.length === 0) return false;
+    if (positions.length === 0) return null;
     const transaction = state.tr;
     for (const marker of positions.sort((a, b) => b.pos - a.pos)) {
       transaction.delete(marker.pos, marker.pos + marker.size);
     }
-    if (!transactionAllowed(transaction, state)) return false;
-    dispatch?.(transaction);
-    return true;
-  };
+    return transaction;
+  });
 }
 
 /** Selects the text anchored by a comment, or places the caret at a point comment. */

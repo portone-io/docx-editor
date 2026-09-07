@@ -58,6 +58,7 @@ binding such as `Mod+K` without replacing the editor.
 | Additional Word character formatting and character styles | Existing formatting that the editor does not display or edit is preserved. |
 | Bookmarks | Existing bookmark ranges are preserved at their document positions but are not displayed or editable. A selection running across one of the invisible markers cannot be replaced, so typing or deleting over it leaves the text as it stands, and the picture, line break and page break controls are unavailable while it is held. Move the selection clear of the marker to edit the text around it. |
 | Document fields | Existing fields in the document body are preserved but not displayed or editable. |
+| Section breaks | A paragraph carrying a section break keeps it. The paragraph cannot be joined away, since nothing puts a lost section back, and pressing Enter in it keeps the break on the last paragraph of the section instead of copying it onto both halves. |
 | Tracked changes | Existing revision markup is preserved but not displayed or editable, a table's `w:tblGridChange` included. A rebuilt table is the exception in one place: the cells continuing a vertical merge are written from the cell that starts it, so properties of their own do not come along. |
 
 ## Current limitations
@@ -65,6 +66,7 @@ binding such as `Mod+K` without replacing the editor.
 - Uncommon list formats may be displayed as decimal numbers, and a new list requires an existing numbering part.
 - Tab leader glyphs and bar lines remain preserved in OOXML but are not drawn.
 - Visual page boundaries are approximate and may differ from Word or printed output.
+- A selection running across the last paragraph of a section cannot be deleted, even when the section break is not what you meant to remove. Move the selection clear of that paragraph's boundary to edit the text around it.
 
 ## Preservation
 

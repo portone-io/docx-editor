@@ -107,9 +107,20 @@ const BOOKMARK_P =
   runXml("n") +
   "</w:p>";
 
+/**
+ * A paragraph that ends a section, and a plain one ahead of it for a selection to run in from.
+ *
+ * The break lives in the paragraph mark, so joining that paragraph into the one above would take
+ * the whole section with it. The pair stands at the very end, where no other place reaches it.
+ */
+const SECTION_BODY =
+  `<w:p>${runXml("ahead")}</w:p>` +
+  '<w:p><w:pPr><w:sectPr><w:pgSz w:w="11906" w:h="16838"/></w:sectPr></w:pPr>' +
+  `${runXml("ends")}</w:p>`;
+
 function opened(protection: EditingProtection): EditorState {
   return createEditorState(
-    importDocx(makeNotesDocx(BODY + NOTE_BODY + BOOKMARK_P)).doc,
+    importDocx(makeNotesDocx(BODY + NOTE_BODY + BOOKMARK_P + SECTION_BODY)).doc,
     {
       protection,
       author: { id: "me", name: "Me" },
@@ -342,6 +353,21 @@ const PLACES: readonly Place[] = [
     name: "a selection running across a footnote reference",
     guards: ["protection", "note"],
     state: (protection) => acrossNode("noteReference", protection),
+  },
+  {
+    // The selection crosses the boundary the break sits on, so anything that replaces it joins
+    // the section paragraph away. Every command is refused here, legitimate deletions included:
+    // the guard cannot yet tell one from the other, which `features.mdx` writes down as a limit
+    name: "a selection running across a section paragraph",
+    guards: ["protection", "section"],
+    state: (protection) => {
+      const state = opened(protection);
+      return select(
+        state,
+        insideText(state.doc, "ahead"),
+        insideText(state.doc, "ends")
+      );
+    },
   },
   {
     // The history is empty in a freshly opened document, so undo and redo have nothing to take
