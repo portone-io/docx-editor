@@ -1,4 +1,11 @@
 import { NO_FILL, type ParagraphAlign } from "../model/format";
+import {
+  EIGHTHS_PER_PT,
+  HALF_POINTS_PER_PT,
+  ST_EighthPointMeasure,
+  ST_HexColor,
+  TWIPS_PER_PT,
+} from "./simpleTypes";
 import { childByLocalName, W_NS } from "./xml";
 
 /** The alignment `w:jc` writes down, both for a paragraph and for a table */
@@ -35,38 +42,30 @@ export function childValue(parent: Element, name: string): string | null {
   return el ? wAttr(el, "val") : null;
 }
 
-export function toNumber(value: string | null): number | null {
-  if (value === null) return null;
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
 /** Cuts off the messy digits after the decimal point so the same input always yields the same value */
 export function round(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
 /** twip (1/20 of a point) */
-export function twipsToPt(value: string | null): number | null {
-  const twips = toNumber(value);
-  return twips === null ? null : round(twips / 20);
+export function twipsToPt(twips: number | null): number | null {
+  return twips === null ? null : round(twips / TWIPS_PER_PT);
 }
 
 /** half-point (w:sz 20 = 10pt) */
-export function halfPointsToPt(value: string | null): number | null {
-  const half = toNumber(value);
-  return half === null ? null : round(half / 2);
+export function halfPointsToPt(half: number | null): number | null {
+  return half === null ? null : round(half / HALF_POINTS_PER_PT);
 }
 
 /** 1/8 of a point */
-export function eighthsToPt(value: string | null): number | null {
-  const eighths = toNumber(value);
-  return eighths === null ? null : round(eighths / 8);
+export function eighthsToPt(eighths: number | null): number | null {
+  return eighths === null ? null : round(eighths / EIGHTHS_PER_PT);
 }
 
+/** The color as CSS spells it. `auto` is not a color to paint with, so it reads as none */
 export function toHexColor(value: string | null): string | null {
-  if (value === null || value === "auto") return null;
-  return /^[0-9a-fA-F]{6}$/.test(value) ? `#${value}` : null;
+  const color = ST_HexColor.parse(value);
+  return color?.kind === "rgb" ? `#${color.hex}` : null;
 }
 
 /**
@@ -121,7 +120,7 @@ export function borderCss(el: Element | null): string | null {
   if (val === "nil" || val === "none") return "none";
   const style = BORDER_STYLE_BY_VAL[val];
   if (!style) return null;
-  const written = eighthsToPt(wAttr(el, "sz"));
+  const written = eighthsToPt(ST_EighthPointMeasure.parse(wAttr(el, "sz")));
   const widthPt =
     written === null || written === 0 ? FALLBACK_BORDER_PT : written;
   const color = toHexColor(wAttr(el, "color")) ?? "#000000";

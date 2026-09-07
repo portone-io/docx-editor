@@ -15,18 +15,25 @@ import type {
 } from "../../model/format";
 import { parsePropsXml } from "../../ooxml/props";
 import {
+  ST_MeasurementOrPercent,
+  ST_SignedTwipsMeasure,
+  ST_TwipsMeasure,
+} from "../../ooxml/simpleTypes";
+import {
   ALIGN_BY_JC,
   borderSide,
   childValue,
   isOn,
   shadingOf,
-  toNumber,
   twipsToPt,
   wAttr,
 } from "../../ooxml/units";
 import { childByLocalName } from "../../ooxml/xml";
 
 export type { CellMargins, InsideBorders } from "../../model/format";
+
+/** A `pct` width counts in fiftieths of a percent, so 2500 and `50%` are the same width */
+const FIFTIETHS_PER_PERCENT = 50;
 
 /**
  * The width written down by `<w:tblW>` or `<w:tcW>`.
@@ -35,6 +42,8 @@ export type { CellMargins, InsideBorders } from "../../model/format";
  * `auto` and `nil` leave the width to the layout, so whatever number stands beside them says nothing.
  * A percentage may be written in fiftieths of a percent, as in `w:w="2500"`, or as `w:w="50%"`.
  * Both have to be gathered into the same unit, or the table collapses into a thin strip on screen.
+ * A width whose spelling contradicts its `w:type`, a percentage counted in twips or the other way
+ * round, is not a width we can make out either.
  */
 export function readTableWidth(
   parent: Element | null,
@@ -46,15 +55,22 @@ export function readTableWidth(
   if (type === "auto") return { type: "auto" };
   if (type === "nil") return { type: "nil" };
 
-  const raw = wAttr(el, "w");
-  const value = toNumber(raw);
-  if (value === null) return null;
-  if (type === "dxa") return { type: "dxa", twips: value };
+  const width = ST_MeasurementOrPercent.parse(wAttr(el, "w"));
+  if (width === null) return null;
+  if (type === "dxa") {
+    // A universal measure states an absolute width, which `universalMeasureToTwips` already gave
+    return width.kind === "percent"
+      ? null
+      : { type: "dxa", twips: width.value };
+  }
   if (type === "pct") {
-    const isPercentText = raw?.endsWith("%") === true;
+    if (width.kind === "twips") return null;
     return {
       type: "pct",
-      fiftieths: isPercentText ? Math.round(value * 50) : value,
+      fiftieths:
+        width.kind === "percent"
+          ? Math.round(width.value * FIFTIETHS_PER_PERCENT)
+          : width.value,
     };
   }
   // A unit we do not know at all
@@ -67,7 +83,7 @@ export function readGridCols(tblGrid: Element | null): number[] {
   const cols: number[] = [];
   for (const child of Array.from(tblGrid.children)) {
     if (child.localName !== "gridCol") continue;
-    const w = toNumber(wAttr(child, "w"));
+    const w = ST_TwipsMeasure.parse(wAttr(child, "w"));
     if (w !== null) cols.push(w);
   }
   return cols;
@@ -119,7 +135,9 @@ function marginSide(margins: Element, names: readonly string[]): number | null {
     if (!el) continue;
     const type = wAttr(el, "type") ?? "dxa";
     if (type === "nil") return 0;
-    return type === "dxa" ? twipsToPt(wAttr(el, "w")) : null;
+    return type === "dxa"
+      ? twipsToPt(ST_TwipsMeasure.parse(wAttr(el, "w")))
+      : null;
   }
   return null;
 }
@@ -253,14 +271,16 @@ export function readTableFormat(tblPr: Element | null): TableFormat | null {
   // An indent of 0 states that the table stands at the margin, which is not the same as the table
   // saying nothing about where it stands. A negative one pushes it left of the margin
   const tblInd = childByLocalName(tblPr, "tblInd");
-  const indentLeftPt = tblInd ? twipsToPt(wAttr(tblInd, "w")) : null;
+  const indentLeftPt = tblInd
+    ? twipsToPt(ST_SignedTwipsMeasure.parse(wAttr(tblInd, "w")))
+    : null;
   if (indentLeftPt !== null) format.indentLeftPt = indentLeftPt;
 
   return format;
 }
 
 function readRowHeight(trHeight: Element): RowHeight | null {
-  const pt = twipsToPt(wAttr(trHeight, "val"));
+  const pt = twipsToPt(ST_TwipsMeasure.parse(wAttr(trHeight, "val")));
   if (pt === null || pt <= 0) return null;
   // With no hRule, Word treats the height as a floor
   const rule = wAttr(trHeight, "hRule") === "exact" ? "exact" : "atLeast";

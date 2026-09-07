@@ -16,6 +16,13 @@ import {
   type VerticalAlign,
 } from "../../model/format";
 import { overridingAttrs } from "../../ooxml/precedence";
+import {
+  ST_DecimalNumber,
+  ST_HpsMeasure,
+  ST_SignedTwipsMeasure,
+  ST_TwipsMeasure,
+  TWIPS_PER_PT,
+} from "../../ooxml/simpleTypes";
 import { readTabStopDirectives } from "../../ooxml/tabStops";
 import {
   ALIGN_BY_JC,
@@ -26,7 +33,6 @@ import {
   round,
   shadingOf,
   toHexColor,
-  toNumber,
   twipsToPt,
   wAttr,
 } from "../../ooxml/units";
@@ -124,17 +130,24 @@ function readIndent(pPr: Element): Partial<ParagraphFormat> {
   const ind = childByLocalName(pPr, "ind");
   if (!ind) return {};
   const format: Partial<ParagraphFormat> = {};
-  const start = twipsToPt(wAttr(ind, "start") ?? wAttr(ind, "left"));
+  const start = twipsToPt(
+    ST_SignedTwipsMeasure.parse(wAttr(ind, "start") ?? wAttr(ind, "left"))
+  );
   if (start !== null) format.indentStartPt = start;
-  const end = twipsToPt(wAttr(ind, "end") ?? wAttr(ind, "right"));
+  const end = twipsToPt(
+    ST_SignedTwipsMeasure.parse(wAttr(ind, "end") ?? wAttr(ind, "right"))
+  );
   if (end !== null) format.indentEndPt = end;
   // A hanging indent overrides the first-line indent (an OOXML rule)
-  const hanging = twipsToPt(wAttr(ind, "hanging"));
-  const firstLine = twipsToPt(wAttr(ind, "firstLine"));
+  const hanging = twipsToPt(ST_TwipsMeasure.parse(wAttr(ind, "hanging")));
+  const firstLine = twipsToPt(ST_TwipsMeasure.parse(wAttr(ind, "firstLine")));
   if (hanging !== null) format.textIndentPt = -hanging;
   else if (firstLine !== null) format.textIndentPt = firstLine;
   return format;
 }
+
+/** `w:spacing/@line` counts an automatic line height in 240ths of a line (§17.3.1.33) */
+export const LINE_UNITS_PER_LINE = 240;
 
 /**
  * The line spacing from `w:spacing`.
@@ -143,21 +156,22 @@ function readIndent(pPr: Element): Partial<ParagraphFormat> {
 export function readLineSpacing(pPr: Element): LineSpacing | null {
   const spacing = childByLocalName(pPr, "spacing");
   if (!spacing) return null;
-  const line = toNumber(wAttr(spacing, "line"));
+  const line = ST_SignedTwipsMeasure.parse(wAttr(spacing, "line"));
   if (line === null) return null;
   const rule = wAttr(spacing, "lineRule");
-  if (rule === "exact") return { rule: "exact", pt: round(line / 20) };
-  if (rule === "atLeast") return { rule: "atLeast", pt: round(line / 20) };
-  return { rule: "auto", lines: round(line / 240) };
+  const pt = round(line / TWIPS_PER_PT);
+  if (rule === "exact") return { rule: "exact", pt };
+  if (rule === "atLeast") return { rule: "atLeast", pt };
+  return { rule: "auto", lines: round(line / LINE_UNITS_PER_LINE) };
 }
 
 function readSpacing(pPr: Element): Partial<ParagraphFormat> {
   const spacing = childByLocalName(pPr, "spacing");
   if (!spacing) return {};
   const format: Partial<ParagraphFormat> = {};
-  const before = twipsToPt(wAttr(spacing, "before"));
+  const before = twipsToPt(ST_TwipsMeasure.parse(wAttr(spacing, "before")));
   if (before !== null) format.spaceBeforePt = before;
-  const after = twipsToPt(wAttr(spacing, "after"));
+  const after = twipsToPt(ST_TwipsMeasure.parse(wAttr(spacing, "after")));
   if (after !== null) format.spaceAfterPt = after;
   const lineSpacing = readLineSpacing(pPr);
   if (lineSpacing) format.lineSpacing = lineSpacing;
@@ -168,13 +182,13 @@ function readSpacing(pPr: Element): Partial<ParagraphFormat> {
 function readNumbering(pPr: Element): Partial<ParagraphFormatLayer> {
   const numPr = childByLocalName(pPr, "numPr");
   if (!numPr) return {};
-  const numId = toNumber(childValue(numPr, "numId"));
+  const numId = ST_DecimalNumber.parse(childValue(numPr, "numId"));
   if (numId === 0) return { numbering: null };
   if (numId === null || numId < 0) return {};
   return {
     numbering: {
-      numId: Math.trunc(numId),
-      ilvl: Math.trunc(toNumber(childValue(numPr, "ilvl")) ?? 0),
+      numId,
+      ilvl: ST_DecimalNumber.parse(childValue(numPr, "ilvl")) ?? 0,
     },
   };
 }
@@ -216,7 +230,7 @@ export function readRunFormat(
   const underline = childValue(rPr, "u");
   if (isUnderlineKind(underline)) format.underline = underline;
 
-  const fontSizePt = halfPointsToPt(childValue(rPr, "sz"));
+  const fontSizePt = halfPointsToPt(ST_HpsMeasure.parse(childValue(rPr, "sz")));
   if (fontSizePt !== null) format.fontSizePt = fontSizePt;
 
   const rFonts = childByLocalName(rPr, "rFonts");
@@ -279,7 +293,9 @@ export function readDocumentDefaults(
   const pPr = defaultProperties(styles, "pPrDefault", "pPr");
   const rFonts = rPr ? childByLocalName(rPr, "rFonts") : null;
   return {
-    fontSizePt: rPr ? halfPointsToPt(childValue(rPr, "sz")) : null,
+    fontSizePt: rPr
+      ? halfPointsToPt(ST_HpsMeasure.parse(childValue(rPr, "sz")))
+      : null,
     fontFamily: rFonts ? fontFamilyOf(rFonts, themeFonts) : null,
     lineSpacing: pPr ? readLineSpacing(pPr) : null,
   };

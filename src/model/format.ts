@@ -12,7 +12,7 @@
  * live here alongside them.
  */
 
-import type { TabStop } from "./tabStops";
+import { TAB_LEADERS, TAB_STOP_ALIGNMENTS, type TabStop } from "./tabStops";
 
 const ALIGNS = ["left", "center", "right", "justify"] as const;
 export type ParagraphAlign = (typeof ALIGNS)[number];
@@ -324,24 +324,6 @@ function toNumberingRef(value: unknown): NumberingRef | null {
   return { numId, ilvl };
 }
 
-const TAB_ALIGNMENTS = [
-  "start",
-  "center",
-  "end",
-  "decimal",
-  "num",
-  "bar",
-] as const;
-
-const TAB_LEADERS = [
-  "none",
-  "dot",
-  "hyphen",
-  "underscore",
-  "heavy",
-  "middleDot",
-] as const;
-
 function toTabStops(value: unknown): TabStop[] | null {
   if (!Array.isArray(value)) return null;
   const stops: TabStop[] = [];
@@ -353,7 +335,9 @@ function toTabStops(value: unknown): TabStop[] | null {
     ) {
       continue;
     }
-    const align = TAB_ALIGNMENTS.find((candidate) => candidate === entry.align);
+    const align = TAB_STOP_ALIGNMENTS.find(
+      (candidate) => candidate === entry.align
+    );
     if (!align) continue;
     const leader = TAB_LEADERS.find((candidate) => candidate === entry.leader);
     stops.push({

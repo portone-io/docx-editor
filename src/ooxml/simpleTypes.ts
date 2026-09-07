@@ -13,7 +13,12 @@
  * says so, so that no value is silently moved to a neighbouring one on its way into the document.
  */
 
-import type { TabAlignment, TabLeader } from "../model/tabStops";
+import {
+  TAB_LEADERS,
+  TAB_STOP_ALIGNMENTS,
+  type TabAlignment,
+  type TabLeader,
+} from "../model/tabStops";
 
 export interface SimpleType<T> {
   /** null for an absent value or one the type does not admit; never a guess */
@@ -267,13 +272,8 @@ export type TabJc = TabAlignment | "bar" | "clear";
  * are read as those and never written back.
  */
 const TAB_JC_BY_VALUE: Readonly<Record<string, TabJc>> = {
+  ...Object.fromEntries(TAB_STOP_ALIGNMENTS.map((align) => [align, align])),
   clear: "clear",
-  start: "start",
-  center: "center",
-  end: "end",
-  decimal: "decimal",
-  bar: "bar",
-  num: "num",
   left: "start",
   right: "end",
 };
@@ -288,18 +288,9 @@ export const ST_TabJc: SimpleType<TabJc> = {
 };
 
 /** The character a tab stop draws the space it covers with (§17.18.85) */
-const TAB_TLC_VALUES: readonly TabLeader[] = [
-  "none",
-  "dot",
-  "hyphen",
-  "underscore",
-  "heavy",
-  "middleDot",
-];
-
 export const ST_TabTlc: SimpleType<TabLeader> = {
   parse(value) {
-    return TAB_TLC_VALUES.find((leader) => leader === value) ?? null;
+    return TAB_LEADERS.find((leader) => leader === value) ?? null;
   },
   format(value) {
     return value;

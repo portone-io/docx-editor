@@ -7,6 +7,7 @@ import {
   LETTER_GEOMETRY as LETTER,
   LETTER_FIXTURE,
   LETTER_SECT_PR,
+  LETTER_SECT_PR_UNIVERSAL,
   makeDocx,
   readFixture,
 } from "../__testing__/docx";
@@ -37,6 +38,11 @@ function geometryOf(documentXml: string): PageGeometry {
 describe("the page geometry a document lays down", () => {
   it("reads the paper and the margins a section names", () => {
     expect(geometryOf(bodyWith(LETTER_SECT_PR))).toEqual(LETTER);
+  });
+
+  it("reads a Letter page written as universal measures", () => {
+    // `8.5in` is the same paper as `12240`, and reading its leading digits alone drew A4 instead
+    expect(geometryOf(bodyWith(LETTER_SECT_PR_UNIVERSAL))).toEqual(LETTER);
   });
 
   it("draws a document that names no section on A4", () => {

@@ -7,8 +7,13 @@
  */
 
 import type { TabStopDirective } from "../model/tabStops";
+import {
+  ST_DecimalNumber,
+  ST_SignedTwipsMeasure,
+  ST_TwipsMeasure,
+} from "../ooxml/simpleTypes";
 import { readTabStopDirectives } from "../ooxml/tabStops";
-import { childValue, round, wAttr } from "../ooxml/units";
+import { childValue, twipsToPt, wAttr } from "../ooxml/units";
 import {
   childByLocalName,
   elementChildren,
@@ -65,12 +70,6 @@ export interface Numbering {
 
 export const EMPTY_NUMBERING: Numbering = { lists: new Map() };
 
-function toInteger(value: string | null): number | null {
-  if (value === null) return null;
-  const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
 function isNumberFormat(value: string | null): value is NumberFormat {
   return NUMBER_FORMATS.some((format) => format === value);
 }
@@ -79,13 +78,17 @@ function indentOf(lvl: Element): LevelIndent | null {
   const pPr = childByLocalName(lvl, "pPr");
   const ind = pPr ? childByLocalName(pPr, "ind") : null;
   if (!ind) return null;
-  const startTwips = toInteger(wAttr(ind, "start") ?? wAttr(ind, "left"));
-  const endTwips = toInteger(wAttr(ind, "end") ?? wAttr(ind, "right"));
+  const startTwips = ST_SignedTwipsMeasure.parse(
+    wAttr(ind, "start") ?? wAttr(ind, "left")
+  );
+  const endTwips = ST_SignedTwipsMeasure.parse(
+    wAttr(ind, "end") ?? wAttr(ind, "right")
+  );
   const indent: LevelIndent = {
     startTwips,
     endTwips,
-    hangingTwips: toInteger(wAttr(ind, "hanging")),
-    firstLineTwips: toInteger(wAttr(ind, "firstLine")),
+    hangingTwips: ST_TwipsMeasure.parse(wAttr(ind, "hanging")),
+    firstLineTwips: ST_TwipsMeasure.parse(wAttr(ind, "firstLine")),
   };
   const empty =
     startTwips === null &&
@@ -115,10 +118,6 @@ export const NO_LEVEL_INDENT: LevelIndentPt = {
   textIndentPt: null,
 };
 
-function twipsToPt(twips: number | null): number | null {
-  return twips === null ? null : round(twips / 20);
-}
-
 /**
  * The indent a level passes down to its paragraphs.
  * As with paragraph formatting, a hanging indent overrides a first-line indent (the
@@ -142,7 +141,7 @@ function readLevel(lvl: Element): NumberingLevel {
   return {
     format: isNumberFormat(format) ? format : "decimal",
     text: childValue(lvl, "lvlText") ?? "",
-    start: toInteger(childValue(lvl, "start")) ?? 1,
+    start: ST_DecimalNumber.parse(childValue(lvl, "start")) ?? 1,
     indent: indentOf(lvl),
     ...(tabStops.length === 0 ? {} : { tabStops }),
   };
@@ -153,7 +152,7 @@ function readLevels(parent: Element): Map<number, NumberingLevel> {
   const levels = new Map<number, NumberingLevel>();
   for (const child of elementChildren(parent)) {
     if (child.localName !== "lvl") continue;
-    const ilvl = toInteger(wAttr(child, "ilvl"));
+    const ilvl = ST_DecimalNumber.parse(wAttr(child, "ilvl"));
     if (ilvl !== null) levels.set(ilvl, readLevel(child));
   }
   return levels;
@@ -168,18 +167,22 @@ function readList(
   num: Element,
   abstractLevels: Map<number, Map<number, NumberingLevel>>
 ): NumberingList | null {
-  const abstractNumId = toInteger(childValue(num, "abstractNumId"));
+  const abstractNumId = ST_DecimalNumber.parse(
+    childValue(num, "abstractNumId")
+  );
   if (abstractNumId === null) return null;
   const levels = new Map(abstractLevels.get(abstractNumId) ?? []);
 
   for (const child of elementChildren(num)) {
     if (child.localName !== "lvlOverride") continue;
-    const ilvl = toInteger(wAttr(child, "ilvl"));
+    const ilvl = ST_DecimalNumber.parse(wAttr(child, "ilvl"));
     if (ilvl === null) continue;
     const replacement = childByLocalName(child, "lvl");
     const base = replacement ? readLevel(replacement) : levels.get(ilvl);
     if (!base) continue;
-    const startOverride = toInteger(childValue(child, "startOverride"));
+    const startOverride = ST_DecimalNumber.parse(
+      childValue(child, "startOverride")
+    );
     levels.set(
       ilvl,
       startOverride === null ? base : { ...base, start: startOverride }
@@ -215,14 +218,14 @@ function readNumbering(xml: string): Numbering {
   const abstractLevels = new Map<number, Map<number, NumberingLevel>>();
   for (const child of elementChildren(root)) {
     if (child.localName !== "abstractNum") continue;
-    const id = toInteger(wAttr(child, "abstractNumId"));
+    const id = ST_DecimalNumber.parse(wAttr(child, "abstractNumId"));
     if (id !== null) abstractLevels.set(id, readLevels(child));
   }
 
   const lists = new Map<number, NumberingList>();
   for (const child of elementChildren(root)) {
     if (child.localName !== "num") continue;
-    const numId = toInteger(wAttr(child, "numId"));
+    const numId = ST_DecimalNumber.parse(wAttr(child, "numId"));
     const list = numId === null ? null : readList(child, abstractLevels);
     if (numId !== null && list) lists.set(numId, list);
   }

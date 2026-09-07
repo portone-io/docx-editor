@@ -15,6 +15,31 @@ export interface TabStop {
   leader?: TabLeader;
 }
 
+/**
+ * What a stop may be aligned to, and what it may draw the space it covers with.
+ *
+ * These are the members of the two unions above, listed so that a reader checking a value against
+ * them cannot fall out of step with the types. `ooxml/simpleTypes` builds `ST_TabJc` and
+ * `ST_TabTlc` on them, adding the spellings the document writes that the model does not keep.
+ */
+export const TAB_STOP_ALIGNMENTS: readonly TabStop["align"][] = [
+  "start",
+  "center",
+  "end",
+  "decimal",
+  "num",
+  "bar",
+];
+
+export const TAB_LEADERS: readonly TabLeader[] = [
+  "none",
+  "dot",
+  "hyphen",
+  "underscore",
+  "heavy",
+  "middleDot",
+];
+
 /** A tab entry before the paragraph-property hierarchy has been resolved. */
 export type TabStopDirective = TabStop | { positionPt: number; align: "clear" };
 

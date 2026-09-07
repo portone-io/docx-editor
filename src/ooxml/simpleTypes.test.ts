@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
+import { readDefaultTabStop } from "../docx/documentSettings";
 import {
   type HexColor,
   type MeasurementOrPercent,
@@ -18,6 +19,11 @@ import {
   ST_UnsignedDecimalNumber,
   universalMeasureToTwips,
 } from "./simpleTypes";
+import { readTabStopDirectives } from "./tabStops";
+import { parseXml } from "./xml";
+
+const W_NS =
+  'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
 
 /** One type and a value it admits, named so a failing row says which pair broke */
 const ROUND_TRIPS: readonly [string, SimpleType<unknown>, unknown][] = [
@@ -140,5 +146,19 @@ describe("the simple types the schema names", () => {
     expect(ST_TabJc.parse("middle")).toBeNull();
     expect(ST_TabTlc.parse("dot")).toBe("dot");
     expect(ST_TabTlc.parse("dots")).toBeNull();
+  });
+
+  it("reads a tab position and a default tab interval written as universal measures", () => {
+    const pPr = parseXml(
+      `<w:pPr ${W_NS}><w:tabs><w:tab w:val="left" w:pos="1.5in"/></w:tabs></w:pPr>`
+    ).documentElement;
+    expect(readTabStopDirectives(pPr)).toEqual([
+      { positionPt: 108, align: "start" },
+    ]);
+
+    const settings = parseXml(
+      `<w:settings ${W_NS}><w:defaultTabStop w:val="0.75in"/></w:settings>`
+    );
+    expect(readDefaultTabStop(settings)).toBe(54);
   });
 });
