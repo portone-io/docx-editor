@@ -347,6 +347,26 @@ describe("parseDOM", () => {
           bottomPt: 0,
           leftPt: 5.4,
         },
+        styleConditions: {
+          firstRow: {
+            background: "#D9E2F3",
+            borders: {
+              top: null,
+              bottom: "1pt solid #000000",
+              left: null,
+              right: null,
+            },
+            inside: { horizontal: null, vertical: "none" },
+            margins: {
+              topPt: null,
+              rightPt: null,
+              bottomPt: null,
+              leftPt: null,
+            },
+            verticalAlign: "center",
+          },
+        },
+        styleBands: { row: 2, col: null },
       },
       [
         docxSchema.nodes.tableRow.create(

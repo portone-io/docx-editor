@@ -480,6 +480,35 @@ describe("coloring the borders of a cell", () => {
     ).toBe(tcPr(borders('<w:top x:val="none" w:val="none"/>')));
   });
 
+  it("writes down the line a part of the table laid down when it is recolored", () => {
+    // The middle row of a table taking its bands is banded, and the band draws a line under it
+    const banded = defaultsFor(MIDDLE, THREE_BY_THREE, {
+      conditions: {
+        band2Horz: {
+          background: null,
+          borders: {
+            top: null,
+            bottom: "1.5pt double #A6B7C8",
+            left: null,
+            right: null,
+          },
+          inside: { horizontal: null, vertical: null },
+          margins: { topPt: null, rightPt: null, bottomPt: null, leftPt: null },
+          verticalAlign: null,
+        },
+      },
+    });
+    expect(edited(null, RED, banded)).toBe(
+      tcPr(
+        borders(
+          '<w:bottom w:val="double" w:sz="12" w:space="0" w:color="FF0000"/>'
+        )
+      )
+    );
+    // Without that part reaching the cell there is no line to recolor at all
+    expect(editCellProps(null, RED, NO_CELL_DEFAULTS)).toBeNull();
+  });
+
   it("leaves an inherited border untouched when it already has the requested color", () => {
     expect(
       editCellProps(

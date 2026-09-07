@@ -92,13 +92,7 @@ function buildBlock(
     if (paragraph) return paragraph;
   }
   if (el.localName === "tbl") {
-    const table = buildTable(
-      el,
-      srcId,
-      sources,
-      context.styles,
-      context.defaultTableStyleId
-    );
+    const table = buildTable(el, srcId, sources, context);
     if (table) return table;
   }
   return docxSchema.nodes.docxRaw.create({ srcId, name: el.nodeName });

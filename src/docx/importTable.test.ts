@@ -6,7 +6,11 @@ import { describe, expect, it } from "vitest";
 import { fixtureNames, readFixture } from "../__testing__/docx";
 import { parseXml } from "../ooxml/xml";
 import { docxSchema } from "../schema";
-import { readStyles } from "./formatting";
+import {
+  type FormattingContext,
+  NO_FORMATTING,
+  readStyles,
+} from "./formatting";
 import { importDocx } from "./importDocx";
 import { NO_IMPORT_SOURCES } from "./importParagraph";
 import { buildTable } from "./importTable";
@@ -33,6 +37,18 @@ function requireTable(xml: string): PMNode {
   return node;
 }
 
+/** The formatting hierarchy of a document whose styles.xml holds these style definitions */
+function formattingOf(
+  styles: string,
+  defaultTableStyleId: string | null = null
+): FormattingContext {
+  return {
+    ...NO_FORMATTING,
+    styles: readStyles(parseXml(`<w:styles ${W_NS}>${styles}</w:styles>`)),
+    defaultTableStyleId,
+  };
+}
+
 /** Moves a fragment into a table node with the styles of a styles.xml underneath it */
 function styledTable(
   xml: string,
@@ -43,8 +59,7 @@ function styledTable(
     element(xml),
     null,
     NO_IMPORT_SOURCES,
-    readStyles(parseXml(`<w:styles ${W_NS}>${styles}</w:styles>`)),
-    defaultTableStyleId
+    formattingOf(styles, defaultTableStyleId)
   );
   if (!node) throw new Error("the table could not be modelled");
   return node;
@@ -934,6 +949,170 @@ describe("a table whose lines come from a table style", () => {
     expect(node.attrs.format).toEqual({});
     expect(node.attrs.styleInside).toBeNull();
     expect(node.child(0).child(0).attrs.format).toBeNull();
+  });
+});
+
+describe("the parts of a table its style dresses on their own", () => {
+  const side = (name: string, eighths: number, color = "000000") =>
+    `<w:${name} w:val="single" w:sz="${eighths}" w:space="0" w:color="${color}"/>`;
+
+  const shd = (fill: string) =>
+    `<w:shd w:val="clear" w:color="auto" w:fill="${fill}"/>`;
+
+  /**
+   * A style after Word's List Table 3: a line above and below the header row, a line under every
+   * banded row, a shaded header row in bold, and no lines anywhere else.
+   */
+  const LIST_TABLE =
+    '<w:style w:type="table" w:default="1" w:styleId="TableNormal">' +
+    "<w:tblPr/></w:style>" +
+    '<w:style w:type="table" w:styleId="ListTable"><w:basedOn w:val="TableNormal"/>' +
+    "<w:tblPr/>" +
+    '<w:tblStylePr w:type="firstRow"><w:rPr><w:b/></w:rPr><w:tcPr>' +
+    shd("D9E2F3") +
+    `<w:tcBorders>${side("top", 8)}${side("bottom", 8)}<w:insideV w:val="nil"/></w:tcBorders>` +
+    "</w:tcPr></w:tblStylePr>" +
+    '<w:tblStylePr w:type="band1Horz"><w:tcPr>' +
+    `<w:tcBorders>${side("bottom", 4, "999999")}</w:tcBorders>` +
+    "</w:tcPr></w:tblStylePr>" +
+    '<w:tblStylePr w:type="firstCol"><w:rPr><w:b/></w:rPr></w:tblStylePr>' +
+    '<w:tblStylePr w:type="neCell"><w:tcPr>' +
+    shd("000000") +
+    "</w:tcPr></w:tblStylePr>" +
+    "</w:style>";
+
+  const HEADER_FILL = "#D9E2F3";
+  const HEADER_LINE = "1pt solid #000000";
+  const BAND_LINE = "0.5pt solid #999999";
+
+  /** A 2-column table of `rows` rows whose tblLook is written out of these attributes */
+  const looking = (look: string, rows: number) =>
+    "<w:tbl>" +
+    '<w:tblPr><w:tblStyle w:val="ListTable"/>' +
+    `<w:tblLook ${look}/></w:tblPr>` +
+    grid(1000, 1000) +
+    Array.from({ length: rows }, (_, index) =>
+      row(cell("", `a${index}`), cell("", `b${index}`))
+    ).join("") +
+    "</w:tbl>";
+
+  const formatAt = (node: PMNode, rowIndex: number, col: number) =>
+    node.child(rowIndex).child(col).attrs.format;
+
+  it("draws the shading and the lines the header row takes from its style", () => {
+    const node = styledTable(
+      looking('w:firstRow="1" w:noHBand="1"', 3),
+      LIST_TABLE
+    );
+    expect(formatAt(node, 0, 0)).toMatchObject({
+      background: HEADER_FILL,
+      borderTop: HEADER_LINE,
+      borderBottom: HEADER_LINE,
+      // The header row is one row deep, so the line between its cells is the one it wrote as nil
+      borderRight: "none",
+    });
+    // The row under it belongs to no part the style dresses
+    expect(formatAt(node, 1, 0)).toBeNull();
+  });
+
+  it("bands the rows the header row is not part of", () => {
+    const node = styledTable(looking('w:firstRow="1"', 4), LIST_TABLE);
+    // The header row is dressed as the header and banded with nothing
+    expect(formatAt(node, 0, 0)).toMatchObject({ background: HEADER_FILL });
+    expect(formatAt(node, 1, 0)).toEqual({ borderBottom: BAND_LINE });
+    expect(formatAt(node, 2, 0)).toBeNull();
+    expect(formatAt(node, 3, 0)).toEqual({ borderBottom: BAND_LINE });
+  });
+
+  it("dresses no part the table did not take, and bands it where it said nothing", () => {
+    const node = styledTable(looking('w:firstRow="0"', 3), LIST_TABLE);
+    // The first row is banded like any other, and takes none of the header formatting
+    expect(formatAt(node, 0, 0)).toEqual({ borderBottom: BAND_LINE });
+    expect(formatAt(node, 1, 0)).toBeNull();
+  });
+
+  it("reads a table taking its parts through the legacy bitmask the same way", () => {
+    // 0x04A0: the header row and the first column, with no column banding
+    const node = styledTable(looking('w:val="04A0"', 3), LIST_TABLE);
+    expect(formatAt(node, 0, 0)).toMatchObject({ background: HEADER_FILL });
+    expect(formatAt(node, 1, 0)).toEqual({ borderBottom: BAND_LINE });
+  });
+
+  it("takes nothing at all from a style that dresses no part of a table", () => {
+    const node = styledTable(
+      looking('w:firstRow="1"', 3),
+      '<w:style w:type="table" w:styleId="ListTable"><w:tblPr/></w:style>'
+    );
+    expect(formatAt(node, 0, 0)).toBeNull();
+    expect(node.attrs.styleConditions).toBeNull();
+  });
+
+  it("carries what the style dresses each part with, so an edit can derive the cells again", () => {
+    const node = styledTable(looking('w:firstRow="1"', 3), LIST_TABLE);
+    const conditions = node.attrs.styleConditions;
+    expect(Object.keys(conditions)).toEqual([
+      "band1Horz",
+      "firstRow",
+      "firstCol",
+      "neCell",
+    ]);
+    expect(conditions.firstRow).toMatchObject({
+      background: HEADER_FILL,
+      inside: { horizontal: null, vertical: "none" },
+    });
+    expect(node.attrs.styleBands).toBeNull();
+  });
+
+  /** The rows of this table whose cells draw the line the band lays down under it */
+  const bandedRows = (node: PMNode): number[] =>
+    node.children.flatMap((row, index) =>
+      row.child(0).attrs.format?.borderBottom === BAND_LINE ? [index] : []
+    );
+
+  it("counts a band as as many rows as the style said", () => {
+    const banded = (bandSize: string) =>
+      styledTable(
+        looking('w:firstRow="1"', 7),
+        LIST_TABLE.replace(
+          '<w:basedOn w:val="TableNormal"/><w:tblPr/>',
+          '<w:basedOn w:val="TableNormal"/>' +
+            `<w:tblPr><w:tblStyleRowBandSize w:val="${bandSize}"/></w:tblPr>`
+        )
+      );
+    const two = banded("2");
+    expect(two.attrs.styleBands).toEqual({ row: 2, col: null });
+    // Rows 1 and 2 make up the first band and rows 5 and 6 the third, so the line the band draws
+    // under itself falls under the second row of each
+    expect(bandedRows(two)).toEqual([2, 6]);
+    // With one row to a band it falls under every other row instead
+    expect(bandedRows(banded("1"))).toEqual([1, 3, 5]);
+  });
+
+  it("what the cell wrote down itself still beats the part it belongs to", () => {
+    const node = styledTable(
+      "<w:tbl>" +
+        '<w:tblPr><w:tblStyle w:val="ListTable"/>' +
+        '<w:tblLook w:firstRow="1" w:noHBand="1"/></w:tblPr>' +
+        grid(1000, 1000) +
+        row(cell(shd("FFFF00"), "a"), cell("", "b")) +
+        row(cell("", "c"), cell("", "d")) +
+        "</w:tbl>",
+      LIST_TABLE
+    );
+    expect(formatAt(node, 0, 0)).toMatchObject({
+      background: "#FFFF00",
+      borderTop: HEADER_LINE,
+    });
+  });
+
+  it("dresses the corner where a row and a column the table takes meet", () => {
+    const node = styledTable(
+      looking('w:firstRow="1" w:lastColumn="1" w:noHBand="1"', 3),
+      LIST_TABLE
+    );
+    // The top right cell stands in the header row and in the last column, which is the NE corner
+    expect(formatAt(node, 0, 1)).toMatchObject({ background: "#000000" });
+    expect(formatAt(node, 0, 0)).toMatchObject({ background: HEADER_FILL });
   });
 });
 

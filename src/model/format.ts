@@ -614,6 +614,74 @@ export function toCellMargins(value: unknown): CellMargins | null {
   return sides.every((side) => side === null) ? null : margins;
 }
 
+/**
+ * The band sizes a table style laid down, as they come back in from `data-style-bands`.
+ * A style that said nothing about either is the same as the attribute not being there at all.
+ */
+export function toBandSizes(value: unknown): BandSizes | null {
+  if (!isRecord(value)) return null;
+  const size = (side: unknown): number | null =>
+    typeof side === "number" && Number.isInteger(side) && side > 0
+      ? side
+      : null;
+  const bands: BandSizes = { row: size(value.row), col: size(value.col) };
+  return bands.row === null && bands.col === null ? null : bands;
+}
+
+function toCellStyleBorders(value: unknown): CellStyleBorders {
+  if (!isRecord(value)) {
+    return { top: null, bottom: null, left: null, right: null };
+  }
+  return {
+    top: matching(BORDER_CSS, value.top) ?? null,
+    bottom: matching(BORDER_CSS, value.bottom) ?? null,
+    left: matching(BORDER_CSS, value.left) ?? null,
+    right: matching(BORDER_CSS, value.right) ?? null,
+  };
+}
+
+function toCellStyleFormat(value: unknown): CellStyleFormat | null {
+  if (!isRecord(value)) return null;
+  return {
+    background: matching(FILL, value.background) ?? null,
+    borders: toCellStyleBorders(value.borders),
+    inside: toInsideBorders(value.inside) ?? {
+      horizontal: null,
+      vertical: null,
+    },
+    margins: toCellMargins(value.margins) ?? {
+      topPt: null,
+      rightPt: null,
+      bottomPt: null,
+      leftPt: null,
+    },
+    verticalAlign: isCellVerticalAlign(value.verticalAlign)
+      ? value.verticalAlign
+      : null,
+  };
+}
+
+/**
+ * The conditional formats a table style laid down for its cells, as they come back in from
+ * `data-style-conditions`. A part no table has is not one this editor draws, so it is dropped;
+ * a table whose style dresses no part at all is the same as the attribute not being there.
+ */
+export function toTableStyleConditions(
+  value: unknown
+): TableStyleConditions | null {
+  if (!isRecord(value)) return null;
+  const conditions: Partial<Record<TableStyleOverrideType, CellStyleFormat>> =
+    {};
+  let found = false;
+  for (const type of TABLE_STYLE_CONDITIONS) {
+    const format = toCellStyleFormat(value[type]);
+    if (format === null) continue;
+    conditions[type] = format;
+    found = true;
+  }
+  return found ? conditions : null;
+}
+
 function toRowHeight(value: unknown): RowHeight | null {
   if (!isRecord(value) || typeof value.pt !== "number") return null;
   if (value.rule === "exact") return { rule: "exact", pt: value.pt };

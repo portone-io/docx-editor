@@ -32,6 +32,8 @@ export const schema = new Schema({
         format: { default: null },
         styleInside: { default: null },
         styleCellMargins: { default: null },
+        styleConditions: { default: null },
+        styleBands: { default: null },
       },
       toDOM: () => ["table", ["tbody", 0]],
     },

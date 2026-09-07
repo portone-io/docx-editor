@@ -47,6 +47,8 @@ export const NODE_ATTR_ROLES: AttrTable = {
     format: { role: "display", class: "derived" },
     styleInside: { role: "display", class: "derived" },
     styleCellMargins: { role: "display", class: "derived" },
+    styleConditions: { role: "display", class: "derived" },
+    styleBands: { role: "display", class: "derived" },
   },
   tableRow: {
     trAttrs: { role: "source", class: "preserved" },

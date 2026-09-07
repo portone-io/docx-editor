@@ -1,11 +1,12 @@
 /**
- * The lines a cell draws because of where it sits in the grid.
+ * The lines and the fill a cell draws because of where it sits in the grid.
  *
  * Every line of a table is drawn by its cells (see `docx/tableFormatting`), so which line a side
- * falls back on depends on where in the grid the cell sits. A new cell inherits its neighbour's
- * formatting, which is what a background has to do but not a line: the row appended under the last
- * one would draw the table's outer line against the row above it, and deleting the last row would
- * leave the table with no line along its bottom.
+ * falls back on depends on where in the grid the cell sits, and so does which parts of the table
+ * style dress it. A new cell inherits its neighbour's formatting, which is what a background has to
+ * do but not a line: the row appended under the last one would draw the table's outer line against
+ * the row above it, and deleting the last row would leave the table with no line along its bottom.
+ * A row added under the header row is likewise no header row.
  *
  * So the cells of a table whose grid moved derive their display values again, along the same path
  * the import takes. What a cell wrote down itself lives in its `w:tcPr` and is read straight back
@@ -23,21 +24,27 @@ import {
   insideBordersOf,
   layerCellMargins,
   layerInsideBorders,
+  NO_BAND_SIZES,
   NO_CELL_DEFAULTS,
   NO_CELL_MARGINS,
-  NO_CELL_SOURCES,
   NO_INSIDE_BORDERS,
+  NO_TABLE_STYLE_CONDITIONS,
   readCellProps,
+  readTableLook,
   type TableCellSources,
+  tblStyleIdOf,
 } from "../docx/tableFormatting";
 import {
   type CellFormat,
   spanCount,
+  toBandSizes,
   toCellFormat,
   toCellMargins,
   toInsideBorders,
   toTableFormat,
+  toTableStyleConditions,
 } from "../model/format";
+import { parsePropsXml } from "../ooxml/props";
 import type { NodeAttrs, TableGridMap } from "./format";
 
 function text(value: unknown): string | null {
@@ -53,8 +60,8 @@ export function tableCellSources(table: PMNode): TableCellSources {
   const known = sourcesByTable.get(table);
   if (known) return known;
   const tblPr = text(table.attrs.tblPr);
+  const props = tblPr === null ? null : parsePropsXml(tblPr);
   const sources: TableCellSources = {
-    ...NO_CELL_SOURCES,
     outer: toTableFormat(table.attrs.format),
     inside: layerInsideBorders(
       toInsideBorders(table.attrs.styleInside) ?? NO_INSIDE_BORDERS,
@@ -64,6 +71,14 @@ export function tableCellSources(table: PMNode): TableCellSources {
       toCellMargins(table.attrs.styleCellMargins) ?? NO_CELL_MARGINS,
       cellMarginsOf(tblPr)
     ),
+    look: readTableLook(props),
+    bands: toBandSizes(table.attrs.styleBands) ?? NO_BAND_SIZES,
+    conditions:
+      toTableStyleConditions(table.attrs.styleConditions) ??
+      NO_TABLE_STYLE_CONDITIONS,
+    // The style the paragraphs inside resolve against; what it lays down for the cells is already
+    // in `styleConditions`
+    styleId: tblStyleIdOf(props),
   };
   sourcesByTable.set(table, sources);
   return sources;
@@ -246,6 +261,8 @@ export function sameFormattingInputs(a: PMNode, b: PMNode): boolean {
     a.attrs.format === b.attrs.format &&
     a.attrs.styleInside === b.attrs.styleInside &&
     a.attrs.styleCellMargins === b.attrs.styleCellMargins &&
+    a.attrs.styleConditions === b.attrs.styleConditions &&
+    a.attrs.styleBands === b.attrs.styleBands &&
     sameCellFormattingInputs(a, b)
   );
 }

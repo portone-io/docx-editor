@@ -4,7 +4,12 @@
  */
 
 import type { Node as PMNode } from "prosemirror-model";
-import { toCellMargins, toInsideBorders } from "../model/format";
+import {
+  toBandSizes,
+  toCellMargins,
+  toInsideBorders,
+  toTableStyleConditions,
+} from "../model/format";
 import { childValue, wAttr } from "../ooxml/units";
 import {
   attrString,
@@ -14,10 +19,10 @@ import {
 } from "../ooxml/xml";
 import { docxSchema } from "../schema";
 import {
+  type FormattingContext,
   layerTableFormat,
-  NO_STYLES,
+  NO_FORMATTING,
   type StyleFormat,
-  type StyleTable,
 } from "./formatting";
 import {
   buildParagraph,
@@ -26,20 +31,24 @@ import {
 } from "./importParagraph";
 import { readSdtWrapper } from "./sdt";
 import {
+  cellConditionsOf,
   cellDefaultsFor,
   type GridRect,
   type GridSize,
+  layerBandSizes,
   layerCellMargins,
   layerInsideBorders,
+  NO_BAND_SIZES,
   NO_CELL_MARGINS,
-  NO_CELL_SOURCES,
   NO_INSIDE_BORDERS,
+  readBandSizes,
   readCellFormat,
   readCellMarginsOf,
   readGridCols,
   readInsideBorders,
   readRowFormat,
   readTableFormat,
+  readTableLook,
   readTableWidth,
   type TableCellSources,
   tblStyleIdOf,
@@ -363,23 +372,18 @@ function buildRow(
  * default table style, which is what OOXML applies to an object with no style of its own.
  * A style that does resolve needs no fallback underneath it, because a real table style is based on
  * the default one anyway.
- *
- * Only what the style wrote in its `w:tblPr` reaches the table. Its conditional formatting
- * (`w:tblStylePr`, which dresses the header row, the first column and the banded rows differently),
- * the `w:tblLook` saying which of those parts are switched on, and the paragraph and run formatting
- * it carries for the text inside the cells are all left unread. Nothing is lost on the way out,
- * because export never rebuilds a style.
  */
-function tableStyleOf(
+export function tableStyleOf(
   tblPr: Element | null,
-  styles: StyleTable,
-  defaultTableStyleId: string | null
+  context: FormattingContext
 ): StyleFormat | undefined {
   const styleId = tblStyleIdOf(tblPr);
-  return (
-    (styleId !== null ? styles.get(styleId) : undefined) ??
-    (defaultTableStyleId !== null ? styles.get(defaultTableStyleId) : undefined)
-  );
+  const named = styleId === null ? undefined : context.styles.get(styleId);
+  const fallback =
+    context.defaultTableStyleId === null
+      ? undefined
+      : context.styles.get(context.defaultTableStyleId);
+  return named ?? fallback;
 }
 
 /** Moves a `<w:tbl>` into a table node. null if it cannot be modelled */
@@ -387,8 +391,7 @@ export function buildTable(
   el: Element,
   srcId: string | null,
   sources: ImportSources = NO_IMPORT_SOURCES,
-  styles: StyleTable = NO_STYLES,
-  defaultTableStyleId: string | null = null
+  context: FormattingContext = NO_FORMATTING
 ): PMNode | null {
   const parts = readTableParts(el);
   if (!parts) return null;
@@ -402,15 +405,20 @@ export function buildTable(
   const drafts = resolveVerticalMerges(parts.rows, width);
   if (!drafts) return null;
 
-  const style = tableStyleOf(parts.tblPr, styles, defaultTableStyleId);
+  const style = tableStyleOf(parts.tblPr, context);
   const tableFormat = layerTableFormat(
     style?.table ?? {},
     readTableFormat(parts.tblPr)
   );
+  // A band size is normally written in the style, but a table may state one of its own
+  const bands = layerBandSizes(
+    style?.tableBands ?? NO_BAND_SIZES,
+    readBandSizes(parts.tblPr)
+  );
+  const conditions = cellConditionsOf(style?.tableConditions ?? {});
   const table: TableCells = {
     grid: { rows: parts.rows.length, cols: width },
     sources: {
-      ...NO_CELL_SOURCES,
       outer: tableFormat,
       inside: layerInsideBorders(
         style?.tableInside ?? NO_INSIDE_BORDERS,
@@ -420,6 +428,10 @@ export function buildTable(
         style?.tableCellMargins ?? NO_CELL_MARGINS,
         readCellMarginsOf(parts.tblPr, "tblCellMar")
       ),
+      look: readTableLook(parts.tblPr),
+      bands,
+      conditions,
+      styleId: tblStyleIdOf(parts.tblPr),
     },
   };
 
@@ -442,6 +454,8 @@ export function buildTable(
       // The cells need these again whenever an edit derives their display values afresh
       styleInside: toInsideBorders(style?.tableInside),
       styleCellMargins: toCellMargins(style?.tableCellMargins),
+      styleConditions: toTableStyleConditions(conditions),
+      styleBands: toBandSizes(bands),
     },
     rows
   );
