@@ -11,6 +11,7 @@ import { toggleNumberedList } from "../../editor/commands/listCommands";
 import { setParagraphStyle } from "../../editor/commands/paragraphCommands";
 import { editorStateForSession } from "../../editor/createEditor";
 import { docxKeymap } from "../../editor/plugins/keymap";
+import { paragraphPlacementAt } from "../../editor/plugins/paragraphDisplay";
 import { type ParagraphFormat, toParagraphFormat } from "../../model/format";
 import { templateIndent } from "../../numbering/listTemplate";
 import type { Numbering } from "../../numbering/parseNumbering";
@@ -425,19 +426,27 @@ describe("tab stops", () => {
   });
 });
 
-/** Every paragraph's attrs against what the resolver answers for its own pPr. The count says the walk saw some */
+/**
+ * Every paragraph's attrs against what the resolver answers for its own pPr, in the spot it
+ * stands in. The count says the walk saw some.
+ *
+ * A paragraph inside a table cell is answered for by the part of the table the cell belongs to,
+ * which is worked out here the way the editor works it out, so the walk also holds the import and
+ * the deriver to one answer.
+ */
 function expectResolvedAttrs(
   doc: PMNode,
   formatting: FormattingContext
 ): number {
   let paragraphs = 0;
-  doc.descendants((node) => {
+  doc.descendants((node, pos) => {
     if (node.type !== docxSchema.nodes.paragraph) return true;
     paragraphs += 1;
     const pPr: unknown = node.attrs.pPr;
     const attrs = paragraphAttrsFor(
       typeof pPr === "string" ? pPr : null,
-      formatting
+      formatting,
+      paragraphPlacementAt(doc, pos)
     );
     expect(node.attrs.format).toEqual(attrs.format);
     expect(node.attrs.styleRun).toEqual(attrs.styleRun);

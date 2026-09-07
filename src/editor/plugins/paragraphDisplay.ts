@@ -54,7 +54,10 @@ function holdsComposition(
  * The cell is found by walking out of the paragraph rather than passed down, because the walk that
  * runs the derivers goes over the blocks and hands each of them nothing but its own position.
  */
-function placementOf(doc: PMNode, pos: number): ParagraphPlacement | null {
+export function paragraphPlacementAt(
+  doc: PMNode,
+  pos: number
+): ParagraphPlacement | null {
   const $pos = doc.resolve(pos);
   for (let depth = $pos.depth; depth >= 2; depth -= 1) {
     if ($pos.node(depth).type !== docxSchema.nodes.tableCell) continue;
@@ -82,7 +85,7 @@ export const paragraphDisplay: DocumentDeriver = {
     const paragraph = resolveParagraph(
       paragraphPPr(node),
       formatting,
-      placementOf(doc, pos)
+      paragraphPlacementAt(doc, pos)
     );
     const derived: DisplayAttrs[] = [
       { pos, attrs: paragraphAttrsOf(paragraph) },

@@ -15,6 +15,7 @@ Tests using `fixtureNames` from [`src/__testing__/docx.ts`](../src/__testing__/d
 | `size-fallback.docx` | Export-style package | Font-size fallbacks, indented lists, narrow and oversized tables, and multiple pages |
 | `east-asian.docx` | Word-style package | Per-script fonts, theme fonts, language metadata, and CJK line-breaking properties |
 | `letter-page.docx` | Export-style package | US Letter geometry and margins |
+| `table-styles.docx` | Export-style package | Table styles that dress the header row, the closing row, the edge columns, a corner and the banded rows |
 | `sections-and-revisions.docx` | Export-style package | Two sections with a mid-body section break, a table carrying a grid revision, an inline content control, and a body-level bookmark pair |
 | `producers/google-docs-export.docx` | Producer package | Markup Google Docs saved: revision identifiers on every run, a tracked insertion, a generated bookmark name, and measurements the schemas turn down |
 
@@ -177,6 +178,16 @@ This fixture must retain:
 ### `letter-page.docx`
 
 This is `size-fallback.docx` with only `w:pgSz` and `w:pgMar` changed. Keep it as a committed US Letter document so geometry tests do not validate a reader against values produced by the same code under test.
+
+### `table-styles.docx`
+
+This is `size-fallback.docx` with `word/document.xml` and `word/styles.xml` replaced. It is the only fixture whose styles dress the parts of a table separately, so it is what holds the display of a table style. It must retain:
+
+- A table style `ReadingTable` based on the default table style, carrying a `w:tblStylePr` for `wholeTable`, `firstRow`, `lastRow`, `firstCol`, `band1Horz` and `neCell`, each writing something a cell draws: a fill, a line, or bold or italic text.
+- `ReadingTableWideBands`, based on it, stating `w:tblStyleRowBandSize` of 2 and nothing else, so that a band of more than one row is covered and so is the layering of a band size down `basedOn`.
+- Three tables wearing those styles: one naming the parts it takes through the six `w:tblLook` attributes, one naming them through the legacy `w:val="04A0"` bitmask, and one wearing the wide-band style. The first has four rows, so it has banded rows between its header row and its closing row.
+- A `w:cnfStyle` on the first cell of the first table, which the editor works out again from where the cell sits and carries along untouched.
+- At least six body paragraphs holding text and a second paragraph style beside the default, which is what the export battery in `src/docx/exportSchemaValidation.test.ts` reserves.
 
 ### `sections-and-revisions.docx`
 

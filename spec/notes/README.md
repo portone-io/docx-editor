@@ -7,6 +7,7 @@ These notes record reusable OOXML interpretations, interoperability findings, an
 - [Comments](./comments.md)
 - [Content controls](./contentControls.md)
 - [Table cell layout](./tableCellLayout.md)
+- [Table styles](./tableStyles.md)
 - [Headers and footers](./headersAndFooters.md)
 - [Footnotes and endnotes](./footnotesAndEndnotes.md)
 - [Hyperlinks](./hyperlinks.md)

@@ -1251,6 +1251,99 @@ describe("the cell margins a table lays down", () => {
   });
 });
 
+describe("the table styles of table-styles.docx", () => {
+  const HEADER_FILL = "#D9E2F3";
+  const BAND_FILL = "#F2F2F2";
+  const CORNER_FILL = "#FFF2CC";
+  const GRID_LINE = "0.5pt solid #7F7F7F";
+
+  /** The three tables of the fixture, in the order the body holds them */
+  function fixtureTables(): PMNode[] {
+    const { doc } = importDocx(readFixture("table-styles.docx"));
+    const tables: PMNode[] = [];
+    doc.forEach((block) => {
+      if (block.type.name === "table") tables.push(block);
+    });
+    return tables;
+  }
+
+  const formatAt = (table: PMNode, rowIndex: number, col: number) =>
+    table.child(rowIndex).child(col).attrs.format;
+
+  const runAt = (table: PMNode, rowIndex: number, col: number) =>
+    table.child(rowIndex).child(col).child(0).attrs.styleRun;
+
+  it("draws the header row, the closing row, the first column and the corner of the first table", () => {
+    const [attributes] = fixtureTables();
+
+    expect(formatAt(attributes, 0, 0)).toMatchObject({
+      background: HEADER_FILL,
+      borderBottom: "1.5pt solid #404040",
+      // The header row writes its inside line as nil, so its cells stand as one band
+      borderRight: "none",
+    });
+    expect(runAt(attributes, 0, 0)).toEqual({ bold: true, italic: true });
+    // The top right cell is the corner the style dresses on its own
+    expect(formatAt(attributes, 0, 2)).toMatchObject({
+      background: CORNER_FILL,
+    });
+    // The closing row is drawn under a double line and in bold
+    expect(formatAt(attributes, 3, 0)).toMatchObject({
+      borderTop: "0.75pt double #404040",
+    });
+    expect(runAt(attributes, 3, 1)).toEqual({ bold: true });
+    // The first column is drawn in italics, the rest of the row is not
+    expect(runAt(attributes, 2, 0)).toEqual({ italic: true });
+    expect(runAt(attributes, 2, 1)).toBeNull();
+  });
+
+  it("bands the rows the header row and the closing row are not part of", () => {
+    const [attributes] = fixtureTables();
+    expect(formatAt(attributes, 1, 1)).toMatchObject({
+      background: BAND_FILL,
+    });
+    expect(formatAt(attributes, 2, 1)).toEqual({
+      borderTop: GRID_LINE,
+      borderBottom: GRID_LINE,
+      borderLeft: GRID_LINE,
+      borderRight: GRID_LINE,
+      paddingTopPt: 0,
+      paddingRightPt: 5.4,
+      paddingBottomPt: 0,
+      paddingLeftPt: 5.4,
+    });
+  });
+
+  it("reads the table naming its parts through the legacy bitmask the same way", () => {
+    const [, legacy] = fixtureTables();
+    expect(formatAt(legacy, 0, 0)).toMatchObject({ background: HEADER_FILL });
+    expect(formatAt(legacy, 1, 0)).toMatchObject({ background: BAND_FILL });
+    expect(runAt(legacy, 1, 0)).toEqual({ italic: true });
+    // 0x04A0 takes the first row and the first column but not the last column, so there is no
+    // corner where a row and a column the table takes meet
+    expect(formatAt(legacy, 0, 2)).toMatchObject({ background: HEADER_FILL });
+  });
+
+  it("bands two rows at a time where the style says so", () => {
+    const [, , wide] = fixtureTables();
+    expect(wide.attrs.styleBands).toEqual({ row: 2, col: 1 });
+    expect(formatAt(wide, 1, 0)).toMatchObject({ background: BAND_FILL });
+    expect(formatAt(wide, 2, 0)).toMatchObject({ background: BAND_FILL });
+    expect(formatAt(wide, 3, 0)?.background).toBeUndefined();
+    expect(formatAt(wide, 4, 0)?.background).toBeUndefined();
+  });
+
+  it("carries the conditional formatting the cell recorded along untouched", () => {
+    const [attributes] = fixtureTables();
+    // What part of the table a cell belongs to is worked out from where it sits; the record the
+    // document wrote is preserved rather than read
+    expect(attributes.child(0).child(0).attrs.tcPr).toBe(
+      '<w:tcPr><w:cnfStyle w:val="101000000100"/>' +
+        '<w:tcW w:w="2400" w:type="dxa"/></w:tcPr>'
+    );
+  });
+});
+
 describe("tables in the fixtures", () => {
   it.each(fixtureNames)("%s: no table is left as a preserved block", (name) => {
     const { doc } = importDocx(readFixture(name));
