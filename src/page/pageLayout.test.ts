@@ -32,6 +32,7 @@ function blocks(
       breakAfter: false,
       candidates: [],
       minFirstPiece: height,
+      keepWithNext: false,
       ...shape,
       height,
     };

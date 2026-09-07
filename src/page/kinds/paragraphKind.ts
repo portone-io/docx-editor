@@ -9,6 +9,7 @@
 
 import type { Node as PMNode } from "prosemirror-model";
 import { Decoration } from "prosemirror-view";
+import { toParagraphFormat } from "../../model/format";
 import { docxSchema, isPageBreak } from "../../schema";
 import { editorAttributes } from "../../styles/classNames";
 import type { BlockKind, BreakCandidate } from "../blockKinds";
@@ -91,6 +92,7 @@ export const paragraphKind: BlockKind = {
       breakAfter:
         dom.querySelectorAll(PAGE_BREAK_BR).length > candidates.length,
       appliedHeight,
+      keepWithNext: toParagraphFormat(node.attrs.format)?.keepNext === true,
     };
   },
 

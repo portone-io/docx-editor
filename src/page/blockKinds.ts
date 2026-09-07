@@ -42,6 +42,8 @@ export interface MeasuredBlock {
   candidates: readonly BreakCandidate[];
   /** The smallest piece that has to fit on the page the block starts on */
   minFirstPiece: number;
+  /** The document asks for this block to stand on the same page as the start of the block after it */
+  keepWithNext: boolean;
 }
 
 /** A page cut the layout decided on: the space opened before the continued piece */
@@ -76,6 +78,11 @@ export interface KindMeasure {
   breakAfter: boolean;
   /** Height the engine's own marks add inside this block, taken off its measured bottom */
   appliedHeight: number;
+  /**
+   * Whether the document asks for this block to stand on the same page as the start of the block
+   * after it. A kind whose blocks never do leaves it out
+   */
+  keepWithNext?: boolean;
 }
 
 /**

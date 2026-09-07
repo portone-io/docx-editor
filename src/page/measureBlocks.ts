@@ -107,6 +107,7 @@ export function measureSheet(
       breakAfter: measured.breakAfter,
       candidates: measured.candidates,
       minFirstPiece: measured.minFirstPiece,
+      keepWithNext: measured.keepWithNext ?? false,
     });
     previousBottom = bottom;
   }

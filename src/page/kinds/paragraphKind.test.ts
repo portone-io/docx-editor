@@ -96,6 +96,7 @@ describe("paragraphKind", () => {
       minFirstPiece: 20,
       breakAfter: false,
       appliedHeight: 30,
+      keepWithNext: false,
     });
   });
 
@@ -111,6 +112,7 @@ describe("paragraphKind", () => {
       minFirstPiece: 20,
       breakAfter: false,
       appliedHeight: 30,
+      keepWithNext: false,
     });
   });
 
@@ -167,5 +169,27 @@ describe("paragraphKind", () => {
     const measured = paragraphKind.measure(firstBlock(live));
     expect(measured.candidates).toEqual([]);
     expect(measured.breakAfter).toBe(true);
+  });
+
+  /**
+   * The keep is a display value the formatting resolver derived from the paragraph's own
+   * properties or its style, so the kind reads it there and never opens the XML itself.
+   */
+  it("reads keepNext off the paragraph format", () => {
+    const keptWithNext = (pPr: string | null): boolean => {
+      const live = mounted(
+        docxSchema.nodes.doc.create(null, [
+          docxSchema.nodes.paragraph.create({ pPr }, [docxSchema.text("aaa")]),
+        ])
+      );
+      const { keepWithNext } = paragraphKind.measure(firstBlock(live));
+      live.destroy();
+      view = null;
+      return keepWithNext === true;
+    };
+
+    expect(keptWithNext("<w:pPr><w:keepNext/></w:pPr>")).toBe(true);
+    expect(keptWithNext('<w:pPr><w:keepNext w:val="0"/></w:pPr>')).toBe(false);
+    expect(keptWithNext(null)).toBe(false);
   });
 });

@@ -135,6 +135,7 @@ function measuredShapes(live: EditorView): MeasuredBlock[] {
         { at: breakPos(live), offset: 20, forced: true, repeatHeight: 0 },
       ],
       minFirstPiece: 20,
+      keepWithNext: false,
     },
     {
       pos: live.state.doc.child(0).nodeSize,
@@ -144,6 +145,7 @@ function measuredShapes(live: EditorView): MeasuredBlock[] {
       breakAfter: false,
       candidates: [],
       minFirstPiece: PAGE,
+      keepWithNext: false,
     },
   ];
 }
@@ -221,5 +223,25 @@ describe("measureSheet", () => {
     // sits in reports and the layout answers
     expect(blocks[0]?.breakAfter).toBe(true);
     expect(blocks[1]?.breakBefore).toBe(false);
+  });
+
+  it("carries a block's keep with next through to the layout", () => {
+    const live = editor(
+      docxSchema.nodes.doc.create(null, [
+        docxSchema.nodes.paragraph.create(
+          { pPr: "<w:pPr><w:keepNext/></w:pPr>" },
+          [docxSchema.text("kept")]
+        ),
+        docxSchema.nodes.paragraph.create({}, [docxSchema.text("next")]),
+      ])
+    );
+    draw(live, [
+      { gap: 0, height: 40, breaks: [] },
+      { gap: 0, height: 40, breaks: [] },
+    ]);
+
+    expect(
+      measureSheet(live, live.dom).blocks.map((block) => block.keepWithNext)
+    ).toEqual([true, false]);
   });
 });
