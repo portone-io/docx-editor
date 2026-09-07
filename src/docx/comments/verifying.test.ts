@@ -19,7 +19,8 @@ import { parseXml } from "../../ooxml/xml";
 import { exportDocx } from "../exportDocx";
 import { importDocx } from "../importDocx";
 import { W14_NS, W15_NS } from "./constants";
-import { commentPartsKept, entryAllowed, wellFormedEntry } from "./verifying";
+import { entryAllowed, wellFormedEntry } from "./parts";
+import { commentPartsKept } from "./verifying";
 
 const encoder = new TextEncoder();
 const COMMENTS_PART = "word/comments.xml";

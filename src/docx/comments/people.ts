@@ -22,6 +22,7 @@ import {
   encodeUtf8,
   parseXml,
 } from "../../ooxml/xml";
+import type { StoryPartKind } from "../protectionPolicy";
 import {
   directoryOf,
   type RelationshipWriter,
@@ -33,7 +34,6 @@ import type { SessionStore } from "../session";
 import {
   COMMENT_AUTHOR_PROVIDER,
   CONTENT_TYPES_PATH,
-  PEOPLE_CONTENT_TYPE,
   PEOPLE_REL_TYPE,
   W15_NS,
 } from "./constants";
@@ -193,21 +193,16 @@ function peopleXml(
   return xml.slice(0, close) + persons + xml.slice(close);
 }
 
-function availablePeoplePath(session: SessionStore): string {
-  const directory = directoryOf(session.mainPartPath);
-  for (let suffix = 0; ; suffix += 1) {
-    const name = suffix === 0 ? "people.xml" : `people${suffix + 1}.xml`;
-    const path = directory + name;
-    if (!session.parts.has(path)) return path;
-  }
-}
-
 /**
  * Plans the people part, its relationship and its content type for every identity the current
  * comments carry that the document has not recorded. Null when it has recorded them all, which
  * leaves the part as it arrived.
+ *
+ * `part` is the description the verifier reads the part back through (`./parts`), so where this
+ * writes it and what it declares it as are the same facts on both sides.
  */
 export function planPeoplePart(
+  part: StoryPartKind,
   bodies: Iterable<CommentReferenceData | CommentReplyData>,
   session: SessionStore,
   relationships: RelationshipWriter,
@@ -218,11 +213,11 @@ export function planPeoplePart(
   if (added.size === 0) return null;
 
   const parts = new Map<string, Uint8Array>();
-  const addingPart = people.partPath === null;
-  const partPath = people.partPath ?? availablePeoplePath(session);
+  const addingPart = part.pathIn(session) === null;
+  const partPath = part.writePathIn(session);
   if (addingPart) {
     relationships.add({
-      type: PEOPLE_REL_TYPE,
+      type: part.relType,
       target: partPath.slice(directoryOf(session.mainPartPath).length),
     });
   }
@@ -231,7 +226,7 @@ export function planPeoplePart(
     const contentTypes = withContentType(
       session.parts,
       partPath,
-      PEOPLE_CONTENT_TYPE,
+      part.contentType,
       currentContentTypes
     );
     if (contentTypes) parts.set(CONTENT_TYPES_PATH, contentTypes);
