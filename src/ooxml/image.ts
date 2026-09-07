@@ -10,6 +10,10 @@
  *
  * An imported image holds on to its whole original `<w:drawing>` XML, so an untouched
  * image goes back out byte for byte. A resize rewrites nothing but the two extents.
+ *
+ * `emuToPx` is imported on its own by a builder working in pixels, so nothing here reads
+ * `NAMESPACES` at the top level: a top-level read is an impure statement a bundler keeps,
+ * and it would hold the naming layer in a bundle that wanted one multiplication.
  */
 
 import { NAMESPACES } from "./names";
@@ -120,8 +124,6 @@ export interface DrawingPicture {
   alt: string | null;
 }
 
-const PICTURE_URI = NAMESPACES.pic;
-
 function childOf(el: Element | null, name: string): Element | null {
   return el ? childByLocalName(el, name) : null;
 }
@@ -155,7 +157,7 @@ export function readDrawingPicture(drawing: Element): DrawingPicture | null {
 
   const graphicData = childOf(childOf(inline, "graphic"), "graphicData");
   // A chart or a diagram sits under a different uri and is not a picture at all
-  if (!graphicData || graphicData.getAttribute("uri") !== PICTURE_URI) {
+  if (!graphicData || graphicData.getAttribute("uri") !== NAMESPACES.pic) {
     return null;
   }
 
@@ -193,9 +195,6 @@ export function withExtent(xml: string, extent: ImageExtent): string {
     .replace(EXT_TAG, (_match, prefix) => `<${prefix ?? ""}ext ${size}/>`);
 }
 
-const WP_NS = NAMESPACES.wp;
-const A_NS = NAMESPACES.a;
-
 /** A picture that was inserted during editing and has no original XML to go back to */
 export interface NewImage {
   relId: string;
@@ -218,14 +217,14 @@ export function imageDrawingXml(image: NewImage): string {
   const descr = image.alt === null ? "" : ` descr="${escapeXml(image.alt)}"`;
   return (
     "<w:drawing>" +
-    `<wp:inline xmlns:wp="${WP_NS}" distT="0" distB="0" distL="0" distR="0">` +
+    `<wp:inline xmlns:wp="${NAMESPACES.wp}" distT="0" distB="0" distL="0" distR="0">` +
     `<wp:extent ${size}/>` +
     '<wp:effectExtent l="0" t="0" r="0" b="0"/>' +
     `<wp:docPr id="${image.docPrId}" name="${name}"${descr}/>` +
-    `<wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="${A_NS}" noChangeAspect="1"/></wp:cNvGraphicFramePr>` +
-    `<a:graphic xmlns:a="${A_NS}">` +
-    `<a:graphicData uri="${PICTURE_URI}">` +
-    `<pic:pic xmlns:pic="${PICTURE_URI}">` +
+    `<wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="${NAMESPACES.a}" noChangeAspect="1"/></wp:cNvGraphicFramePr>` +
+    `<a:graphic xmlns:a="${NAMESPACES.a}">` +
+    `<a:graphicData uri="${NAMESPACES.pic}">` +
+    `<pic:pic xmlns:pic="${NAMESPACES.pic}">` +
     `<pic:nvPicPr><pic:cNvPr id="${image.docPrId}" name="${name}"${descr}/><pic:cNvPicPr/></pic:nvPicPr>` +
     `<pic:blipFill><a:blip xmlns:r="${R_NS}" r:embed="${escapeXml(image.relId)}"/>` +
     "<a:stretch><a:fillRect/></a:stretch></pic:blipFill>" +
