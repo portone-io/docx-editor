@@ -16,6 +16,7 @@ import {
 } from "../../editor/commands/commentCommands";
 import { createEditorState } from "../../editor/createEditor";
 import { parseXml } from "../../ooxml/xml";
+import { onlyCommentsChangedBy } from "../commentOnlyChange";
 import { exportDocx } from "../exportDocx";
 import { importDocx } from "../importDocx";
 import { partsKept } from "../protectionPolicy";
@@ -561,6 +562,8 @@ describe("over the comment parts of a submitted file", () => {
     const text = partText(commented, COMMENTS_PART);
     for (const between of [
       "<!-- payload -->",
+      "<?review payload?>",
+      "\u00a0",
       "payload",
       "<![CDATA[payload]]>",
     ]) {
@@ -708,5 +711,118 @@ describe("over the comment parts of a submitted file", () => {
         allowed
       );
     });
+  });
+});
+
+describe("the content surrounding comment entries", () => {
+  const paths = [COMMENTS_PART, "word/commentsExtended.xml", "word/people.xml"];
+  const annotation = "<!-- producer annotation -->";
+  const refusedAt = (part: string) => ({
+    ok: false,
+    reason: "comment-markup-rejected",
+    part,
+  });
+
+  function annotated(bytes: Uint8Array, path: string): Uint8Array {
+    const xml = partText(bytes, path);
+    const close = xml.lastIndexOf("</");
+    return repacked(
+      bytes,
+      path,
+      xml.slice(0, close) + annotation + xml.slice(close)
+    );
+  }
+
+  it.each(paths)(
+    "accepts a preserved annotation in %s and refuses its alteration",
+    (path) => {
+      const before = annotated(settledByMe(), path);
+      const { doc, session } = importDocx(before);
+      const after = exportDocx(doc, session);
+      expect(partText(after, path)).toBe(partText(before, path));
+      expect(onlyCommentsChangedBy(before, after, "me")).toEqual(allowed);
+
+      for (const replacement of [
+        "<!-- changed annotation -->",
+        "",
+        annotation + annotation,
+      ]) {
+        const changed = repacked(
+          after,
+          path,
+          partText(after, path).replace(annotation, replacement)
+        );
+        expect(onlyCommentsChangedBy(before, changed, "me")).toEqual(
+          refusedAt(path)
+        );
+      }
+    }
+  );
+
+  it("accepts a reply that appends a person beside an existing annotation", () => {
+    const path = "word/people.xml";
+    const before = annotated(settledByMe(), path);
+    const { doc, session } = importDocx(before);
+    const state = applied(
+      createEditorState(doc, { author: { id: "other", name: "Another" } }),
+      addCommentReply("0", {
+        text: "Reply",
+        author: "Another",
+        authorId: "other",
+      })
+    );
+    const after = exportDocx(state.doc, session);
+    expect(partText(after, path)).toContain(annotation);
+    expect(partText(after, path)).toContain('w15:userId="other"');
+    expect(onlyCommentsChangedBy(before, after, "other")).toEqual(allowed);
+
+    const dropped = repacked(
+      after,
+      path,
+      partText(after, path).replace(annotation, "")
+    );
+    expect(onlyCommentsChangedBy(before, dropped, "other")).toEqual(
+      refusedAt(path)
+    );
+  });
+
+  it("accepts the inter-entry annotations lost when a reply rebuilds both comment parts", () => {
+    const commentPaths = paths.slice(0, 2);
+    const before = commentPaths.reduce(annotated, settledByMe());
+    const { doc, session } = importDocx(before);
+    const state = applied(
+      createEditorState(doc, { author: { id: "me", name: "Someone" } }),
+      addCommentReply("0", { text: "Reply", author: "Someone", authorId: "me" })
+    );
+    const after = exportDocx(state.doc, session);
+    for (const path of commentPaths)
+      expect(partText(after, path)).not.toContain(annotation);
+    expect(onlyCommentsChangedBy(before, after, "me")).toEqual(allowed);
+  });
+
+  it.each(paths)("compares annotations outside the root of %s", (path) => {
+    const original = settledByMe();
+    for (const outside of [annotation, "<?review producer-annotation?>"]) {
+      const annotatedXml = partText(original, path) + outside;
+      const before = repacked(original, path, annotatedXml);
+      const { doc, session } = importDocx(before);
+      expect(
+        onlyCommentsChangedBy(before, exportDocx(doc, session), "me")
+      ).toEqual(allowed);
+      expect(onlyCommentsChangedBy(original, before, "me")).toEqual(
+        refusedAt(path)
+      );
+      expect(onlyCommentsChangedBy(before, original, "me")).toEqual(
+        refusedAt(path)
+      );
+      const changed = repacked(
+        before,
+        path,
+        annotatedXml.replace("annotation", "changed")
+      );
+      expect(onlyCommentsChangedBy(before, changed, "me")).toEqual(
+        refusedAt(path)
+      );
+    }
   });
 });

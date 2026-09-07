@@ -177,6 +177,8 @@ interface CommentPartShape {
   namespace: string;
   /** The element the entries stand in, which shares their namespace */
   rootName: string;
+  /** Whether rebuilding the entries drops the content between them, as the two comment writers do */
+  rewritesContents: boolean;
   localName: string;
   idAttr: string;
   xmlIn(session: SessionStore): string | null;
@@ -198,16 +200,55 @@ const IGNORABLE = "mc:Ignorable";
 /** The one thing the writer adds to it */
 const IGNORED = "w14";
 
-/**
- * Whether the node says nothing.
- *
- * A part this editor writes holds its entries with nothing between them, but one that arrived may
- * be laid out over several lines, and it comes back that way wherever nothing rewrote it. Anything
- * else standing between the entries - a comment, text, a CDATA section - is bytes no entry
- * judgement ever looks at.
- */
+/** XML layout whitespace carries no payload; other text is compared with what arrived. */
 function isLayout(node: Node): boolean {
-  return node.nodeType === TEXT_NODE && (node.nodeValue ?? "").trim() === "";
+  return (
+    node.nodeType === TEXT_NODE && /^[ \t\r\n]*$/.test(node.nodeValue ?? "")
+  );
+}
+
+/** Content an entry comparison cannot see, inside or outside the part root. */
+function surroundingNodes(parent: Node | null): readonly Node[] {
+  return parent === null
+    ? []
+    : Array.from(parent.childNodes).filter(
+        (node) => !isElement(node) && !isLayout(node)
+      );
+}
+
+function sameNodes(now: readonly Node[], was: readonly Node[]): boolean {
+  return (
+    now.length === was.length &&
+    now.every((node, at) => {
+      const original = was[at];
+      return (
+        node.nodeType === original.nodeType &&
+        node.nodeName === original.nodeName &&
+        node.nodeValue === original.nodeValue
+      );
+    })
+  );
+}
+
+/**
+ * People are appended without replacing their surroundings. The comment writers rebuild their
+ * entries and drop inter-entry content, but only an actual entry change can explain that loss.
+ * In either case a submission cannot introduce or rewrite content outside the entries.
+ */
+function interEntryContentKept(
+  now: Element,
+  was: Element | null,
+  rewritesContents: boolean
+): boolean {
+  const current = surroundingNodes(now);
+  if (sameNodes(current, surroundingNodes(was))) return true;
+  return (
+    rewritesContents &&
+    current.length === 0 &&
+    was !== null &&
+    Array.from(now.children, serializeXml).join("") !==
+      Array.from(was.children, serializeXml).join("")
+  );
 }
 
 function ignorableTokens(value: string): ReadonlySet<string> {
@@ -280,10 +321,9 @@ function entriesOf(
   if (xml === null) return entries;
   const strict = reading === "submitted";
   for (const node of Array.from(parseXml(xml).documentElement.childNodes)) {
-    if (!isElement(node)) {
-      if (strict && !isLayout(node)) return null;
-      continue;
-    }
+    // The root comparison checks non-entry content against the original, including annotations
+    // the writer preserves. This reader only judges the entries it can key.
+    if (!isElement(node)) continue;
     const el = node;
     const named = strict
       ? el.namespaceURI === shape.namespace && el.localName === shape.localName
@@ -332,10 +372,20 @@ function storyPart(shape: CommentPartShape): StoryPartKind {
       const submitted = shape.xmlIn(after);
       if (submitted === null) return true;
       const arrived = shape.xmlIn(before);
-      return rootKeptAgainst(
-        parseXml(submitted).documentElement,
-        arrived === null ? null : parseXml(arrived).documentElement,
-        shape
+      const now = parseXml(submitted);
+      const was = arrived === null ? null : parseXml(arrived);
+      return (
+        rootKeptAgainst(
+          now.documentElement,
+          was?.documentElement ?? null,
+          shape
+        ) &&
+        sameNodes(surroundingNodes(now), surroundingNodes(was)) &&
+        interEntryContentKept(
+          now.documentElement,
+          was?.documentElement ?? null,
+          shape.rewritesContents
+        )
       );
     },
     referents: shape.referents,
@@ -368,6 +418,7 @@ const commentsShape: CommentPartShape = {
   baseName: "comments",
   namespace: W_NS,
   rootName: "comments",
+  rewritesContents: true,
   localName: "comment",
   idAttr: "id",
   xmlIn: (session) => session.comments.xml,
@@ -391,6 +442,7 @@ export const commentsExtendedPart: StoryPartKind = storyPart({
   baseName: "commentsExtended",
   namespace: W15_NS,
   rootName: "commentsEx",
+  rewritesContents: true,
   localName: "commentEx",
   idAttr: "paraId",
   xmlIn: (session) => session.comments.extendedXml,
@@ -411,6 +463,7 @@ export const peoplePart: StoryPartKind = storyPart({
   baseName: "people",
   namespace: W15_NS,
   rootName: "people",
+  rewritesContents: false,
   localName: "person",
   idAttr: "author",
   xmlIn: (session) => session.comments.people.xml,
