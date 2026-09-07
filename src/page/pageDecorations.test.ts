@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { redo, redoDepth, undo, undoDepth } from "prosemirror-history";
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorView } from "prosemirror-view";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -141,6 +142,84 @@ function cell(text: string) {
 }
 
 describe("setPageMarks", () => {
+  it("updates the measured push even when the total margin stays the same", () => {
+    const live = editor();
+    setPageMarks(live, {
+      pushes: [{ pos: 0, marginTop: 40, push: 24 }],
+      cuts: [],
+    });
+    setPageMarks(live, {
+      pushes: [{ pos: 0, marginTop: 40, push: 16 }],
+      cuts: [],
+    });
+    expect(paragraphs(live)[0]?.getAttribute(editorAttributes.pagePush)).toBe(
+      "16"
+    );
+  });
+
+  it("keeps a cut when its row only changes markup", () => {
+    const { live, secondRow } = tableEditor();
+    setPageMarks(live, { pushes: [], cuts: [{ at: secondRow, height: 240 }] });
+    const row = live.state.doc.nodeAt(secondRow);
+    live.dispatch(
+      live.state.tr.setNodeMarkup(secondRow, undefined, {
+        ...row?.attrs,
+        format: { cantSplit: true },
+      })
+    );
+    expect(
+      live.dom
+        .querySelector(`[${editorAttributes.tablePageSpace}]`)
+        ?.getAttribute(editorAttributes.tablePageSpace)
+    ).toBe("240");
+  });
+
+  it("keeps a cut with its original row after a row is inserted before it", () => {
+    const { live, secondRow } = tableEditor();
+    setPageMarks(live, { pushes: [], cuts: [{ at: secondRow, height: 240 }] });
+    live.dispatch(
+      live.state.tr.insert(
+        secondRow,
+        docxSchema.nodes.tableRow.create({}, [cell("inserted"), cell("row")])
+      )
+    );
+    const spacer = live.dom.querySelector(
+      `[${editorAttributes.tablePageSpace}]`
+    );
+    expect(spacer?.previousElementSibling?.textContent).toBe("insertedrow");
+    expect(spacer?.nextElementSibling?.nextElementSibling?.textContent).toBe(
+      "AB"
+    );
+  });
+
+  it("remeasures a table moved by deletion and insertion instead of transplanting its old cut", () => {
+    const { live, secondRow } = tableEditor();
+    const table = live.state.doc.child(0);
+    const paragraph = docxSchema.nodes.paragraph.create({}, [
+      docxSchema.text("before"),
+    ]);
+    live.dispatch(live.state.tr.insert(table.nodeSize, paragraph));
+    setPageMarks(live, { pushes: [], cuts: [{ at: secondRow, height: 240 }] });
+
+    live.dispatch(
+      live.state.tr.delete(0, table.nodeSize).insert(paragraph.nodeSize, table)
+    );
+    expect(
+      live.dom.querySelector(`[${editorAttributes.tablePageSpace}]`)
+    ).toBeNull();
+    expect(live.state.doc.child(1).eq(table)).toBe(true);
+
+    setPageMarks(live, {
+      pushes: [],
+      cuts: [{ at: paragraph.nodeSize + secondRow, height: 120 }],
+    });
+    expect(
+      live.dom
+        .querySelector(`[${editorAttributes.tablePageSpace}]`)
+        ?.getAttribute(editorAttributes.tablePageSpace)
+    ).toBe("120");
+  });
+
   it("only the pushed block gets a wider gap", () => {
     const live = editor();
     setPageMarks(live, {
@@ -265,12 +344,24 @@ describe("setPageMarks", () => {
 
   it("leaves the document and history untouched", () => {
     const { live, secondRow } = tableEditor();
+    const original = live.state.doc;
+    live.dispatch(live.state.tr.insertText("edited ", secondRow + 3));
     const doc = live.state.doc;
+    const selection = live.state.selection;
+    expect(undoDepth(live.state)).toBe(1);
     setPageMarks(live, { pushes: [], cuts: [{ at: secondRow, height: 240 }] });
     expect(live.state.doc).toBe(doc);
+    expect(live.state.selection).toBe(selection);
+    expect(undoDepth(live.state)).toBe(1);
+    expect(undo(live.state, live.dispatch)).toBe(true);
+    expect(live.state.doc.eq(original)).toBe(true);
+    expect(redoDepth(live.state)).toBe(1);
 
     setPageMarks(live, { pushes: [], cuts: [] });
     expect(live.dom.querySelectorAll("tr")).toHaveLength(2);
+    expect(redoDepth(live.state)).toBe(1);
+    expect(redo(live.state, live.dispatch)).toBe(true);
+    expect(live.state.doc.eq(doc)).toBe(true);
   });
 
   /**

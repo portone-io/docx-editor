@@ -238,7 +238,8 @@ function samePageMarks(a: PageMarksInput, b: PageMarksInput): boolean {
       return (
         other !== undefined &&
         other.pos === push.pos &&
-        other.marginTop === push.marginTop
+        other.marginTop === push.marginTop &&
+        other.push === push.push
       );
     }) &&
     a.cuts.every((cut, index) => {
@@ -275,7 +276,19 @@ export function pageDecorations(): Plugin<PageMarks> {
             const mapped = tr.mapping.mapResult(cut.at, 1);
             const node = tr.doc.nodeAt(mapped.pos);
             const kept = isPageBreakNode(node) || isRow(node);
-            return mapped.deleted || !kept ? [] : [{ ...cut, at: mapped.pos }];
+            // setNodeMarkup replaces a row's opening token while retaining its content.
+            // Unlike a deleted row, its content boundary still maps just inside that row.
+            const content = isRow(tr.before.nodeAt(cut.at))
+              ? tr.mapping.mapResult(cut.at + 1, -1)
+              : null;
+            const rowRetained =
+              isRow(node) &&
+              content !== null &&
+              !content.deletedAcross &&
+              content.pos === mapped.pos + 1;
+            return !kept || (mapped.deleted && !rowRetained)
+              ? []
+              : [{ ...cut, at: mapped.pos }];
           })
         );
       },
