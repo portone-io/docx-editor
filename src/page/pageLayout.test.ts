@@ -381,6 +381,110 @@ describe("pageLayout", () => {
     expect(result.splits).toMatchObject([{ page: 2, forced: true }]);
   });
 
+  it("a block kept with the next one is pushed together with its follower's first piece", () => {
+    // The 50 alone would fit in the 100 left on the page; it goes because its follower does not
+    const result = layout(blocks(900, { height: 50, keepWithNext: true }, 300));
+
+    expect(result.pushes).toEqual([
+      { pos: 10, marginTop: PAGE + STEP - 900, push: PAGE + STEP - 900 },
+    ]);
+    expect(result.pages).toHaveLength(2);
+  });
+
+  it("the gap above the follower is part of what is kept together", () => {
+    // The 50 fits in the 100 left, and so would the 40 after it; the 20 between them is what does not
+    const result = layout(
+      blocks(900, { height: 50, keepWithNext: true }, { height: 40, gap: 20 })
+    );
+
+    expect(result.pushes.map((push) => push.pos)).toEqual([10]);
+  });
+
+  it("a keep needs only the follower's first piece on the page", () => {
+    // The 600 after the 50 would not fit, but only its 100 up to the break has to
+    const result = layout(
+      blocks(800, { height: 50, keepWithNext: true }, broken(600, 100))
+    );
+
+    expect(result.pushes).toEqual([]);
+    expect(result.cuts).toEqual([{ at: 100, height: PAGE - 950 + STEP }]);
+  });
+
+  it("every block of a run of keeps moves with the head", () => {
+    // 200, then 30 of gap and 150, then the 30 the keeps end at: 410 into the 400 left
+    const result = layout(
+      blocks(
+        600,
+        { height: 200, keepWithNext: true },
+        { height: 150, gap: 30, keepWithNext: true },
+        30
+      )
+    );
+
+    expect(result.pushes).toEqual([
+      { pos: 10, marginTop: PAGE + STEP - 600, push: PAGE + STEP - 600 },
+    ]);
+    expect(result.pages).toHaveLength(2);
+  });
+
+  it("a keep chain taller than a page is laid out block by block", () => {
+    const result = layout(
+      blocks(980, { height: 50, keepWithNext: true }, PAGE)
+    );
+
+    // The 50 is pushed on its own, as it would be with no keep on it, and the page after it
+    expect(result.pushes.map((push) => push.pos)).toEqual([10, 20]);
+    expect(result.splits.map((split) => split.crossed)).toEqual([false, false]);
+  });
+
+  it("a run of keeps no page can hold is let go as a whole, not from its head alone", () => {
+    // The whole run would be 1150; the 150 and the 700 alone would be 850 and fit
+    const result = layout(
+      blocks(
+        500,
+        { height: 300, keepWithNext: true },
+        { height: 150, keepWithNext: true },
+        700
+      )
+    );
+
+    expect(result.pushes.map((push) => push.pos)).toEqual([30]);
+  });
+
+  it("a keep on the last block changes nothing", () => {
+    expect(layout(blocks(900, { height: 300, keepWithNext: true }))).toEqual(
+      layout(blocks(900, 300))
+    );
+  });
+
+  it("a block parted by a page break is not kept with the block after it", () => {
+    // Its last piece starts the page the break opened, and the 600 follows it there
+    const result = layout(
+      blocks(500, { ...broken(300, 100), keepWithNext: true }, 600)
+    );
+
+    expect(result.pushes).toEqual([]);
+    expect(result.cuts).toEqual([{ at: 100, height: PAGE - 600 + STEP }]);
+  });
+
+  it("a keep does not reach across a page the document starts between the two", () => {
+    const before = layout(
+      blocks(
+        900,
+        { height: 50, keepWithNext: true },
+        { height: 300, breakBefore: true }
+      )
+    );
+    expect(before.pushes.map((push) => push.pos)).toEqual([20]);
+    expect(before.pages).toHaveLength(2);
+
+    const after = layout(
+      blocks(900, { height: 50, keepWithNext: true, breakAfter: true }, 300)
+    );
+    expect(after.pushes.map((push) => push.pos)).toEqual([20]);
+    expect(after.pages).toHaveLength(2);
+  });
+
   it("does nothing for a page height that cannot be measured", () => {
     expect(
       pageLayout({ blocks: blocks(500), pageBodyHeight: 0, pageStep: STEP })
