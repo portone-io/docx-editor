@@ -7,6 +7,12 @@
  * goes back out as the XML it arrived as. Which of the two a block is decides how it is written
  * (`docx/serializeBlock`) and how a submitted file is compared against the original
  * (`docx/storyProjection`), so a new block node has to name one of them.
+ *
+ * What kind of value each attr below holds - markup carried verbatim, a value worked out again for
+ * display, what the node came from, or a value the editor owns - is declared once in
+ * `./attrRoles`, and the boundary the documentation draws between what a consumer may rely on and
+ * what is this editor's bookkeeping is read from there. An attr added here without an entry there
+ * fails `./attrClasses.test.ts`.
  */
 
 import { Schema } from "prosemirror-model";
