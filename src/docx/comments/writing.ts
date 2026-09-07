@@ -12,7 +12,7 @@ import {
   splicePart,
 } from "../../ooxml/partSplice";
 import { encodeUtf8 } from "../../ooxml/xml";
-import type { PartPlanContext } from "../partPlan";
+import type { PartPlanContext, PartPlanner } from "../partPlan";
 import { directoryOf } from "../relationships";
 import type { SessionStore } from "../session";
 import {
@@ -313,19 +313,15 @@ function commentsXml(
     : rewritten;
 }
 
-export interface CommentPartChanges {
-  parts: ReadonlyMap<string, Uint8Array>;
-}
-
 /**
  * Plans the Comments part, relationship and content type only when comment state changed, and the
  * people part beside them for an author whose identity the document has yet to record.
  */
-export function planCommentParts(
+function planCommentParts(
   doc: PMNode,
   session: SessionStore,
   context: PartPlanContext
-): CommentPartChanges | null {
+): ReadonlyMap<string, Uint8Array> | null {
   const bodyChanged = commentsChanged(doc, session);
   const threadChanged = extensionsChanged(doc, session);
   if (!bodyChanged && !threadChanged) return null;
@@ -394,5 +390,10 @@ export function planCommentParts(
     );
     for (const [path, bytes] of people ?? []) parts.set(path, bytes);
   }
-  return { parts };
+  return parts;
 }
+
+export const commentsPlanner: PartPlanner = {
+  name: "comments",
+  plan: planCommentParts,
+};

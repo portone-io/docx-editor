@@ -7,7 +7,7 @@
  *
  * The checks inspect model attrs and preserved XML without running the writers. Bookmark
  * fragments and list definitions use the export parser. `assertBookmarkPairs` in `./exportDocx`
- * remains the final check over the body as actually written.
+ * and `assertPartsParse` in `./partPlan` remain the final checks over the parts as actually written.
  */
 
 import type { Node as PMNode } from "prosemirror-model";

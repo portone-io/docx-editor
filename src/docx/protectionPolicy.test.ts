@@ -18,7 +18,7 @@ import type {
   CommentOnlyVerdict,
   onlyCommentsChangedBy,
 } from "./commentOnlyChange";
-import { planCommentParts } from "./comments/writing";
+import { commentsPlanner } from "./comments/writing";
 import { importDocx } from "./importDocx";
 import { CONTENT_TYPES_PATH, contentTypeWriter } from "./packageParts";
 import {
@@ -138,7 +138,7 @@ describe("the comments policy and the comment part planners", () => {
     const { added, writer } = recordingWriter();
 
     const contentTypes = contentTypeWriter(session.parts);
-    const planned = planCommentParts(state.doc, session, {
+    const planned = commentsPlanner.plan(state.doc, session, {
       relationships: writer,
       contentTypes,
     });
