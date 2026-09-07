@@ -63,6 +63,13 @@ const ROUND_TRIPS: readonly [string, SimpleType<unknown>, unknown][] = [
 ];
 
 describe("the simple types the schema names", () => {
+  it("refuses measurements whose numeric conversion overflows", () => {
+    const length = `1${"0".repeat(306)}in`;
+    expect(universalMeasureToTwips(length)).toBeNull();
+    expect(ST_TwipsMeasure.parse(length)).toBeNull();
+    expect(ST_MeasurementOrPercent.parse(`1${"0".repeat(309)}%`)).toBeNull();
+  });
+
   it("accepts an explicit plus sign on integer counts, but not on universal measures", () => {
     for (const type of [
       ST_TwipsMeasure,

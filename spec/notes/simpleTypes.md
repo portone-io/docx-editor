@@ -19,6 +19,7 @@ Signed integer counts allow an optional `+` sign ([XML Schema Part 2 §3.3.13](h
 Google Docs writes `w:tblW w:w="9026.0"` and cell margins in the same shape, and Word opens those files.
 A measurement reader retains the fraction; a count reader such as `ST_DecimalNumber` truncates it for compatibility with the previous numbering reader. This is tolerant import behavior, not schema validation.
 Integer formatters reject fractions. Writers that convert points or rebuild table widths and grid columns explicitly round to whole twips (or fiftieths for percentages). Thus editing a table can normalize its width spelling; untouched XML remains preserved.
+The simple-type parsers and percentage-width reader reject non-finite results after conversion.
 
 ### An explicit percentage takes precedence over the width type
 

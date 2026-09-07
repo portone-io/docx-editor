@@ -391,6 +391,18 @@ describe("a block inside a cell that cannot be modelled", () => {
 });
 
 describe("table width and grid", () => {
+  it("discards a percentage that overflows when converted to fiftieths", () => {
+    const width = `1${"0".repeat(307)}%`;
+    const node = requireTable(
+      `<w:tbl><w:tblPr><w:tblW w:type="pct" w:w="${width}"/></w:tblPr>` +
+        grid(1000) +
+        row(cell(`<w:tcW w:type="pct" w:w="${width}"/>`, "a")) +
+        "</w:tbl>"
+    );
+    expect(node.attrs.tblW).toBeNull();
+    expect(node.child(0).child(0).attrs.tcW).toBeNull();
+  });
+
   it.each(["dxa", "pct", "auto", "nil"])(
     "lets an explicit percentage override %s on table and cell widths",
     (type) => {
