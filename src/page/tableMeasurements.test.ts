@@ -88,11 +88,6 @@ describe("measureTable", () => {
       ],
       minFirstPiece: 240,
       appliedHeight: 0,
-      headerRows: [rowPositions[0]],
-      headerSignature: JSON.stringify([
-        live.state.doc.child(0).child(0).toJSON(),
-      ]),
-      columns: 2,
     });
   });
 
@@ -107,11 +102,6 @@ describe("measureTable", () => {
       ],
       minFirstPiece: 240,
       appliedHeight: 0,
-      headerRows: [rowPositions[0]],
-      headerSignature: JSON.stringify([
-        live.state.doc.child(0).child(0).toJSON(),
-      ]),
-      columns: 2,
     });
   });
 

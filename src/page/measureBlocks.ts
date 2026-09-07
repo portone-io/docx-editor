@@ -16,13 +16,6 @@ import type { BreakCandidate, MeasuredBlock } from "./blockKinds";
 import { pageBreaksIn } from "./pageDecorations";
 import { measureTable } from "./tableMeasurements";
 
-/** What a table continuation still needs from the measurement to be drawn */
-export interface TableHeaderProjection {
-  headerRows: readonly number[];
-  headerSignature: string;
-  columns: number;
-}
-
 /**
  * The measurements taken in order to draw the page overlay. Positions are relative to
  * the overlay box
@@ -35,11 +28,6 @@ export interface SheetMeasure {
   contentTop: number;
   contentBottom: number;
   blocks: MeasuredBlock[];
-  /**
-   * The header facts of every table block, by the table's position, for the adapter that turns
-   * cuts back into table continuations (`page/usePageLayout`)
-   */
-  tables: ReadonlyMap<number, TableHeaderProjection>;
 }
 
 const PAGE_BREAK_BR = `br[${editorAttributes.breakType}="page"]`;
@@ -93,7 +81,6 @@ export function measureSheet(
   const sheetY = (viewportY: number) => (viewportY - sheetRect.top) / scale;
 
   const blocks: MeasuredBlock[] = [];
-  const tables = new Map<number, TableHeaderProjection>();
   let previousBottom = contentTop;
   /** Everything the engine has opened up above the point being read */
   let applied = 0;
@@ -128,13 +115,6 @@ export function measureSheet(
     applied += measuredTable?.appliedHeight ?? 0;
     const bottom = sheetY(rect.bottom) - applied;
     const height = bottom - top;
-    if (measuredTable) {
-      tables.set(pos, {
-        headerRows: measuredTable.headerRows,
-        headerSignature: measuredTable.headerSignature,
-        columns: measuredTable.columns,
-      });
-    }
     blocks.push({
       pos,
       gap: top - previousBottom,
@@ -156,6 +136,5 @@ export function measureSheet(
     contentTop,
     contentBottom,
     blocks,
-    tables,
   };
 }

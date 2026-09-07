@@ -97,15 +97,6 @@ export function pageGeometryStyle(page: PagePixels): string {
  */
 const TOLERANCE_PX = 0.5;
 
-/** The space opened up at one page break, so that what follows it starts the next page */
-export interface BreakSpace {
-  /** The position where the block holding the break starts */
-  pos: number;
-  /** Which break inside that block, counted in document order */
-  index: number;
-  height: number;
-}
-
 /** One block to be moved down to the next page */
 export interface BlockPush {
   pos: number;
@@ -113,18 +104,6 @@ export interface BlockPush {
   marginTop: number;
   /** Of that, the extra amount pushed for the page's sake */
   push: number;
-}
-
-/** A display-only row inserted before the row that continues on the next page */
-export interface TableContinuation {
-  /** The position of the first original row on the next page */
-  pos: number;
-  /** Space from the previous page's row boundary to the next page body */
-  height: number;
-  /** Header rows to project immediately after the space */
-  headerRows: readonly number[];
-  headerSignature: string;
-  columns: number;
 }
 
 /** A place where one page parts from the next */

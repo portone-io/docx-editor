@@ -20,11 +20,6 @@ export interface TableMeasure {
   minFirstPiece: number;
   /** Height already added by the previous pagination pass */
   appliedHeight: number;
-  /** Document positions of the contiguous header rows at the start of the table */
-  headerRows: readonly number[];
-  /** Changes when any projected header content or formatting changes */
-  headerSignature: string;
-  columns: number;
 }
 
 function span(value: unknown): number {
@@ -198,8 +193,5 @@ export function measureTable(
       firstBodyBoundary?.offset ??
       tableDom.getBoundingClientRect().height / scale - appliedHeight,
     appliedHeight,
-    headerRows: headerRows.map((row) => row.pos),
-    headerSignature: JSON.stringify(headerRows.map((row) => row.node.toJSON())),
-    columns: columnCount(tableNode),
   };
 }
