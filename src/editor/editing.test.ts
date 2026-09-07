@@ -102,4 +102,43 @@ describe("splitting a paragraph with Enter", () => {
         `<w:p>${pPr}<w:r><w:t xml:space="preserve">back</w:t></w:r></w:p>`
     );
   });
+
+  it("Enter after a paragraph carrying w14:paraId writes one paraId", () => {
+    const bytes = makeDocx(
+      '<w:p w14:paraId="DEADBEEF" w14:textId="77777777">' +
+        '<w:r><w:t xml:space="preserve">frontback</w:t></w:r></w:p>'
+    );
+    const { doc, session } = importDocx(bytes);
+    const split = press(createEditorState(doc), "Enter", 6);
+
+    const documentXml = documentXmlOf(split.doc, session);
+    // The name a comment anchors to belongs to one paragraph, so the new one goes out with none
+    expect(documentXml.match(/DEADBEEF/g)).toHaveLength(1);
+    expect(documentXml.match(/77777777/g)).toHaveLength(1);
+    expect(documentXml).toContain(
+      '<w:p w14:paraId="DEADBEEF" w14:textId="77777777">' +
+        '<w:r><w:t xml:space="preserve">front</w:t></w:r></w:p>' +
+        '<w:p><w:r><w:t xml:space="preserve">back</w:t></w:r></w:p>'
+    );
+  });
+
+  it("Enter at the end of a section's last paragraph keeps one w:sectPr on the new last paragraph", () => {
+    const sectPr = '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/></w:sectPr>';
+    const bytes = makeDocx(
+      `<w:p><w:pPr>${sectPr}</w:pPr>` +
+        '<w:r><w:t xml:space="preserve">last</w:t></w:r></w:p>' +
+        '<w:p><w:r><w:t xml:space="preserve">next</w:t></w:r></w:p>'
+    );
+    const { doc, session } = importDocx(bytes);
+    const split = press(createEditorState(doc), "Enter", 5);
+
+    const documentXml = documentXmlOf(split.doc, session);
+    // The break ends the section, so it stays on whichever paragraph now ends it
+    expect(documentXml.match(/<w:sectPr/g)).toHaveLength(1);
+    expect(documentXml).toContain(
+      '<w:p><w:r><w:t xml:space="preserve">last</w:t></w:r></w:p>' +
+        `<w:p><w:pPr>${sectPr}</w:pPr></w:p>` +
+        '<w:p><w:r><w:t xml:space="preserve">next</w:t></w:r></w:p>'
+    );
+  });
 });

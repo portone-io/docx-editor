@@ -150,3 +150,92 @@ describe("a guard over the markers a document was opened with", () => {
     );
   });
 });
+
+describe("a guard over the sections a document was opened with", () => {
+  const SECT_PR = '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/></w:sectPr>';
+
+  /** Two paragraphs, the second of which ends a section */
+  function sectioned(): EditorState {
+    return createEditorState(
+      importDocx(
+        makeDocx(
+          `<w:p>${runXml("one")}</w:p>` +
+            `<w:p><w:pPr>${SECT_PR}</w:pPr>${runXml("two")}</w:p>`
+        )
+      ).doc
+    );
+  }
+
+  /** Where the paragraph laying down the section break starts */
+  function sectionParagraphAt(doc: PMNode): number {
+    let found = -1;
+    doc.forEach((node, offset) => {
+      if (found < 0 && typeof node.attrs.pPr === "string") found = offset;
+    });
+    if (found < 0) throw new Error("no paragraph carrying a section break");
+    return found;
+  }
+
+  it("refuses a transaction that joins away a paragraph carrying a section break", () => {
+    const state = sectioned();
+    const at = sectionParagraphAt(state.doc);
+
+    // The boundary between the two paragraphs goes, which leaves the first one's attrs standing
+    const tr = state.tr.delete(at - 1, at + 1);
+
+    expect(tr.doc.childCount).toBe(1);
+    expect(transactionAllowed(tr, state)).toBe(false);
+  });
+
+  it("lets a section paragraph be split", () => {
+    const state = sectioned();
+    const at = sectionParagraphAt(state.doc);
+    const paragraph = state.doc.child(state.doc.childCount - 1);
+
+    // What the keymap builds: the break goes to the half that now ends the section
+    const tr = state.tr.split(at + 2, 1, [
+      { type: paragraph.type, attrs: paragraph.attrs },
+    ]);
+    tr.setNodeMarkup(at, null, { ...paragraph.attrs, pPr: null });
+
+    expect(tr.doc.childCount).toBe(3);
+    expect(transactionAllowed(tr, state)).toBe(true);
+  });
+
+  it("leaves a document without section paragraphs alone", () => {
+    const state = createEditorState(
+      importDocx(makeDocx(`<w:p>${runXml("one")}</w:p>`)).doc
+    );
+
+    expect(transactionAllowed(state.tr.delete(1, 4), state)).toBe(true);
+  });
+
+  it("shuts a replace intent over a section paragraph and leaves an insert inside it open", () => {
+    const state = sectioned();
+    const at = sectionParagraphAt(state.doc);
+    const paragraph = state.doc.child(state.doc.childCount - 1);
+    const range = { from: at, to: at + paragraph.nodeSize };
+
+    expect(editShut(state, { kind: "replace", ...range })).toBe(true);
+    // Typing inside such a paragraph takes nothing away, so the guard stands aside
+    expect(editShut(state, { kind: "insert", at: at + 1 })).toBe(false);
+    expect(editShut(state, { kind: "mark", ...range })).toBe(false);
+  });
+
+  it("does not read the section break a tracked change kept", () => {
+    const state = createEditorState(
+      importDocx(
+        makeDocx(
+          `<w:p>${runXml("one")}</w:p>` +
+            "<w:p><w:pPr>" +
+            '<w:pPrChange w:id="1" w:author="A" w:date="2024-01-01T00:00:00Z">' +
+            `<w:pPr>${SECT_PR}</w:pPr></w:pPrChange>` +
+            `</w:pPr>${runXml("two")}</w:p>`
+        )
+      ).doc
+    );
+
+    // The break belongs to the properties the paragraph wore before the change, not to it
+    expect(transactionAllowed(state.tr.delete(4, 6), state)).toBe(true);
+  });
+});
