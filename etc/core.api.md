@@ -109,7 +109,12 @@ type EditableComments = "own" | "all";
 export function emuToPx(emu: number): number;
 
 // @public (undocumented)
-export function exportDocx(doc: Node_2, session: DocxSession): Uint8Array;
+export function exportDocx(doc: Node_2, session: DocxSession, options?: ExportOptions): Uint8Array;
+
+// @public
+export interface ExportOptions {
+    xmlParser?: XmlParser;
+}
 
 // Warning: (ae-forgotten-export) The symbol "HIGHLIGHTS" needs to be exported by the entry point core.d.ts
 //
@@ -128,10 +133,15 @@ export interface ImageExtent {
 }
 
 // @public
-export function importDocx(input: DocxBytes): {
+export function importDocx(input: DocxBytes, options?: ImportOptions): {
     doc: Node_2;
     session: DocxSession;
 };
+
+// @public
+export interface ImportOptions {
+    xmlParser?: XmlParser;
+}
 
 // @public
 export interface LevelIndent {
@@ -198,6 +208,7 @@ export interface NumberingRef {
 // @public
 export function onlyCommentsChangedBy(original: DocxBytes, submitted: DocxBytes, authorId: string, input?: {
     editableComments?: EditableComments;
+    xmlParser?: XmlParser;
 }): CommentOnlyVerdict;
 
 // Warning: (ae-forgotten-export) The symbol "ALIGNS" needs to be exported by the entry point core.d.ts
@@ -394,9 +405,15 @@ const VERTICAL_ALIGNS: readonly ["superscript", "subscript"];
 // @public (undocumented)
 export type VerticalAlign = (typeof VERTICAL_ALIGNS)[number];
 
+// @public
+export interface XmlParser {
+    // (undocumented)
+    parseFromString(source: string, type: "application/xml"): Document;
+}
+
 // Warnings were encountered during analysis:
 //
-// dist/docx/commentOnlyChange.d.ts:46:5 - (ae-forgotten-export) The symbol "EditableComments" needs to be exported by the entry point core.d.ts
+// dist/docx/commentOnlyChange.d.ts:49:5 - (ae-forgotten-export) The symbol "EditableComments" needs to be exported by the entry point core.d.ts
 
 // (No @packageDocumentation comment for this package)
 

@@ -10,26 +10,24 @@ import { addComment, updateComment } from "./editor/commands/commentCommands";
 import { createEditorState } from "./editor/createEditor";
 
 /**
- * The entry read where a server reads it, which is the one place the globals it was told to
- * install are the only ones there are.
+ * The entry read where a server reads it, which is the one place the global it was told to
+ * install is the only one there is.
  *
- * `site/content/docs/core.mdx` asks for `DOMParser` and `Node` and for nothing else, and the rest
- * of the suite runs under jsdom, where every other global is there to be reached for by accident.
+ * `site/content/docs/core.mdx` offers a `DOMParser` global as the alternative to the `xmlParser`
+ * option and asks for nothing else, and the rest of the suite runs under jsdom, where every other
+ * global is there to be reached for by accident.
  */
-describe("under the globals the documentation asks a server to install", () => {
+describe("under the one global the documentation offers a server", () => {
   // `vitest.config.ts` does not isolate files, so a global left behind is one the next node
   // environment file in this worker would find without having asked for it
   beforeAll(() => {
-    const { window } = new JSDOM();
     const globals = globalThis as unknown as Record<string, unknown>;
-    globals.DOMParser = window.DOMParser;
-    globals.Node = window.Node;
+    globals.DOMParser = new JSDOM().window.DOMParser;
   });
 
   afterAll(() => {
     const globals = globalThis as unknown as Record<string, unknown>;
     globals.DOMParser = undefined;
-    globals.Node = undefined;
   });
 
   const author = { id: "me", name: "Me" };
@@ -63,6 +61,7 @@ describe("under the globals the documentation asks a server to install", () => {
 
   it("has none of the globals it was not promised", () => {
     const globals = globalThis as unknown as Record<string, unknown>;
+    expect(globals.Node).toBeUndefined();
     expect(globals.Element).toBeUndefined();
     expect(globals.document).toBeUndefined();
   });

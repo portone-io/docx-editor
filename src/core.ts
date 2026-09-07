@@ -1,17 +1,26 @@
 /**
  * Framework-free DOCX import and export API. The opaque session preserves package parts between
- * calls; server runtimes must provide global `DOMParser` and `Node` implementations.
+ * calls.
+ *
+ * Reading a package needs an XML parser. A browser has one; anywhere else, hand one in as
+ * `xmlParser` or install a `DOMParser` global, or the call is refused with the import code
+ * `no-xml-parser`.
  */
 
 import type { Node as PMNode } from "prosemirror-model";
-import { type DocxBytes, importDocx as openDocx } from "./docx/importDocx";
+import {
+  type DocxBytes,
+  type ImportOptions,
+  importDocx as openDocx,
+} from "./docx/importDocx";
 import type { DocxSession } from "./docx/session";
 
 export type { CommentOnlyVerdict } from "./docx/commentOnlyChange";
 export { onlyCommentsChangedBy } from "./docx/commentOnlyChange";
+export type { ExportOptions } from "./docx/exportDocx";
 export { exportDocx } from "./docx/exportDocx";
 export type { ParagraphStyleOption } from "./docx/formatting";
-export type { DocxBytes } from "./docx/importDocx";
+export type { DocxBytes, ImportOptions } from "./docx/importDocx";
 export type { DocxSession } from "./docx/session";
 export { documentNumbering, documentPartPath } from "./docx/session";
 export type {
@@ -59,6 +68,7 @@ export { DocxExportError, DocxImportError } from "./ooxml/errors";
  */
 export type { ImageExtent } from "./ooxml/image";
 export { emuToPx, pxToEmu, toImageExtent } from "./ooxml/image";
+export type { XmlParser } from "./ooxml/xml";
 export { docxSchema } from "./schema";
 
 /**
@@ -68,9 +78,12 @@ export { docxSchema } from "./schema";
  * The engine hands out the store it fills in; this is where it narrows to the opaque session, so
  * that the original XML behind it stays the exporter's business.
  */
-export function importDocx(input: DocxBytes): {
+export function importDocx(
+  input: DocxBytes,
+  options?: ImportOptions
+): {
   doc: PMNode;
   session: DocxSession;
 } {
-  return openDocx(input);
+  return openDocx(input, options);
 }

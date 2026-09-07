@@ -5,10 +5,11 @@ import { fileURLToPath } from "node:url";
 import { unzipSync, zipSync } from "fflate";
 import { Fragment, type Node as PMNode } from "prosemirror-model";
 import { TextSelection } from "prosemirror-state";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   decode,
   fixtureNames,
+  importErrorCode,
   LETTER_SECT_PR,
   makeDocx,
   readFixture,
@@ -804,5 +805,73 @@ describe("onlyCommentsChangedBy", () => {
         partRefused(COMMENTS_PART)
       );
     });
+  });
+});
+
+/**
+ * The entry points read where a server reads them, holding the parser they were handed rather
+ * than one the runtime happened to have. A `ReferenceError` out of the middle of a read is what
+ * this replaces: a caller could not tell it apart from a file that is damaged.
+ */
+describe("without a DOM", () => {
+  // Taken while the globals are still there, the way a server takes one off jsdom
+  const xmlParser = new DOMParser();
+
+  beforeEach(() => {
+    vi.stubGlobal("DOMParser", undefined);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("refuses to open a file with no-xml-parser rather than a ReferenceError", () => {
+    expect(importErrorCode(() => importDocx(readFixture(FIXTURE)))).toBe(
+      "no-xml-parser"
+    );
+  });
+
+  it("opens the fixture with an xmlParser option and no globals", () => {
+    const { doc, session } = importDocx(readFixture(FIXTURE), { xmlParser });
+
+    expect(doc.textContent).not.toBe("");
+    expect(documentPartPath(session)).toBe("word/document.xml");
+  });
+
+  /**
+   * A package carrying no relationships part parses nothing until the exported body is read
+   * back, and that read is the one wrapped in a refusal about the document. The runtime's own
+   * refusal has to come through it as it is
+   */
+  it("refuses to write a package holding no relationships with the same code", () => {
+    const bare = makeDocx(`<w:p>${LETTER_SECT_PR}</w:p>`);
+    const { doc, session } = importDocx(bare, { xmlParser });
+
+    expect(importErrorCode(() => exportDocx(doc, session))).toBe(
+      "no-xml-parser"
+    );
+  });
+
+  it("writes the file back out with the same option", () => {
+    const { doc, session } = importDocx(readFixture(FIXTURE), { xmlParser });
+
+    const out = exportDocx(doc, session, { xmlParser });
+
+    expect(importDocx(out, { xmlParser }).doc.textContent).toBe(
+      doc.textContent
+    );
+  });
+
+  // The verifier opens two files through `importDocx`, and neither call is handed the option;
+  // the scope the verifier put the parser in is what both of them read through
+  it("takes the same option for a verdict and keeps it through both imports", () => {
+    const bytes = readFixture(FIXTURE);
+
+    expect(onlyCommentsChangedBy(bytes, bytes, "me", { xmlParser })).toEqual({
+      ok: true,
+    });
+    expect(
+      importErrorCode(() => onlyCommentsChangedBy(bytes, bytes, "me"))
+    ).toBe("no-xml-parser");
   });
 });
