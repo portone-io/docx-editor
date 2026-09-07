@@ -20,7 +20,7 @@ import type {
 } from "./commentOnlyChange";
 import { planCommentParts } from "./comments/writing";
 import { importDocx } from "./importDocx";
-import { CONTENT_TYPES_PATH } from "./packageParts";
+import { CONTENT_TYPES_PATH, contentTypeWriter } from "./packageParts";
 import {
   type ChangeVerdict,
   type PackageReason,
@@ -137,16 +137,15 @@ describe("the comments policy and the comment part planners", () => {
     const state = commentedAndSettled(doc);
     const { added, writer } = recordingWriter();
 
-    const planned = planCommentParts(
-      state.doc,
-      session,
-      writer,
-      session.parts.get(CONTENT_TYPES_PATH)
-    );
+    const contentTypes = contentTypeWriter(session.parts);
+    const planned = planCommentParts(state.doc, session, {
+      relationships: writer,
+      contentTypes,
+    });
     if (planned === null) throw new Error("the planners wrote nothing");
 
     const policy = await commentsPolicy();
-    const declared = overridesIn(planned.parts.get(CONTENT_TYPES_PATH));
+    const declared = overridesIn(contentTypes.part() ?? undefined);
     const before = overridesIn(session.parts.get(CONTENT_TYPES_PATH));
 
     expect(sorted(added.map((relationship) => relationship.type))).toEqual(

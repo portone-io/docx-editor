@@ -11,9 +11,8 @@
  */
 
 import { xmlnsAttr } from "../../ooxml/element";
-import { DocxExportError } from "../../ooxml/errors";
 import { xmlnsDecl } from "../../ooxml/names";
-import { readTag, rootTagAt } from "../../ooxml/tagScan";
+import { splicePart } from "../../ooxml/partSplice";
 import {
   attributeByLocalName,
   childByLocalName,
@@ -22,12 +21,12 @@ import {
   encodeUtf8,
   parseXml,
 } from "../../ooxml/xml";
-import { CONTENT_TYPES_PATH, relatedPartPath } from "../packageParts";
+import { relatedPartPath } from "../packageParts";
+import type { PartPlanContext } from "../partPlan";
 import type { StoryPartKind } from "../protectionPolicy";
-import { directoryOf, type RelationshipWriter } from "../relationships";
+import { directoryOf } from "../relationships";
 import type { SessionStore } from "../session";
 import { COMMENT_AUTHOR_PROVIDER, PEOPLE_REL_TYPE, W15_NS } from "./constants";
-import { withContentType } from "./contentTypes";
 import { renderPerson } from "./grammar";
 import type { CommentReferenceData, CommentReplyData } from "./model";
 
@@ -132,10 +131,6 @@ function w15Prefix(root: Element): string | null {
   return prefix === "" ? "" : `${prefix}:`;
 }
 
-function malformed(detail: string): DocxExportError {
-  return new DocxExportError("malformed-xml", `the people part ${detail}`);
-}
-
 /** The part with the new people spliced in, leaving everything it already held as it was. */
 function peopleXml(
   people: ImportedPeople,
@@ -152,11 +147,7 @@ function peopleXml(
     );
   }
 
-  const root = parseXml(xml).documentElement;
-  if (root.localName !== "people") {
-    throw malformed("has no people root element");
-  }
-  const prefix = w15Prefix(root);
+  const prefix = w15Prefix(parseXml(xml).documentElement);
   const persons = Array.from(added, ([author, userId]) =>
     renderPerson(
       author,
@@ -165,19 +156,7 @@ function peopleXml(
       prefix === null ? xmlnsAttr("w15") : null
     )
   ).join("");
-
-  const start = rootTagAt(xml);
-  const open = start === -1 ? null : readTag(xml, start);
-  if (open === null) throw malformed("has no people root element");
-  if (open.kind === "empty") {
-    return (
-      `${xml.slice(0, open.end - 2)}>${persons}</${root.nodeName}>` +
-      xml.slice(open.end)
-    );
-  }
-  const close = xml.lastIndexOf(`</${root.nodeName}`);
-  if (close === -1) throw malformed("has no closing people tag");
-  return xml.slice(0, close) + persons + xml.slice(close);
+  return splicePart(xml, { root: "people", append: persons });
 }
 
 /**
@@ -192,8 +171,7 @@ export function planPeoplePart(
   part: StoryPartKind,
   bodies: Iterable<CommentReferenceData | CommentReplyData>,
   session: SessionStore,
-  relationships: RelationshipWriter,
-  currentContentTypes: Uint8Array | undefined
+  context: PartPlanContext
 ): ReadonlyMap<string, Uint8Array> | null {
   const people = session.comments.people;
   const added = unrecordedAuthors(bodies, people);
@@ -203,20 +181,14 @@ export function planPeoplePart(
   const addingPart = part.pathIn(session) === null;
   const partPath = part.writePathIn(session);
   if (addingPart) {
-    relationships.add({
+    context.relationships.add({
       type: part.relType,
       target: partPath.slice(directoryOf(session.mainPartPath).length),
     });
   }
   parts.set(partPath, encodeUtf8(peopleXml(people, added), people.hadBom));
   if (addingPart || people.xml === null) {
-    const contentTypes = withContentType(
-      session.parts,
-      partPath,
-      part.contentType,
-      currentContentTypes
-    );
-    if (contentTypes) parts.set(CONTENT_TYPES_PATH, contentTypes);
+    context.contentTypes.addOverride(partPath, part.contentType);
   }
   return parts;
 }

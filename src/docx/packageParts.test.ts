@@ -1,9 +1,38 @@
 // @vitest-environment jsdom
+import { unzipSync, zipSync } from "fflate";
+import {
+  type Command,
+  type EditorState,
+  TextSelection,
+} from "prosemirror-state";
 import { describe, expect, it } from "vitest";
-import { encodeUtf8, R_NS } from "../ooxml/xml";
-import { availablePartPath, readPart, relatedPartPath } from "./packageParts";
+import {
+  decode,
+  exportErrorCode,
+  makeDocx,
+  TINY_PNG_DATA_URL,
+} from "../__testing__/docx";
+import { rangeOfText } from "../__testing__/editing";
+import { addComment } from "../editor/commands/commentCommands";
+import { createEditorState } from "../editor/createEditor";
+import { insertImage } from "../editor/insertImage";
+import { decodeUtf8, encodeUtf8, R_NS } from "../ooxml/xml";
+import { exportDocx } from "./exportDocx";
+import { importDocx } from "./importDocx";
+import {
+  availablePartPath,
+  CONTENT_TYPES_PATH,
+  contentTypeWriter,
+  readPart,
+  relatedPartPath,
+} from "./packageParts";
 
 const MAIN_PART = "word/document.xml";
+const TYPES_NS = "http://schemas.openxmlformats.org/package/2006/content-types";
+const DOCUMENT_OVERRIDE =
+  '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>';
+const COMMENTS_TYPE =
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml";
 const encoder = new TextEncoder();
 
 function rels(entries: string): Uint8Array {
@@ -57,6 +86,121 @@ describe("availablePartPath", () => {
     );
     expect(availablePartPath(parts, "custom/main.xml", "comments")).toBe(
       "custom/comments.xml"
+    );
+  });
+});
+
+describe("contentTypeWriter", () => {
+  function packageWith(types: string): Map<string, Uint8Array> {
+    return new Map([[CONTENT_TYPES_PATH, encodeUtf8(types, false)]]);
+  }
+
+  function written(part: Uint8Array | null): string {
+    if (part === null) throw new Error("nothing was declared");
+    return decodeUtf8(part).text;
+  }
+
+  it("declares an override once even when two planners ask", () => {
+    const writer = contentTypeWriter(
+      packageWith(`<Types xmlns="${TYPES_NS}">${DOCUMENT_OVERRIDE}</Types>`)
+    );
+    writer.addOverride("word/comments.xml", COMMENTS_TYPE);
+    writer.addOverride("word/comments.xml", COMMENTS_TYPE);
+    expect(written(writer.part())).toBe(
+      `<Types xmlns="${TYPES_NS}">` +
+        `<Override PartName="/word/comments.xml" ContentType="${COMMENTS_TYPE}"/>` +
+        `${DOCUMENT_OVERRIDE}</Types>`
+    );
+  });
+
+  it("answers null when nothing was asked, and when everything asked for is declared already", () => {
+    const parts = packageWith(
+      `<Types xmlns="${TYPES_NS}"><Default Extension="png" ContentType="image/png"/>${DOCUMENT_OVERRIDE}</Types>`
+    );
+    expect(contentTypeWriter(parts).part()).toBeNull();
+
+    const writer = contentTypeWriter(parts);
+    writer.addDefault("png", "image/png");
+    writer.addOverride("Word/Document.xml", "anything");
+    expect(writer.part()).toBeNull();
+  });
+
+  it("adds a Default for a media extension the package lacks", () => {
+    const writer = contentTypeWriter(
+      packageWith(
+        `<Types xmlns="${TYPES_NS}"><Default Extension="PNG" ContentType="image/png"/>${DOCUMENT_OVERRIDE}</Types>`
+      )
+    );
+    writer.addDefault("png", "image/png");
+    writer.addDefault("gif", "image/gif");
+    expect(written(writer.part())).toBe(
+      `<Types xmlns="${TYPES_NS}">` +
+        '<Default Extension="gif" ContentType="image/gif"/>' +
+        '<Default Extension="PNG" ContentType="image/png"/>' +
+        `${DOCUMENT_OVERRIDE}</Types>`
+    );
+  });
+
+  it("writes a declaration under the prefix the root carries", () => {
+    const writer = contentTypeWriter(
+      packageWith(`<ct:Types xmlns:ct="${TYPES_NS}"></ct:Types>`)
+    );
+    writer.addDefault("png", "image/png");
+    writer.addOverride("word/comments.xml", COMMENTS_TYPE);
+    expect(written(writer.part())).toBe(
+      `<ct:Types xmlns:ct="${TYPES_NS}">` +
+        '<ct:Default Extension="png" ContentType="image/png"/>' +
+        `<ct:Override PartName="/word/comments.xml" ContentType="${COMMENTS_TYPE}"/>` +
+        "</ct:Types>"
+    );
+  });
+
+  it("refuses to declare a part in a package that has no content types part", () => {
+    const writer = contentTypeWriter(new Map());
+    expect(writer.part()).toBeNull();
+    writer.addOverride("word/comments.xml", COMMENTS_TYPE);
+    expect(exportErrorCode(() => writer.part())).toBe("missing-content-types");
+  });
+
+  function applied(state: EditorState, command: Command): EditorState {
+    let next = state;
+    expect(command(state, (tr) => (next = state.apply(tr)))).toBe(true);
+    return next;
+  }
+
+  it("writes defaults ahead of overrides when one export adds both", () => {
+    const parts = unzipSync(
+      makeDocx(
+        '<w:p><w:r><w:t xml:space="preserve">Alpha beta</w:t></w:r></w:p>'
+      )
+    );
+    parts[CONTENT_TYPES_PATH] = encoder.encode(
+      `<Types xmlns="${TYPES_NS}">${DOCUMENT_OVERRIDE}</Types>`
+    );
+    const opened = importDocx(zipSync(parts));
+    let state = createEditorState(opened.doc);
+    state = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, 1))
+    );
+    state = applied(
+      state,
+      insertImage({
+        src: TINY_PNG_DATA_URL,
+        extent: { cx: 952500, cy: 952500 },
+      })
+    );
+    const { from, to } = rangeOfText(state.doc, "beta");
+    state = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, from, to))
+    );
+    state = applied(state, addComment({ text: "Note", author: "Grace" }));
+
+    const output = unzipSync(exportDocx(state.doc, opened.session));
+    expect(decode(output[CONTENT_TYPES_PATH])).toBe(
+      `<Types xmlns="${TYPES_NS}">` +
+        '<Default Extension="png" ContentType="image/png"/>' +
+        `<Override PartName="/word/comments.xml" ContentType="${COMMENTS_TYPE}"/>` +
+        `${DOCUMENT_OVERRIDE}</Types>`
     );
   });
 });

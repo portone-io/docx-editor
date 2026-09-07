@@ -36,6 +36,8 @@ import { withUniqueIdentities } from "./identities";
 import { problemsOf } from "./invariants";
 import { NO_IMAGE_REFS, planImageMedia } from "./media";
 import { newNumIds, numberingPartOf } from "./newLists";
+import { CONTENT_TYPES_PATH, contentTypeWriter } from "./packageParts";
+import type { PartPlanContext } from "./partPlan";
 import {
   readRelationships,
   relationshipWriter,
@@ -216,21 +218,17 @@ function writeDocx(
   notes: FidelityCollector
 ): Uint8Array {
   const relsPath = relsPathOf(store.mainPartPath);
-  const relationships = relationshipWriter(
-    readRelationships(store.parts, relsPath)
-  );
+  const context: PartPlanContext = {
+    relationships: relationshipWriter(readRelationships(store.parts, relsPath)),
+    contentTypes: contentTypeWriter(store.parts),
+  };
   // The body has to know which relationship a newly inserted image ends up on, so the
   // media is planned before the body is written
-  const media = planImageMedia(doc, store, relationships);
-  const comments = planCommentParts(
-    doc,
-    store,
-    relationships,
-    media?.parts.get("[Content_Types].xml")
-  );
+  const media = planImageMedia(doc, store, context);
+  const comments = planCommentParts(doc, store, context);
   const documentXml = buildDocumentXml(doc, store, {
     images: media?.refs ?? NO_IMAGE_REFS,
-    links: hyperlinkRefs(relationships),
+    links: hyperlinkRefs(context.relationships),
     notes,
   });
   assertBookmarkPairs(documentXml);
@@ -246,7 +244,9 @@ function writeDocx(
   for (const [path, bytes] of comments?.parts ?? []) {
     replacements.set(path, bytes);
   }
-  const rels = relationships.part(store.parts.get(relsPath));
+  const rels = context.relationships.part(store.parts.get(relsPath));
   if (rels) replacements.set(relsPath, rels);
+  const contentTypes = context.contentTypes.part();
+  if (contentTypes) replacements.set(CONTENT_TYPES_PATH, contentTypes);
   return repackParts(store.parts, replacements);
 }

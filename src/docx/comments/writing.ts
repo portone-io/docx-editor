@@ -4,13 +4,17 @@
 
 import type { Node as PMNode } from "prosemirror-model";
 import { elementXml, type XmlAttr, xmlnsAttr } from "../../ooxml/element";
-import { DocxExportError } from "../../ooxml/errors";
-import { wName, xmlnsDecl } from "../../ooxml/names";
+import { NAMESPACES, wName, xmlnsDecl } from "../../ooxml/names";
+import {
+  ensureRootDeclarations,
+  partRootProblem,
+  type RootDeclarations,
+  splicePart,
+} from "../../ooxml/partSplice";
 import { encodeUtf8 } from "../../ooxml/xml";
-import { CONTENT_TYPES_PATH } from "../packageParts";
-import { directoryOf, type RelationshipWriter } from "../relationships";
+import type { PartPlanContext } from "../partPlan";
+import { directoryOf } from "../relationships";
 import type { SessionStore } from "../session";
-import { withContentType } from "./contentTypes";
 import {
   arrivedEntries,
   renderCommentBody,
@@ -112,105 +116,29 @@ function extensionsXml(
       `<w15:commentsEx ${xmlnsDecl("w15")}>${pieces.join("")}</w15:commentsEx>`
     );
   }
-  const root = partRoot(comments.extendedXml, EXTENSIONS_ROOT);
-  return withinRoot(
-    comments.extendedXml,
-    root,
-    openedTag(root),
-    pieces.join("")
-  );
+  return splicePart(comments.extendedXml, {
+    root: EXTENSIONS_ROOT,
+    replaceChildren: pieces.join(""),
+  });
 }
 
-/** The root element a comment part is written around, and what the part is called when it has none */
-interface PartRootName {
-  localName: string;
-  partName: string;
-}
-
-const COMMENTS_ROOT: PartRootName = {
-  localName: "comments",
-  partName: "Comments",
-};
-
-const EXTENSIONS_ROOT: PartRootName = {
-  localName: "commentsEx",
-  partName: "Comments Extended",
-};
-
-/** Where the root element of a part stands: its opening tag as written, and where its closing tag begins */
-interface PartRoot {
-  openAt: number;
-  openTag: string;
-  name: string;
-  /** null for an empty element, which has no closing tag until it is opened */
-  closeAt: number | null;
-}
+/** The root element each comment part is rewritten around */
+const COMMENTS_ROOT = "comments";
+const EXTENSIONS_ROOT = "commentsEx";
 
 /**
- * Reads the root of a comment part, or says why the part cannot be rewritten around it.
+ * Why the Comments part cannot be rewritten around its root, or null when it can.
  *
- * The same question stands in the export invariant list, so a refusal here is one a caller could
- * have read there first.
+ * The same question stands in the export invariant list, so a refusal the writer raises is one a
+ * caller could have read there first, in the same words.
  */
-function readPartRoot(
-  xml: string,
-  { localName, partName }: PartRootName
-): { root: PartRoot } | { problem: string } {
-  const open = new RegExp(`<(?:[^\\s<>/:="']+:)?${localName}\\b[^>]*>`).exec(
-    xml
-  );
-  const name = open === null ? undefined : /^<([^\s>/]+)/.exec(open[0])?.[1];
-  if (open === null || name === undefined) {
-    return { problem: `the ${partName} part has no ${localName} root element` };
-  }
-  if (open[0].endsWith("/>")) {
-    return {
-      root: { openAt: open.index, openTag: open[0], name, closeAt: null },
-    };
-  }
-  const closeAt = xml.lastIndexOf(`</${name}>`);
-  if (closeAt === -1) {
-    return { problem: `the ${partName} part has no closing ${localName} tag` };
-  }
-  return { root: { openAt: open.index, openTag: open[0], name, closeAt } };
-}
-
-function partRoot(xml: string, rootName: PartRootName): PartRoot {
-  const reading = readPartRoot(xml, rootName);
-  if ("problem" in reading) {
-    throw new DocxExportError("malformed-xml", reading.problem);
-  }
-  return reading.root;
-}
-
-/** Why the Comments part cannot be rewritten around its root, or null when it can */
 export function commentsRootProblem(xml: string): string | null {
-  const reading = readPartRoot(xml, COMMENTS_ROOT);
-  return "problem" in reading ? reading.problem : null;
+  return partRootProblem(xml, COMMENTS_ROOT);
 }
 
 /** Why the extended part cannot be rewritten around its root, or null when it can */
 export function extensionsRootProblem(xml: string): string | null {
-  const reading = readPartRoot(xml, EXTENSIONS_ROOT);
-  return "problem" in reading ? reading.problem : null;
-}
-
-/** The opening tag with something to stand inside it: an empty element is opened before an entry can go in */
-function openedTag(root: PartRoot): string {
-  return root.closeAt === null ? `${root.openTag.slice(0, -2)}>` : root.openTag;
-}
-
-/** The part with the entries written inside its root and everything around the root standing as it came */
-function withinRoot(
-  xml: string,
-  root: PartRoot,
-  openTag: string,
-  entries: string
-): string {
-  const head = xml.slice(0, root.openAt) + openTag + entries;
-  return root.closeAt === null
-    ? `${head}</${root.name}>${xml.slice(root.openAt + root.openTag.length)}`
-    : head + xml.slice(root.closeAt);
+  return partRootProblem(xml, EXTENSIONS_ROOT);
 }
 
 /** Whether the extended part has to be rewritten: thread state arrived, changed, or went with a deleted comment */
@@ -290,27 +218,14 @@ function renderedComment(
   );
 }
 
-function withThreadMarkupCompatibility(openTag: string): string {
-  let updated = openTag;
-  if (!/\sxmlns:w14\s*=/.test(updated)) {
-    updated = updated.replace(/>$/, ` ${xmlnsDecl("w14")}>`);
-  }
-  if (!/\sxmlns:mc\s*=/.test(updated)) {
-    updated = updated.replace(/>$/, ` ${xmlnsDecl("mc")}>`);
-  }
-  const ignorable = /\smc:Ignorable\s*=\s*(["'])([^"']*)\1/.exec(updated);
-  if (!ignorable) {
-    return updated.replace(/>$/, ' mc:Ignorable="w14">');
-  }
-  const tokens = ignorable[2].split(/\s+/).filter(Boolean);
-  if (tokens.includes("w14")) return updated;
-  const replacement = ` mc:Ignorable=${ignorable[1]}${[...tokens, "w14"].join(" ")}${ignorable[1]}`;
-  return (
-    updated.slice(0, ignorable.index) +
-    replacement +
-    updated.slice(ignorable.index + ignorable[0].length)
-  );
-}
+/**
+ * What a part carrying a thread key has to declare: the key is a `w14:paraId`, and a reader that
+ * does not know that namespace is told it may pass over it.
+ */
+const THREAD_MARKUP: RootDeclarations = {
+  namespaces: { w14: NAMESPACES.w14, mc: NAMESPACES.mc },
+  ignorable: ["w14"],
+};
 
 export function currentCommentBodies(
   references: ReadonlyMap<string, CommentReferenceData>
@@ -389,11 +304,13 @@ function commentsXml(
     );
   }
 
-  const root = partRoot(comments.xml, COMMENTS_ROOT);
-  const openTag = hasThreadMetadata
-    ? withThreadMarkupCompatibility(openedTag(root))
-    : openedTag(root);
-  return withinRoot(comments.xml, root, openTag, pieces.join(""));
+  const rewritten = splicePart(comments.xml, {
+    root: COMMENTS_ROOT,
+    replaceChildren: pieces.join(""),
+  });
+  return hasThreadMetadata
+    ? ensureRootDeclarations(rewritten, THREAD_MARKUP)
+    : rewritten;
 }
 
 export interface CommentPartChanges {
@@ -407,13 +324,13 @@ export interface CommentPartChanges {
 export function planCommentParts(
   doc: PMNode,
   session: SessionStore,
-  relationships: RelationshipWriter,
-  currentContentTypes?: Uint8Array
+  context: PartPlanContext
 ): CommentPartChanges | null {
   const bodyChanged = commentsChanged(doc, session);
   const threadChanged = extensionsChanged(doc, session);
   if (!bodyChanged && !threadChanged) return null;
 
+  const { relationships, contentTypes } = context;
   const references = commentReferencesIn(doc);
   const addingPart = commentsPart.pathIn(session) === null;
   const partPath = commentsPart.writePathIn(session);
@@ -435,13 +352,7 @@ export function planCommentParts(
   }
 
   if (addingPart || session.comments.xml === null) {
-    const contentTypes = withContentType(
-      session.parts,
-      partPath,
-      commentsPart.contentType,
-      currentContentTypes
-    );
-    if (contentTypes) parts.set(CONTENT_TYPES_PATH, contentTypes);
+    contentTypes.addOverride(partPath, commentsPart.contentType);
   }
 
   if (
@@ -468,13 +379,10 @@ export function planCommentParts(
       )
     );
     if (addingExtendedPart || session.comments.extendedXml === null) {
-      const contentTypes = withContentType(
-        session.parts,
+      contentTypes.addOverride(
         extendedPartPath,
-        commentsExtendedPart.contentType,
-        parts.get(CONTENT_TYPES_PATH) ?? currentContentTypes
+        commentsExtendedPart.contentType
       );
-      if (contentTypes) parts.set(CONTENT_TYPES_PATH, contentTypes);
     }
   }
   if (bodyChanged) {
@@ -482,8 +390,7 @@ export function planCommentParts(
       peoplePart,
       currentCommentBodies(references).values(),
       session,
-      relationships,
-      parts.get(CONTENT_TYPES_PATH) ?? currentContentTypes
+      context
     );
     for (const [path, bytes] of people ?? []) parts.set(path, bytes);
   }

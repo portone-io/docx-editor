@@ -380,7 +380,7 @@ describe("comment part roots", () => {
     expect(exportProblems(withComment(untouched).doc, opened.session)).toEqual([
       {
         code: "malformed-xml",
-        message: "the Comments part has no comments root element",
+        message: "the comments part has no comments root element",
       },
     ]);
   });
