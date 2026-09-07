@@ -170,24 +170,27 @@ export function attrString(el: Element): string | null {
 }
 
 /**
- * Whether this node is an element.
+ * The `nodeType` values read below, written as the numbers the DOM standard fixes them to.
  *
- * `Node` is a global a server is asked to install (`site/content/docs/core.mdx`); `Element` is
- * not, so nothing here may reach for it at run time.
+ * `Node` and `Element` are names in the type positions here and nowhere else. Reading a constant
+ * off the `Node` global would make the package ask a runtime for an object it has no other use for.
  */
+const ELEMENT_NODE = 1;
+const TEXT_NODE = 3;
+const CDATA_SECTION_NODE = 4;
+const COMMENT_NODE = 8;
+
+/** Whether this node is an element */
 export function isElement(node: Node): node is Element {
-  return node.nodeType === Node.ELEMENT_NODE;
+  return node.nodeType === ELEMENT_NODE;
 }
 
 function serializeChildNode(node: Node): string {
   if (isElement(node)) return serializeXml(node);
-  if (
-    node.nodeType === Node.TEXT_NODE ||
-    node.nodeType === Node.CDATA_SECTION_NODE
-  ) {
+  if (node.nodeType === TEXT_NODE || node.nodeType === CDATA_SECTION_NODE) {
     return escapeXml(node.nodeValue ?? "");
   }
-  if (node.nodeType === Node.COMMENT_NODE) {
+  if (node.nodeType === COMMENT_NODE) {
     return `<!--${node.nodeValue ?? ""}-->`;
   }
   throw new DocxImportError(
