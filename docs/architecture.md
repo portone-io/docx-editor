@@ -34,7 +34,7 @@ A folder may import itself and folders with a lower rank only.
 | 3 | `numbering` | Numbering definitions and list markers |
 | 4 | `schema` | ProseMirror nodes, marks, rendering, locks, and edit guards |
 | 5 | `docx` | Import, export, session state, and page geometry |
-| 6 | `page` | Page-boundary calculations |
+| 6 | `page` | Page-boundary calculations; `page/kinds` holds one measurer and decorator per breakable block shape |
 | 6 | `table` | Table editing, formatting, and resizing |
 | 7 | `editor` | Editor view, the document snapshot, plugins, node views, and commands |
 | 8 | `ui` | Toolbar, menus, panels, and keyboard behavior |
@@ -43,7 +43,8 @@ A folder may import itself and folders with a lower rank only.
 Folders at the same rank cannot import each other, so `page` and `table` share page data through `docx`.
 Subfolders are organizational and inherit the rank of their top-level folder. They split a feature's
 parsing, writing, rendering, or interaction responsibilities without creating another layer.
-For example, `docx/formatting` separates direct-format parsing from style layering, while
+For example, `docx/formatting` separates direct-format parsing from style layering, `page/kinds`
+gives each breakable block shape its own measurer and decorator, while
 `editor/commands/comments` and `editor/commands/formatting` separate shared models, reads, and edits.
 
 `src/folderBoundaries.test.ts` enforces the ranks, requires every production file to be reachable from an entry point, and rejects an unranked folder. The dependency direction keeps file processing independent from the view layer.
