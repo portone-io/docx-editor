@@ -24,21 +24,21 @@ function editStyled(rPr: string | null, change: RunEdit): RunProps | null {
   return edit(rPr, change, { bold: true, underline: "single" });
 }
 
-const bold = (on: boolean): RunEdit => ({ kind: "toggle", toggle: "bold", on });
+const bold = (on: boolean): RunEdit => ({
+  key: "bold",
+  value: on ? true : null,
+});
 const italic = (on: boolean): RunEdit => ({
-  kind: "toggle",
-  toggle: "italic",
-  on,
+  key: "italic",
+  value: on ? true : null,
 });
 const underline = (on: boolean): RunEdit => ({
-  kind: "toggle",
-  toggle: "underline",
-  on,
+  key: "underline",
+  value: on ? "single" : null,
 });
 const strike = (on: boolean): RunEdit => ({
-  kind: "toggle",
-  toggle: "strike",
-  on,
+  key: "strike",
+  value: on ? true : null,
 });
 
 describe("turning formatting on", () => {
@@ -136,7 +136,7 @@ describe("turning formatting off", () => {
   });
 
   it("a layer below that paints nothing behind the text leaves nothing to pin a background against", () => {
-    const background: RunEdit = { kind: "background", hex: null };
+    const background: RunEdit = { key: "background", value: null };
     const shaded =
       '<w:rPr><w:shd w:val="clear" w:color="auto" w:fill="FFFF00"/></w:rPr>';
     expect(edit(shaded, background, { background: NO_FILL })?.rPr).toBeNull();
@@ -148,11 +148,11 @@ describe("turning formatting off", () => {
 
 describe("font size", () => {
   it("writes points as a half-point pair", () => {
-    expect(edit(null, { kind: "fontSize", pt: 11 })).toEqual({
+    expect(edit(null, { key: "fontSizePt", value: 11 })).toEqual({
       rPr: '<w:rPr><w:sz w:val="22"/><w:szCs w:val="22"/></w:rPr>',
       format: { fontSizePt: 11 },
     });
-    expect(edit(null, { kind: "fontSize", pt: 10.5 })?.rPr).toBe(
+    expect(edit(null, { key: "fontSizePt", value: 10.5 })?.rPr).toBe(
       '<w:rPr><w:sz w:val="21"/><w:szCs w:val="21"/></w:rPr>'
     );
   });
@@ -161,7 +161,7 @@ describe("font size", () => {
     const rPr =
       '<w:rPr><w:b/><w:sz w:val="20"/><w:szCs w:val="20"/>' +
       '<w:u w:val="single"/></w:rPr>';
-    expect(edit(rPr, { kind: "fontSize", pt: 12 })?.rPr).toBe(
+    expect(edit(rPr, { key: "fontSizePt", value: 12 })?.rPr).toBe(
       '<w:rPr><w:b/><w:sz w:val="24"/><w:szCs w:val="24"/>' +
         '<w:u w:val="single"/></w:rPr>'
     );
@@ -169,27 +169,27 @@ describe("font size", () => {
 
   it("null withdraws the setting, whether or not anything is inherited", () => {
     const rPr = '<w:rPr><w:b/><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr>';
-    expect(edit(rPr, { kind: "fontSize", pt: null })?.rPr).toBe(
+    expect(edit(rPr, { key: "fontSizePt", value: null })?.rPr).toBe(
       "<w:rPr><w:b/></w:rPr>"
     );
-    expect(editStyled(rPr, { kind: "fontSize", pt: null })?.rPr).toBe(
+    expect(editStyled(rPr, { key: "fontSizePt", value: null })?.rPr).toBe(
       "<w:rPr><w:b/></w:rPr>"
     );
   });
 
   it("leaves a size that cannot be written into the document untouched", () => {
-    expect(edit(null, { kind: "fontSize", pt: 0 })).toBeNull();
-    expect(edit(null, { kind: "fontSize", pt: -1 })).toBeNull();
-    expect(edit(null, { kind: "fontSize", pt: 10.3 })).toBeNull();
-    expect(edit(null, { kind: "fontSize", pt: 2000 })).toBeNull();
-    expect(edit(null, { kind: "fontSize", pt: Number.NaN })).toBeNull();
+    expect(edit(null, { key: "fontSizePt", value: 0 })).toBeNull();
+    expect(edit(null, { key: "fontSizePt", value: -1 })).toBeNull();
+    expect(edit(null, { key: "fontSizePt", value: 10.3 })).toBeNull();
+    expect(edit(null, { key: "fontSizePt", value: 2000 })).toBeNull();
+    expect(edit(null, { key: "fontSizePt", value: Number.NaN })).toBeNull();
   });
 });
 
 describe("font family", () => {
   const font = (name: string | null): RunEdit => ({
-    kind: "fontFamily",
-    name,
+    key: "fontFamily",
+    value: name,
   });
 
   it("writes a Latin name into the Latin slots alone", () => {
@@ -328,36 +328,36 @@ describe("font family", () => {
 
 describe("text color and highlight", () => {
   it("writes a color as six hex digits", () => {
-    expect(edit(null, { kind: "color", hex: "#2e74b5" })).toEqual({
+    expect(edit(null, { key: "color", value: "#2e74b5" })).toEqual({
       rPr: '<w:rPr><w:color w:val="2E74B5"/></w:rPr>',
       format: { color: "#2E74B5" },
     });
-    expect(edit(null, { kind: "color", hex: "FF0000" })?.rPr).toBe(
+    expect(edit(null, { key: "color", value: "FF0000" })?.rPr).toBe(
       '<w:rPr><w:color w:val="FF0000"/></w:rPr>'
     );
   });
 
   it("leaves a value that is not a color untouched", () => {
-    expect(edit(null, { kind: "color", hex: "red" })).toBeNull();
-    expect(edit(null, { kind: "color", hex: "#12345" })).toBeNull();
+    expect(edit(null, { key: "color", value: "red" })).toBeNull();
+    expect(edit(null, { key: "color", value: "#12345" })).toBeNull();
   });
 
   it("turning the color off pins auto down only when a color is inherited", () => {
     const rPr = '<w:rPr><w:color w:val="FF0000"/><w:b/></w:rPr>';
-    expect(edit(rPr, { kind: "color", hex: null })?.rPr).toBe(
+    expect(edit(rPr, { key: "color", value: null })?.rPr).toBe(
       "<w:rPr><w:b/></w:rPr>"
     );
     // A style switching bold on says nothing about the color, so there is nothing to pin against
-    expect(editStyled(rPr, { kind: "color", hex: null })?.rPr).toBe(
+    expect(editStyled(rPr, { key: "color", value: null })?.rPr).toBe(
       "<w:rPr><w:b/></w:rPr>"
     );
     expect(
-      edit(rPr, { kind: "color", hex: null }, { color: "#2E74B5" })?.rPr
+      edit(rPr, { key: "color", value: null }, { color: "#2E74B5" })?.rPr
     ).toBe('<w:rPr><w:color w:val="auto"/><w:b/></w:rPr>');
   });
 
   it("writes a background color as w:shd", () => {
-    expect(edit(null, { kind: "background", hex: "#FFF2CC" })).toEqual({
+    expect(edit(null, { key: "background", value: "#FFF2CC" })).toEqual({
       rPr: '<w:rPr><w:shd w:val="clear" w:color="auto" w:fill="FFF2CC"/></w:rPr>',
       format: { background: "#FFF2CC" },
     });
@@ -367,8 +367,8 @@ describe("text color and highlight", () => {
     // Word paints the highlight on top of the shading. Left in place, the new color would not be visible
     expect(
       edit('<w:rPr><w:highlight w:val="cyan"/></w:rPr>', {
-        kind: "background",
-        hex: "#FF0000",
+        key: "background",
+        value: "#FF0000",
       })
     ).toEqual({
       rPr: '<w:rPr><w:shd w:val="clear" w:color="auto" w:fill="FF0000"/></w:rPr>',
@@ -380,7 +380,7 @@ describe("text color and highlight", () => {
     const rPr =
       '<w:rPr><w:highlight w:val="cyan"/>' +
       '<w:shd w:val="clear" w:color="auto" w:fill="FF0000"/></w:rPr>';
-    expect(edit(rPr, { kind: "background", hex: null })).toEqual({
+    expect(edit(rPr, { key: "background", value: null })).toEqual({
       rPr: null,
       format: null,
     });
@@ -391,7 +391,7 @@ describe("text color and highlight", () => {
     expect(
       edit(
         rPr,
-        { kind: "background", hex: null },
+        { key: "background", value: null },
         { background: "#FFFF00", highlight: "yellow" }
       )?.rPr
     ).toBe(
@@ -399,18 +399,18 @@ describe("text color and highlight", () => {
         '<w:shd w:val="clear" w:color="auto" w:fill="auto"/></w:rPr>'
     );
     // A style switching bold on paints nothing behind the text, so the shading simply goes
-    expect(editStyled(rPr, { kind: "background", hex: null })?.rPr).toBe(
+    expect(editStyled(rPr, { key: "background", value: null })?.rPr).toBe(
       "<w:rPr><w:b/></w:rPr>"
     );
   });
 
   it("a value that is not a color leaves the original untouched", () => {
-    expect(edit(null, { kind: "background", hex: "red" })).toBeNull();
+    expect(edit(null, { key: "background", value: "red" })).toBeNull();
   });
 
   it("fixing the background color leaves the run's other formatting as it is", () => {
     const rPr = '<w:rPr><w:b/><w:sz w:val="24"/><w:vanish/></w:rPr>';
-    expect(edit(rPr, { kind: "background", hex: "#FFFF00" })?.rPr).toBe(
+    expect(edit(rPr, { key: "background", value: "#FFFF00" })?.rPr).toBe(
       '<w:rPr><w:b/><w:sz w:val="24"/><w:vanish/>' +
         '<w:shd w:val="clear" w:color="auto" w:fill="FFFF00"/></w:rPr>'
     );
@@ -469,29 +469,32 @@ describe("checking whether it is already in the state we want", () => {
     expect(matchesRunEdit({ bold: true }, bold(true))).toBe(true);
     expect(matchesRunEdit(null, bold(false))).toBe(true);
     expect(
-      matchesRunEdit({ fontSizePt: 11 }, { kind: "fontSize", pt: 11 })
+      matchesRunEdit({ fontSizePt: 11 }, { key: "fontSizePt", value: 11 })
     ).toBe(true);
-    expect(matchesRunEdit(null, { kind: "fontSize", pt: null })).toBe(true);
+    expect(matchesRunEdit(null, { key: "fontSizePt", value: null })).toBe(true);
     // Colors differing only in capitalization are the same color
     expect(
-      matchesRunEdit({ color: "#2e74b5" }, { kind: "color", hex: "#2E74B5" })
+      matchesRunEdit({ color: "#2e74b5" }, { key: "color", value: "#2E74B5" })
     ).toBe(true);
     expect(
       matchesRunEdit(
         { background: "#ffff00" },
-        { kind: "background", hex: "#FFFF00" }
+        { key: "background", value: "#FFFF00" }
       )
     ).toBe(true);
     // A highlight still in place means the move over to shading has not happened yet
     expect(
       matchesRunEdit(
         { highlight: "yellow" },
-        { kind: "background", hex: "#FFFF00" }
+        { key: "background", value: "#FFFF00" }
       )
     ).toBe(false);
-    expect(matchesRunEdit(null, { kind: "background", hex: null })).toBe(true);
+    expect(matchesRunEdit(null, { key: "background", value: null })).toBe(true);
     expect(
-      matchesRunEdit({ highlight: "yellow" }, { kind: "background", hex: null })
+      matchesRunEdit(
+        { highlight: "yellow" },
+        { key: "background", value: null }
+      )
     ).toBe(false);
   });
 });

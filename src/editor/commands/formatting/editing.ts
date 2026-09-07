@@ -3,7 +3,9 @@
 import type { Mark } from "prosemirror-model";
 import type { Command, EditorState, Transaction } from "prosemirror-state";
 import {
+  type EditableRunKey,
   inheritedRunFormat,
+  type RunSetting,
   resolveParagraph,
   resolveRun,
 } from "../../../docx/formatting";
@@ -27,10 +29,10 @@ import {
 
 export type { RunToggle } from "../../../docx/runProps";
 
-function editedMark(
+function editedMark<K extends EditableRunKey>(
   state: EditorState,
   target: TextPiece,
-  edit: RunEdit
+  edit: RunEdit<K>
 ): Mark | null {
   const context = documentFormatting(state);
   const rPr = text(target.mark?.attrs.rPr);
@@ -56,10 +58,10 @@ interface MarkChange {
 }
 
 /** Builds the new mark for every piece up front. If even one cannot be edited, the whole thing is abandoned */
-function planChanges(
+function planChanges<K extends EditableRunKey>(
   state: EditorState,
   pieces: TextPiece[],
-  edit: RunEdit
+  edit: RunEdit<K>
 ): MarkChange[] | null {
   const changes: MarkChange[] = [];
   for (const target of pieces) {
@@ -70,10 +72,10 @@ function planChanges(
   return changes;
 }
 
-function applyToSelection(
+function applyToSelection<K extends EditableRunKey>(
   state: EditorState,
   dispatch: ((tr: Transaction) => void) | undefined,
-  edit: RunEdit
+  edit: RunEdit<K>
 ): boolean {
   const pieces = openStretches(
     state,
@@ -97,10 +99,10 @@ function applyToSelection(
  * With a collapsed caret, the formatting is only staged for the text typed next, so what settles it
  * is whether that text could go in at all.
  */
-function applyToCaret(
+function applyToCaret<K extends EditableRunKey>(
   state: EditorState,
   dispatch: ((tr: Transaction) => void) | undefined,
-  edit: RunEdit
+  edit: RunEdit<K>
 ): boolean {
   if (editShut(state, { kind: "insert", at: state.selection.from })) {
     return false;
@@ -116,7 +118,7 @@ function applyToCaret(
   return true;
 }
 
-function runEditCommand(edit: RunEdit): Command {
+function runEditCommand<K extends EditableRunKey>(edit: RunEdit<K>): Command {
   return (state, dispatch) =>
     state.selection.empty
       ? applyToCaret(state, dispatch, edit)
@@ -148,6 +150,18 @@ function isToggleActive(state: EditorState, toggle: RunToggle): boolean {
   );
 }
 
+/** What switching a toggle on writes. An underline is switched on as a single one */
+const TOGGLED_ON: { [T in RunToggle]: RunSetting<T> } = {
+  bold: true,
+  italic: true,
+  underline: "single",
+  strike: true,
+};
+
+function toggled<T extends RunToggle>(toggle: T, on: boolean): RunEdit<T> {
+  return { key: toggle, value: on ? TOGGLED_ON[toggle] : null };
+}
+
 /**
  * The same toggle convention as Word.
  * If every character in the selection is already on, turn them all off; otherwise turn them all on.
@@ -159,12 +173,8 @@ function toggleCommand(toggle: RunToggle): Command {
       state.selection.empty ? [caretPiece(state)] : textPieces(state),
       "mark"
     );
-    const edit: RunEdit = {
-      kind: "toggle",
-      toggle,
-      on: !pieces.every((target) => isRunToggleOn(target.format, toggle)),
-    };
-    return runEditCommand(edit)(state, dispatch);
+    const on = !pieces.every((target) => isRunToggleOn(target.format, toggle));
+    return runEditCommand(toggled(toggle, on))(state, dispatch);
   };
 }
 
@@ -175,17 +185,17 @@ export const toggleStrike: Command = toggleCommand("strike");
 
 /** Sets the font size in points. Null withdraws the setting and falls back to the document default */
 export function setFontSize(pt: number | null): Command {
-  return runEditCommand({ kind: "fontSize", pt });
+  return runEditCommand({ key: "fontSizePt", value: pt });
 }
 
 /** Sets the font by name. Null withdraws the setting and falls back to the document default font */
 export function setFontFamily(name: string | null): Command {
-  return runEditCommand({ kind: "fontFamily", name });
+  return runEditCommand({ key: "fontFamily", value: name });
 }
 
 /** Sets the text color as `#RRGGBB`. Null withdraws the color setting */
 export function setTextColor(hex: string | null): Command {
-  return runEditCommand({ kind: "color", hex });
+  return runEditCommand({ key: "color", value: hex });
 }
 
 /**
@@ -193,7 +203,7 @@ export function setTextColor(hex: string | null): Command {
  * A highlight (`w:highlight`) written by an older document is removed along with it at that spot.
  */
 export function setTextBackground(hex: string | null): Command {
-  return runEditCommand({ kind: "background", hex });
+  return runEditCommand({ key: "background", value: hex });
 }
 
 export function isBoldActive(state: EditorState): boolean {

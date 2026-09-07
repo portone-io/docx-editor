@@ -234,22 +234,21 @@ export function withInlineStyle(
 
 function runMark(style: InlineStyle): Mark | null {
   const edits: RunEdit[] = [];
-  if (style.bold) edits.push({ kind: "toggle", toggle: "bold", on: true });
-  if (style.italic) edits.push({ kind: "toggle", toggle: "italic", on: true });
-  if (style.underline) {
-    edits.push({ kind: "toggle", toggle: "underline", on: true });
-  }
-  if (style.strike) edits.push({ kind: "toggle", toggle: "strike", on: true });
+  if (style.bold) edits.push({ key: "bold", value: true });
+  if (style.italic) edits.push({ key: "italic", value: true });
+  if (style.underline) edits.push({ key: "underline", value: "single" });
+  if (style.strike) edits.push({ key: "strike", value: true });
   if (style.fontSizePt !== undefined) {
-    edits.push({ kind: "fontSize", pt: style.fontSizePt });
+    edits.push({ key: "fontSizePt", value: style.fontSizePt });
   }
   if (style.fontFamily !== undefined) {
-    edits.push({ kind: "fontFamily", name: style.fontFamily });
+    edits.push({ key: "fontFamily", value: style.fontFamily });
   }
-  if (style.color !== undefined)
-    edits.push({ kind: "color", hex: style.color });
+  if (style.color !== undefined) {
+    edits.push({ key: "color", value: style.color });
+  }
   if (style.background !== undefined) {
-    edits.push({ kind: "background", hex: style.background });
+    edits.push({ key: "background", value: style.background });
   }
   let props: { rPr: string | null; format: RunFormat | null } = {
     rPr: null,

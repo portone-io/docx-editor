@@ -8,7 +8,7 @@ import {
 } from "../../model/format";
 import { childOrderOf } from "../../ooxml/childOrder";
 import { renderProps } from "../../ooxml/props";
-import { readRunProps } from "../runProps";
+import { editRunProps, type RunProps, readRunProps } from "../runProps";
 import {
   type ChildEdit,
   EDITABLE_RUN_KEYS,
@@ -299,6 +299,22 @@ describe("rPrOf", () => {
     color: "#2e74b5",
     background: "#fff2cc",
   };
+
+  it("writes one rPr equal to applying the edits one at a time", () => {
+    const edits: RunEdit[] = [
+      { key: "bold", value: true },
+      { key: "underline", value: "single" },
+      { key: "fontSizePt", value: 11 },
+      { key: "fontFamily", value: "Malgun Gothic" },
+      { key: "color", value: "#2e74b5" },
+      { key: "background", value: "#fff2cc" },
+    ];
+    const oneAtATime = edits.reduce<RunProps>(
+      (props, next) => editRunProps(props, {}, next) ?? props,
+      { rPr: null, format: null }
+    );
+    expect(rPrOf(settings)).toBe(oneAtATime.rPr);
+  });
 
   it("writes every setting into one rPr in the order CT_RPr lays down", () => {
     expect(rPrOf(settings)).toBe(
