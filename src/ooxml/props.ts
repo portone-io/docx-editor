@@ -6,6 +6,7 @@
  * of the children, so the spot to insert a child that was not there is found by that same order.
  */
 
+import { readTag, type Tag } from "./tagScan";
 import { elementChildren, localPart, namespaceDecls, parseXml } from "./xml";
 
 export interface PropsChild {
@@ -176,60 +177,6 @@ export const TBL_PR_ORDER: readonly string[] = [
   "tblDescription",
   "tblPrChange",
 ];
-
-type TagKind = "open" | "close" | "empty" | "other";
-
-interface Tag {
-  kind: TagKind;
-  name: string;
-  /** The spot where the tag name ends. This is the start of the attribute string */
-  nameEnd: number;
-  /** The spot right after the tag ends */
-  end: number;
-}
-
-function skipPast(source: string, from: number, marker: string): number {
-  const at = source.indexOf(marker, from);
-  return at === -1 ? -1 : at + marker.length;
-}
-
-function otherTag(end: number): Tag | null {
-  return end === -1 ? null : { kind: "other", name: "", nameEnd: end, end };
-}
-
-/** Reads a single tag starting at a `<`. null if it cannot be made out */
-function readTag(source: string, lt: number): Tag | null {
-  if (source.startsWith("<?", lt)) return otherTag(skipPast(source, lt, "?>"));
-  if (source.startsWith("<!--", lt))
-    return otherTag(skipPast(source, lt, "-->"));
-  if (source.startsWith("<![CDATA[", lt))
-    return otherTag(skipPast(source, lt, "]]>"));
-  if (source.startsWith("<!", lt)) return otherTag(skipPast(source, lt, ">"));
-
-  const closing = source.startsWith("</", lt);
-  let i = lt + (closing ? 2 : 1);
-  const nameStart = i;
-  while (i < source.length && !" \t\r\n/>".includes(source[i])) i += 1;
-  const name = source.slice(nameStart, i);
-  if (!name) return null;
-  const nameEnd = i;
-
-  let quote: string | null = null;
-  while (i < source.length) {
-    const ch = source[i];
-    if (quote !== null) {
-      if (ch === quote) quote = null;
-    } else if (ch === '"' || ch === "'") {
-      quote = ch;
-    } else if (ch === ">") {
-      const selfClosing = source[i - 1] === "/";
-      const kind: TagKind = closing ? "close" : selfClosing ? "empty" : "open";
-      return { kind, name, nameEnd, end: i + 1 };
-    }
-    i += 1;
-  }
-  return null;
-}
 
 function attrsOf(source: string, tag: Tag): string | null {
   const closeLength = tag.kind === "empty" ? 2 : 1;

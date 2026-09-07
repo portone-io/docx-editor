@@ -6,6 +6,7 @@
  */
 
 import { DocxImportError } from "../ooxml/errors";
+import { readTag, type Tag } from "../ooxml/tagScan";
 import { localPart } from "../ooxml/xml";
 
 export interface BodyBlockSlice {
@@ -23,67 +24,20 @@ export interface BodyScan {
   suffix: string;
 }
 
-interface OpenTag {
-  name: string;
-  end: number;
-  selfClosing: boolean;
-}
-
-interface CloseTag {
-  name: string;
-  end: number;
-}
-
-function skipPast(source: string, from: number, marker: string): number {
-  const at = source.indexOf(marker, from);
-  if (at === -1) {
-    throw new DocxImportError("malformed-xml", `no ${marker} to close a tag`);
+/** The tag at this `<`, refusing a document whose text cannot be read tag by tag */
+function tagAt(source: string, lt: number): Tag {
+  const tag = readTag(source, lt);
+  if (!tag) {
+    throw new DocxImportError(
+      "malformed-xml",
+      "a tag cannot be read to its end"
+    );
   }
-  return at + marker.length;
+  return tag;
 }
 
-/** Skips a whole piece of non-tag syntax (declaration, comment, CDATA). null if it is a tag */
-function skipNonTag(source: string, lt: number): number | null {
-  if (source.startsWith("<?", lt)) return skipPast(source, lt, "?>");
-  if (source.startsWith("<!--", lt)) return skipPast(source, lt, "-->");
-  if (source.startsWith("<![CDATA[", lt)) return skipPast(source, lt, "]]>");
-  if (source.startsWith("<!", lt)) return skipPast(source, lt, ">");
-  return null;
-}
-
-/** Reads a single opening tag. A `>` inside quotes is not treated as the end of the tag */
-function readOpenTag(source: string, lt: number): OpenTag {
-  let i = lt + 1;
-  const nameStart = i;
-  while (i < source.length && !" \t\r\n/>".includes(source[i])) i += 1;
-  const name = source.slice(nameStart, i);
-  if (!name)
-    throw new DocxImportError("malformed-xml", "a tag has an empty name");
-
-  let quote: string | null = null;
-  while (i < source.length) {
-    const ch = source[i];
-    if (quote !== null) {
-      if (ch === quote) quote = null;
-    } else if (ch === '"' || ch === "'") {
-      quote = ch;
-    } else if (ch === ">") {
-      return { name, end: i + 1, selfClosing: source[i - 1] === "/" };
-    }
-    i += 1;
-  }
-  throw new DocxImportError("malformed-xml", "a tag is left unclosed");
-}
-
-function readCloseTag(source: string, lt: number): CloseTag {
-  const gt = source.indexOf(">", lt);
-  if (gt === -1)
-    throw new DocxImportError("malformed-xml", "a tag is left unclosed");
-  return { name: source.slice(lt + 2, gt).trim(), end: gt + 1 };
-}
-
-function isBodyTag(tag: OpenTag, depth: number): boolean {
-  return localPart(tag.name) === "body" && depth === 1 && !tag.selfClosing;
+function isBodyTag(tag: Tag, depth: number): boolean {
+  return localPart(tag.name) === "body" && depth === 1 && tag.kind === "open";
 }
 
 export function scanBody(source: string): BodyScan {
@@ -104,14 +58,13 @@ export function scanBody(source: string): BodyScan {
     const lt = source.indexOf("<", i);
     if (lt === -1) break;
 
-    const skipped = skipNonTag(source, lt);
-    if (skipped !== null) {
-      i = skipped;
+    const tag = tagAt(source, lt);
+    if (tag.kind === "other") {
+      i = tag.end;
       continue;
     }
 
-    if (source.startsWith("</", lt)) {
-      const tag = readCloseTag(source, lt);
+    if (tag.kind === "close") {
       const opened = stack.pop();
       if (opened !== tag.name) {
         throw new DocxImportError(
@@ -124,15 +77,14 @@ export function scanBody(source: string): BodyScan {
       continue;
     }
 
-    const tag = readOpenTag(source, lt);
     if (bodyDepth === null && isBodyTag(tag, stack.length)) {
       stack.push(tag.name);
       bodyDepth = stack.length;
       contentStart = tag.end;
       sliceStart = tag.end;
     } else {
-      if (atBodyLevel() && tag.selfClosing) takeBlock(tag.name, tag.end);
-      if (!tag.selfClosing) stack.push(tag.name);
+      if (atBodyLevel() && tag.kind === "empty") takeBlock(tag.name, tag.end);
+      if (tag.kind === "open") stack.push(tag.name);
     }
     i = tag.end;
   }
