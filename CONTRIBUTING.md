@@ -48,7 +48,7 @@ pnpm test:e2e
 
 [Testing](https://github.com/portone-io/docx-editor/blob/main/docs/testing.md) explains the scope and prerequisites of every check.
 
-A command added to `./commands` or `./table` needs a writer probe in `src/docx/__testing__/writerProbes.ts`, so that what it writes is validated against the OOXML schemas, or an entry in `NOT_A_WRITER` giving the reason it reaches no writer.
+A command added to `./commands` or `./table` needs a writer probe in `src/docx/__testing__/writerProbes.ts` with a `check` of its immediate effect, so its export is validated before another command can overwrite it, or an entry in `NOT_A_WRITER` giving the reason it reaches no writer.
 
 ## Changesets
 

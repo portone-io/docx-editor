@@ -23,7 +23,7 @@ A Word-style package includes document properties and named styles, and some als
 - Do not include real organizations, people, places, addresses, contact details, account numbers, registration numbers, tickets, or authoring metadata. The package name and attributed public-domain text are the only exceptions.
 - Keep one language per file unless multilingual behavior is the purpose of the fixture.
 - Use ASCII file names so the live editor can fetch them without additional URL encoding.
-- Do not put `mc:AlternateContent` in a fixture. Schema validation preprocesses every part the way ECMA-376 Part 3 requires, which reads such a block as the content of its `mc:Fallback`, so the markup an alternate-content block wraps would be validated as its fallback and prove nothing. Write the markup under test directly instead. `mc:Ignorable` on a part root is expected, and the preprocessing removes what it covers.
+- Do not put `mc:AlternateContent` in a fixture. The [validation profile](../docs/testing.md#tests-that-guard-package-rules) selects only one branch, so other branches would not be tested. Write the markup under test directly instead. `mc:Ignorable` on a part root is expected; only markup in unknown ignorable namespaces is removed, subject to `mc:ProcessContent`.
 
 Prefer original text. If a fixture uses redistributable text from elsewhere, record its source and status here:
 

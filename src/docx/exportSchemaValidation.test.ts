@@ -21,6 +21,7 @@ import { Fragment, type Node as PMNode } from "prosemirror-model";
 import { type EditorState, TextSelection } from "prosemirror-state";
 import { afterAll, describe, expect, it } from "vitest";
 import {
+  bytesEqual,
   decode,
   fixtureNames,
   makeDocx,
@@ -324,13 +325,46 @@ function expectBatteryValidates(
   doc: PMNode,
   session: SessionStore
 ): void {
-  const exported = exportedPackage(
-    name,
-    afterTheBattery(openState(doc, session)).doc,
-    session
+  const snapshots = new Map<string, string>();
+  const seen = new Set<string>();
+  let step = 0;
+  const final = afterTheBattery(
+    openState(doc, session),
+    (probe, before, after) => {
+      const label = `${name}: ${probe.name}`;
+      const previous = exportedPackage(label, before.doc, session);
+      const current = exportedPackage(label, after.doc, session);
+      expect(
+        current.mainXml === previous.mainXml &&
+          Object.keys(current.parts).every(
+            (path) =>
+              previous.parts[path] !== undefined &&
+              bytesEqual(current.parts[path], previous.parts[path])
+          ) &&
+          Object.keys(current.parts).length ===
+            Object.keys(previous.parts).length,
+        `${label}: no exported part changed`
+      ).toBe(false);
+      expectEveryXmlPartParses(label, current.bytes);
+      // All intermediate outputs reach xmllint. Identical parts need only one validation, and
+      // batching them compiles the schema set once instead of once per command.
+      for (const [path, xml] of wordprocessingParts(current.bytes)) {
+        const key = `${path}\0${xml}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        snapshots.set(
+          `${String(step).padStart(2, "0")}-${probe.name.replaceAll(" ", "_")}/${path}`,
+          xml
+        );
+      }
+      step += 1;
+    }
   );
-  expectPartsValidate(name, wordprocessingParts(exported.bytes));
-  expectProbesWrote(exported, exportedPackage(name, doc, session));
+  expectPartsValidate(name, snapshots);
+  expectProbesWrote(
+    exportedPackage(name, final.doc, session),
+    exportedPackage(name, doc, session)
+  );
 }
 
 describe("the exported package against the OOXML schemas", () => {
@@ -451,6 +485,28 @@ describe("the exported package against the OOXML schemas", () => {
 });
 
 describe("the markup-compatibility preprocessing", () => {
+  it.each([
+    '<w:p mc:Ignorable="w"><w:pPr><w:jc w:val="invalid-alignment"/></w:pPr><w:r><w:t>edit</w:t></w:r></w:p>',
+    '<w:p mc:Ignorable="x" mc:ProcessContent="x:wrap"><w:r><w:t>edit</w:t></w:r><x:wrap><w:r><w:notInWml/></w:r></x:wrap></w:p>',
+    '<w:p><w:r><w:t>edit</w:t></w:r><mc:AlternateContent><mc:Choice Requires="w"><w:r><w:notInWml/></w:r></mc:Choice><mc:Fallback><w:r/></mc:Fallback></mc:AlternateContent></w:p>',
+  ])(
+    "does not erase invalid preserved WML from an edited export: %s",
+    (body) => {
+      const opened = importDocx(
+        makeDocx(
+          body.replace("<w:p", `<w:p xmlns:mc="${MC_NS}" xmlns:x="urn:unknown"`)
+        )
+      );
+      const xml = wordprocessingParts(
+        exportDocx(withEditedParagraph(opened.doc), opened.session)
+      ).get(opened.session.mainPartPath);
+      expect(xml).toBeDefined();
+      const verdict = validate(opened.session.mainPartPath, xml ?? "");
+      expect(verdict.valid, verdict.report).toBe(false);
+      expect(verdict.report).toMatch(/invalid-alignment|notInWml/);
+    }
+  );
+
   const IGNORED_NS = W14_NS;
   const KEPT_NS = "urn:example:declared-but-not-ignorable";
 

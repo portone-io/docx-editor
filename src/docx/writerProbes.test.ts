@@ -16,8 +16,17 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { EditorState, TextSelection } from "prosemirror-state";
 import { describe, expect, it } from "vitest";
-import { NOT_A_WRITER, WRITER_PROBES } from "./__testing__/writerProbes";
+import { readFixture } from "../__testing__/docx";
+import { docxSchema } from "../schema";
+import {
+  afterTheBattery,
+  NOT_A_WRITER,
+  openState,
+  WRITER_PROBES,
+} from "./__testing__/writerProbes";
+import { importDocx } from "./importDocx";
 
 const packageDir = join(dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -54,6 +63,60 @@ const probed = Object.keys(WRITER_PROBES);
 const notWriters = Object.keys(NOT_A_WRITER);
 
 describe("the writer probes", () => {
+  it("requires every probe to check its own immediate result", () => {
+    for (const probe of Object.values(WRITER_PROBES).flat()) {
+      expect(typeof probe.check, probe.name).toBe("function");
+    }
+  });
+
+  it("rejects a font size change written only to display attrs", () => {
+    const text = docxSchema.text("text", [
+      docxSchema.marks.run.create({
+        rPr: '<w:rPr><w:sz w:val="20"/></w:rPr>',
+        format: { fontSizePt: 10 },
+      }),
+    ]);
+    const doc = docxSchema.nodes.doc.create(null, [
+      docxSchema.nodes.paragraph.create(null, text),
+    ]);
+    const before = EditorState.create({
+      doc,
+      selection: TextSelection.create(doc, 1, 5),
+    });
+    const after = before.apply(
+      before.tr.addMark(
+        1,
+        5,
+        docxSchema.marks.run.create({
+          ...text.marks[0].attrs,
+          format: { fontSizePt: 13 },
+        })
+      )
+    );
+    expect(() => WRITER_PROBES.setFontSize[0].check(before, after)).toThrow();
+  });
+
+  it("inspects a list level before the following probe takes it away", () => {
+    const { doc, session } = importDocx(readFixture("kitchen-sink.docx"));
+    const levels: string[] = [];
+    let inspected = 0;
+    afterTheBattery(openState(doc, session), (probe, _before, after) => {
+      inspected += 1;
+      if (
+        [
+          ...WRITER_PROBES.increaseListLevel,
+          ...WRITER_PROBES.decreaseListLevel,
+        ].includes(probe)
+      ) {
+        levels.push(after.selection.$from.parent.attrs.pPr);
+      }
+    });
+    expect(inspected).toBe(Object.values(WRITER_PROBES).flat().length);
+    expect(levels).toHaveLength(2);
+    expect(levels[0]).toContain('<w:ilvl w:val="1"/>');
+    expect(levels[1]).toContain('<w:ilvl w:val="0"/>');
+  });
+
   it("answers for every export of `./commands` and `./table`", () => {
     // A pair of empty lists would agree with each other without answering anything
     expect(exported.length).toBeGreaterThan(0);

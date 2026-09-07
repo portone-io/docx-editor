@@ -53,11 +53,16 @@ import {
   insertPageBreak,
   insertTab,
   insertTable,
+  isBoldActive,
+  isItalicActive,
+  isStrikeActive,
+  isUnderlineActive,
   lockSelection,
   type NewComment,
   removeComment,
   removeCommentReply,
   removeLink,
+  selectionLock,
   setCommentResolved,
   setFontFamily,
   setFontSize,
@@ -84,7 +89,14 @@ import {
   toParagraphFormat,
 } from "../../model/format";
 import { wAttr } from "../../ooxml/units";
-import { childByLocalName, decodeUtf8, parseXml, W_NS } from "../../ooxml/xml";
+import {
+  childByLocalName,
+  decodeUtf8,
+  namespaceDecls,
+  parseXml,
+  W_NS,
+} from "../../ooxml/xml";
+import { sameSource } from "../../schema/sourceEquality";
 import {
   addColumnAfter,
   addColumnBefore,
@@ -566,21 +578,205 @@ function lockedControlCount(xml: string): number {
   return xml.match(/sdtContentLocked/g)?.length ?? 0;
 }
 
-/**
- * One command of the public surface, run where it writes something the export has to build.
- *
- * `expect` is what the probe says of the package afterwards, measured against the same document
- * written out without the battery because a fixture may carry a picture or a link of its own. A
- * probe that adds nothing to the package beyond markup the schemas already judge leaves it out:
- * running at all is what it asserts, since the battery refuses to go on when a command reports it
- * changed nothing.
- */
+/** Each probe must check its immediate result; package-wide checks run after the whole battery. */
 export interface WriterProbe {
   /** What the probe does, which is what a battery that could not run it is reported by */
   name: string;
   slot: ProbeSlot;
+  prepare?(state: EditorState): EditorState;
   run(state: EditorState): EditorState;
+  check(before: EditorState, after: EditorState): void;
   expect?(exported: ExportedPackage, untouched: ExportedPackage): void;
+}
+
+type ProbeCheck = (before: EditorState, after: EditorState) => void;
+
+function property(xml: unknown, tag: string, attribute = "val"): string | null {
+  if (typeof xml !== "string") return null;
+  let node: Element | undefined = parseXml(
+    `<x ${namespaceDecls(xml)}>${xml}</x>`
+  ).documentElement;
+  for (const name of tag.split("/"))
+    node = node?.getElementsByTagNameNS(W_NS, name)[0];
+  return node?.getAttributeNS(W_NS, attribute) ?? null;
+}
+
+function runProperty(
+  tag: string,
+  value: string,
+  attribute = "val"
+): ProbeCheck {
+  return (_before, after) => {
+    const runs: PMNode[] = [];
+    after.selection.$from.parent.descendants((node) => {
+      if (node.isText) runs.push(node);
+    });
+    expect(runs.length).toBeGreaterThan(0);
+    for (const node of runs) {
+      const run = node.marks.find((mark) => mark.type.name === "run");
+      expect(property(run?.attrs.rPr, tag, attribute)).toBe(value);
+    }
+  };
+}
+
+function toggleProperty(
+  tag: string,
+  active: (state: EditorState) => boolean
+): ProbeCheck {
+  return (before, after) => {
+    const on = !active(wholeParagraph(before));
+    const values: boolean[] = [];
+    after.selection.$from.parent.descendants((node) => {
+      if (!node.isText) return;
+      const xml: unknown = node.marks.find((mark) => mark.type.name === "run")
+        ?.attrs.rPr;
+      const el =
+        typeof xml === "string"
+          ? parseXml(
+              `<x ${namespaceDecls(xml)}>${xml}</x>`
+            ).getElementsByTagNameNS(W_NS, tag)[0]
+          : undefined;
+      values.push(
+        el !== undefined &&
+          !["0", "false", "off", "none"].includes(
+            el.getAttributeNS(W_NS, "val") ?? ""
+          )
+      );
+    });
+    expect(values.length).toBeGreaterThan(0);
+    expect(values.every((value) => value === on)).toBe(true);
+  };
+}
+
+function paragraphProperty(
+  state: EditorState,
+  tag: string,
+  attribute = "val"
+): string | null {
+  return property(state.selection.$from.parent.attrs.pPr, tag, attribute);
+}
+
+function indentCheck(delta: number): ProbeCheck {
+  return (before, after) => {
+    const format = toParagraphFormat(
+      before.selection.$from.parent.attrs.format
+    );
+    const left = (format?.indentStartPt ?? format?.indentLeftPt ?? 0) * 20;
+    expect(
+      Number(
+        paragraphProperty(after, "ind", "left") ??
+          paragraphProperty(after, "ind", "start") ??
+          0
+      )
+    ).toBe(Math.max(0, Math.round(left) + delta));
+  };
+}
+
+function levelCheck(delta: number): ProbeCheck {
+  return (before, after) => {
+    expect(Number(paragraphProperty(after, "ilvl"))).toBe(
+      Number(paragraphProperty(before, "ilvl")) + delta
+    );
+  };
+}
+
+function nodeCount(doc: PMNode, name: string): number {
+  let count = 0;
+  doc.descendants((node) => {
+    if (node.type.name === name) count += 1;
+  });
+  return count;
+}
+
+function nodeAdded(name: string, delta = 1): ProbeCheck {
+  return (before, after) =>
+    expect(nodeCount(after.doc, name)).toBe(
+      nodeCount(before.doc, name) + delta
+    );
+}
+
+function breakAdded(page: boolean): ProbeCheck {
+  return (before, after) => {
+    const count = (doc: PMNode): number => {
+      let found = 0;
+      doc.descendants((node) => {
+        if (node.type.name !== "hardBreak") return;
+        const attrs: unknown = node.attrs.brAttrs;
+        const xml = typeof attrs === "string" ? `<w:br ${attrs}/>` : "<w:br/>";
+        if ((property(xml, "br", "type") === "page") === page) found += 1;
+      });
+      return found;
+    };
+    expect(count(after.doc)).toBe(count(before.doc) + 1);
+  };
+}
+
+function tableSizeChange(width: number, height: number): ProbeCheck {
+  return (before, after) => {
+    const a = TableMap.get(tableAround(before).node);
+    const b = TableMap.get(tableAround(after).node);
+    expect([b.width, b.height]).toEqual([a.width + width, a.height + height]);
+  };
+}
+
+function unmergedColumn(state: EditorState): EditorState {
+  const table = tableAround(state);
+  const map = TableMap.get(table.node);
+  // After deleting the first row, the new first row starts with a two-column merged cell.
+  // Select the split row below it so this probe deletes exactly one column.
+  return caretAt(state, table.pos + 1 + map.positionAt(1, 0, table.node) + 1);
+}
+
+function cellProperty(
+  tag: string,
+  value: string,
+  attribute = "val"
+): ProbeCheck {
+  return (_before, after) => {
+    expect(after.selection).toBeInstanceOf(CellSelection);
+    if (!(after.selection instanceof CellSelection))
+      throw new Error("No cells selected");
+    after.selection.forEachCell((cell) =>
+      expect(property(cell.attrs.tcPr, tag, attribute)).toBe(value)
+    );
+  };
+}
+
+function markCount(doc: PMNode, name: string): number {
+  let count = 0;
+  doc.descendants((node) => {
+    count += node.marks.filter((mark) => mark.type.name === name).length;
+  });
+  return count;
+}
+
+function addedComment(text: string): ProbeCheck {
+  return (before, after) => {
+    expect(documentComments(after).length).toBe(
+      documentComments(before).length + 1
+    );
+    expect(
+      documentComments(after).some((comment) => comment.text === text)
+    ).toBe(true);
+  };
+}
+
+function addedReply(text: string): ProbeCheck {
+  return (before, after) => {
+    const a = commentReading(before, A_COMMENT.text);
+    const b = commentReading(after, A_COMMENT.text);
+    expect(b.replies.length).toBe(a.replies.length + 1);
+    expect(b.replies.some((reply) => reply.text === text)).toBe(true);
+  };
+}
+
+function linkedTo(address: string): ProbeCheck {
+  return (_before, after) => {
+    const marks = after.selection.$from.parent.firstChild?.marks ?? [];
+    expect(marks.find((mark) => mark.type.name === "link")?.attrs.href).toBe(
+      address
+    );
+  };
 }
 
 export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
@@ -588,6 +784,7 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
     {
       name: "toggle bold",
       slot: "formatted",
+      check: toggleProperty("b", isBoldActive),
       run: (state) => ran(wholeParagraph(state), toggleBold),
     },
   ],
@@ -595,6 +792,7 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
     {
       name: "toggle italic",
       slot: "formatted",
+      check: toggleProperty("i", isItalicActive),
       run: (state) => ran(wholeParagraph(state), toggleItalic),
     },
   ],
@@ -602,6 +800,7 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
     {
       name: "toggle underline",
       slot: "formatted",
+      check: toggleProperty("u", isUnderlineActive),
       run: (state) => ran(wholeParagraph(state), toggleUnderline),
     },
   ],
@@ -609,6 +808,7 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
     {
       name: "strike the text through",
       slot: "formatted",
+      check: toggleProperty("strike", isStrikeActive),
       run: (state) => ran(wholeParagraph(state), toggleStrike),
     },
   ],
@@ -616,6 +816,7 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
     {
       name: "color the text",
       slot: "formatted",
+      check: runProperty("color", TEXT_COLOR.slice(1)),
       run: (state) => ran(wholeParagraph(state), setTextColor(TEXT_COLOR)),
     },
   ],
@@ -623,6 +824,7 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
     {
       name: "highlight the text",
       slot: "formatted",
+      check: runProperty("shd", TEXT_BACKGROUND.slice(1), "fill"),
       run: (state) =>
         ran(wholeParagraph(state), setTextBackground(TEXT_BACKGROUND)),
     },
@@ -631,6 +833,7 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
     {
       name: "set the font",
       slot: "formatted",
+      check: runProperty("rFonts", FONT_FAMILY, "ascii"),
       run: (state) => ran(wholeParagraph(state), setFontFamily(FONT_FAMILY)),
     },
   ],
@@ -638,6 +841,7 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
     {
       name: "set the font size",
       slot: "formatted",
+      check: runProperty("sz", String(FONT_SIZE_PT * 2)),
       run: (state) => ran(wholeParagraph(state), setFontSize(FONT_SIZE_PT)),
     },
   ],
@@ -645,6 +849,8 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
     {
       name: "put a paragraph style on a paragraph",
       slot: "formatted",
+      check: (before, after) =>
+        expect(paragraphProperty(after, "pStyle")).toBe(otherStyleId(before)),
       run: (state) => ran(state, setParagraphStyle(otherStyleId(state))),
     },
   ],
@@ -652,6 +858,12 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
     {
       name: "align a paragraph",
       slot: "spaced",
+      check: (before, after) => {
+        const align = otherAlign(activeParagraphAlign(before));
+        expect(paragraphProperty(after, "jc")).toBe(
+          align === "justify" ? "both" : align
+        );
+      },
       run: (state) =>
         ran(state, setParagraphAlign(otherAlign(activeParagraphAlign(state)))),
     },
@@ -660,6 +872,12 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
     {
       name: "space a paragraph's lines out",
       slot: "spaced",
+      check: (before, after) => {
+        const spacing = otherSpacing(activeLineSpacing(before));
+        expect(paragraphProperty(after, "spacing", "line")).toBe(
+          String(spacing.rule === "auto" ? spacing.lines * 240 : 0)
+        );
+      },
       run: (state) =>
         ran(state, setLineSpacing(otherSpacing(activeLineSpacing(state)))),
     },
@@ -668,6 +886,7 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
     {
       name: "indent a paragraph",
       slot: "spaced",
+      check: indentCheck(720),
       run: (state) => ran(state, increaseIndent),
     },
   ],
@@ -675,6 +894,7 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
     {
       name: "take that indent back off",
       slot: "spaced",
+      check: indentCheck(-720),
       run: (state) => ran(state, decreaseIndent),
     },
   ],
@@ -682,6 +902,12 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
     {
       name: "start a numbered list",
       slot: "numbered",
+      check: (before, after) => {
+        expect(paragraphProperty(after, "numId")).not.toBeNull();
+        expect(paragraphProperty(after, "numId")).not.toBe(
+          paragraphProperty(before, "numId")
+        );
+      },
       run: (state) => ran(state, toggleNumberedList),
       expect: (exported) => {
         const referenced = referencedNumIds(exported.mainXml);
@@ -696,6 +922,7 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
     {
       name: "move that list item a level deeper",
       slot: "numbered",
+      check: levelCheck(1),
       run: (state) => ran(state, increaseListLevel),
     },
   ],
@@ -703,6 +930,7 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
     {
       name: "move that list item a level back up",
       slot: "numbered",
+      check: levelCheck(-1),
       run: (state) => ran(state, decreaseListLevel),
     },
   ],
@@ -710,6 +938,12 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
     {
       name: "start a bullet list",
       slot: "bulleted",
+      check: (before, after) => {
+        expect(paragraphProperty(after, "numId")).not.toBeNull();
+        expect(paragraphProperty(after, "numId")).not.toBe(
+          paragraphProperty(before, "numId")
+        );
+      },
       // One definition for each of the two lists this probe and the numbered one above started
       expect: (exported) =>
         expect(
@@ -723,6 +957,11 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
     {
       name: "insert a table",
       slot: "tabled",
+      check: (before, after) => {
+        nodeAdded("table")(before, after);
+        const map = TableMap.get(tableAround(after).node);
+        expect([map.width, map.height]).toEqual([4, 3]);
+      },
       run: (state) => ran(state, insertTable({ rows: 3, columns: 4 })),
     },
   ],
@@ -730,6 +969,7 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
     {
       name: "add a row under the first",
       slot: "table",
+      check: tableSizeChange(0, 1),
       run: (state) => ran(state, addRowAfter),
     },
   ],
@@ -737,6 +977,7 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
     {
       name: "add a row over the first",
       slot: "table",
+      check: tableSizeChange(0, 1),
       run: (state) => ran(state, addRowBefore),
     },
   ],
@@ -744,6 +985,7 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
     {
       name: "add a column beside the first",
       slot: "table",
+      check: tableSizeChange(1, 0),
       run: (state) => ran(state, addColumnAfter),
     },
   ],
@@ -751,6 +993,7 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
     {
       name: "add a column before the first",
       slot: "table",
+      check: tableSizeChange(1, 0),
       run: (state) => ran(state, addColumnBefore),
     },
   ],
@@ -758,6 +1001,7 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
     {
       name: "merge two cells of the second row",
       slot: "table",
+      check: nodeAdded("tableCell", -1),
       run: (state) => ran(twoCellsOfRow(state, 1), mergeCells),
     },
     // The cell the split below takes apart. Merging one row and splitting another is what leaves
@@ -765,6 +1009,7 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
     {
       name: "merge two cells of the third row",
       slot: "table",
+      check: nodeAdded("tableCell", -1),
       run: (state) => ran(twoCellsOfRow(state, 2), mergeCells),
     },
   ],
@@ -772,6 +1017,7 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
     {
       name: "split the merged cell of the third row",
       slot: "table",
+      check: nodeAdded("tableCell"),
       run: (state) => ran(twoCellsOfRow(state, 2), splitCell),
     },
   ],
@@ -779,6 +1025,7 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
     {
       name: "shade selected cells",
       slot: "table",
+      check: cellProperty("shd", CELL_BACKGROUND.slice(1), "fill"),
       run: (state) =>
         ran(twoCellsOfRow(state, 3), setCellBackground(CELL_BACKGROUND)),
     },
@@ -787,6 +1034,7 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
     {
       name: "color the borders of selected cells",
       slot: "table",
+      check: cellProperty("top", CELL_BORDER_COLOR.slice(1), "color"),
       run: (state) =>
         ran(twoCellsOfRow(state, 3), setCellBorderColor(CELL_BORDER_COLOR)),
     },
@@ -798,6 +1046,7 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
       // drawn with, so it would report that it changes nothing
       name: "clear the lines of the cells of a row",
       slot: "table",
+      check: cellProperty("top", "none"),
       run: (state) => ran(twoCellsOfRow(state, 4), setCellBorders("none")),
     },
   ],
@@ -805,6 +1054,7 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
     {
       name: "align selected cells vertically",
       slot: "table",
+      check: cellProperty("vAlign", "center"),
       run: (state) =>
         ran(twoCellsOfRow(state, 3), setCellVerticalAlign("center")),
     },
@@ -813,6 +1063,7 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
     {
       name: "pad selected cells",
       slot: "table",
+      check: cellProperty("tcMar/top", "120", "w"),
       run: (state) =>
         ran(
           twoCellsOfRow(state, 3),
@@ -824,6 +1075,7 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
     {
       name: "delete the first row of that table",
       slot: "table",
+      check: tableSizeChange(0, -1),
       run: (state) => ran(state, deleteRow),
     },
   ],
@@ -831,24 +1083,27 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
     {
       name: "delete the first column of that table",
       slot: "table",
-      run: (state) => ran(state, deleteColumn),
+      check: tableSizeChange(-1, 0),
+      run: (state) => ran(unmergedColumn(state), deleteColumn),
     },
   ],
   deleteTable: [
     {
       name: "delete a table",
       slot: "tabled",
+      check: nodeAdded("table", -1),
       // The table this one takes away is one it puts there itself, so that the table every probe
       // above worked in is the one written out. What stays behind is the empty paragraph a new
       // table is inserted with
-      run: (state) =>
-        ran(ran(state, insertTable({ rows: 2, columns: 2 })), deleteTable),
+      prepare: (state) => ran(state, insertTable({ rows: 2, columns: 2 })),
+      run: (state) => ran(state, deleteTable),
     },
   ],
   insertImage: [
     {
       name: "insert an image",
       slot: "pictured",
+      check: nodeAdded("image"),
       run: (state) => ran(state, insertImage(A_PICTURE)),
       expect: (exported, untouched) =>
         expectMediaPart(
@@ -861,6 +1116,7 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
     {
       name: "insert an image of another kind",
       slot: "pictured",
+      check: nodeAdded("image"),
       run: (state) => ran(state, insertImage(ANOTHER_PICTURE)),
       expect: (exported, untouched) => {
         const added = addedMedia(exported, untouched);
@@ -882,6 +1138,7 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
     {
       name: "break a line",
       slot: "pictured",
+      check: breakAdded(false),
       run: (state) => ran(state, insertLineBreak),
     },
   ],
@@ -889,6 +1146,7 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
     {
       name: "break a page",
       slot: "pictured",
+      check: breakAdded(true),
       run: (state) => ran(state, insertPageBreak),
     },
   ],
@@ -896,6 +1154,10 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
     {
       name: "put a tab in",
       slot: "pictured",
+      check: (before, after) =>
+        expect(markCount(after.doc, "tab")).toBe(
+          markCount(before.doc, "tab") + 1
+        ),
       run: (state) => ran(state, insertTab),
     },
   ],
@@ -903,6 +1165,7 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
     {
       name: "put a link on a stretch of text",
       slot: "formatted",
+      check: linkedTo(LINK_ADDRESS),
       run: (state) => ran(wholeParagraph(state), setLink(LINK_ADDRESS)),
       expect: (exported, untouched) => {
         const links = linkRelationships(exported);
@@ -926,6 +1189,7 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
     {
       name: "put a second link on a stretch of text",
       slot: "bulleted",
+      check: linkedTo(REMOVED_ADDRESS),
       run: (state) => ran(wholeParagraph(state), setLink(REMOVED_ADDRESS)),
     },
   ],
@@ -933,6 +1197,8 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
     {
       name: "take that second link off again",
       slot: "bulleted",
+      check: (_before, after) =>
+        expect(markCount(after.selection.$from.parent, "link")).toBe(0),
       run: (state) => ran(wholeParagraph(state), removeLink),
       expect: (exported) =>
         expect(
@@ -947,12 +1213,14 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
     {
       name: "add a comment to a stretch of text",
       slot: "spaced",
+      check: addedComment(A_COMMENT.text),
       run: (state) => ran(wholeParagraph(state), addComment(A_COMMENT)),
     },
     // The comment the probe below takes away again
     {
       name: "add a second comment",
       slot: "bulleted",
+      check: addedComment(ANOTHER_COMMENT.text),
       run: (state) => ran(wholeParagraph(state), addComment(ANOTHER_COMMENT)),
     },
   ],
@@ -960,6 +1228,7 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
     {
       name: "reply to that comment",
       slot: "spaced",
+      check: addedReply(A_REPLY.text),
       run: (state) =>
         ran(
           state,
@@ -970,6 +1239,7 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
     {
       name: "reply to it a second time",
       slot: "spaced",
+      check: addedReply(ANOTHER_REPLY.text),
       run: (state) =>
         ran(
           state,
@@ -984,6 +1254,12 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
     {
       name: "rewrite the first reply",
       slot: "spaced",
+      check: (_before, after) =>
+        expect(
+          commentReading(after, A_COMMENT.text).replies.some(
+            (reply) => reply.text === EDITED_REPLY
+          )
+        ).toBe(true),
       run: (state) => {
         const comment = commentReading(state, A_COMMENT.text);
         return ran(
@@ -1001,6 +1277,14 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
     {
       name: "take the second reply away",
       slot: "spaced",
+      check: (before, after) => {
+        const a = commentReading(before, A_COMMENT.text);
+        const b = commentReading(after, A_COMMENT.text);
+        expect(b.replies.length).toBe(a.replies.length - 1);
+        expect(
+          b.replies.some((reply) => reply.text === ANOTHER_REPLY.text)
+        ).toBe(false);
+      },
       run: (state) => {
         const comment = commentReading(state, A_COMMENT.text);
         return ran(
@@ -1022,6 +1306,8 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
     {
       name: "rewrite that comment",
       slot: "spaced",
+      check: (_before, after) =>
+        expect(commentReading(after, EDITED_COMMENT).text).toBe(EDITED_COMMENT),
       run: (state) =>
         ran(
           state,
@@ -1046,6 +1332,8 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
     {
       name: "resolve that thread",
       slot: "spaced",
+      check: (_before, after) =>
+        expect(commentReading(after, EDITED_COMMENT).resolved).toBe(true),
       run: (state) =>
         ran(
           state,
@@ -1065,6 +1353,16 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
     {
       name: "take the second comment away",
       slot: "bulleted",
+      check: (before, after) => {
+        expect(documentComments(after).length).toBe(
+          documentComments(before).length - 1
+        );
+        expect(
+          documentComments(after).some(
+            (comment) => comment.text === ANOTHER_COMMENT.text
+          )
+        ).toBe(false);
+      },
       run: (state) =>
         ran(
           state,
@@ -1084,11 +1382,15 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
     {
       name: "lock a stretch of text",
       slot: "formatted",
+      check: (_before, after) =>
+        expect(selectionLock(wholeParagraph(after))).toBe("locked"),
       run: (state) => ran(wholeParagraph(state), lockSelection),
     },
     {
       name: "lock a second stretch of text",
       slot: "spaced",
+      check: (_before, after) =>
+        expect(selectionLock(wholeParagraph(after))).toBe("locked"),
       run: (state) => ran(wholeParagraph(state), lockSelection),
     },
   ],
@@ -1096,6 +1398,8 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
     {
       name: "unlock the second stretch",
       slot: "spaced",
+      check: (_before, after) =>
+        expect(selectionLock(wholeParagraph(after))).toBe("lockable"),
       run: (state) => ran(wholeParagraph(state), unlockSelection),
       // The two locks above minus this one, over the count the same document goes out with
       // untouched, because the caller may have dropped blocks carrying a control of their own
@@ -1107,7 +1411,6 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
     },
   ],
 };
-
 /**
  * Everything else the two entries export, with the reason it reaches no writer.
  *
@@ -1184,14 +1487,25 @@ function reasonOf(error: unknown): string {
 }
 
 /** The state every probe in turn leaves behind */
-export function afterTheBattery(state: EditorState): EditorState {
+export function afterTheBattery(
+  state: EditorState,
+  inspect?: (
+    probe: WriterProbe,
+    before: EditorState,
+    after: EditorState
+  ) => void
+): EditorState {
   const places = slotPlaces(state.doc);
   return everyProbe().reduce((before, probe) => {
     try {
-      const after = probe.run(placedIn(before, probe.slot, places));
-      if (after.doc.eq(before.doc)) {
+      const placed = placedIn(before, probe.slot, places);
+      const prepared = probe.prepare?.(placed) ?? placed;
+      const after = probe.run(prepared);
+      if (sameSource(after.doc, prepared.doc)) {
         throw new Error("the document it left is the one it was given");
       }
+      probe.check(prepared, after);
+      inspect?.(probe, prepared, after);
       return after;
     } catch (error) {
       throw new Error(
