@@ -1,4 +1,8 @@
 // @vitest-environment jsdom
+import {
+  DOMSerializer,
+  DOMParser as ProseMirrorDOMParser,
+} from "prosemirror-model";
 import { describe, expect, it } from "vitest";
 import {
   fixtureNames,
@@ -9,6 +13,7 @@ import {
 } from "../__testing__/docx";
 import { documentFidelity } from "../editor/commands/fidelityQueries";
 import { createEditorState } from "../editor/createEditor";
+import { docxSchema } from "../schema";
 import { exportDocxReport } from "./exportDocx";
 import { fidelityNotesOf } from "./fidelity";
 import { importDocx } from "./importDocx";
@@ -22,6 +27,25 @@ function notesOf(body: string) {
 }
 
 describe("the notes a document opens with", () => {
+  it("reports no original block number for a malformed key read from the DOM", () => {
+    const { doc } = importDocx(
+      makeDocx('<w:customXml w:uri="urn:example" w:element="example"/>')
+    );
+    const host = document.createElement("div");
+    host.appendChild(
+      DOMSerializer.fromSchema(docxSchema).serializeFragment(doc.content)
+    );
+    const placeholder = host.querySelector("[data-src]");
+    if (placeholder === null)
+      throw new Error("no preserved block was rendered");
+    placeholder.setAttribute("data-src", `opened:body:${"9".repeat(400)}`);
+
+    const parsed = ProseMirrorDOMParser.fromSchema(docxSchema).parse(host);
+    expect(documentFidelity(createEditorState(parsed))).toEqual([
+      expect.objectContaining({ block: null, element: "w:customXml" }),
+    ]);
+  });
+
   it("reports a demoted paragraph as a placeholder note carrying its block number", () => {
     expect(
       notesOf(

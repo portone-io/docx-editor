@@ -186,7 +186,7 @@ describe("the indentation the level specifies", () => {
   function listDoc(format: Record<string, unknown>): PMNode {
     return docxSchema.nodes.doc.create(null, [
       docxSchema.nodes.paragraph.create(
-        { srcId: 0, pAttrs: null, pPr: null, format },
+        { srcId: "opened:body:0", pAttrs: null, pPr: null, format },
         docxSchema.text("Item")
       ),
     ]);

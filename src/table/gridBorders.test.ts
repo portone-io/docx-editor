@@ -76,7 +76,7 @@ function tableDoc(cols: number, ...rows: string[]): PMNode {
   const xml = `<w:tbl>${TBL_PR}${grid(cols)}${rows.join("")}</w:tbl>`;
   const wrapped = parseXml(`<w:wrap ${W_NS}>${xml}</w:wrap>`);
   const el = wrapped.documentElement.firstElementChild;
-  const table = el ? buildTable(el, 0) : null;
+  const table = el ? buildTable(el, null) : null;
   if (!table) throw new Error("the table could not be modelled");
   return docxSchema.nodes.doc.create(null, [table]);
 }

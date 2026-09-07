@@ -20,7 +20,7 @@ function element(xml: string): Element {
 function paragraph(xml: string, links?: LinkTargets): PMNode | null {
   return buildParagraph(
     element(xml),
-    0,
+    null,
     links ? { ...NO_IMPORT_SOURCES, links } : NO_IMPORT_SOURCES
   );
 }
