@@ -134,8 +134,8 @@ function derive(session: SessionStore, _doc: PMNode): EditorDocument {
  * Holds the snapshot for the lifetime of the state.
  *
  * It is derived again only where a document-level edit could have been recorded, so an ordinary
- * edit and a selection move both leave the same object behind; the sheet's style and the list
- * markers are memoized on that identity.
+ * edit and a selection move both leave the same object behind, allowing the sheet's style to be
+ * cached against that identity.
  */
 export function editorDocument(
   document: EditorDocument
