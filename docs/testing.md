@@ -10,7 +10,7 @@ Use `pnpm check` for the default local gate. Run the specialized checks when a c
 | `pnpm test` | Vitest tests under `src/` |
 | `pnpm typecheck` | TypeScript checks for the package and E2E project |
 | `pnpm lint` | Biome checks |
-| `pnpm test:package` | Published tarball contents, leaf-import size, and declaration reports |
+| `pnpm test:package` | Published tarball contents, leaf-import size, declaration reports, and the core entry in a Node runtime with no DOM |
 | `pnpm verify:package` | Fresh installation, declarations, entries, bundle, and stylesheet |
 | `pnpm test:e2e` | Playwright tests against a locally installed Chrome |
 
@@ -38,6 +38,7 @@ The suite uses a 30-second timeout because schema validation and tests that exer
 | `src/schema/domRoundtrip.test.ts` | Every fixture survives being drawn to the DOM and read back, which is the path an IME composition takes. |
 | `src/schema/rawAttrs.test.ts` | Every attr the writer writes from says whether it carries raw XML, and each one that does is drawn holding its shape and not holding it. |
 | `packaging/apiReport.test.ts` | The committed `etc/*.api.md` reports match the declarations built from each published entry point. |
+| `packaging/coreRuntime.test.ts` | The built `dist/core.js` opens every fixture in a Node runtime holding no DOM globals, reading through the `xmlParser` option, and refuses with `no-xml-parser` when given neither it nor a `DOMParser` global. |
 
 Update `api-manifest.json` only when a public runtime API change is intentional. `pnpm api:update` does the same for the declaration reports, which record types and signatures rather than names. The lock test lists command factories explicitly so every new command must state how it behaves around locks and markers and under every editing protection. The probe test reads the same manifest, so a new command must also say what it writes into an exported package.
 
@@ -51,11 +52,12 @@ Parts with no committed validation schema, including relationships, content type
 
 ## Package checks
 
-`pnpm test:package` runs three isolated checks against a clean build:
+`pnpm test:package` runs four isolated checks against a clean build:
 
 - `packaging/tarballContents.test.ts` packs the project and verifies exported files, declarations, the documents a consumer reads before installing, excluded development files, and resolved dependency ranges.
 - `packaging/leafImportSize.test.ts` rebuilds the output and protects small leaf imports from accidentally pulling in a large shared bundle.
 - `packaging/apiReport.test.ts` rebuilds the declarations and fails when a committed report in `etc/` no longer matches them.
+- `packaging/coreRuntime.test.ts` loads the built core entry in a Node environment with no DOM globals, which is the runtime a server verifying a returned file actually has. The rest of the suite runs under jsdom, so this is the only place a global reached for by accident shows up as a failure.
 
 `pnpm verify:package` installs the tarball and its peers in a temporary project outside the repository. It typechecks and bundles a consumer, loads every JavaScript entry, mounts `DocxEditor` over a fixture document in jsdom, and verifies the published stylesheet. It packs that tarball itself unless `DOCX_EDITOR_TARBALL` points it at one. This is the check that catches declarations or imports that work only inside the source workspace.
 
