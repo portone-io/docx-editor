@@ -93,18 +93,40 @@ function unsafeBoundaries(rows: readonly RowEntry[]): ReadonlySet<number> {
   return unsafe;
 }
 
+function repeatsHeader(row: PMNode | undefined): boolean {
+  return toRowFormat(row?.attrs.format)?.repeatHeader === true;
+}
+
 function headerCount(rows: readonly RowEntry[]): number {
   let count = 0;
-  while (
-    count < rows.length &&
-    toRowFormat(rows[count]?.node.attrs.format)?.repeatHeader === true
-  ) {
+  while (count < rows.length && repeatsHeader(rows[count]?.node)) {
     count += 1;
   }
   return count;
 }
 
-function columnCount(tableNode: PMNode): number {
+/**
+ * Where the rows a continued page repeats stand: the run of `repeatHeader` rows the table opens
+ * with. Read off the table itself so the projection follows an edit to a header row
+ * (`page/pageDecorations`).
+ */
+export function headerRowsOf(
+  tableNode: PMNode,
+  tablePos: number
+): readonly number[] {
+  const found: number[] = [];
+  let offset = 0;
+  for (let index = 0; index < tableNode.childCount; index += 1) {
+    const row = tableNode.child(index);
+    if (!repeatsHeader(row)) break;
+    found.push(tablePos + 1 + offset);
+    offset += row.nodeSize;
+  }
+  return found;
+}
+
+/** How many grid columns a row of this table spans, so a spacer row can cover it */
+export function columnCount(tableNode: PMNode): number {
   const grid = tableNode.attrs.gridCols;
   if (Array.isArray(grid) && grid.length > 0) return grid.length;
   const first = tableNode.firstChild;
