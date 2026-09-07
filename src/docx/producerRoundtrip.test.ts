@@ -7,13 +7,12 @@
  * `w14:paraId` on every paragraph, revision markup, machine-generated bookmark names, and
  * measurements in shapes the schema authors did not expect. These three tests are the promises
  * that matter most on such a file: it opens, an untouched round trip gives the package back
- * unchanged, and one edited paragraph leaves every other byte alone.
+ * unchanged, and one edited block, a paragraph or a table, leaves every other byte alone.
  *
  * `__fixtures__/README.md` records where each file came from and what it is known not to keep.
  */
 
 import { unzipSync } from "fflate";
-import { Fragment, type Node as PMNode } from "prosemirror-model";
 import { describe, expect, it } from "vitest";
 import {
   bytesEqual,
@@ -24,44 +23,15 @@ import {
 } from "../__testing__/docx";
 import { createEditorState } from "../editor/createEditor";
 import { parseXml } from "../ooxml/xml";
-import { docxSchema } from "../schema";
+import {
+  type EditedBlock,
+  firstBlockIndex,
+  withEditedBlock,
+} from "./__testing__/blockEdits";
 import { exportDocx } from "./exportDocx";
 import { importDocx } from "./importDocx";
 
 const EDIT = "edited by the producer lane";
-
-/** The first body paragraph holding text, which is the one an editing session reaches first */
-function firstEditableParagraph(doc: PMNode): number {
-  let index = -1;
-  doc.forEach((block, _offset, at) => {
-    if (index !== -1) return;
-    if (block.type.name === "paragraph" && block.textContent !== "") index = at;
-  });
-  if (index === -1) throw new Error("the fixture has no paragraph to edit");
-  return index;
-}
-
-function withEditedText(paragraph: PMNode): PMNode {
-  const inline: PMNode[] = [];
-  let edited = false;
-  paragraph.forEach((child) => {
-    if (!edited && child.isText) {
-      inline.push(docxSchema.text(EDIT, child.marks));
-      edited = true;
-    } else {
-      inline.push(child);
-    }
-  });
-  return paragraph.copy(Fragment.from(inline));
-}
-
-function withBlockReplaced(doc: PMNode, index: number): PMNode {
-  const blocks: PMNode[] = [];
-  doc.forEach((block, _offset, at) => {
-    blocks.push(at === index ? withEditedText(block) : block);
-  });
-  return docxSchema.nodes.doc.create(null, blocks);
-}
 
 describe("a document a word processor saved", () => {
   it("there are producer fixtures", () => {
@@ -96,14 +66,20 @@ describe("a document a word processor saved", () => {
     }
   );
 
-  it.each(producerFixtureNames)(
-    "%s: editing the first editable paragraph changes only that block's bytes",
-    (name) => {
+  it.each(
+    producerFixtureNames.flatMap((name) =>
+      (["paragraph", "table"] as const).map(
+        (kind): { name: string; kind: EditedBlock } => ({ name, kind })
+      )
+    )
+  )(
+    "$name: editing the first $kind changes only that block's bytes",
+    ({ name, kind }) => {
       const bytes = readProducerFixture(name);
       const { doc, session } = importDocx(bytes);
-      const index = firstEditableParagraph(doc);
+      const index = firstBlockIndex(doc, kind);
 
-      const out = exportDocx(withBlockReplaced(doc, index), session);
+      const out = exportDocx(withEditedBlock(doc, index, EDIT), session);
       const exported = unzipSync(out);
       const documentXml = decode(exported[session.mainPartPath]);
 

@@ -48,8 +48,8 @@ Add the file to the fixture map, document any properties that direct tests depen
 
 Three suites read the lane, through `producerFixtureNames` and `readProducerFixture` in [`src/__testing__/docx.ts`](../src/__testing__/docx.ts):
 
-- `src/docx/producerRoundtrip.test.ts` opens each file, exports it untouched and compares every part, then edits the first editable paragraph and checks that the bytes on either side of it are still the producer's own.
-- `src/docx/exportSchemaValidation.test.ts` validates the untouched and the edited export, against an approved list of the violations each producer wrote in.
+- `src/docx/producerRoundtrip.test.ts` opens each file, exports it untouched and compares every part, then edits the first paragraph and, separately, a cell of the first table, and checks that the bytes on either side of the edited block are still the producer's own.
+- `src/docx/exportSchemaValidation.test.ts` validates the untouched export against an approved list of the violations each producer wrote in, then makes the same two edits and compares each edited export against the untouched one occurrence by occurrence: an edit may add no violation, neither a new kind nor one more of a kind the producer already wrote, and may drop only what [Known gaps](#known-gaps) says a rebuilt block normalizes.
 - `src/docx/fidelity.test.ts` records what each file loses on the way in, under `src/docx/__snapshots__/fidelity/producers/`.
 
 ### Origin
@@ -101,13 +101,22 @@ What it does not carry, and what a further producer file is wanted for:
 
 ### Known gaps
 
-Every entry below is markup the producer wrote and this editor hands back untouched, so it is the producer's output that the schemas turn down rather than the export's. `PRODUCER_VIOLATIONS` in `src/docx/exportSchemaValidation.test.ts` pins the exact set, one entry per kind of violation, so closing a gap turns that suite red and the fix is approved rather than absorbed.
+Every entry in the first table is markup the producer wrote. A block nobody edited goes out as the producer's own bytes without passing through the writer, so these violations are in the export because they were in the file, and no fix is scheduled: correcting them would mean rewriting a block nobody touched, which is the untouched byte identity this lane guards. `PRODUCER_VIOLATIONS` in `src/docx/exportSchemaValidation.test.ts` pins the exact set, one entry per kind of violation, so a producer file that changes, or an export that stops preserving what it was handed, turns that suite red.
 
-| What the schemas turn down | Why | Whose fix |
-| --- | --- | --- |
-| `w14:paraId` on `w:p`, in five parts | The validation profile discards markup only in namespaces a part declares `mc:Ignorable`, and Google Docs declares none, so the Microsoft extension attribute reaches the validator | The MCE profile in [`src/docx/__testing__/mce.ts`](../src/docx/__testing__/mce.ts), which has to decide whether a profile drops the extension namespaces regardless of what a part declares |
-| `w:w` on `w:tblW` and on the four `w:tcMar` sides, in `word/document.xml` and `word/styles.xml` | Google Docs writes these measurements with a decimal point, and `ST_MeasurementOrPercent` has no decimal form | The XML writing layer, which owns whether a preserved measurement may be normalized on the way out. It may not today, because normalizing it would break the untouched byte identity this lane guards |
-| `w:pgMar` with no `w:gutter` | `CT_PageMar` requires the attribute and Google Docs omits it | The same, for the same reason |
+| What the schemas turn down | Why |
+| --- | --- |
+| `w14:paraId` on `w:p`, in five parts | The validation profile discards markup only in namespaces a part declares `mc:Ignorable`, and Google Docs declares none, so the Microsoft extension attribute reaches the validator. The profile in [`src/docx/__testing__/mce.ts`](../src/docx/__testing__/mce.ts) follows the part's own declarations rather than second-guessing them |
+| `w:w` on `w:tblW` and on the four `w:tcMar` sides in `word/document.xml`, and on the four `w:tblCellMar` sides of the table styles in `word/styles.xml` | Google Docs writes these measurements with a decimal point, and `ST_MeasurementOrPercent` has no decimal form |
+| `w:pgMar` with no `w:gutter` | `CT_PageMar` requires the attribute and Google Docs omits it |
+
+An edited block is different. The writer rebuilds it, writing what it models in the schema's own form and leaving out what it has no model for, so a rebuilt block can stop being turned down for something the producer wrote. `REBUILD_DROPS` in the same suite pins, per file and per kind of edited block, exactly which of the violations above a rebuild makes go away, so that a writer that starts normalizing or dropping more of a producer's markup is approved rather than absorbed. Editing a paragraph of `google-docs-export.docx` drops nothing. Editing a cell of its first table drops three:
+
+| What the rebuilt table no longer carries | Why |
+| --- | --- |
+| `w:tblW w:w="9026.0"` | The writer writes the table width it models back as the integer `9026` |
+| `w14:paraId` on the paragraph of each of the two cells continuing a vertical merge | The writer has no model for the content of a continuation cell and writes it as an empty `w:p`, so the paragraph the producer put there is lost on a rebuild, its identifier and its run included. `blockXml` in [`src/docx/exportDocx.ts`](../src/docx/exportDocx.ts) says so, and the untouched round trip is what keeps such a cell as it was |
+
+The same rebuild writes the producer's `w:vMerge w:val="continue"` as the bare `w:vMerge` the schema defaults to, which is not a violation either way and so appears in neither pin. Whether a rebuilt continuation cell should keep the producer's paragraph is a question for the table writer; this lane records that it does not today.
 
 ## Fixture contracts
 
