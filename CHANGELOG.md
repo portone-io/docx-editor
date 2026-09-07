@@ -1,5 +1,114 @@
 # @portone/docx-editor
 
+## 0.3.0
+
+### Minor Changes
+
+- [#62](https://github.com/portone-io/docx-editor/pull/62) [`5c481e7`](https://github.com/portone-io/docx-editor/commit/5c481e7c6e9a27373dad90d866a70cd80919b294) Thanks [@Deea222](https://github.com/Deea222)! - `onlyCommentsChangedBy` answers `comment-markup-rejected` where it used to answer `part-changed` for a comment part entry this editor would not have written for this author, or an entry nothing refers to that changed. `part` still names the comment part the entry sits in.
+  
+  The verdicts themselves are unchanged: every file accepted before is accepted now, and every file refused before is refused now. What moves is the name a server logs, so "a part this file was not supposed to touch" and "markup forged into a comment" no longer read alike. A `switch` over `verdict.reason` needs the new case.
+
+- [#77](https://github.com/portone-io/docx-editor/pull/77) [`a0b5cc6`](https://github.com/portone-io/docx-editor/commit/a0b5cc643bbeb6cf3407a0d729e7cc74fec304d6) Thanks [@Deea222](https://github.com/Deea222)! - Ask whether a document can be exported before trying.
+  
+  `exportProblems(doc, session)` on the core entry, and `canExport(state)` with `documentExportProblems(state)` on the commands entry, report known reasons the writer would refuse the document, in the order it would raise them: each under the code and with the message the `DocxExportError` would carry, and with its position where the problem stands in the document. `exportDocx` throws the first entry of the same list, so problems reported by the query are also refused by the write.
+  
+  The editor's handle answers the same list as `exportProblems()` beside `exportBytes()`, and `downloadDocx` asks it first and returns `{ status: "blocked", problems }` instead of throwing. A refusal the list does not foresee, such as a node a plugin stripped of an attribute the writer needs, is still thrown. `DownloadDocxResult` gaining a fourth member is a compile error for a `switch` over `status` written to be exhaustive; add a `blocked` branch that shows the problems.
+  
+  A document whose comments part arrived as an empty element used to refuse its first comment with `malformed-xml`, since the writer looked for a closing tag the element does not have; the part is now opened for the entry, the way an empty extended comments part already was.
+
+- [#63](https://github.com/portone-io/docx-editor/pull/63) [`1a4ec92`](https://github.com/portone-io/docx-editor/commit/1a4ec92162477d468fdb14a95a47388befba45f9) Thanks [@Deea222](https://github.com/Deea222)! - Read what a document holds that this editor cannot model. `importDocx` returns a `notes` array alongside the document and the session, the new `exportDocxReport` returns the same list beside the bytes it writes, and the new `documentFidelity(state)` on `./commands` answers the question about the document standing in an editor. A `FidelityNote` says how much of the original survived, what kind of content it was, the part and body block it came from, where in the document it stands, and the original element name, so a host can list what a file lost instead of guessing at it. Destructuring `importDocx` is unaffected.
+  
+  A table now carries its `w:tblGridChange` instead of losing it whenever the table is rebuilt. The grid is still written from the column widths, and the revision markup closes it where CT_TblGrid takes it. `onlyCommentsChangedBy` therefore catches a submission that lost a `w:tblGridChange`, where it used to accept one: a returned file that dropped it now answers `body-changed` rather than `ok`.
+
+- [#79](https://github.com/portone-io/docx-editor/pull/79) [`70d4801`](https://github.com/portone-io/docx-editor/commit/70d48015f52a126824f25bbd03a65b5509699de2) Thanks [@Deea222](https://github.com/Deea222)! - Applying a paragraph style keeps the spacing the document defaults lay down, and formatting a style or the document defaults switch on can be switched off: the off is written into the run (`w:b w:val="0"`) and drawn as off, where it used to be dropped and the style's value drawn again.
+  
+  Every display value a paragraph or a run carries is now resolved in the ECMA-376 §17.7.2 order by one resolver, whichever path built the paragraph: opening the document, applying a style, a paragraph edit, a paste, or typing into a fresh paragraph. A character style a run points at (`w:rStyle`) takes its place in that order, a hanging indent's implicit tab stop follows the indent actually drawn, and a document's `w:noTabHangInd` setting switches that stop off.
+  
+  `RunFormat` grows to say so: `bold`, `italic`, `strike` and `smallCaps` are `boolean` (false is a toggle the run switches off outright), and `underline` may be `"none"`. A reader checking `=== true` or a truthy value is unaffected.
+  
+  Supported character defaults now appear in the text and toolbar, so a default bold setting turns off with one press. Clearing a direct font size immediately restores the inherited paragraph or character style in the formatting controls.
+
+- [#82](https://github.com/portone-io/docx-editor/pull/82) [`f804ba1`](https://github.com/portone-io/docx-editor/commit/f804ba1eb5e5e6ed5ebf811e1edf2fa1858dc601) Thanks [@Deea222](https://github.com/Deea222)! - A paragraph marked keep with next (`w:keepNext`), by its own properties or by its style, stays on the same page as the start of the block after it in the page guides, as it does in Word. A run of such paragraphs moves together with the first piece of the block the keeps end at; a run no page can hold is laid out as if no keep were set. The document is not changed: the mark is read, never written.
+  
+  `ParagraphFormat` grows `keepNext?: boolean` to say so, beside `pageBreakBefore`.
+  
+  An explicit off (`w:keepNext w:val="0"`) overrides an inherited keep, so a paragraph can opt out of the keep imposed by its style.
+
+- [#80](https://github.com/portone-io/docx-editor/pull/80) [`a37b4fe`](https://github.com/portone-io/docx-editor/commit/a37b4fea75bbf6e9c342c830d358ba21119dd17c) Thanks [@Deea222](https://github.com/Deea222)! - Run formatting is read, written and compared through one property table, so the value a control reads, the XML an edit writes and the check that leaves text already in that state alone can no longer drift apart. The XML written is byte for byte what it was.
+  
+  `RunFormat` gains `caps`, `doubleStrike` and `characterSpacingPt`, read off a run's `w:caps`, `w:dstrike` and `w:spacing`. They reach the `format` attr a plugin reads; the editor does not draw or edit them yet.
+  
+  An underline setter now distinguishes underline kinds; the public underline toggle still turns any existing kind off.
+
+- [#72](https://github.com/portone-io/docx-editor/pull/72) [`578e73e`](https://github.com/portone-io/docx-editor/commit/578e73ed9444f528231048621a13651511438e79) Thanks [@Deea222](https://github.com/Deea222)! - `srcId` now names the block within the session it was opened in. A preserved block used to carry a bare index into the blocks of whichever document it was exported against, so a block moved or pasted in from another document pointed at this document's block of the same number and went out as that block's XML instead of its own. The attribute is now a string naming the document, the story and the place in it, and a block whose document is not the one being exported is refused with `lost-original` rather than written as something else.
+  
+  A plugin that read `node.attrs.srcId` as a number needs to change: it is a string, and the only thing to do with it is hand it back as it was found. Nothing else about the attribute is public, and no exported type or function signature changed.
+
+- [#60](https://github.com/portone-io/docx-editor/pull/60) [`1b5d0fd`](https://github.com/portone-io/docx-editor/commit/1b5d0fd96f13341de0fe34374c2a7dedec57525c) Thanks [@Deea222](https://github.com/Deea222)! - Hand `importDocx`, `exportDocx`, `onlyCommentsChangedBy`, `documentNumbering` and `parseNumbering` an `xmlParser` to read a document on a runtime that has no `DOMParser` global, instead of installing one.
+  
+  A call given neither is refused with `DocxImportError` and the new import code `no-xml-parser`. It used to fail with a bare `ReferenceError`, which a server checking a file a counterparty returned could not tell apart from a document that arrived damaged. Reading a document no longer asks for a `Node` global at all, so `DOMParser`, however it is supplied, is the only thing the core entry needs from a DOM.
+  
+  Each entry point settles its parser as the call comes in, so a runtime holding none is turned down before the bytes are looked at: bytes that are not a docx opened without a parser now report `no-xml-parser` where they reported `not-a-docx`. A parser that answers markup it cannot read by throwing, rather than by handing back a document holding a `parsererror`, is read as `malformed-xml` instead of having its own exception reach the caller.
+
+### Patch Changes
+
+- [#75](https://github.com/portone-io/docx-editor/pull/75) [`c79e417`](https://github.com/portone-io/docx-editor/commit/c79e417bc7c2ec9cc3be804a1010533780558954) Thanks [@Deea222](https://github.com/Deea222)! - Document which schema attributes plugins may rely on and which raw OOXML attributes are internal.
+  An internal classification now records the provenance of every node and mark attribute without changing import, editing, or export behavior.
+
+- [#65](https://github.com/portone-io/docx-editor/pull/65) [`a9a7e6d`](https://github.com/portone-io/docx-editor/commit/a9a7e6d92277f7725d995415da43ae5f3488e079) Thanks [@Deea222](https://github.com/Deea222)! - Content control properties are written in the order the schema lays down. Locking a control that declares what kind of control it is - a date picker, a drop-down, plain text - used to write `w:lock` after that declaration, where CT_SdtPr puts `w:lock` before it, so a validator reading the exported file could refuse a control this editor had rewritten. A control carrying `w:label` or `w:tabIndex` was written the same wrong way round.
+  
+  Untouched documents retain their original XML.
+
+- [#73](https://github.com/portone-io/docx-editor/pull/73) [`ddda545`](https://github.com/portone-io/docx-editor/commit/ddda545d43788007cf8c2c0507a33b1326d593ca) Thanks [@Deea222](https://github.com/Deea222)! - Enter no longer duplicates paragraph identifiers or a paragraph-level section break. The continuing paragraph keeps its identifiers, and the section break stays on the last paragraph of the split.
+  
+  Deleting or joining away a section-ending paragraph is refused until section editing is supported. Replacing text within that paragraph remains available.
+
+- [#81](https://github.com/portone-io/docx-editor/pull/81) [`94d4ed7`](https://github.com/portone-io/docx-editor/commit/94d4ed748b22f49054acfb0b9cf7abcd83f19f09) Thanks [@Deea222](https://github.com/Deea222)! - The lines of a table's cells and the style values of a paragraph are worked out again by one plugin, which also works every value out again when the document's formatting is replaced under it; no behavior change for a document opened today.
+  
+  Changing the formatting context also refreshes existing run marks, so text does not keep its previous style after the paragraph display values change. These updates preserve the original run XML, including in locked content and protected documents.
+
+- [#74](https://github.com/portone-io/docx-editor/pull/74) [`c22f1da`](https://github.com/portone-io/docx-editor/commit/c22f1da7e1aec0a4a5ffbd805eb7b761655ea84f) Thanks [@Deea222](https://github.com/Deea222)! - Commands now share guard helpers so their applicability checks and dispatched edits respect the same rules. Formatting at a caret inside locked content is refused; formatting queries continue to report the selected text's values under document protection.
+
+- [#90](https://github.com/portone-io/docx-editor/pull/90) [`3b37fbd`](https://github.com/portone-io/docx-editor/commit/3b37fbd69eb90fd27011af4ecce2dfd47b61b64f) Thanks [@Deea222](https://github.com/Deea222)! - Importing `emuToPx`, `pxToEmu` or `toImageExtent` off `./core`, or the image file helpers off `./commands`, no longer carries the XML naming layer into a consumer's bundle. The picture module read the namespace table at the top of the file, which a bundler keeps as a side effect, so one multiplication cost 817 bytes minified where it costs 182. Nothing written into a document changes.
+
+- [#70](https://github.com/portone-io/docx-editor/pull/70) [`9d7f659`](https://github.com/portone-io/docx-editor/commit/9d7f6598c2f010ee53753cbd3c7952e8b4bc7f1e) Thanks [@Deea222](https://github.com/Deea222)! - The editor reads document-level values such as styles, numbering and page geometry from one snapshot; no visible change.
+
+- [#69](https://github.com/portone-io/docx-editor/pull/69) [`4f8c94a`](https://github.com/portone-io/docx-editor/commit/4f8c94abf38c4b77eecb632dc783f215d5decb41) Thanks [@Deea222](https://github.com/Deea222)! - A page measurement applies its pushes, break spaces and table continuations in one transaction instead of three. The pages look exactly as they did; what changes is that a single measurement now reaches the editor as a single state change, so anything watching transactions - an `onStateChange` handler, a plugin, a React state hook - sees one rather than three per remeasure.
+  
+  A table's repeated header now also refreshes as soon as its source row is edited, without waiting for the next measurement.
+  
+  Changing a continued row's formatting keeps its page gap until remeasurement. Page pushes also update when their measured contribution changes but the total top margin stays the same.
+
+- [#83](https://github.com/portone-io/docx-editor/pull/83) [`14f3b87`](https://github.com/portone-io/docx-editor/commit/14f3b875004ae28c41a3fd0d58c7783fa9731d67) Thanks [@Deea222](https://github.com/Deea222)! - A relationships part whose root carries a namespace prefix, or that arrived as an empty element, is now spliced correctly when the export adds a relationship to it: the entry goes inside the root, spelled under the root's own prefix, where the export used to refuse the file with `malformed-xml` for want of a bare closing tag. A numbering part that arrived as an empty element takes a new list definition the same way instead of being refused.
+  
+  When one export adds several parts, `[Content_Types].xml` now declares them in the order they were added, a media type's `Default` ahead of any `Override`; each writer used to put its own declaration first, so the declarations came out in the reverse order of adding. Every declaration is still placed right after the opening tag, and the rest of the part is left as it arrived.
+  
+  Every XML part the export rewrites is now read back before the file is repacked, so a part that would not open is refused with `malformed-xml` naming the part rather than handed back.
+  
+  New part names and content-type requests recognize names differing only in case, avoiding duplicate package entries and declarations.
+
+- [#71](https://github.com/portone-io/docx-editor/pull/71) [`a0bcd87`](https://github.com/portone-io/docx-editor/commit/a0bcd8798a33ecf3aba267bc2cdfbbca2b98d632) Thanks [@Deea222](https://github.com/Deea222)! - Comment-only verification and export now share the definitions for comment package parts. Public types are unchanged.
+  
+  Verification rejects new or altered content around comment entries, including outside the XML root, while accepting annotations preserved from the original and those removed by normal comment-part rewrites. Namespace rebindings under rewritten comment markup are also rejected.
+
+- [#76](https://github.com/portone-io/docx-editor/pull/76) [`46c8ba7`](https://github.com/portone-io/docx-editor/commit/46c8ba73cedd06cd85141ea44f09119648315396) Thanks [@Deea222](https://github.com/Deea222)! - Table pagination moves into a block-kind module; no visible change. What the page engine knows about a table - where it may be parted between rows, the spacer and repeated header a continued page is drawn with, and which positions a page cut may stand at - used to be spread over the measurer, the decorations and the plugin state. It is now one module beside the paragraph's, and the engine asks whichever kind claims a block. Pages, page breaks and continued tables look exactly as they did.
+
+- [#63](https://github.com/portone-io/docx-editor/pull/63) [`1a4ec92`](https://github.com/portone-io/docx-editor/commit/1a4ec92162477d468fdb14a95a47388befba45f9) Thanks [@Deea222](https://github.com/Deea222)! - Keep namespace bindings declared on a table grid when preserving its revision history, so editing the table can still produce a readable DOCX. Rebuilt tables also retain the required empty table-properties element when no properties are set.
+
+- [#78](https://github.com/portone-io/docx-editor/pull/78) [`3bdf81d`](https://github.com/portone-io/docx-editor/commit/3bdf81dc3c6b0a92091e46fc8312907e60cfc67e) Thanks [@Deea222](https://github.com/Deea222)! - A paragraph copied inside the editor no longer exports a duplicate `w14:paraId`. The copy goes out as a paragraph of its own, without the original's identifiers, and the original still goes out as the bytes it arrived as.
+  
+  A preserved block copied twice, a body-level bookmark marker or a section break among them, is refused with `unsupported-content` instead of written twice. `exportProblems` and `canExport` report that refusal ahead of the write, at the place the second copy stands.
+
+- [#67](https://github.com/portone-io/docx-editor/pull/67) [`77a468f`](https://github.com/portone-io/docx-editor/commit/77a468f5c4159e619a20b446bd35d14b4833f44a) Thanks [@Deea222](https://github.com/Deea222)! - Universal measures such as `8.5in` are read correctly. A measurement in a document may be written as a length with a unit - `8.5in`, `2.54cm`, `12pt` - as well as a count, and every one of them used to be read as its leading digits alone. A US Letter document whose section says `w:pgSz w:w="8.5in"` was drawn as a page 8.5 twips wide, which is no page at all, so the editor fell back to A4 and showed the wrong paper; a tab stop at `1.5in` landed at 0.08pt and an automatic tab interval of `0.75in` collapsed every tab in that document to no width. Page size and margins, indents, spacing, font sizes, table and cell widths, cell margins, row heights and tab stops are now read as the lengths they name.
+  
+  `on` and `off` spellings of boolean attributes are read as the schema admits. A style marked `w:default="on"` is now recognised as the default style for its kind, as `w:default="1"` already was, so a document that marks its defaults that way is shown with the formatting they lay down.
+  
+  Integer measurements retain support for an explicit `+` sign. Table and cell widths with an explicit `%` follow Word's percentage interpretation even when their width type says otherwise. Rebuilt table widths and grid columns are written in whole units; untouched XML is preserved.
+  
+  Overflowing universal-measure and percentage conversions are rejected during import.
+
+- [#65](https://github.com/portone-io/docx-editor/pull/65) [`a9a7e6d`](https://github.com/portone-io/docx-editor/commit/a9a7e6d92277f7725d995415da43ae5f3488e079) Thanks [@Deea222](https://github.com/Deea222)! - An edit to a cell border, a cell shading, a row height, a paragraph indent, or a line spacing now reads and writes the WordprocessingML attribute alone. A producer's own attribute that shares the local name (`x:val` beside `w:val`, declared ignorable) used to be taken for the formatting value, or written over in its place; it is now left as the producer wrote it, and the value Word reads is the one read and written.
+
 ## 0.2.1
 
 ### Patch Changes
