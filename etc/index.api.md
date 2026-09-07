@@ -355,7 +355,7 @@ export interface RunFormat {
     // (undocumented)
     background?: string;
     // (undocumented)
-    bold?: true;
+    bold?: boolean;
     // (undocumented)
     color?: string;
     fontFamily?: string;
@@ -364,13 +364,13 @@ export interface RunFormat {
     // (undocumented)
     highlight?: HighlightName;
     // (undocumented)
-    italic?: true;
+    italic?: boolean;
     lang?: string;
     // (undocumented)
-    smallCaps?: true;
+    smallCaps?: boolean;
     // (undocumented)
-    strike?: true;
-    underline?: UnderlineKind;
+    strike?: boolean;
+    underline?: UnderlineKind | "none";
     // (undocumented)
     verticalAlign?: VerticalAlign;
 }

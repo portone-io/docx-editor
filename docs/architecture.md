@@ -43,7 +43,7 @@ A folder may import itself and folders with a lower rank only.
 Folders at the same rank cannot import each other, so `page` and `table` share page data through `docx`.
 Subfolders are organizational and inherit the rank of their top-level folder. They split a feature's
 parsing, writing, rendering, or interaction responsibilities without creating another layer.
-For example, `docx/formatting` separates direct-format parsing from style layering, `page/kinds`
+For example, `docx/formatting` separates direct-format parsing, style layering, and the hierarchy resolver, `page/kinds`
 gives each breakable block shape its own measurer and decorator, while
 `editor/commands/comments` and `editor/commands/formatting` separate shared models, reads, and edits.
 
