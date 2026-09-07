@@ -22,12 +22,12 @@ import {
   W_NS,
 } from "../../ooxml/xml";
 import type { EditableComments } from "../../schema/protection";
+import { availablePartPath } from "../packageParts";
 import type {
   EntryReading,
   StoryEntry,
   StoryPartKind,
 } from "../protectionPolicy";
-import { directoryOf } from "../relationships";
 import type { SessionStore } from "../session";
 import type { Story } from "../storyProjection";
 import {
@@ -350,22 +350,14 @@ function arrivedIn(
   return entriesOf(shape, shape.xmlIn(session), "arrived") ?? new Map();
 }
 
-/** The first name in the story's own folder that no part of the package has taken */
-function availablePath(session: SessionStore, baseName: string): string {
-  const directory = directoryOf(session.mainPartPath);
-  for (let suffix = 0; ; suffix += 1) {
-    const path = `${directory}${baseName}${suffix === 0 ? "" : suffix + 1}.xml`;
-    if (!session.parts.has(path)) return path;
-  }
-}
-
 function storyPart(shape: CommentPartShape): StoryPartKind {
   return {
     relType: shape.relType,
     contentType: shape.contentType,
     pathIn: shape.pathIn,
     writePathIn: (session) =>
-      shape.pathIn(session) ?? availablePath(session, shape.baseName),
+      shape.pathIn(session) ??
+      availablePartPath(session.parts, session.mainPartPath, shape.baseName),
     entriesIn: (session, reading) =>
       entriesOf(shape, shape.xmlIn(session), reading),
     rootKept: (before, after) => {

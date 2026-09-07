@@ -2,7 +2,7 @@
 
 import { DocxExportError } from "../../ooxml/errors";
 import { decodeUtf8, encodeUtf8 } from "../../ooxml/xml";
-import { CONTENT_TYPES_PATH } from "./constants";
+import { CONTENT_TYPES_PATH } from "../packageParts";
 
 const TYPES_OPEN_TAG = /<(?:[\w.-]+:)?Types\b[^>]*>/;
 

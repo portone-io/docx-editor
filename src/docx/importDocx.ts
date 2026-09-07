@@ -42,8 +42,9 @@ import { buildParagraph, type ImportSources } from "./importParagraph";
 import { buildTable } from "./importTable";
 import { readImageSources } from "./media";
 import { readNotes } from "./notes";
+import { readPart, relatedPartPath } from "./packageParts";
 import { readBodyGeometry } from "./pageGeometry";
-import { resolveTarget } from "./relationships";
+import { readRelationships } from "./relationships";
 import { type BodyScan, scanBody } from "./scan";
 import {
   BODY_STORY_KEY,
@@ -59,25 +60,11 @@ const NUMBERING_REL = `${R_NS}/numbering`;
 const THEME_REL = `${R_NS}/theme`;
 const SETTINGS_REL = `${R_NS}/settings`;
 
-/** Finds the target path of the given relationship type in a relationship file inside the zip */
-function relationshipTarget(
-  parts: Map<string, Uint8Array>,
-  relsPath: string,
-  type: string
-): string | null {
-  const rels = parts.get(relsPath);
-  if (!rels) return null;
-  for (const rel of elementChildren(
-    parseXml(decodeUtf8(rels).text).documentElement
-  )) {
-    if (rel.getAttribute("Type") === type) return rel.getAttribute("Target");
-  }
-  return null;
-}
-
 /** Finds where inside the zip the part holding the body sits */
 function findMainPartPath(parts: Map<string, Uint8Array>): string {
-  const target = relationshipTarget(parts, "_rels/.rels", OFFICE_DOCUMENT_REL);
+  const target = readRelationships(parts, "_rels/.rels").find(
+    (rel) => rel.type === OFFICE_DOCUMENT_REL
+  )?.target;
   if (!target) {
     throw new DocxImportError(
       "missing-part",
@@ -85,32 +72,6 @@ function findMainPartPath(parts: Map<string, Uint8Array>): string {
     );
   }
   return target.replace(/^\//, "");
-}
-
-/** Where inside the zip a part paired with the body part sits. null if there is no such relationship */
-function relatedPartPath(
-  parts: Map<string, Uint8Array>,
-  mainPartPath: string,
-  type: string
-): string | null {
-  const directory = mainPartPath.replace(/[^/]+$/, "");
-  const fileName = mainPartPath.slice(directory.length);
-  const target = relationshipTarget(
-    parts,
-    `${directory}_rels/${fileName}.rels`,
-    type
-  );
-  if (!target) return null;
-  return resolveTarget(mainPartPath, target);
-}
-
-/** Pulls a single part out as text. This is the only place that knows about the zip */
-function readPart(
-  parts: Map<string, Uint8Array>,
-  path: string | null
-): string | null {
-  const bytes = path === null ? undefined : parts.get(path);
-  return bytes ? decodeUtf8(bytes).text : null;
 }
 
 /** Moves a single body block into a node. If we cannot model it, the result is a preservation node pointing at the original fragment */

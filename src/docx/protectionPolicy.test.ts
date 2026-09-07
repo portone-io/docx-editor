@@ -18,9 +18,9 @@ import type {
   CommentOnlyVerdict,
   onlyCommentsChangedBy,
 } from "./commentOnlyChange";
-import { CONTENT_TYPES_PATH } from "./comments/constants";
 import { planCommentParts } from "./comments/writing";
 import { importDocx } from "./importDocx";
+import { CONTENT_TYPES_PATH } from "./packageParts";
 import {
   type ChangeVerdict,
   type PackageReason,

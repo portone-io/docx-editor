@@ -12,6 +12,7 @@ import {
   toImageSrc,
 } from "../ooxml/image";
 import { decodeUtf8, encodeUtf8, R_NS } from "../ooxml/xml";
+import { CONTENT_TYPES_PATH } from "./packageParts";
 import {
   directoryOf,
   type Relationship,
@@ -23,8 +24,6 @@ import {
 import type { SessionStore } from "./session";
 
 const IMAGE_REL_TYPE = `${R_NS}/image`;
-
-const CONTENT_TYPES_PATH = "[Content_Types].xml";
 
 /** The extension a media part gets, per kind we can write */
 const EXTENSION_BY_MIME: Record<ImageMime, string> = {

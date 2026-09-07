@@ -22,21 +22,11 @@ import {
   encodeUtf8,
   parseXml,
 } from "../../ooxml/xml";
+import { CONTENT_TYPES_PATH, relatedPartPath } from "../packageParts";
 import type { StoryPartKind } from "../protectionPolicy";
-import {
-  directoryOf,
-  type RelationshipWriter,
-  readRelationships,
-  relsPathOf,
-  resolveTarget,
-} from "../relationships";
+import { directoryOf, type RelationshipWriter } from "../relationships";
 import type { SessionStore } from "../session";
-import {
-  COMMENT_AUTHOR_PROVIDER,
-  CONTENT_TYPES_PATH,
-  PEOPLE_REL_TYPE,
-  W15_NS,
-} from "./constants";
+import { COMMENT_AUTHOR_PROVIDER, PEOPLE_REL_TYPE, W15_NS } from "./constants";
 import { withContentType } from "./contentTypes";
 import { renderPerson } from "./grammar";
 import type { CommentReferenceData, CommentReplyData } from "./model";
@@ -65,11 +55,8 @@ export function readPeople(
   parts: Map<string, Uint8Array>,
   mainPartPath: string
 ): ImportedPeople {
-  const relationship = readRelationships(parts, relsPathOf(mainPartPath)).find(
-    (entry) => entry.type === PEOPLE_REL_TYPE && !entry.external
-  );
-  if (!relationship) return NO_PEOPLE;
-  const partPath = resolveTarget(mainPartPath, relationship.target);
+  const partPath = relatedPartPath(parts, mainPartPath, PEOPLE_REL_TYPE);
+  if (partPath === null) return NO_PEOPLE;
   const bytes = parts.get(partPath);
   if (!bytes) return { ...NO_PEOPLE, partPath };
 

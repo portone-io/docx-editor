@@ -26,7 +26,6 @@ import {
   extensionsChanged,
   extensionsRootProblem,
 } from "./comments";
-import { CONTENT_TYPES_PATH } from "./comments/constants";
 import {
   commentsExtendedPart,
   commentsPart,
@@ -38,6 +37,7 @@ import type { ExportOptions } from "./exportDocx";
 import { identityProblems } from "./identities";
 import { insertedImageSrcs } from "./media";
 import { newNumIds, numberingPartOf } from "./newLists";
+import { CONTENT_TYPES_PATH } from "./packageParts";
 import { lostOriginal } from "./serializeBlock";
 import {
   type DocxSession,

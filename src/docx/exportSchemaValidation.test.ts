@@ -58,11 +58,11 @@ import {
 import { MC_NS, W14_NS } from "./comments/constants";
 import { exportDocx } from "./exportDocx";
 import { importDocx } from "./importDocx";
+import { CONTENT_TYPES_PATH } from "./packageParts";
 import type { SessionStore } from "./session";
 
 const XSD_NS = "http://www.w3.org/2001/XMLSchema";
 const XML_NS = "http://www.w3.org/XML/1998/namespace";
-const CONTENT_TYPES_PATH = "[Content_Types].xml";
 
 const wmlPath = join(
   dirname(fileURLToPath(import.meta.url)),

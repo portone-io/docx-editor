@@ -7,9 +7,9 @@ import { elementXml, type XmlAttr, xmlnsAttr } from "../../ooxml/element";
 import { DocxExportError } from "../../ooxml/errors";
 import { wName, xmlnsDecl } from "../../ooxml/names";
 import { encodeUtf8 } from "../../ooxml/xml";
+import { CONTENT_TYPES_PATH } from "../packageParts";
 import { directoryOf, type RelationshipWriter } from "../relationships";
 import type { SessionStore } from "../session";
-import { CONTENT_TYPES_PATH } from "./constants";
 import { withContentType } from "./contentTypes";
 import {
   arrivedEntries,
