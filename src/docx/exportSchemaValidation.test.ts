@@ -238,6 +238,8 @@ const UNDESCRIBED_PARTS: readonly string[] = [
   "_rels/.rels",
   "word/_rels/document.xml.rels",
   "word/comments.xml",
+  "word/commentsExtended.xml",
+  "word/people.xml",
 ];
 
 function expectEveryXmlPartParses(name: string, bytes: Uint8Array): void {

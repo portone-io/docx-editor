@@ -1,5 +1,5 @@
 /**
- * The battery of edits that runs before an export is validated, as one probe per public writer.
+ * The battery of edits that runs before an export is validated, as a probe per public writer.
  *
  * Writing a paragraph back reaches the paragraph serializer and nothing else: everything the
  * export writes only for content that was not in the file already - a list definition spliced into
@@ -36,19 +36,46 @@ import {
   type ActiveParagraphAlign,
   activeLineSpacing,
   activeParagraphAlign,
+  activeParagraphStyle,
   addComment,
+  addCommentReply,
+  type DocumentComment,
+  type DocumentCommentReply,
+  decreaseIndent,
+  decreaseListLevel,
+  documentComments,
+  documentParagraphStyles,
   type ImageToInsert,
+  increaseIndent,
+  increaseListLevel,
   insertImage,
+  insertLineBreak,
+  insertPageBreak,
+  insertTab,
   insertTable,
   lockSelection,
+  type NewComment,
+  removeComment,
+  removeCommentReply,
+  removeLink,
+  setCommentResolved,
+  setFontFamily,
+  setFontSize,
   setLineSpacing,
   setLink,
   setParagraphAlign,
+  setParagraphStyle,
+  setTextBackground,
   setTextColor,
   toggleBold,
   toggleBulletList,
+  toggleItalic,
   toggleNumberedList,
+  toggleStrike,
+  toggleUnderline,
   unlockSelection,
+  updateComment,
+  updateCommentReply,
 } from "../../editor/commands";
 import { createEditorState } from "../../editor/createEditor";
 import {
@@ -59,15 +86,29 @@ import {
 import { wAttr } from "../../ooxml/units";
 import { childByLocalName, decodeUtf8, parseXml, W_NS } from "../../ooxml/xml";
 import {
+  addColumnAfter,
+  addColumnBefore,
   addRowAfter,
+  addRowBefore,
+  deleteColumn,
+  deleteRow,
+  deleteTable,
   mergeCells,
+  setCellBackground,
+  setCellBorderColor,
+  setCellBorders,
   setCellPadding,
   setCellVerticalAlign,
+  splitCell,
 } from "../../table";
 import { exportDocx } from "../exportDocx";
 import { documentNumbering, type SessionStore } from "../session";
 
-/** The editing state a screen would hold for this document */
+/**
+ * The editing state a screen would hold for this document, opened as the author the comment
+ * probes write under. A comment carrying an identity may only be edited by the author it names
+ * (`schema/protection`), and the probes that reply to, rewrite and resolve one need that.
+ */
 export function openState(doc: PMNode, session: SessionStore): EditorState {
   return createEditorState(doc, {
     numbering: documentNumbering(session),
@@ -75,6 +116,11 @@ export function openState(doc: PMNode, session: SessionStore): EditorState {
     defaults: session.defaults,
     canStartNewList: session.numberingPartPath !== null,
     paragraphStyles: session.paragraphStyles,
+    author: {
+      id: AUTHOR.authorId,
+      name: AUTHOR.author,
+      initials: AUTHOR.initials,
+    },
   });
 }
 
@@ -266,9 +312,94 @@ function otherSpacing(active: LineSpacing | null): LineSpacing {
 }
 
 const TEXT_COLOR = "#1F4E79";
+const TEXT_BACKGROUND = "#FFF2CC";
+const FONT_FAMILY = "Georgia";
+const FONT_SIZE_PT = 13;
+const CELL_BACKGROUND = "#EAF1F8";
+const CELL_BORDER_COLOR = "#C00000";
+
+const COMMENTS_PATH = "word/comments.xml";
+const COMMENTS_EXTENDED_PATH = "word/commentsExtended.xml";
+
+/**
+ * The author of everything the comment probes write. The identity is what the export records in
+ * the people part, which is written for no other reason and would go unreached without it
+ */
+const AUTHOR = {
+  author: "Schema test",
+  authorId: "schema-test",
+  initials: "ST",
+};
+const WRITTEN_AT = "2026-08-22T00:00:00Z";
+
+const A_COMMENT: NewComment = {
+  ...AUTHOR,
+  date: WRITTEN_AT,
+  text: "The comment written by the export battery",
+};
+
+/** The comment a probe below takes away again */
+const ANOTHER_COMMENT: NewComment = {
+  ...AUTHOR,
+  date: WRITTEN_AT,
+  text: "The comment the battery takes away again",
+};
+
+const EDITED_COMMENT = "The comment the battery rewrote";
+
+const A_REPLY: NewComment = {
+  ...AUTHOR,
+  date: WRITTEN_AT,
+  text: "The reply written by the export battery",
+};
+
+/** The reply a probe below takes away again */
+const ANOTHER_REPLY: NewComment = {
+  ...AUTHOR,
+  date: WRITTEN_AT,
+  text: "The reply the battery takes away again",
+};
+
+const EDITED_REPLY = "The reply the battery rewrote";
+
+/** A paragraph style the document defines that the paragraph is not already written in */
+function otherStyleId(state: EditorState): string {
+  const active = activeParagraphStyle(state);
+  const worn = active.kind === "shared" ? active.styleId : null;
+  const option = documentParagraphStyles(state).find(
+    (style) => !style.isDefault && !style.hidden && style.id !== worn
+  );
+  if (option === undefined) {
+    throw new Error("the document defines no other paragraph style to put on");
+  }
+  return option.id;
+}
+
+/** The comment a probe left behind, which the ones working on it find it by */
+function commentReading(state: EditorState, text: string): DocumentComment {
+  const comment = documentComments(state).find((entry) => entry.text === text);
+  if (comment === undefined) {
+    throw new Error(`the document holds no comment reading "${text}"`);
+  }
+  return comment;
+}
+
+function replyReading(
+  comment: DocumentComment,
+  text: string
+): DocumentCommentReply {
+  const reply = comment.replies.find((entry) => entry.text === text);
+  if (reply === undefined) {
+    throw new Error(`the comment holds no reply reading "${text}"`);
+  }
+  return reply;
+}
 
 /** The address a probe links a stretch of text to, which the export writes a relationship for */
 const LINK_ADDRESS = "https://example.com/battery?a=1&b=2";
+
+/** The address of the link a probe puts on and the one after it takes off again */
+const REMOVED_ADDRESS = "https://example.com/battery/taken-off";
 
 const CONTENT_TYPES_PATH = "[Content_Types].xml";
 
@@ -460,11 +591,61 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
       run: (state) => ran(wholeParagraph(state), toggleBold),
     },
   ],
+  toggleItalic: [
+    {
+      name: "toggle italic",
+      slot: "formatted",
+      run: (state) => ran(wholeParagraph(state), toggleItalic),
+    },
+  ],
+  toggleUnderline: [
+    {
+      name: "toggle underline",
+      slot: "formatted",
+      run: (state) => ran(wholeParagraph(state), toggleUnderline),
+    },
+  ],
+  toggleStrike: [
+    {
+      name: "strike the text through",
+      slot: "formatted",
+      run: (state) => ran(wholeParagraph(state), toggleStrike),
+    },
+  ],
   setTextColor: [
     {
       name: "color the text",
       slot: "formatted",
       run: (state) => ran(wholeParagraph(state), setTextColor(TEXT_COLOR)),
+    },
+  ],
+  setTextBackground: [
+    {
+      name: "highlight the text",
+      slot: "formatted",
+      run: (state) =>
+        ran(wholeParagraph(state), setTextBackground(TEXT_BACKGROUND)),
+    },
+  ],
+  setFontFamily: [
+    {
+      name: "set the font",
+      slot: "formatted",
+      run: (state) => ran(wholeParagraph(state), setFontFamily(FONT_FAMILY)),
+    },
+  ],
+  setFontSize: [
+    {
+      name: "set the font size",
+      slot: "formatted",
+      run: (state) => ran(wholeParagraph(state), setFontSize(FONT_SIZE_PT)),
+    },
+  ],
+  setParagraphStyle: [
+    {
+      name: "put a paragraph style on a paragraph",
+      slot: "formatted",
+      run: (state) => ran(state, setParagraphStyle(otherStyleId(state))),
     },
   ],
   setParagraphAlign: [
@@ -483,6 +664,20 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
         ran(state, setLineSpacing(otherSpacing(activeLineSpacing(state)))),
     },
   ],
+  increaseIndent: [
+    {
+      name: "indent a paragraph",
+      slot: "spaced",
+      run: (state) => ran(state, increaseIndent),
+    },
+  ],
+  decreaseIndent: [
+    {
+      name: "take that indent back off",
+      slot: "spaced",
+      run: (state) => ran(state, decreaseIndent),
+    },
+  ],
   toggleNumberedList: [
     {
       name: "start a numbered list",
@@ -497,11 +692,25 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
       },
     },
   ],
+  increaseListLevel: [
+    {
+      name: "move that list item a level deeper",
+      slot: "numbered",
+      run: (state) => ran(state, increaseListLevel),
+    },
+  ],
+  decreaseListLevel: [
+    {
+      name: "move that list item a level back up",
+      slot: "numbered",
+      run: (state) => ran(state, decreaseListLevel),
+    },
+  ],
   toggleBulletList: [
     {
       name: "start a bullet list",
       slot: "bulleted",
-      // One definition for each of the two lists the probes above and this one started
+      // One definition for each of the two lists this probe and the numbered one above started
       expect: (exported) =>
         expect(
           addedNumIds(exported),
@@ -514,21 +723,82 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
     {
       name: "insert a table",
       slot: "tabled",
-      run: (state) => ran(state, insertTable({ rows: 2, columns: 3 })),
+      run: (state) => ran(state, insertTable({ rows: 3, columns: 4 })),
     },
   ],
   addRowAfter: [
     {
-      name: "add a row to that table",
+      name: "add a row under the first",
       slot: "table",
       run: (state) => ran(state, addRowAfter),
     },
   ],
+  addRowBefore: [
+    {
+      name: "add a row over the first",
+      slot: "table",
+      run: (state) => ran(state, addRowBefore),
+    },
+  ],
+  addColumnAfter: [
+    {
+      name: "add a column beside the first",
+      slot: "table",
+      run: (state) => ran(state, addColumnAfter),
+    },
+  ],
+  addColumnBefore: [
+    {
+      name: "add a column before the first",
+      slot: "table",
+      run: (state) => ran(state, addColumnBefore),
+    },
+  ],
   mergeCells: [
     {
-      name: "merge two cells of the added row",
+      name: "merge two cells of the second row",
       slot: "table",
       run: (state) => ran(twoCellsOfRow(state, 1), mergeCells),
+    },
+    // The cell the split below takes apart. Merging one row and splitting another is what leaves
+    // the package with both a merged cell and a cell the writer built out of one
+    {
+      name: "merge two cells of the third row",
+      slot: "table",
+      run: (state) => ran(twoCellsOfRow(state, 2), mergeCells),
+    },
+  ],
+  splitCell: [
+    {
+      name: "split the merged cell of the third row",
+      slot: "table",
+      run: (state) => ran(twoCellsOfRow(state, 2), splitCell),
+    },
+  ],
+  setCellBackground: [
+    {
+      name: "shade selected cells",
+      slot: "table",
+      run: (state) =>
+        ran(twoCellsOfRow(state, 3), setCellBackground(CELL_BACKGROUND)),
+    },
+  ],
+  setCellBorderColor: [
+    {
+      name: "color the borders of selected cells",
+      slot: "table",
+      run: (state) =>
+        ran(twoCellsOfRow(state, 3), setCellBorderColor(CELL_BORDER_COLOR)),
+    },
+  ],
+  setCellBorders: [
+    {
+      // A row of its own, and the preset that clears the lines: `outer` draws a single line on
+      // the sides of the selection that face outward, which the cells of a new table are already
+      // drawn with, so it would report that it changes nothing
+      name: "clear the lines of the cells of a row",
+      slot: "table",
+      run: (state) => ran(twoCellsOfRow(state, 4), setCellBorders("none")),
     },
   ],
   setCellVerticalAlign: [
@@ -536,7 +806,7 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
       name: "align selected cells vertically",
       slot: "table",
       run: (state) =>
-        ran(twoCellsOfRow(state, 1), setCellVerticalAlign("center")),
+        ran(twoCellsOfRow(state, 3), setCellVerticalAlign("center")),
     },
   ],
   setCellPadding: [
@@ -545,9 +815,34 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
       slot: "table",
       run: (state) =>
         ran(
-          twoCellsOfRow(state, 1),
+          twoCellsOfRow(state, 3),
           setCellPadding({ top: 6, right: 8, bottom: 6, left: 8 })
         ),
+    },
+  ],
+  deleteRow: [
+    {
+      name: "delete the first row of that table",
+      slot: "table",
+      run: (state) => ran(state, deleteRow),
+    },
+  ],
+  deleteColumn: [
+    {
+      name: "delete the first column of that table",
+      slot: "table",
+      run: (state) => ran(state, deleteColumn),
+    },
+  ],
+  deleteTable: [
+    {
+      name: "delete a table",
+      slot: "tabled",
+      // The table this one takes away is one it puts there itself, so that the table every probe
+      // above worked in is the one written out. What stays behind is the empty paragraph a new
+      // table is inserted with
+      run: (state) =>
+        ran(ran(state, insertTable({ rows: 2, columns: 2 })), deleteTable),
     },
   ],
   insertImage: [
@@ -583,6 +878,27 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
       },
     },
   ],
+  insertLineBreak: [
+    {
+      name: "break a line",
+      slot: "pictured",
+      run: (state) => ran(state, insertLineBreak),
+    },
+  ],
+  insertPageBreak: [
+    {
+      name: "break a page",
+      slot: "pictured",
+      run: (state) => ran(state, insertPageBreak),
+    },
+  ],
+  insertTab: [
+    {
+      name: "put a tab in",
+      slot: "pictured",
+      run: (state) => ran(state, insertTab),
+    },
+  ],
   setLink: [
     {
       name: "put a link on a stretch of text",
@@ -605,21 +921,160 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
         ).toContain('TargetMode="External"');
       },
     },
+    // The link the probe below takes off again, which is why the relationship count above counts
+    // one link and not two
+    {
+      name: "put a second link on a stretch of text",
+      slot: "bulleted",
+      run: (state) => ran(wholeParagraph(state), setLink(REMOVED_ADDRESS)),
+    },
+  ],
+  removeLink: [
+    {
+      name: "take that second link off again",
+      slot: "bulleted",
+      run: (state) => ran(wholeParagraph(state), removeLink),
+      expect: (exported) =>
+        expect(
+          linkRelationships(exported).filter((rel) =>
+            rel.includes(REMOVED_ADDRESS)
+          ),
+          `${exported.name} relationships left behind by a link that was taken off`
+        ).toEqual([]),
+    },
   ],
   addComment: [
     {
       name: "add a comment to a stretch of text",
       slot: "spaced",
+      run: (state) => ran(wholeParagraph(state), addComment(A_COMMENT)),
+    },
+    // The comment the probe below takes away again
+    {
+      name: "add a second comment",
+      slot: "bulleted",
+      run: (state) => ran(wholeParagraph(state), addComment(ANOTHER_COMMENT)),
+    },
+  ],
+  addCommentReply: [
+    {
+      name: "reply to that comment",
+      slot: "spaced",
       run: (state) =>
         ran(
-          wholeParagraph(state),
-          addComment({
-            text: "The comment written by the export battery",
-            author: "Schema test",
-            initials: "ST",
-            date: "2026-08-22T00:00:00Z",
-          })
+          state,
+          addCommentReply(commentReading(state, A_COMMENT.text).id, A_REPLY)
         ),
+    },
+    // The reply the removal below takes away again
+    {
+      name: "reply to it a second time",
+      slot: "spaced",
+      run: (state) =>
+        ran(
+          state,
+          addCommentReply(
+            commentReading(state, A_COMMENT.text).id,
+            ANOTHER_REPLY
+          )
+        ),
+    },
+  ],
+  updateCommentReply: [
+    {
+      name: "rewrite the first reply",
+      slot: "spaced",
+      run: (state) => {
+        const comment = commentReading(state, A_COMMENT.text);
+        return ran(
+          state,
+          updateCommentReply(
+            comment.id,
+            replyReading(comment, A_REPLY.text).id,
+            EDITED_REPLY
+          )
+        );
+      },
+    },
+  ],
+  removeCommentReply: [
+    {
+      name: "take the second reply away",
+      slot: "spaced",
+      run: (state) => {
+        const comment = commentReading(state, A_COMMENT.text);
+        return ran(
+          state,
+          removeCommentReply(
+            comment.id,
+            replyReading(comment, ANOTHER_REPLY.text).id
+          )
+        );
+      },
+      expect: (exported) =>
+        expect(
+          exported.text(COMMENTS_PATH),
+          `${exported.name} keeps a reply that was taken away`
+        ).not.toContain(ANOTHER_REPLY.text),
+    },
+  ],
+  updateComment: [
+    {
+      name: "rewrite that comment",
+      slot: "spaced",
+      run: (state) =>
+        ran(
+          state,
+          updateComment(
+            commentReading(state, A_COMMENT.text).id,
+            EDITED_COMMENT
+          )
+        ),
+      expect: (exported) => {
+        const comments = exported.text(COMMENTS_PATH);
+        expect(comments, `${exported.name} comments part`).toContain(
+          EDITED_COMMENT
+        );
+        expect(
+          comments,
+          `${exported.name} keeps the text a comment was rewritten from`
+        ).not.toContain(A_COMMENT.text);
+      },
+    },
+  ],
+  setCommentResolved: [
+    {
+      name: "resolve that thread",
+      slot: "spaced",
+      run: (state) =>
+        ran(
+          state,
+          setCommentResolved(commentReading(state, EDITED_COMMENT).id, true)
+        ),
+      // The thread state is what the part beside the comments part carries, and the key it hangs
+      // off is `w14:paraId` on the comment's own paragraph, which is markup the part 1 schemas
+      // describe nowhere. Reading it takes the preprocessing this suite validates through
+      expect: (exported) =>
+        expect(
+          exported.text(COMMENTS_EXTENDED_PATH),
+          `${exported.name} thread state`
+        ).toContain('w15:done="1"'),
+    },
+  ],
+  removeComment: [
+    {
+      name: "take the second comment away",
+      slot: "bulleted",
+      run: (state) =>
+        ran(
+          state,
+          removeComment(commentReading(state, ANOTHER_COMMENT.text).id)
+        ),
+      expect: (exported) =>
+        expect(
+          exported.text(COMMENTS_PATH),
+          `${exported.name} keeps a comment that was taken away`
+        ).not.toContain(ANOTHER_COMMENT.text),
     },
   ],
   // The locks go last: the lock guard turns down every edit reaching into a locked stretch,
@@ -656,12 +1111,71 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
 /**
  * Everything else the two entries export, with the reason it reaches no writer.
  *
- * A query answers about the document without changing it, a selection move leaves the document
- * where it was, and undo and redo put back a document a probe above already wrote.
+ * A query answers about the document and leaves it as it was, and so does a selection move. Undo
+ * and redo put back a document a probe above already wrote, so what they reach the writer with is
+ * markup another probe already had it write.
  */
-export const NOT_A_WRITER: Readonly<Record<string, string>> = {};
+export const NOT_A_WRITER: Readonly<Record<string, string>> = {
+  IMAGE_FILE_ACCEPT: "the accept string a file picker is given",
+  SINGLE_LINE_SPACING: "a line spacing value",
+  activeCellBackground: "a query about the selected cells",
+  activeCellBorderColor: "a query about the selected cells",
+  activeCellPadding: "a query about the selected cells",
+  activeCellVerticalAlign: "a query about the selected cells",
+  activeFontFamily: "a query about the selection",
+  activeFontSize: "a query about the selection",
+  activeLineSpacing: "a query about the selection",
+  activeLink: "a query about the selection",
+  activeLinkSpan: "a query about the selection",
+  activeListKind: "a query about the selection",
+  activeParagraphAlign: "a query about the selection",
+  activeParagraphStyle: "a query about the selection",
+  activeTextBackground: "a query about the selection",
+  activeTextColor: "a query about the selection",
+  canAddComment: "the query the add-comment button is drawn from",
+  canDecreaseIndent: "the query the decrease-indent button is drawn from",
+  canEditComment:
+    "the query the edit and delete buttons of a comment are drawn from",
+  canFormatText: "the query the character formatting controls are drawn from",
+  canIncreaseIndent: "the query the increase-indent button is drawn from",
+  canInsertImage: "the query the image button is drawn from",
+  canInsertTable: "the query the insert-table button is drawn from",
+  canMergeCells: "the query the merge row is drawn from",
+  canRunCommand: "the question asked of a command the package does not own",
+  canSetCellBorderColor: "the query the border colour picker is drawn from",
+  canSetCellFormatting: "the query the cell layout controls are drawn from",
+  canSetLineSpacing: "the query the spacing menu is drawn from",
+  canSetLink: "the query the link button is drawn from",
+  canSetParagraphAlign: "the query the alignment menu is drawn from",
+  canSplitCell: "the query the split row is drawn from",
+  documentBodyWidthPx: "a measurement read off the open document",
+  documentComments: "the comments displayed alongside the document",
+  documentDefaults: "the formatting the document declares",
+  documentFontNames: "the fonts the document names",
+  documentHasLocked: "a query about the document",
+  documentNotes: "the notes displayed after the document",
+  documentParagraphStyles: "the styles the document defines",
+  editingProtection: "a query about what the editor as a whole may receive",
+  fittedExtent: "the rule an oversized image is shrunk by",
+  imageFilesIn: "picks the image files out of a picker, clipboard or drag",
+  insertImageFiles:
+    "reads the files first, then runs `insertImage`, whose probe is above",
+  isBoldActive: "a query about the selection",
+  isInList: "a query about the selection",
+  isInTable: "the query the table buttons are drawn from",
+  isItalicActive: "a query about the selection",
+  isStrikeActive: "a query about the selection",
+  isUnderlineActive: "a query about the selection",
+  readImageFile: "reads one file and gives the size it comes in at",
+  redo: "puts back a document the probe it replays already wrote",
+  selectComment: "moves the selection to a comment's anchor",
+  selectionLock: "a query about the selection",
+  selectionTouchesLocked: "a query about the selection",
+  undo: "puts back a document the probe before it already wrote",
+};
 
-export function everyProbe(): WriterProbe[] {
+/** Every probe of the registry, in the order it is written in, which is the order they run in */
+function everyProbe(): WriterProbe[] {
   return Object.values(WRITER_PROBES).flat();
 }
 
