@@ -191,6 +191,15 @@ function readList(
   return { levels };
 }
 
+/**
+ * The list each numbering style names, by the style's id.
+ *
+ * A numbering style is never worn by a paragraph: it is a name on a list, which an abstract
+ * definition reaches through `w:numStyleLink` (§17.9.21). The map is built from styles.xml, which
+ * this folder cannot read for itself.
+ */
+export type NumberingStyleLinks = ReadonlyMap<string, number>;
+
 /** What a caller may say about reading numbering beyond handing over the XML */
 export interface NumberingOptions {
   /**
@@ -198,6 +207,53 @@ export interface NumberingOptions {
    * runtime carrying none refuses the read with `no-xml-parser`.
    */
   xmlParser?: XmlParser;
+  /**
+   * The list each numbering style of the document names. Left out, a definition deferring to a
+   * numbering style is read through the definition that declares it stands behind that style.
+   */
+  links?: NumberingStyleLinks;
+}
+
+const NO_STYLE_LINKS: NumberingStyleLinks = new Map();
+
+/** What the abstract definitions of one numbering part say about each other */
+interface Definitions {
+  /** Each `w:abstractNum` by its id */
+  byId: ReadonlyMap<number, Element>;
+  /** The definition each `w:num` names */
+  ofList: ReadonlyMap<number, number>;
+  /** The definition that declares itself the one behind a numbering style (`w:styleLink`) */
+  ofStyle: ReadonlyMap<string, number>;
+  links: NumberingStyleLinks;
+}
+
+/**
+ * The levels one abstract definition lays down.
+ *
+ * A definition carrying `w:numStyleLink` holds none of its own and defers to a numbering style
+ * (§17.9.21), which names the list whose definition holds them. That definition is the one the
+ * style points at, and where no style table was handed in, the one that declares it stands behind
+ * that style (`w:styleLink`, §17.9.27). A link that leads back to a definition already followed is
+ * left where it is rather than followed round again.
+ */
+function levelsOf(
+  id: number,
+  definitions: Definitions,
+  seen: Set<number>
+): Map<number, NumberingLevel> {
+  const el = definitions.byId.get(id);
+  if (!el) return new Map();
+  const own = readLevels(el);
+  const styleId = childValue(el, "numStyleLink");
+  if (own.size > 0 || styleId === null) return own;
+
+  const named = definitions.links.get(styleId);
+  const deferred =
+    (named === undefined ? undefined : definitions.ofList.get(named)) ??
+    definitions.ofStyle.get(styleId);
+  if (deferred === undefined || seen.has(deferred)) return own;
+  seen.add(deferred);
+  return levelsOf(deferred, definitions, seen);
 }
 
 /**
@@ -209,17 +265,38 @@ export function parseNumbering(
   options?: NumberingOptions
 ): Numbering {
   if (xml === null) return EMPTY_NUMBERING;
-  return withXmlParser(options?.xmlParser, () => readNumbering(xml));
+  return withXmlParser(options?.xmlParser, () => readNumbering(xml, options));
 }
 
-function readNumbering(xml: string): Numbering {
+function readNumbering(xml: string, options?: NumberingOptions): Numbering {
   const root = parseXml(xml).documentElement;
 
-  const abstractLevels = new Map<number, Map<number, NumberingLevel>>();
+  const byId = new Map<number, Element>();
+  const ofStyle = new Map<string, number>();
+  const ofList = new Map<number, number>();
   for (const child of elementChildren(root)) {
-    if (child.localName !== "abstractNum") continue;
-    const id = ST_DecimalNumber.parse(wAttr(child, "abstractNumId"));
-    if (id !== null) abstractLevels.set(id, readLevels(child));
+    if (child.localName === "abstractNum") {
+      const id = ST_DecimalNumber.parse(wAttr(child, "abstractNumId"));
+      if (id === null) continue;
+      byId.set(id, child);
+      const styleId = childValue(child, "styleLink");
+      if (styleId !== null) ofStyle.set(styleId, id);
+    } else if (child.localName === "num") {
+      const numId = ST_DecimalNumber.parse(wAttr(child, "numId"));
+      const id = ST_DecimalNumber.parse(childValue(child, "abstractNumId"));
+      if (numId !== null && id !== null) ofList.set(numId, id);
+    }
+  }
+  const definitions: Definitions = {
+    byId,
+    ofList,
+    ofStyle,
+    links: options?.links ?? NO_STYLE_LINKS,
+  };
+
+  const abstractLevels = new Map<number, Map<number, NumberingLevel>>();
+  for (const id of byId.keys()) {
+    abstractLevels.set(id, levelsOf(id, definitions, new Set([id])));
   }
 
   const lists = new Map<number, NumberingList>();

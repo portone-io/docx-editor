@@ -5,7 +5,6 @@
  */
 
 import { Fragment, type Node as PMNode } from "prosemirror-model";
-import { parseNumbering } from "../numbering/parseNumbering";
 import { DocxImportError } from "../ooxml/errors";
 import {
   childByLocalName,
@@ -246,7 +245,7 @@ function readDocx(input: DocxBytes): {
   const numberingXml = readPart(parts, numberingPartPath);
   const formatting = formattingContextOf(
     stylesDom,
-    parseNumbering(numberingXml),
+    numberingXml,
     themeFonts,
     readCompatSettings(settingsDom)
   );

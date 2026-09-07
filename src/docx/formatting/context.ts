@@ -2,6 +2,8 @@ import type { RunFormat } from "../../model/format";
 import {
   EMPTY_NUMBERING,
   type Numbering,
+  type NumberingOptions,
+  parseNumbering,
 } from "../../numbering/parseNumbering";
 import { type CompatSettings, NO_COMPAT } from "../documentSettings";
 import { NO_THEME_FONTS, type ThemeFonts } from "../theme";
@@ -10,6 +12,7 @@ import {
   defaultParagraphStyleIdOf,
   defaultTableStyleIdOf,
   NO_STYLES,
+  numberingStyleLinks,
   readStyles,
   type StyleTable,
 } from "./styles";
@@ -49,18 +52,31 @@ export const NO_FORMATTING: FormattingContext = {
   compat: NO_COMPAT,
 };
 
+/**
+ * How a document's numbering part is read against the rest of what the document lays down.
+ *
+ * The numbering folder cannot reach styles.xml, so the links a definition follows are handed to it
+ * from here, and the two callers that read a numbering part - opening a document and asking an
+ * open one for its lists - resolve the same links.
+ */
+export function numberingOptionsFor(styles: StyleTable): NumberingOptions {
+  return { links: numberingStyleLinks(styles) };
+}
+
 /** The context an opened document resolves against. A document without a styles part lays down nothing */
 export function formattingContextOf(
   styles: Document | null,
-  numbering: Numbering,
+  numberingXml: string | null,
   themeFonts: ThemeFonts,
   compat: CompatSettings = NO_COMPAT
 ): FormattingContext {
+  const table = styles === null ? NO_STYLES : readStyles(styles, themeFonts);
+  const numbering = parseNumbering(numberingXml, numberingOptionsFor(table));
   if (styles === null) {
     return { ...NO_FORMATTING, numbering, themeFonts, compat };
   }
   return {
-    styles: readStyles(styles, themeFonts),
+    styles: table,
     defaultParagraphStyleId: defaultParagraphStyleIdOf(styles),
     defaultTableStyleId: defaultTableStyleIdOf(styles),
     paragraphDefaults: readDefaultParagraphFormat(styles),

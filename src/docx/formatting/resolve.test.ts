@@ -50,7 +50,7 @@ function context(
   return {
     ...formattingContextOf(
       parseXml(`<w:styles ${W_NS}>${stylesXml}</w:styles>`),
-      overrides.numbering ?? NO_FORMATTING.numbering,
+      null,
       NO_FORMATTING.themeFonts
     ),
     ...overrides,

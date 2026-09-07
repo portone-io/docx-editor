@@ -110,6 +110,60 @@ describe("parseNumbering", () => {
     expect(numbering.lists.get(1)?.levels.get(0)?.format).toBe("decimal");
   });
 
+  it("resolves numStyleLink through the numbering style's numPr to the linked abstractNum", () => {
+    const numbering = parseNumbering(
+      numberingXml(
+        '<w:abstractNum w:abstractNumId="0"><w:numStyleLink w:val="Chapters"/></w:abstractNum>' +
+          `<w:abstractNum w:abstractNumId="1"><w:styleLink w:val="Chapters"/>${DECIMAL_LEVEL}</w:abstractNum>` +
+          '<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>' +
+          '<w:num w:numId="6"><w:abstractNumId w:val="1"/></w:num>'
+      ),
+      { links: new Map([["Chapters", 6]]) }
+    );
+
+    expect(numbering.lists.get(1)?.levels.get(0)?.start).toBe(3);
+  });
+
+  it("follows numStyleLink to the definition standing behind that style when no style names a list", () => {
+    const numbering = parseNumbering(
+      numberingXml(
+        '<w:abstractNum w:abstractNumId="0"><w:numStyleLink w:val="Chapters"/></w:abstractNum>' +
+          `<w:abstractNum w:abstractNumId="1"><w:styleLink w:val="Chapters"/>${DECIMAL_LEVEL}</w:abstractNum>` +
+          '<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>'
+      )
+    );
+
+    expect(numbering.lists.get(1)?.levels.get(0)?.start).toBe(3);
+  });
+
+  it("a styleLink definition keeps its own levels rather than following the style back", () => {
+    const numbering = parseNumbering(
+      numberingXml(
+        `<w:abstractNum w:abstractNumId="0"><w:styleLink w:val="Chapters"/>${DECIMAL_LEVEL}</w:abstractNum>` +
+          '<w:abstractNum w:abstractNumId="1"><w:lvl w:ilvl="0"><w:numFmt w:val="bullet"/>' +
+          '<w:lvlText w:val="\u25cf"/></w:lvl></w:abstractNum>' +
+          '<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>' +
+          '<w:num w:numId="6"><w:abstractNumId w:val="1"/></w:num>'
+      ),
+      { links: new Map([["Chapters", 6]]) }
+    );
+
+    expect(numbering.lists.get(1)?.levels.get(0)?.format).toBe("decimal");
+  });
+
+  it("leaves a numStyleLink that leads back to itself without levels rather than following it round", () => {
+    const numbering = parseNumbering(
+      numberingXml(
+        '<w:abstractNum w:abstractNumId="0"><w:styleLink w:val="Chapters"/>' +
+          '<w:numStyleLink w:val="Chapters"/></w:abstractNum>' +
+          '<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>'
+      ),
+      { links: new Map([["Chapters", 1]]) }
+    );
+
+    expect(numbering.lists.get(1)?.levels.size).toBe(0);
+  });
+
   it("reads tab directives from numbering-level paragraph properties", () => {
     const numbering = parseNumbering(
       numberingXml(
