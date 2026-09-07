@@ -569,7 +569,10 @@ describe("a node that came from outside a table", () => {
               .child(0)
               .copy(
                 Fragment.fromArray([
-                  docxSchema.nodes.docxRaw.create({ srcId: 0, name: "w:tbl" }),
+                  docxSchema.nodes.docxRaw.create({
+                    srcId: "opened:body:0",
+                    name: "w:tbl",
+                  }),
                 ])
               ),
           ])
