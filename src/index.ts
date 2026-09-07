@@ -25,6 +25,8 @@ export type {
 } from "./DocxEditor";
 export { DocxEditor } from "./DocxEditor";
 export type { DocxBytes, DocxSource } from "./docx/importDocx";
+/** What the handle and a `blocked` download report: each reason the document cannot be written, under the code `DocxExportError` would throw it with */
+export type { ExportProblem } from "./docx/invariants";
 export type {
   DownloadDocxOptions,
   DownloadDocxResult,

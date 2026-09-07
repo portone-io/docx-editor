@@ -87,6 +87,12 @@ that: neither can be put back once it is gone, so a command that would sweep one
 it does not apply. Wrap third-party or application commands with `canRunCommand(command, state)`
 when they also need to respect the same rules.
 
+`canExport` reports whether the document as it stands can be written back, and
+`documentExportProblems` lists every reason it could not, each under the code `DocxExportError`
+would carry and with its `pos` where the problem stands in the document, so an export control is
+drawn from the same list the writer refuses over; [Checking before
+export](/docs/core#checking-before-export) lists the codes.
+
 Use `insertTab` to insert the same editable DOCX tab as the built-in Tab binding. It applies inside
 an ordinary paragraph; table cells and list paragraphs keep their navigation and level-changing Tab
 behavior.

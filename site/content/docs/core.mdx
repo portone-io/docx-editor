@@ -89,9 +89,9 @@ const { DOMParser } = new JSDOM().window;
 const { doc, session } = importDocx(source, { xmlParser: new DOMParser() });
 ```
 
-`importDocx`, `exportDocx`, and `onlyCommentsChangedBy` all take `xmlParser`, and the parser one
-of them is given reads every part it touches, including both of the files `onlyCommentsChangedBy`
-opens for itself.
+`importDocx`, `exportDocx`, `exportProblems`, and `onlyCommentsChangedBy` all take `xmlParser`,
+and the parser one of them is given reads every part it touches, including both of the files
+`onlyCommentsChangedBy` opens for itself.
 `documentNumbering` and `parseNumbering` read XML of their own rather than through one of those
 calls, so they take the option as a second argument.
 The option asks for `parseFromString(source, "application/xml")`, and what it hands back has to be
@@ -246,30 +246,52 @@ reaches it; [Server environments](#server-environments) covers it.
 A file a person picked can fail with any of the rest, so the code is worth showing: `not-a-docx`
 and `too-large` are usually the person's to fix, while the others describe the file itself.
 
-### Export codes
+### Checking before export
 
-| Code | Why the document could not be written |
+`exportProblems(doc, session)` reports every reason `exportDocx` would refuse the document, before
+anything is written and in the order the writer would raise them:
+
+```ts
+import { exportDocx, exportProblems } from "@portone/docx-editor/core";
+
+const problems = exportProblems(doc, session);
+if (problems.length > 0) {
+  console.warn(problems[0].code, problems[0].message);
+} else {
+  const bytes = exportDocx(doc, session);
+}
+```
+
+Each problem carries the `code` and `message` the `DocxExportError` would carry, and `pos` where
+the problem stands at a place in the document, which a screen can select; a problem of the
+package or of the session carries none.
+
+| Code | What is reported |
 | --- | --- |
-| `missing-numbering-part` | A new list needs a numbering part the document does not have. |
-| `missing-content-types` | A new image needs a content types part the package does not have. |
-| `unsupported-content` | The document holds a node kind with no way to serialize it. |
-| `lost-original` | A node that carries only its original XML has lost it. |
-| `malformed-xml` | An original XML fragment cannot be read well enough to rewrite. |
-| `invalid-table` | The table grid is inconsistent, such as a vertical merge outliving its rows. |
+| `malformed-xml` | A bookmark marker whose partner is gone, or a comment part with no root element to rewrite around once a comment has changed. |
+| `invalid-table` | A vertical merge reaching past the last row of its table. |
+| `lost-original` | A preserved block that has lost its original XML, or a placeholder pasted in from another open document: a placeholder is written from the file it was read out of, so one from another file cannot be. |
+| `missing-numbering-part` | A new list in a document that has no numbering part to define it in. The built-in list controls report that they do not apply for exactly this reason. |
+| `missing-content-types` | A new image, or a first comment, in a package that has no content types part to declare the new part in. |
+
+Every code here is reported by `exportProblems` before it is thrown, and `exportDocx` throws the
+first entry of the same list with its code and message, so a screen that asks first cannot be
+answered differently by the write.
+Inside an editor, [`canExport`](/docs/custom-controls#commands-and-queries) asks the same question
+of the state.
+A refusal the list does not foresee is still thrown: `unsupported-content` for a node or an image
+of a kind the writer cannot put out, and `lost-original` or `malformed-xml` for a node a plugin
+stripped of an attribute the writer needs or a raw fragment it wrote that does not hold its shape.
+None of those three is reached by typing; each names a plugin's doing or a bug in the editor.
 
 Writing reads the document it produced back, so `exportDocx` needs an XML parser as much as
-`importDocx` does.
+`importDocx` does, and `exportProblems` reads the list definitions to tell a new list from one the
+document already had, so it takes the same `xmlParser` option.
 A call on a runtime with none is refused ahead of all of these, with `DocxImportError` and the
 import code `no-xml-parser`; [Server environments](#server-environments) covers it.
 
 An export failure leaves the editor state untouched, so a screen can report the reason and let the
 person carry on editing.
-`missing-numbering-part` is the one an ordinary edit can reach: a document with no numbering part
-cannot take a new list, and the built-in list controls report that they do not apply for exactly
-that reason.
-`malformed-xml` is not: the editor turns a raw fragment down at the DOM boundary before it reaches
-the document, so this code names a fragment a plugin wrote or a bug in the editor rather than
-anything a person typed.
 
 ### In the React component
 
@@ -277,7 +299,9 @@ The component renders a refusal in place of the editor when import fails, either
 `renderImportError` or through the built-in panel, which turns each import code into a sentence.
 Only `DocxImportError` becomes a rendered refusal; anything else, a `Blob` that could not be read
 included, is thrown for an error boundary above to take.
-On the way out, `downloadDocx` and `exportBytes` rethrow `DocxExportError` as it is.
+On the way out, `downloadDocx` asks the list above first and returns `blocked` with the problems
+rather than throwing, while `exportBytes` throws `DocxExportError` as it is; a refusal the list
+did not foresee is thrown by both.
 
 ## Import limits
 

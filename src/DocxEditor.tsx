@@ -26,6 +26,7 @@ import {
 } from "react";
 import { exportDocx } from "./docx/exportDocx";
 import { type DocxBytes, type DocxSource, importDocx } from "./docx/importDocx";
+import { type ExportProblem, exportProblems } from "./docx/invariants";
 import type { SessionStore } from "./docx/session";
 import {
   type CommentAuthor,
@@ -60,6 +61,11 @@ export interface DocxEditorHandle {
   view: EditorView;
   /** Turns the editor state currently on screen into docx bytes */
   exportBytes: () => Uint8Array;
+  /**
+   * Every reason `exportBytes` would refuse the state currently on screen, each under the code
+   * the refusal would carry; empty when it would write. `downloadDocx` answers `blocked` with it
+   */
+  exportProblems: () => readonly ExportProblem[];
 }
 
 /**
@@ -498,7 +504,11 @@ function DocxEditorSurface(
     const view = viewRef.current;
     if (!view || opened?.status !== "opened") return null;
     const session = opened.session;
-    return { view, exportBytes: () => exportDocx(view.state.doc, session) };
+    return {
+      view,
+      exportBytes: () => exportDocx(view.state.doc, session),
+      exportProblems: () => exportProblems(view.state.doc, session),
+    };
   }, [opened]);
 
   const overlay = usePageLayout({

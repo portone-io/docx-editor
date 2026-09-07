@@ -216,6 +216,11 @@ assert.ok(
   handle.exportBytes().length > 0,
   "the mounted editor exported an empty document"
 );
+assert.deepEqual(
+  handle.exportProblems(),
+  [],
+  "the handle reported a problem with an untouched document"
+);
 
 const download = downloadDocx(handle, { fileName: "contract" });
 assert.notEqual(
