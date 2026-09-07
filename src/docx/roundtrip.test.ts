@@ -589,6 +589,29 @@ describe("a control a paragraph split has left standing in two places", () => {
   });
 });
 
+describe("a paragraph split and dragged", () => {
+  it("Alt-drag copy of an untouched paragraph exports the original once and a rebuilt copy once", () => {
+    const original =
+      '<w:p w14:paraId="1EADBEEF" w14:textId="77777777"><w:pPr><w:jc w:val="center"/></w:pPr>' +
+      `${run("source")}</w:p>`;
+    const { doc, session } = importDocx(makeDocx(`${original}<w:p/>`));
+    // An Alt-drag hands ProseMirror the dragged slice as it stands, so the copy arrives wearing
+    // every attr of the original, the block it was opened from and its identifiers among them
+    const copied = afterEdit(doc, (tr) =>
+      tr.replaceWith(doc.content.size, doc.content.size, doc.child(0))
+    );
+
+    const documentXml = documentXmlOf(copied, session);
+    expect(documentXml.match(/source/g)).toHaveLength(2);
+    expect(documentXml.match(/1EADBEEF/g)).toHaveLength(1);
+    expect(documentXml.match(/77777777/g)).toHaveLength(1);
+    expect(documentXml).toContain(
+      `${original}<w:p/>` +
+        `<w:p><w:pPr><w:jc w:val="center"/></w:pPr>${run("source")}</w:p>`
+    );
+  });
+});
+
 describe("a control holding a picture", () => {
   it("opens with the picture inside the control, editable", () => {
     const { doc } = importDocx(makeImageDocx(PICTURE_CONTROL_BODY));

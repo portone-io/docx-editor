@@ -53,7 +53,7 @@ const PARAGRAPH_ID_ATTRS = ["paraId", "textId"] as const;
  * A paragraph carrying none goes back out spelled exactly as it arrived, and so does one whose
  * attribute text cannot be made out, which is left alone rather than written again from a guess.
  */
-function withoutParagraphIds(value: unknown): unknown {
+export function withoutParagraphIds(value: unknown): unknown {
   if (typeof value !== "string") return value;
   const attrs = parseAttrs(value);
   if (attrs === null) return value;
