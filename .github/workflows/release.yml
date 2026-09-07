@@ -82,6 +82,9 @@ jobs:
       contents: write # the version commit, its tag, and the GitHub release
       pull-requests: write # the release pull request
       id-token: write # OIDC, which is how npm authenticates the publish
+    outputs:
+      published: ${{ steps.changesets.outputs.published }}
+      version: ${{ steps.site-version.outputs.version }}
     steps:
       # The action pushes through the token it is given, not through the
       # checkout credentials. Changesets needs the history to tell released
@@ -96,10 +99,30 @@ jobs:
           node-version: 22
           registry-url: https://registry.npmjs.org
       - run: pnpm install --frozen-lockfile
-      - uses: changesets/action@8488615a623b1b9c987934bb89eae8af6a946ac1 # v2.1.1
+      - id: changesets
+        uses: changesets/action@8488615a623b1b9c987934bb89eae8af6a946ac1 # v2.1.1
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           version-script: pnpm changeset:version
           publish-script: pnpm changeset publish
           pr-title: "chore: release"
           commit-message: "chore: release"
+      - id: site-version
+        if: steps.changesets.outputs.published == 'true'
+        env:
+          PUBLISHED_PACKAGES: ${{ steps.changesets.outputs.published-packages }}
+        run: |
+          node --input-type=module <<'JS'
+          import { appendFileSync } from 'node:fs';
+          import { publishedVersion } from './scripts/site-release.mjs';
+          appendFileSync(process.env.GITHUB_OUTPUT, `version=${publishedVersion(process.env.PUBLISHED_PACKAGES)}\n`);
+          JS
+
+  site:
+    needs: release
+    if: needs.release.outputs.published == 'true'
+    permissions:
+      contents: write # the verified demo version commit; no npm publishing permission
+    uses: ./.github/workflows/site-release.yml
+    with:
+      version: ${{ needs.release.outputs.version }}
