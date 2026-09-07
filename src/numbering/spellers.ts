@@ -94,7 +94,25 @@ function chineseCounting(count: number): string {
 
 const POSITIONAL = Number.POSITIVE_INFINITY;
 
-const NUMBER_SPELLERS = {
+/** A `w:numFmt` this editor spells out. Every other one is drawn as a decimal */
+export type NumberFormat =
+  | "decimal"
+  | "decimalZero"
+  | "bullet"
+  | "lowerLetter"
+  | "upperLetter"
+  | "lowerRoman"
+  | "upperRoman"
+  | "ganada"
+  | "koreanDigital"
+  | "chineseCounting";
+
+/**
+ * The speller of each format.
+ * The table is written against the union, so a format cannot be named without one and a speller
+ * cannot be written for a format the union does not hold.
+ */
+const NUMBER_SPELLERS: Record<NumberFormat, NumberSpeller> = {
   decimal: { spell: (count) => `${count}`, countsPerChar: POSITIONAL },
   /** The counts up to nine written with a zero in front (§17.18.59 decimalZero) */
   decimalZero: {
@@ -128,10 +146,7 @@ const NUMBER_SPELLERS = {
     countsPerChar: POSITIONAL,
   },
   chineseCounting: { spell: chineseCounting, countsPerChar: POSITIONAL },
-} as const satisfies Record<string, NumberSpeller>;
-
-/** A `w:numFmt` this editor spells out. Every other one is drawn as a decimal */
-export type NumberFormat = keyof typeof NUMBER_SPELLERS;
+};
 
 export function isNumberFormat(value: string | null): value is NumberFormat {
   return value !== null && Object.hasOwn(NUMBER_SPELLERS, value);

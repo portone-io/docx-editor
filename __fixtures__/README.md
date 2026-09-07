@@ -16,6 +16,7 @@ Tests using `fixtureNames` from [`src/__testing__/docx.ts`](../src/__testing__/d
 | `east-asian.docx` | Word-style package | Per-script fonts, theme fonts, language metadata, and CJK line-breaking properties |
 | `letter-page.docx` | Export-style package | US Letter geometry and margins |
 | `table-styles.docx` | Export-style package | Table styles that dress the header row, the closing row, the edge columns, a corner and the banded rows |
+| `list-definitions.docx` | Export-style package | Lists defined through a numbering style, counted in formats past decimal, restarting where their levels say, and drawing their markers in the formatting those levels write |
 | `sections-and-revisions.docx` | Export-style package | Two sections with a mid-body section break, a table carrying a grid revision, an inline content control, and a body-level bookmark pair |
 | `producers/google-docs-export.docx` | Producer package | Markup Google Docs saved: revision identifiers on every run, a tracked insertion, a generated bookmark name, and measurements the schemas turn down |
 
@@ -188,6 +189,17 @@ This is `size-fallback.docx` with `word/document.xml` and `word/styles.xml` repl
 - Three tables wearing those styles: one naming the parts it takes through the six `w:tblLook` attributes, one naming them through the legacy `w:val="04A0"` bitmask, and one wearing the wide-band style. The first has four rows, so it has banded rows between its header row and its closing row.
 - A `w:cnfStyle` on the first cell of the first table, which the editor works out again from where the cell sits and carries along untouched.
 - At least six body paragraphs holding text and a second paragraph style beside the default, which is what the export battery in `src/docx/exportSchemaValidation.test.ts` reserves.
+
+### `list-definitions.docx`
+
+This is `size-fallback.docx` with `word/document.xml`, `word/numbering.xml` and `word/styles.xml` replaced. It is the only fixture whose lists are defined anywhere but in the definition their paragraphs point at, so it is what holds the reading of a numbering part. It must retain:
+
+- A numbering style `Clauses` in `word/styles.xml` whose `w:numPr` names list 6, an abstract definition that holds nothing but a `w:numStyleLink` to that style, and the definition behind it carrying the matching `w:styleLink`. List 1 points at the first, so its markers can only be drawn by following both links.
+- That borrowed definition counting in `upperRoman` over `decimalZero`, with a `w:rPr` on its first level, so that a marker drawn in the character formatting of its own level is covered.
+- A list counting in `chineseCounting`, `koreanDigital` and `ganada`, whose levels ask for a space and for nothing between the number and the text (`w:suff`) and put one number against the text (`w:lvlJc`).
+- A list whose second level never restarts (`w:lvlRestart` of 0) under a level that does, over a third level spelling every number in its text as a decimal (`w:isLgl`).
+- Every one of those lists used in the body at the levels it defines, so that no level goes undrawn, and at least six body paragraphs holding text outside them, which is what the export battery in `src/docx/exportSchemaValidation.test.ts` reserves.
+- A two-column table, which the table round trips read as the first table of every fixture.
 
 ### `sections-and-revisions.docx`
 

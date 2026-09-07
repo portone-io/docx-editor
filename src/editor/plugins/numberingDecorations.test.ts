@@ -91,6 +91,74 @@ describe("list marker decorations", () => {
   });
 });
 
+/**
+ * The fixture whose lists are defined the way a definition can be written rather than the way a
+ * reader would like to find it: one borrows its numbers from a numbering style, one counts in
+ * formats past decimal, and one decides for itself when its counting starts over.
+ */
+describe("the lists of list-definitions.docx", () => {
+  const DEFINITIONS_FIXTURE = "list-definitions.docx";
+
+  const opened = () => importDocx(readFixture(DEFINITIONS_FIXTURE));
+
+  /** Every list paragraph of the document, whether or not a marker was worked out for it */
+  function listParagraphs(doc: PMNode): number {
+    let listed = 0;
+    doc.descendants((node) => {
+      if (node.type.name !== "paragraph") return true;
+      if (toParagraphFormat(node.attrs.format)?.numbering) listed += 1;
+      return false;
+    });
+    return listed;
+  }
+
+  it("every list paragraph in it gets a marker", () => {
+    const { doc, session } = opened();
+    const markers = paragraphMarkers(doc, session.formatting.numbering);
+
+    expect(markers).toHaveLength(listParagraphs(doc));
+    expect(markers.length).toBeGreaterThan(0);
+  });
+
+  it("draws each list the way its own definition asks", () => {
+    const { doc, session } = opened();
+
+    expect(
+      paragraphMarkers(doc, session.formatting.numbering).map(
+        (marker) => marker.text
+      )
+    ).toEqual([
+      // Reached through the numbering style Clauses, and counted with a leading zero below it
+      "I.",
+      "I.01",
+      "II.",
+      // A space after the number, then nothing at all, then the Korean letters
+      "一 ",
+      "일)",
+      "가.",
+      "二 ",
+      // A level that never restarts, under one that does, over a legal level
+      "A.",
+      "A.a.",
+      "1.1.1.",
+      "B.",
+      "B.b.",
+      "2.2.1.",
+    ]);
+  });
+
+  it("the marker of the borrowed list wears what that list's level writes down", () => {
+    const { doc, session } = opened();
+    const [marker] = paragraphMarkers(doc, session.formatting.numbering);
+
+    expect(marker?.run).toEqual({
+      bold: true,
+      color: "#1F3864",
+      fontSizePt: 14,
+    });
+  });
+});
+
 describe("decorations do not touch the document", () => {
   it.each([LIST_FIXTURE, INDENTED_FIXTURE])(
     "%s: exporting while the markers are showing is byte identical to the original",

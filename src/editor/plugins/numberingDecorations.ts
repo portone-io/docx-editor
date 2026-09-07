@@ -146,8 +146,9 @@ function markerSpacing(marker: PlacedMarker): string[] {
  * The character formatting the level puts on its number (§17.9.24).
  *
  * It dresses the number and nothing else, so it goes out as variables the rule drawing the number
- * reads rather than as CSS the paragraph itself wears. An underline, a strikethrough or a
- * highlight would run across the text the number stands in front of, so they are left undrawn.
+ * reads rather than as CSS the paragraph itself wears. The five drawn here are the ones that say
+ * how the number is written; an underline, a strikethrough or a highlight a level asks for is left
+ * undrawn, and numbering.xml goes back out as it came, so nothing of it is lost either way.
  */
 function markerFormat(run: RunFormat | null): string[] {
   if (!run) return [];
