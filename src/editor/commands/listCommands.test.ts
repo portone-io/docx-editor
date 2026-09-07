@@ -6,7 +6,7 @@ import {
   documentXmlOf,
   makeDocx,
   makeNumberedDocx,
-  makeStyledDocx,
+  makeStyledNumberedDocx,
 } from "../../__testing__/docx";
 import { posOfText, runCommand, select } from "../../__testing__/editing";
 import { importDocx } from "../../docx/importDocx";
@@ -16,7 +16,8 @@ import {
   type Numbering,
   parseNumbering,
 } from "../../numbering/parseNumbering";
-import { createEditorState } from "../createEditor";
+import { createEditorState, editorStateForSession } from "../createEditor";
+import { type EditorDocument, NO_DOCUMENT } from "../editorDocument";
 import { docxKeymap } from "../plugins/keymap";
 import { paragraphMarkers } from "../plugins/numberingDecorations";
 import {
@@ -67,9 +68,11 @@ function listPPr(numId: number, ilvl: number, ind: string): string {
   );
 }
 
+/** A state over list definitions the test writes, which the body points into */
 function openState(body: string, numbering = EMPTY_NUMBERING): EditorState {
   const { doc } = importDocx(makeDocx(body));
-  return createEditorState(doc, { numbering });
+  const withLists: EditorDocument = { ...NO_DOCUMENT, numbering };
+  return createEditorState(doc, { document: withLists });
 }
 
 function paragraphAt(doc: PMNode, index: number): PMNode {
@@ -430,9 +433,7 @@ describe("leaving a list puts the paragraph back where it was", () => {
 
   it("neither the list nor an indentation is left in the exported xml", () => {
     const { doc, session } = importDocx(makeNumberedDocx(paragraph(TEXT)));
-    const state = createEditorState(doc, {
-      numbering: parseNumbering(session.numberingXml),
-    });
+    const state = editorStateForSession({ doc, session });
     const plain = runAll(state, [
       toggleNumberedList,
       increaseListLevel,
@@ -447,16 +448,19 @@ describe("leaving a list puts the paragraph back where it was", () => {
 });
 
 describe("a paragraph pointing at a style", () => {
-  /** A single-page document where the `Item` style passes down center alignment */
+  /**
+   * A single-page document where the `Item` style passes down center alignment, and with a
+   * numbering.xml so that a list can be started in it
+   */
   function openStyled(): EditorState {
     const { doc, session } = importDocx(
-      makeStyledDocx(
+      makeStyledNumberedDocx(
         paragraph("Entry", '<w:pPr><w:pStyle w:val="Item"/></w:pPr>'),
         '<w:style w:styleId="Item">' +
           '<w:pPr><w:jc w:val="center"/></w:pPr></w:style>'
       )
     );
-    return createEditorState(doc, { styles: session.styles });
+    return editorStateForSession({ doc, session });
   }
 
   it("the alignment the style gives stays on screen even after starting a list", () => {
@@ -654,9 +658,7 @@ describe("Enter in an empty list item", () => {
     const { doc, session } = importDocx(
       makeNumberedDocx(item("One") + emptyItem())
     );
-    const state = createEditorState(doc, {
-      numbering: parseNumbering(session.numberingXml),
-    });
+    const state = editorStateForSession({ doc, session });
     const next = runCommand(
       select(state, insideEmpty(state, 1)),
       docxKeymap.Enter
@@ -674,8 +676,8 @@ describe("Enter in an empty list item", () => {
 describe("a document with no numbering.xml", () => {
   /** A single-page document with nowhere to write a new list definition */
   function openWithoutNumberingPart(body: string): EditorState {
-    const { doc } = importDocx(makeDocx(body));
-    return createEditorState(doc, { canStartNewList: false });
+    const { doc, session } = importDocx(makeDocx(body));
+    return editorStateForSession({ doc, session });
   }
 
   it("does not start a new list", () => {

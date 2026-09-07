@@ -13,7 +13,7 @@ import { transactionAllowed } from "../../../schema/guards";
 import {
   reservedCommentIds,
   reservedCommentParaIds,
-} from "../../plugins/commentReservations";
+} from "../../editorDocument";
 import type { NewComment } from "./model";
 import { documentComments, repliesAttr, stringAttr } from "./reading";
 

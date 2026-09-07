@@ -164,11 +164,10 @@ afterEach(() => {
 function openEditor(protection: EditingProtection = "none"): EditorView {
   const mount = document.createElement("div");
   document.body.appendChild(mount);
-  const { doc, session } = importDocx(makeImageDocx(SEAL));
+  const { doc } = importDocx(makeImageDocx(SEAL));
   const view = createEditorView({
     mount,
     state: createEditorState(doc, { protection }),
-    defaults: session.defaults,
     onStateChange: () => undefined,
   });
   mounted.push(() => {

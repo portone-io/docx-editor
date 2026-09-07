@@ -26,6 +26,8 @@ The unit suite requires `xmllint` for OOXML schema validation. `verify:package` 
 
 Place a test beside the source it covers, such as `src/docx/importDocx.test.ts` beside `src/docx/importDocx.ts`. Vitest scans `src/` only.
 
+Build a state for an opened document with `editorStateForSession`, because an option bag copied from the session by hand is how a test comes to hold values the editor itself never builds.
+
 Shared helpers belong under `src/__testing__/` or a feature's `__testing__/` directory. The declaration build excludes those directories, and the package test ensures they are not published.
 
 The suite uses a 30-second timeout because schema validation and tests that exercise compressed-size limits can legitimately take several seconds. [The fixture guide](../__fixtures__/README.md) owns the requirements for committed DOCX files, in two lanes: the conformance fixtures this project builds from controlled XML, and the [producer lane](../__fixtures__/README.md#producer-lane) under `__fixtures__/producers/` that a word processor saved, which suites reach through `producerFixtureNames` rather than `fixtureNames`.

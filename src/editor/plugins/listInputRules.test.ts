@@ -17,7 +17,7 @@ import type { SessionStore } from "../../docx/session";
 import { toParagraphFormat } from "../../model/format";
 import { type Numbering, parseNumbering } from "../../numbering/parseNumbering";
 import { activeListKind, toggleNumberedList } from "../commands/listCommands";
-import { createEditorState, createEditorView } from "../createEditor";
+import { createEditorView, editorStateForSession } from "../createEditor";
 import { docxKeymap } from "./keymap";
 import { paragraphMarkers } from "./numberingDecorations";
 
@@ -53,15 +53,7 @@ function openState(bytes: Uint8Array): {
   session: SessionStore;
 } {
   const { doc, session } = importDocx(bytes);
-  return {
-    state: createEditorState(doc, {
-      numbering: parseNumbering(session.numberingXml),
-      styles: session.styles,
-      defaults: session.defaults,
-      canStartNewList: session.numberingPartPath !== null,
-    }),
-    session,
-  };
+  return { state: editorStateForSession({ doc, session }), session };
 }
 
 /** Opens the body in a mounted editor. Without `numbering` the document has no numbering.xml, so no list can be started in it */
@@ -73,7 +65,6 @@ function open(body: string, options: { numbering?: boolean } = {}): Opened {
   const view = createEditorView({
     mount: document.createElement("div"),
     state,
-    defaults: session.defaults,
     onStateChange: () => {},
   });
   mounted.view = view;

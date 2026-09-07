@@ -12,8 +12,7 @@ import { posOfText, runCommand, select } from "../../__testing__/editing";
 import { importDocx } from "../../docx/importDocx";
 import type { SessionStore } from "../../docx/session";
 import { toParagraphFormat } from "../../model/format";
-import { parseNumbering } from "../../numbering/parseNumbering";
-import { createEditorState } from "../createEditor";
+import { editorStateForSession } from "../createEditor";
 import {
   canDecreaseIndent,
   canIncreaseIndent,
@@ -33,19 +32,13 @@ interface Opened {
 
 function opened(body: string): Opened {
   const { doc, session } = importDocx(makeDocx(body));
-  return { state: createEditorState(doc, { styles: session.styles }), session };
+  return { state: editorStateForSession({ doc, session }), session };
 }
 
 /** A document that can start a list, so a list paragraph can be reached from the commands */
 function openedNumbered(body: string): Opened {
   const { doc, session } = importDocx(makeNumberedDocx(body));
-  return {
-    state: createEditorState(doc, {
-      numbering: parseNumbering(session.numberingXml),
-      styles: session.styles,
-    }),
-    session,
-  };
+  return { state: editorStateForSession({ doc, session }), session };
 }
 
 /** A state with the caret placed on the first character of the given text */
@@ -164,7 +157,7 @@ describe("indenting a plain paragraph", () => {
           '<w:pPr><w:ind w:left="720"/></w:pPr></w:style>'
       )
     );
-    const state = createEditorState(doc, { styles: session.styles });
+    const state = editorStateForSession({ doc, session });
     const indented = runCommand(at(state, TEXT), increaseIndent);
 
     expect(pPrOf(indented.doc, 0)).toBe(

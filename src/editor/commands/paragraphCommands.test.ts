@@ -21,7 +21,7 @@ import {
   toRunFormat,
 } from "../../model/format";
 import { docxSchema } from "../../schema";
-import { createEditorState } from "../createEditor";
+import { editorStateForSession } from "../createEditor";
 import { docxKeymap } from "../plugins/keymap";
 import {
   activeParagraphAlign,
@@ -34,18 +34,9 @@ function paragraph(text: string, pPr = ""): string {
   return `<w:p>${pPr}<w:r><w:t xml:space="preserve">${text}</w:t></w:r></w:p>`;
 }
 
-/** The state built out of everything the document told us, the same as `DocxEditor` builds it */
-function editorStateOf(doc: PMNode, session: SessionStore): EditorState {
-  return createEditorState(doc, {
-    styles: session.styles,
-    defaults: session.defaults,
-    paragraphStyles: session.paragraphStyles,
-  });
-}
-
 function opened(body: string): { state: EditorState; session: SessionStore } {
   const { doc, session } = importDocx(makeDocx(body));
-  return { state: editorStateOf(doc, session), session };
+  return { state: editorStateForSession({ doc, session }), session };
 }
 
 /** A state with the caret placed on the first character of the given text */
@@ -163,7 +154,7 @@ describe("deciding the active alignment", () => {
           '<w:pPr><w:jc w:val="center"/></w:pPr></w:style>'
       )
     );
-    const state = createEditorState(doc, { styles: session.styles });
+    const state = editorStateForSession({ doc, session });
     const spot = at(state, "Entry");
 
     expect(activeParagraphAlign(spot)).toEqual({
@@ -201,7 +192,7 @@ function openedStyled(
   styles = QUOTE_STYLE
 ): { state: EditorState; session: SessionStore } {
   const { doc, session } = importDocx(makeStyledDocx(body, styles));
-  return { state: editorStateOf(doc, session), session };
+  return { state: editorStateForSession({ doc, session }), session };
 }
 
 /** The run mark covering the given text. null when the text carries none */
@@ -349,7 +340,10 @@ function typed(text: string): { state: EditorState; session: SessionStore } {
   const { session } = importDocx(
     makeStyledDocx(paragraph("Body"), QUOTE_STYLE + LEAD_STYLE)
   );
-  return { state: editorStateOf(typedDoc(text), session), session };
+  return {
+    state: editorStateForSession({ doc: typedDoc(text), session }),
+    session,
+  };
 }
 
 describe("applying a paragraph style to text typed in the editor", () => {
@@ -418,7 +412,7 @@ describe("deciding the active paragraph style", () => {
   // A selection holding no paragraph has no style to show, and the picker is turned off over it
   it("reports none where the selection holds no paragraph", () => {
     const { doc, session } = importDocx(makeDocx("<w:customXml/>"));
-    const state = editorStateOf(doc, session);
+    const state = editorStateForSession({ doc, session });
 
     expect(state.doc.child(0).type.name).toBe("docxRaw");
     expect(activeParagraphStyle(state)).toEqual({ kind: "none" });

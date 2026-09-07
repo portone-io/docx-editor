@@ -32,12 +32,11 @@ import {
   documentComments,
 } from "./editor/commands/commentCommands";
 import { activeLinkSpan } from "./editor/commands/linkCommands";
-import { createEditorState, createEditorView } from "./editor/createEditor";
+import { createEditorView, editorStateForSession } from "./editor/createEditor";
 import { setProtection } from "./editor/plugins/documentProtection";
 import { isLinkPanelOpen } from "./editor/plugins/linkPanel";
 import { tableMenuAnchor } from "./editor/plugins/tableContextMenu";
 import { textMenuAnchor } from "./editor/plugins/textContextMenu";
-import { type Numbering, parseNumbering } from "./numbering/parseNumbering";
 import { DocxImportError, type DocxImportErrorCode } from "./ooxml/errors";
 import { PageGuides } from "./page/PageGuides";
 import { A4_PAGE_PIXELS, pagePixels } from "./page/pageLayout";
@@ -241,7 +240,6 @@ type OpenedDocument =
       status: "opened";
       doc: PMNode;
       session: SessionStore;
-      numbering: Numbering;
     }
   | { status: "rejected"; error: DocxImportError };
 
@@ -257,12 +255,7 @@ interface LiveEditor {
 function openDocument(bytes: DocxBytes): OpenedDocument {
   try {
     const { doc, session } = importDocx(bytes);
-    return {
-      status: "opened",
-      doc,
-      session,
-      numbering: parseNumbering(session.numberingXml),
-    };
+    return { status: "opened", doc, session };
   } catch (error) {
     if (error instanceof DocxImportError) return { status: "rejected", error };
     throw error;
@@ -437,32 +430,13 @@ function DocxEditorSurface(
       state:
         kept?.of === opened
           ? kept.state
-          : createEditorState(opened.doc, {
-              numbering: opened.numbering,
-              styles: opened.session.styles,
-              defaults: opened.session.defaults,
-              paragraphDefaults: opened.session.paragraphDefaults,
-              canStartNewList: opened.session.numberingPartPath !== null,
+          : editorStateForSession(opened, {
               consumerPlugins: mountedPlugins,
-              paragraphStyles: opened.session.paragraphStyles,
               contextMenus: mountedContextMenus,
-              geometry: opened.session.geometry,
-              defaultTabStopPt: opened.session.defaultTabStopPt,
-              reservedCommentIds: opened.session.comments.byId.keys(),
-              reservedCommentParaIds: [
-                ...opened.session.comments.ordered.flatMap((comment) =>
-                  comment.paraId === null ? [] : [comment.paraId]
-                ),
-                ...opened.session.comments.extendedOrdered.map(
-                  (extension) => extension.paraId
-                ),
-              ],
               protection,
               author,
               editableComments,
             }),
-      defaults: opened.session.defaults,
-      geometry: opened.session.geometry,
       fontFallbacks: mountedFontFallbacks,
       onStateChange: (state) => {
         keptState.current = { of: opened, state };

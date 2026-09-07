@@ -8,7 +8,12 @@ import { importDocx } from "../../docx/importDocx";
 import { toParagraphFormat } from "../../model/format";
 import { type Numbering, parseNumbering } from "../../numbering/parseNumbering";
 import { docxSchema } from "../../schema";
-import { createEditorState, createEditorView } from "../createEditor";
+import {
+  createEditorState,
+  createEditorView,
+  editorStateForSession,
+} from "../createEditor";
+import { type EditorDocument, NO_DOCUMENT } from "../editorDocument";
 import {
   markerDecorations,
   type PlacedMarker,
@@ -80,9 +85,9 @@ describe("decorations do not touch the document", () => {
   it.each([LIST_FIXTURE, INDENTED_FIXTURE])(
     "%s: exporting while the markers are showing is byte identical to the original",
     (name) => {
-      const { bytes, doc, session, numbering } = openWithNumbering(name);
+      const { bytes, doc, session } = openWithNumbering(name);
       const out = exportDocx(
-        createEditorState(doc, { numbering }).doc,
+        editorStateForSession({ doc, session }).doc,
         session
       );
 
@@ -95,15 +100,15 @@ describe("decorations do not touch the document", () => {
   );
 
   it("the markers do not mix into the document's text", () => {
-    const { doc, numbering } = openWithNumbering(LIST_FIXTURE);
-    const withMarkers = createEditorState(doc, { numbering });
+    const { doc, session } = openWithNumbering(LIST_FIXTURE);
+    const withMarkers = editorStateForSession({ doc, session });
     const withoutMarkers = createEditorState(doc);
     expect(withMarkers.doc.textContent).toBe(withoutMarkers.doc.textContent);
   });
 
   it("recounts the numbers that follow when a paragraph disappears", () => {
-    const { doc, numbering } = openWithNumbering(LIST_FIXTURE);
-    const state = createEditorState(doc, { numbering });
+    const { doc, session, numbering } = openWithNumbering(LIST_FIXTURE);
+    const state = editorStateForSession({ doc, session });
     const before = paragraphMarkers(state.doc, numbering);
 
     const removed = state.apply(state.tr.delete(before[0].from, before[0].to));
@@ -189,6 +194,9 @@ describe("the indentation the level specifies", () => {
 
   const numbered = { numbering: { numId: 1, ilvl: 0 } };
 
+  /** A document that knows these level definitions and nothing else */
+  const withLevels: EditorDocument = { ...NO_DOCUMENT, numbering };
+
   it("overlays the level's indentation on screen when the paragraph has no ind", () => {
     const [marker] = paragraphMarkers(listDoc(numbered), numbering);
     expect(marker).toMatchObject({
@@ -222,8 +230,7 @@ describe("the indentation the level specifies", () => {
     document.body.appendChild(mount);
     const view = createEditorView({
       mount,
-      state: createEditorState(doc, { numbering }),
-      defaults: { fontSizePt: null, fontFamily: null, lineSpacing: null },
+      state: createEditorState(doc, { document: withLevels }),
       onStateChange: () => {},
     });
     mounted.view = view;
@@ -237,7 +244,7 @@ describe("the indentation the level specifies", () => {
 
   it("the overlaid indentation does not remain in the document model", () => {
     const doc = listDoc(numbered);
-    const state = createEditorState(doc, { numbering });
+    const state = createEditorState(doc, { document: withLevels });
     expect(toParagraphFormat(state.doc.child(0).attrs.format)).toEqual({
       numbering: { numId: 1, ilvl: 0 },
     });
@@ -283,13 +290,12 @@ describe("list numbers inside a table cell", () => {
   });
 
   it("a numbered paragraph inside a cell renders whole without losing any text", () => {
-    const { doc, session, numbering } = openWithNumbering(LIST_FIXTURE);
+    const { doc, session } = openWithNumbering(LIST_FIXTURE);
     const mount = document.createElement("div");
     document.body.appendChild(mount);
     const view = createEditorView({
       mount,
-      state: createEditorState(doc, { numbering }),
-      defaults: session.defaults,
+      state: editorStateForSession({ doc, session }),
       onStateChange: () => {},
     });
     mounted.view = view;

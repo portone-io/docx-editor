@@ -10,17 +10,7 @@ import type { Node as PMNode } from "prosemirror-model";
 import { EditorState, type Plugin } from "prosemirror-state";
 import { tableEditing } from "prosemirror-tables";
 import { EditorView } from "prosemirror-view";
-import { DEFAULT_TAB_STOP_PT } from "../docx/documentSettings";
-import {
-  NO_DOCUMENT_DEFAULTS,
-  NO_STYLES,
-  type ParagraphFormatLayer,
-  type ParagraphStyleOption,
-  type StyleTable,
-} from "../docx/formatting";
-import { A4_PORTRAIT, type PageGeometry } from "../docx/pageGeometry";
-import type { DocumentDefaults } from "../model/format";
-import { EMPTY_NUMBERING, type Numbering } from "../numbering/parseNumbering";
+import type { SessionStore } from "../docx/session";
 import { pageDecorations } from "../page/pageDecorations";
 import { pageGeometryStyle, pagePixels } from "../page/pageLayout";
 import type { EditableComments, EditingProtection } from "../schema/protection";
@@ -33,12 +23,17 @@ import {
 import { documentDefaultsStyle } from "../styles/inlineStyle";
 import { gridBorders, withDerivedGridBorders } from "../table/gridBorders";
 import type { CommentAuthor } from "./commands/comments/model";
-import { documentDefaultTabStopPt, documentStyleTable } from "./documentStyles";
+import {
+  documentOf,
+  type EditorDocument,
+  editorDocument,
+  editorDocumentOf,
+  NO_DOCUMENT,
+} from "./editorDocument";
 import { externalClipboard } from "./externalClipboard";
 import { imageFiles } from "./imageFiles";
 import { columnResize } from "./plugins/columnResize";
 import { commentDecorations } from "./plugins/commentDecorations";
-import { commentReservations } from "./plugins/commentReservations";
 import { documentProtection } from "./plugins/documentProtection";
 import { imagePaste } from "./plugins/imagePaste";
 import { docxKeymap, historyKeys } from "./plugins/keymap";
@@ -58,34 +53,19 @@ import { ImageNodeView } from "./views/imageResize";
 import { runMarkView } from "./views/runMarkView";
 
 export interface EditorStateOptions {
-  numbering?: Numbering;
-  styles?: StyleTable;
-  defaults?: DocumentDefaults;
-  /** Paragraph properties from styles.xml docDefaults. */
-  paragraphDefaults?: ParagraphFormatLayer;
   /**
-   * Whether the document has a place (numbering.xml) to write the definition of a new list.
-   * Callers that build a state without opening a document assume that place exists and behave
-   * as they do today.
+   * What the opened document laid down: its styles, its list definitions, the paper it is
+   * written on. A state built without one reads `NO_DOCUMENT`, which answers as nothing having
+   * been written down. `editorStateForSession` is what fills it in for an opened document.
    */
-  canStartNewList?: boolean;
+  document?: EditorDocument;
   /** The plugins handed in from outside the package */
   consumerPlugins?: readonly Plugin[];
-  /** The styles the document defines for the style picker to offer */
-  paragraphStyles?: ParagraphStyleOption[];
   /**
    * Whether the right click is the editor's own. Turned off, the browser's own menu is never
    * taken away, which is what a consumer drawing menus of its own needs.
    */
   contextMenus?: boolean;
-  /** The paper the document names. A4 where a document names none */
-  geometry?: PageGeometry;
-  /** The interval between automatic tab stops, in points. */
-  defaultTabStopPt?: number;
-  /** Every id already present in the opened Comments part, including unreferenced entries. */
-  reservedCommentIds?: Iterable<string>;
-  /** Every paragraph id present in the opened comment parts, including orphan extension entries. */
-  reservedCommentParaIds?: Iterable<string>;
   /**
    * What the document as a whole may receive (`schema/protection`): everything, comments alone,
    * or nothing. Everything when none is given, which is what every state was before.
@@ -100,28 +80,20 @@ export interface EditorStateOptions {
 /**
  * Creates a single editing state.
  * The list definitions, the style table, and the document defaults are what the document
- * wrote down, and commands and the toolbar read them through plugins.
+ * wrote down, and commands and the toolbar read them off the snapshot the state holds.
  */
 export function createEditorState(
   doc: PMNode,
-  {
-    numbering = EMPTY_NUMBERING,
-    styles = NO_STYLES,
-    defaults = NO_DOCUMENT_DEFAULTS,
-    paragraphDefaults = {},
-    canStartNewList = true,
+  options: EditorStateOptions = {}
+): EditorState {
+  const {
+    document = NO_DOCUMENT,
     consumerPlugins = [],
-    paragraphStyles = [],
     contextMenus = true,
-    geometry = A4_PORTRAIT,
-    defaultTabStopPt = DEFAULT_TAB_STOP_PT,
-    reservedCommentIds = [],
-    reservedCommentParaIds = [],
     protection = "none",
     author = null,
     editableComments = "own",
-  }: EditorStateOptions = {}
-): EditorState {
+  } = options;
   return EditorState.create({
     doc: withDerivedGridBorders(doc),
     plugins: [
@@ -129,13 +101,14 @@ export function createEditorState(
       // first answer for a keypress, a paste, a drop or any other DOM event, so this is the
       // only place from which a consumer handler can win over the built-in one.
       ...consumerPlugins,
+      // Every document-level value the editor reads stands in one snapshot, and it leads the
+      // built-in plugins so that the ones drawing from it are initialized after it
+      editorDocument(document),
       // Refuses every edit no guard in `schema/guards` lets through, whoever asked for it. It is
       // not optional: a document that locked a part of itself stays locked in every consumer, and
       // the preserved bookmark markers and note references stay where the file put them.
       lockedContent(),
       documentProtection({ protection, author, editableComments }),
-      // An orphan Comments-part entry still owns its id and must not be replaced by a new comment.
-      commentReservations(reservedCommentIds, reservedCommentParaIds),
       history(),
       keymap(docxKeymap),
       historyKeys(),
@@ -170,28 +143,54 @@ export function createEditorState(
       // or fall together with the menus the editor draws. The text menu stands ahead of the table
       // menu, and hands a click with nothing selected inside a cell back to it
       ...(contextMenus ? [textContextMenu(), tableContextMenu()] : []),
-      numberingMarkers(numbering, canStartNewList),
+      numberingMarkers(),
       // Values only go in when page display is turned on
       pageDecorations(),
-      documentStyleTable(
-        styles,
-        defaults,
-        paragraphStyles,
-        geometry,
-        paragraphDefaults,
-        numbering,
-        defaultTabStopPt
-      ),
     ],
   });
+}
+
+/**
+ * The state for a document that was opened, which is the one way a session becomes an editing
+ * state: what the screen builds and what a test builds are then the same values.
+ */
+export function editorStateForSession(
+  opened: { doc: PMNode; session: SessionStore },
+  options: Omit<EditorStateOptions, "document"> = {}
+): EditorState {
+  return createEditorState(opened.doc, {
+    ...options,
+    document: editorDocumentOf(opened.session),
+  });
+}
+
+/**
+ * The sheet one document is drawn on: the paper it names and the defaults it wrote down.
+ *
+ * Both come off the state, so a document-level edit reaches the sheet, and both are remembered
+ * against the snapshot they were built from, which an ordinary edit leaves as it is.
+ */
+const sheetStyles = new WeakMap<
+  EditorDocument,
+  { fallbacks: FontFallbacks; style: string }
+>();
+
+function sheetStyleOf(
+  document: EditorDocument,
+  fallbacks: FontFallbacks
+): string {
+  const remembered = sheetStyles.get(document);
+  if (remembered?.fallbacks === fallbacks) return remembered.style;
+  const style =
+    `${pageGeometryStyle(pagePixels(document.geometry))};` +
+    `${documentDefaultsStyle(document.defaults, fallbacks)};`;
+  sheetStyles.set(document, { fallbacks, style });
+  return style;
 }
 
 export interface EditorOptions {
   mount: HTMLElement;
   state: EditorState;
-  defaults: DocumentDefaults;
-  /** The paper the document names. The sheet is drawn from it, A4 where a document names none */
-  geometry?: PageGeometry;
   /** The fonts stood in for the ones the document declares. The built-in set when none is given */
   fontFallbacks?: FontFallbacks;
   onStateChange: (state: EditorState) => void;
@@ -200,30 +199,27 @@ export interface EditorOptions {
 export function createEditorView({
   mount,
   state,
-  defaults,
-  geometry = A4_PORTRAIT,
   fontFallbacks = DEFAULT_FONT_FALLBACKS,
   onStateChange,
 }: EditorOptions): EditorView {
-  // The paper and the document's own defaults hold for every state the view ever takes, so the
-  // sheet's style is built once here; the tab width is the one part read off the state
-  const sheetStyle =
-    `${pageGeometryStyle(pagePixels(geometry))};` +
-    `${documentDefaultsStyle(defaults, fontFallbacks)};`;
   const view = new EditorView(mount, {
     state,
     // A protection that shuts the body shuts typing with it, and is read off the state so that a
     // mode switched on an open document takes effect without a new view. Selecting stays open
     // either way, which is what a reader marking a stretch for a comment needs
     editable: (current) => !editsShut(current),
-    attributes: (current) => ({
-      class: editorClassNames.sheet,
-      // The paper first, so a document that names one is drawn on it from the first frame
-      style: `${sheetStyle}tab-size:${documentDefaultTabStopPt(current)}pt`,
-      // A sheet that takes no typing is no longer focusable of itself, so a reader or a commenter
-      // is handed the focus another way: the keys reach it, and the selection stays its own
-      ...(editsShut(current) ? { tabindex: "0" } : {}),
-    }),
+    attributes: (current) => {
+      const document = documentOf(current);
+      return {
+        class: editorClassNames.sheet,
+        // The paper first, so a document that names one is drawn on it from the first frame
+        style: `${sheetStyleOf(document, fontFallbacks)}tab-size:${document.defaultTabStopPt}pt`,
+        // A sheet that takes no typing is no longer focusable of itself, so a reader or a
+        // commenter is handed the focus another way: the keys reach it, and the selection stays
+        // its own
+        ...(editsShut(current) ? { tabindex: "0" } : {}),
+      };
+    },
     // The schema can only draw a run with the default fallback fonts, so this editor draws its own
     markViews: { run: runMarkView(fontFallbacks) },
     // An image is drawn by a view of its own, which is what carries the resize handles

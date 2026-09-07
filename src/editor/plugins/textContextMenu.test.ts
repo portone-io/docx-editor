@@ -30,11 +30,10 @@ afterEach(() => {
 function openEditor(protection: EditingProtection = "none"): EditorView {
   const mount = document.createElement("div");
   document.body.appendChild(mount);
-  const { doc, session } = importDocx(makeDocx(BODY));
+  const { doc } = importDocx(makeDocx(BODY));
   const view = createEditorView({
     mount,
     state: createEditorState(doc, { protection }),
-    defaults: session.defaults,
     onStateChange: () => undefined,
   });
   mounted.push(() => {

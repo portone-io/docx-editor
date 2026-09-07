@@ -183,6 +183,27 @@ export function makeNumberedDocx(
 }
 
 /**
+ * A small docx carrying both a styles.xml and a numbering.xml, which is what a styled paragraph
+ * that starts a list of its own needs: the style to wear and somewhere to write the new definition
+ */
+export function makeStyledNumberedDocx(
+  body: string,
+  styles: string,
+  numberingXml: string = ONE_LIST_NUMBERING
+): Uint8Array {
+  const encoder = new TextEncoder();
+  const parts = unzipSync(makeStyledDocx(body, styles));
+  parts["word/_rels/document.xml.rels"] = encoder.encode(
+    relationships(
+      `<Relationship Id="rId1" Target="styles.xml" Type="${REL_BASE}/styles"/>` +
+        `<Relationship Id="rId2" Target="numbering.xml" Type="${REL_BASE}/numbering"/>`
+    )
+  );
+  parts["word/numbering.xml"] = encoder.encode(numberingXml);
+  return zipSync(parts);
+}
+
+/**
  * A small docx whose body part relates each of these addresses as an external hyperlink
  * relationship, under the id it is keyed by. That is where a `w:hyperlink r:id` finds its address.
  */

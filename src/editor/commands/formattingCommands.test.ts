@@ -9,7 +9,7 @@ import { exportDocx } from "../../docx/exportDocx";
 import { importDocx } from "../../docx/importDocx";
 import type { SessionStore } from "../../docx/session";
 import { toRunFormat } from "../../model/format";
-import { createEditorState } from "../createEditor";
+import { editorStateForSession } from "../createEditor";
 import { documentDefaults } from "../documentStyles";
 import {
   activeFontFamily,
@@ -39,14 +39,8 @@ function opened(
   rPrDefault?: string
 ): { state: EditorState; session: SessionStore } {
   const { doc, session } = importDocx(makeDocx(body, rPrDefault));
-  return {
-    // For the toolbar to know the effective size, the document defaults have to be in the editing state
-    state: createEditorState(doc, {
-      styles: session.styles,
-      defaults: session.defaults,
-    }),
-    session,
-  };
+  // For the toolbar to know the effective size, the document defaults have to be in the editing state
+  return { state: editorStateForSession({ doc, session }), session };
 }
 
 function caret(state: EditorState, at: number): EditorState {

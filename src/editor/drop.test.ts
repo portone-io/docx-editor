@@ -20,13 +20,12 @@ afterEach(() => {
 function openEditor(): EditorView {
   const mount = document.createElement("div");
   document.body.appendChild(mount);
-  const { doc, session } = importDocx(
+  const { doc } = importDocx(
     makeDocx('<w:p><w:r><w:t xml:space="preserve">source</w:t></w:r></w:p>')
   );
   const view = createEditorView({
     mount,
     state: createEditorState(doc),
-    defaults: session.defaults,
     onStateChange: () => undefined,
   });
   view.dispatch(

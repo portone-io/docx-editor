@@ -11,7 +11,7 @@ import { posOfText, runCommand, select } from "../../__testing__/editing";
 import { importDocx } from "../../docx/importDocx";
 import type { SessionStore } from "../../docx/session";
 import type { LineSpacing } from "../../model/format";
-import { createEditorState } from "../createEditor";
+import { editorStateForSession } from "../createEditor";
 import {
   activeLineSpacing,
   canSetLineSpacing,
@@ -35,7 +35,7 @@ interface Opened {
 
 function opened(body: string): Opened {
   const { doc, session } = importDocx(makeDocx(body));
-  return { state: createEditorState(doc, { styles: session.styles }), session };
+  return { state: editorStateForSession({ doc, session }), session };
 }
 
 /** A document whose docDefaults declare a line spacing of their own */
@@ -46,13 +46,7 @@ function openedWithDefaults(body: string, pPrDefault: string): Opened {
       `<w:docDefaults><w:pPrDefault>${pPrDefault}</w:pPrDefault></w:docDefaults>`
     )
   );
-  return {
-    state: createEditorState(doc, {
-      styles: session.styles,
-      defaults: session.defaults,
-    }),
-    session,
-  };
+  return { state: editorStateForSession({ doc, session }), session };
 }
 
 /** A state with the caret placed on the first character of the given text */
@@ -173,7 +167,7 @@ describe("deciding the active line spacing", () => {
           '<w:spacing w:line="480" w:lineRule="auto"/></w:pPr></w:style>'
       )
     );
-    const state = createEditorState(doc, { styles: session.styles });
+    const state = editorStateForSession({ doc, session });
     expect(activeLineSpacing(at(state, TEXT))).toEqual(DOUBLE);
   });
 
