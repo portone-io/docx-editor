@@ -2,6 +2,7 @@
 
 These notes record reusable OOXML interpretations, interoperability findings, and project decisions that affect how a document is read, written, or preserved. They are not a feature matrix or an implementation diary.
 
+- [Conformance classes and namespace prefixes](./conformance.md)
 - [Child order](./childOrder.md)
 - [Formatting hierarchy](./formattingHierarchy.md)
 - [Comments](./comments.md)

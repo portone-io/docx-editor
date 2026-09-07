@@ -246,12 +246,15 @@ codes without importing the core entry.
 | `missing-part` | The package carries no main document part. |
 | `missing-body` | The main part carries no body. |
 | `malformed-xml` | The XML cannot be parsed, declares a DTD, or its markup is inconsistent. |
+| `unsupported-conformance` | The package is an ECMA-376 Strict one. This editor reads and writes Transitional, which is what Word saves by default. |
 | `unsupported-content` | The document holds markup that could not be written back out unchanged. |
 
 `no-xml-parser` is about where the call was made rather than about the file, and a browser never
 reaches it; [Server environments](#server-environments) covers it.
 A file a person picked can fail with any of the rest, so the code is worth showing: `not-a-docx`
 and `too-large` are usually the person's to fix, while the others describe the file itself.
+A document that binds WordprocessingML to a prefix other than `w` is refused as
+`unsupported-content`, since every element written back out is spelled under that prefix.
 
 ### Checking before export
 
