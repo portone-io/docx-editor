@@ -16,11 +16,7 @@ import {
   parseNumbering,
 } from "../numbering/parseNumbering";
 import type { ImportedComments } from "./comments";
-import type {
-  ParagraphFormatLayer,
-  ParagraphStyleOption,
-  StyleTable,
-} from "./formatting";
+import type { FormattingContext, ParagraphStyleOption } from "./formatting";
 import type { HeadersFooters } from "./headersFooters";
 import type { PageGeometry } from "./pageGeometry";
 
@@ -75,19 +71,12 @@ export class SessionStore implements DocxSession, SessionIdentity {
   readonly defaults: DocumentDefaults;
   /** The effective automatic tab interval read from settings.xml. Used for display only. */
   readonly defaultTabStopPt: number;
-  /** The paragraph properties at the base of the OOXML formatting hierarchy. */
-  readonly paragraphDefaults: ParagraphFormatLayer;
   /** The paper this document is written on, read from the first section. Used for display only: the `w:sectPr` itself goes back out in the preserved tail */
   readonly geometry: PageGeometry;
-  /** The style chain from styles.xml. Used only to fold the style a paragraph points at into its displayed values */
-  readonly styles: StyleTable;
+  /** Everything the display values of a paragraph or a run are resolved against: the style chain, the defaults, the list definitions */
+  readonly formatting: FormattingContext;
   /** The paragraph styles this document defines, in the order styles.xml lists them. What the style picker offers */
   readonly paragraphStyles: ParagraphStyleOption[];
-  /**
-   * The paragraph style every paragraph with no `w:pStyle` of its own wears (`w:default="1"`,
-   * usually Normal). null when the document marks none
-   */
-  readonly defaultParagraphStyleId: string | null;
   /** The raw text of numbering.xml. Kept around so list numbers can be drawn on screen. null if there is none */
   readonly numberingXml: string | null;
   /** Where numbering.xml sits inside the zip. When a new list is exported it is rewritten at that spot. null if there is none */
@@ -109,11 +98,9 @@ export class SessionStore implements DocxSession, SessionIdentity {
     this.blocks = opened.blocks;
     this.defaults = opened.defaults;
     this.defaultTabStopPt = opened.defaultTabStopPt;
-    this.paragraphDefaults = opened.paragraphDefaults;
     this.geometry = opened.geometry;
-    this.styles = opened.styles;
+    this.formatting = opened.formatting;
     this.paragraphStyles = opened.paragraphStyles;
-    this.defaultParagraphStyleId = opened.defaultParagraphStyleId;
     this.numberingXml = opened.numberingXml;
     this.numberingPartPath = opened.numberingPartPath;
     this.comments = opened.comments;

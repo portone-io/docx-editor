@@ -9,7 +9,7 @@
  * always the rPr string.
  */
 
-import { type RunFormat, toRunFormat } from "../model/format";
+import { NO_FILL, type RunFormat, toRunFormat } from "../model/format";
 import { elementXml, wAttrValue, type XmlAttr } from "../ooxml/element";
 import { wName } from "../ooxml/names";
 import { setAttr } from "../ooxml/precedence";
@@ -146,12 +146,6 @@ function rFontsXml(current: string | null, name: string): string | null {
   ]);
 }
 
-function hasChild(xml: string | null, name: string): boolean {
-  if (xml === null) return false;
-  const props = parseProps(xml);
-  return props !== null && propsChild(props.children, name) !== undefined;
-}
-
 /** Turning formatting on for a run with no formatting creates a minimal rPr from scratch */
 function propsOf(rPr: string | null): Props | null {
   if (rPr === null) return { tag: "w:rPr", attrs: null, children: [] };
@@ -164,18 +158,18 @@ type ChildEdit = readonly [name: string, xml: string | null];
 /**
  * How formatting is turned off.
  *
- * Where the setting could arrive already on from a style, removing the element would let the style
- * win again, so we pin the off state down instead. With no inheritance (most of the fixtures),
+ * Where a layer below the run switched the setting on, removing the element would let that layer
+ * win again, so the off state is pinned down instead. Where nothing below switched it on,
  * removing the element is what comes closest to the original.
  */
-function offEdit(name: string, value: string, inherited: boolean): ChildEdit {
-  return [name, inherited ? valXml(name, value) : null];
+function offEdit(name: string, value: string, pinned: boolean): ChildEdit {
+  return [name, pinned ? valXml(name, value) : null];
 }
 
 /** Which children of the rPr one job changes and how. null for a value whose meaning cannot be made out */
 function childEdits(
   edit: RunEdit,
-  inherited: boolean,
+  inherited: RunFormat,
   rFonts: string | null
 ): ChildEdit[] | null {
   switch (edit.kind) {
@@ -186,7 +180,8 @@ function childEdits(
         return names.map((name) => [name, valXml(name, value)]);
       }
       const off = TOGGLE_OFF_VALUE[edit.toggle];
-      return names.map((name) => offEdit(name, off, inherited));
+      const pinned = isRunToggleOn(inherited, edit.toggle);
+      return names.map((name) => offEdit(name, off, pinned));
     }
     case "fontSize": {
       // There is no off for size. Withdrawing the setting inherits the style and the document default again
@@ -214,15 +209,24 @@ function childEdits(
     }
     case "color": {
       // auto means "the text color as the document decides", so it acts as an off that overrides inheritance
-      if (edit.hex === null) return [offEdit("color", "auto", inherited)];
+      if (edit.hex === null) {
+        return [offEdit("color", "auto", inherited.color !== undefined)];
+      }
       const hex = normalizeHex(edit.hex);
       return hex === null ? null : [["color", valXml("color", hex)]];
     }
     case "background": {
       // Word paints the highlight on top of the shading. Left in place, it would hide the new background color underneath it
-      const highlight = offEdit("highlight", "none", inherited);
+      const highlight = offEdit(
+        "highlight",
+        "none",
+        inherited.highlight !== undefined
+      );
       if (edit.hex === null) {
-        return [["shd", inherited ? shadingXml("auto") : null], highlight];
+        const painted =
+          inherited.background !== undefined &&
+          inherited.background !== NO_FILL;
+        return [["shd", painted ? shadingXml("auto") : null], highlight];
       }
       const hex = normalizeHex(edit.hex);
       return hex === null ? null : [["shd", shadingXml(hex)], highlight];
@@ -261,21 +265,19 @@ function nextProps(rPr: string | null, previous: RunProps): RunProps {
 /**
  * The rPr and display values after changing one piece of character formatting.
  *
- * `pPr` is used only to see whether the paragraph points at a style.
+ * `inherited` is everything the layers below the run lay down (`inheritedRunFormat` in
+ * `formatting`), which decides whether an off is pinned down or the element simply removed.
  * null for an rPr whose shape could not be made out, or for a value that cannot be written into
  * the document, in which case the original is left untouched.
  */
 export function editRunProps(
   current: RunProps,
-  pPr: string | null,
+  inherited: RunFormat,
   edit: RunEdit
 ): RunProps | null {
   const props = propsOf(current.rPr);
   if (!props) return null;
 
-  const inherited =
-    propsChild(props.children, "rStyle") !== undefined ||
-    hasChild(pPr, "pStyle");
   const rFonts = propsChild(props.children, "rFonts")?.xml ?? null;
   const edits = childEdits(edit, inherited, rFonts);
   if (!edits) return null;
@@ -295,8 +297,8 @@ export function isRunToggleOn(
   if (toggle === "bold") return format.bold === true;
   if (toggle === "italic") return format.italic === true;
   if (toggle === "strike") return format.strike === true;
-  // Underline holds a kind rather than an on/off state
-  return format.underline !== undefined;
+  // Underline holds a kind rather than an on/off state, `none` being the kind that is off
+  return format.underline !== undefined && format.underline !== "none";
 }
 
 /** Whether this text is already in the state the job wants. If it already is, we leave it untouched */

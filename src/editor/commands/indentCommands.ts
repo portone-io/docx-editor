@@ -36,18 +36,13 @@ function steppedLeftTwips(node: PMNode, delta: 1 | -1): number | null {
 function indentStep(delta: 1 | -1): Command {
   return (state, dispatch) => {
     const numbering = documentNumbering(state);
-    return editParagraphs(state, dispatch, (node, styles, defaultStyleId) => {
+    return editParagraphs(state, dispatch, (node) => {
       if (listRefOf(node)) {
         const change = listLevelChange(numbering, node, delta);
-        return (
-          change &&
-          withListNumbering(paragraphPPr(node), change, styles, defaultStyleId)
-        );
+        return change && withListNumbering(paragraphPPr(node), change);
       }
       const left = steppedLeftTwips(node, delta);
-      return left === null
-        ? null
-        : withLeftIndent(paragraphPPr(node), left, styles, defaultStyleId);
+      return left === null ? null : withLeftIndent(paragraphPPr(node), left);
     });
   };
 }

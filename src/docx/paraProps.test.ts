@@ -2,8 +2,6 @@
 import { describe, expect, it } from "vitest";
 import type { LineSpacing, ParagraphAlign } from "../model/format";
 import { templateIndent } from "../numbering/listTemplate";
-import { parseXml, W_NS } from "../ooxml/xml";
-import { readStyles, type StyleTable } from "./formatting";
 import {
   type ListChange,
   withLeftIndent,
@@ -228,10 +226,6 @@ describe("moving the left indent", () => {
   it("a fragment left with nothing but an empty indent disappears entirely", () => {
     expect(indentedPPr('<w:pPr><w:ind w:left="720"/></w:pPr>', 0)).toBeNull();
   });
-
-  it("the display values come back out of the operated-on fragment", () => {
-    expect(withLeftIndent(null, 1440)?.format).toEqual({ indentStartPt: 72 });
-  });
 });
 
 describe("setting the line spacing", () => {
@@ -283,12 +277,6 @@ describe("setting the line spacing", () => {
       '<w:pPr><w:spacing x:line="1" w:line="480" w:lineRule="auto"/></w:pPr>'
     );
   });
-
-  it("the display values come back out of the operated-on fragment", () => {
-    expect(withLineSpacing(null, DOUBLE)?.format).toEqual({
-      lineSpacing: DOUBLE,
-    });
-  });
 });
 
 describe("swapping the alignment in", () => {
@@ -311,9 +299,6 @@ describe("swapping the alignment in", () => {
     expect(alignedPPr(null, "justify")).toBe(
       '<w:pPr><w:jc w:val="both"/></w:pPr>'
     );
-    expect(withParagraphAlign(null, "justify")?.format).toEqual({
-      align: "justify",
-    });
   });
 
   it("an existing alignment keeps its slot and only its value changes", () => {
@@ -341,23 +326,6 @@ describe("swapping the alignment in", () => {
       `<w:pPr>${NUM_PR}<w:spacing w:line="276" w:lineRule="auto"/>` +
         '<w:jc w:val="center"/></w:pPr>'
     );
-  });
-
-  it("display values that came from a style survive fixing the alignment", () => {
-    const styles = readStyles(
-      parseXml(
-        `<w:styles xmlns:w="${W_NS}"><w:style w:styleId="Item">` +
-          '<w:pPr><w:jc w:val="center"/><w:spacing w:after="240"/></w:pPr>' +
-          "</w:style></w:styles>"
-      )
-    );
-    const props = withParagraphAlign(
-      '<w:pPr><w:pStyle w:val="Item"/></w:pPr>',
-      "right",
-      styles
-    );
-    // The alignment the paragraph wrote down beats the style
-    expect(props?.format).toEqual({ align: "right", spaceAfterPt: 12 });
   });
 });
 
@@ -397,25 +365,7 @@ describe("pointing the paragraph at a style", () => {
   it("there is no fragment left once the style name was all it held", () => {
     expect(
       withParagraphStyle('<w:pPr><w:pStyle w:val="Quote"/></w:pPr>', null)
-    ).toEqual({ pPr: null, format: null, styleRun: null });
-  });
-
-  it("the display values are read again under the new style", () => {
-    const styles = readStyles(
-      parseXml(
-        `<w:styles xmlns:w="${W_NS}">` +
-          '<w:style w:styleId="Quote"><w:pPr><w:jc w:val="center"/>' +
-          '<w:spacing w:after="240"/></w:pPr></w:style>' +
-          '<w:style w:styleId="Heading1"><w:pPr><w:spacing w:before="480"/>' +
-          "</w:pPr></w:style></w:styles>"
-      )
-    );
-    const pPr = '<w:pPr><w:pStyle w:val="Quote"/><w:jc w:val="right"/></w:pPr>';
-    const props = withParagraphStyle(pPr, "Heading1", styles);
-
-    // The values of the old style are gone and the new one's are underneath,
-    // with the alignment the paragraph wrote down still on top
-    expect(props?.format).toEqual({ align: "right", spaceBeforePt: 24 });
+    ).toEqual({ pPr: null });
   });
 
   it("writes a name holding markup characters as text", () => {
@@ -425,67 +375,8 @@ describe("pointing the paragraph at a style", () => {
   });
 });
 
-describe("reading the display values again", () => {
-  it("the display values come back out of the operated-on fragment", () => {
-    const props = withListNumbering(
-      '<w:pPr><w:jc w:val="center"/></w:pPr>',
-      toList(4, 1)
-    );
-    expect(props?.format).toEqual({
-      align: "center",
-      numbering: { numId: 4, ilvl: 1 },
-      indentStartPt: 72,
-      textIndentPt: -18,
-    });
-  });
-
-  it("leaving the list makes the list disappear from the display values too", () => {
-    const props = withListNumbering(
-      `<w:pPr>${NUM_PR}<w:ind w:left="720" w:hanging="360"/></w:pPr>`,
-      LEAVE_LIST
-    );
-    expect(props?.format).toEqual({ indentStartPt: 36 });
-  });
-
-  it("there are no display values either once the fragment is gone", () => {
-    const props = withListNumbering(`<w:pPr>${NUM_PR}</w:pPr>`, LEAVE_LIST);
-    expect(props).toEqual({ pPr: null, format: null, styleRun: null });
-  });
-});
-
 describe("a paragraph that points at a style", () => {
   const pPr = '<w:pPr><w:pStyle w:val="Item"/></w:pPr>';
-
-  /** The `Item` style passes down the alignment and the space after the paragraph */
-  function styleTable(): StyleTable {
-    return readStyles(
-      parseXml(
-        `<w:styles xmlns:w="${W_NS}"><w:style w:styleId="Item">` +
-          '<w:pPr><w:jc w:val="center"/><w:spacing w:after="240"/></w:pPr>' +
-          "</w:style></w:styles>"
-      )
-    );
-  }
-
-  it("display values that came from a style survive fixing the list", () => {
-    const props = withListNumbering(pPr, toList(4), styleTable());
-    expect(props?.format).toEqual({
-      align: "center",
-      spaceAfterPt: 12,
-      numbering: { numId: 4, ilvl: 0 },
-      indentStartPt: 36,
-      textIndentPt: -18,
-    });
-  });
-
-  it("with no style table it reads only what the paragraph wrote down", () => {
-    const props = withListNumbering(pPr, toList(4));
-    expect(props?.format).toEqual({
-      numbering: { numId: 4, ilvl: 0 },
-      indentStartPt: 36,
-      textIndentPt: -18,
-    });
-  });
 
   it("the styleId it points at stays in the fragment as it is", () => {
     expect(pPrOf(pPr, toList(4))).toBe(

@@ -9,13 +9,14 @@ import {
   makeDocx,
   makeNumberedDocx,
   makeStyledDocx,
+  makeStyledNumberedDocx,
   TINY_PNG_DATA_URL,
 } from "../__testing__/docx";
 import { exportDocx } from "../docx/exportDocx";
 import { styleIdOf } from "../docx/formatting";
 import { importDocx } from "../docx/importDocx";
 import type { SessionStore } from "../docx/session";
-import { toRunFormat } from "../model/format";
+import { toParagraphFormat, toRunFormat } from "../model/format";
 import { emuToPx } from "../ooxml/image";
 import { docxSchema } from "../schema";
 import { editorClassNames } from "../styles/classNames";
@@ -642,6 +643,44 @@ describe("pasting supported HTML", () => {
     expect(view.state.doc.textContent).toBe("• One• Two");
     expect(listRefOf(view.state.doc.child(0))).toBeNull();
     expect(listRefOf(view.state.doc.child(1))).toBeNull();
+    view.destroy();
+  });
+
+  it("a pasted list paragraph carries the default style's character values", () => {
+    const styles =
+      '<w:style w:type="paragraph" w:default="1" w:styleId="Normal">' +
+      '<w:name w:val="Normal"/><w:pPr><w:spacing w:after="160"/></w:pPr>' +
+      '<w:rPr><w:b/><w:sz w:val="22"/></w:rPr></w:style>';
+    const { doc, session } = importDocx(
+      makeStyledNumberedDocx(
+        '<w:p><w:r><w:t xml:space="preserve">source</w:t></w:r></w:p>',
+        styles
+      )
+    );
+    const view = createEditorView({
+      mount: document.createElement("div"),
+      state: editorStateForSession({ doc, session }),
+      onStateChange: () => {},
+    });
+    view.dispatch(view.state.tr.setSelection(new AllSelection(view.state.doc)));
+    paste(view, {
+      "text/plain": "One\nTwo",
+      "text/html": "<ol><li>One</li><li>Two</li></ol>",
+    });
+
+    const item = view.state.doc.child(0);
+    expect(listRefOf(item)).toEqual({ numId: 2, ilvl: 0 });
+    expect(toParagraphFormat(item.attrs.format)).toEqual({
+      numbering: { numId: 2, ilvl: 0 },
+      spaceAfterPt: 8,
+    });
+    expect(toRunFormat(item.attrs.styleRun)).toEqual({
+      bold: true,
+      fontSizePt: 11,
+    });
+    expect(documentXmlOf(view.state.doc, session)).toContain(
+      '<w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="2"/></w:numPr></w:pPr>'
+    );
     view.destroy();
   });
 });

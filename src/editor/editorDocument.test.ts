@@ -10,7 +10,7 @@ import {
 import { importDocx } from "../docx/importDocx";
 import { documentNumbering as sessionNumbering } from "../docx/session";
 import { createEditorState, editorStateForSession } from "./createEditor";
-import { documentGeometry, documentStyles } from "./documentStyles";
+import { documentFormatting, documentGeometry } from "./documentStyles";
 import {
   documentOf,
   editorDocumentOf,
@@ -87,7 +87,8 @@ function opened() {
   parts["word/comments.xml"] = encoder.encode(COMMENTS_XML);
   parts["word/commentsExtended.xml"] = encoder.encode(COMMENTS_EXTENDED_XML);
   parts["word/settings.xml"] = encoder.encode(
-    `<w:settings xmlns:w="${W_NS}"><w:defaultTabStop w:val="960"/></w:settings>`
+    `<w:settings xmlns:w="${W_NS}"><w:defaultTabStop w:val="960"/>` +
+      "<w:compat><w:noTabHangInd/></w:compat></w:settings>"
   );
   return importDocx(zipSync(parts));
 }
@@ -98,14 +99,10 @@ describe("reading an opened document into editor values", () => {
     const document = editorDocumentOf(session);
 
     expect(document.session).toBe(session);
-    expect(document.styles).toBe(session.styles);
+    expect(document.formatting).toBe(session.formatting);
     expect(document.defaults).toBe(session.defaults);
-    expect(document.paragraphDefaults).toBe(session.paragraphDefaults);
     expect(document.paragraphStyles).toBe(session.paragraphStyles);
-    expect(document.defaultParagraphStyleId).toBe(
-      session.defaultParagraphStyleId
-    );
-    expect(document.numbering).toEqual(sessionNumbering(session));
+    expect(document.formatting.numbering).toEqual(sessionNumbering(session));
     expect(document.canStartNewList).toBe(session.numberingPartPath !== null);
     expect(document.geometry).toBe(session.geometry);
     expect(document.defaultTabStopPt).toBe(session.defaultTabStopPt);
@@ -124,9 +121,12 @@ describe("reading an opened document into editor values", () => {
     );
 
     // Every one of them is a value the document actually wrote down, not a fallback
-    expect(document.defaultParagraphStyleId).toBe("Normal");
-    expect(document.paragraphDefaults.lineSpacing).not.toBeUndefined();
-    expect(document.numbering.lists.size).toBeGreaterThan(0);
+    expect(document.formatting.defaultParagraphStyleId).toBe("Normal");
+    expect(document.formatting.compat).toEqual({ noTabHangInd: true });
+    expect(
+      document.formatting.paragraphDefaults.lineSpacing
+    ).not.toBeUndefined();
+    expect(document.formatting.numbering.lists.size).toBeGreaterThan(0);
     expect(document.geometry).toEqual(LETTER_GEOMETRY);
     expect(document.defaultTabStopPt).toBe(48);
     expect([...document.reservedCommentIds]).toEqual(["4"]);
@@ -140,9 +140,9 @@ describe("reading an opened document into editor values", () => {
     const state = editorStateForSession(opened());
     const document = documentOf(state);
 
-    expect(documentNumbering(state)).toBe(document.numbering);
+    expect(documentNumbering(state)).toBe(document.formatting.numbering);
     expect(canStartNewList(state)).toBe(document.canStartNewList);
-    expect(documentStyles(state)).toBe(document.styles);
+    expect(documentFormatting(state)).toBe(document.formatting);
     expect(documentGeometry(state)).toBe(document.geometry);
     expect(reservedCommentIds(state)).toBe(document.reservedCommentIds);
     expect(reservedCommentParaIds(state)).toBe(document.reservedCommentParaIds);

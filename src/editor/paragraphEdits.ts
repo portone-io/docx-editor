@@ -9,15 +9,11 @@
 
 import type { Node as PMNode } from "prosemirror-model";
 import type { EditorState, Transaction } from "prosemirror-state";
-import { effectiveParagraphFormat, type StyleTable } from "../docx/formatting";
+import { paragraphAttrsFor } from "../docx/formatting";
 import type { ParagraphProps } from "../docx/paraProps";
 import { docxSchema } from "../schema";
 import { editShut } from "../schema/guards";
-import {
-  defaultParagraphStyleId,
-  documentParagraphFormatting,
-  documentStyles,
-} from "./documentStyles";
+import { documentFormatting } from "./documentStyles";
 
 export interface ParagraphSpot {
   pos: number;
@@ -62,16 +58,8 @@ export function paragraphPPr(node: PMNode): string | null {
   return typeof pPr === "string" ? pPr : null;
 }
 
-/**
- * How to edit a single paragraph. Null skips that paragraph.
- * The style table and the document's default paragraph style come along, because the display values
- * of the edited fragment are read back with the style the paragraph wears laid underneath.
- */
-export type ParagraphSurgery = (
-  node: PMNode,
-  styles: StyleTable,
-  defaultStyleId: string | null
-) => ParagraphProps | null;
+/** How to edit a single paragraph. Null skips that paragraph */
+export type ParagraphSurgery = (node: PMNode) => ParagraphProps | null;
 
 interface PlannedChange {
   spot: ParagraphSpot;
@@ -83,13 +71,12 @@ function writeChanges(
   changed: readonly PlannedChange[]
 ): Transaction {
   const tr = state.tr;
-  const formatting = documentParagraphFormatting(state);
+  const formatting = documentFormatting(state);
   for (const { spot, props } of changed) {
     tr.setNodeMarkup(tr.mapping.map(spot.pos), undefined, {
       ...spot.node.attrs,
       pPr: props.pPr,
-      format: effectiveParagraphFormat(props.pPr, formatting),
-      styleRun: props.styleRun,
+      ...paragraphAttrsFor(props.pPr, formatting),
     });
   }
   return tr;
@@ -101,10 +88,8 @@ export function editParagraphs(
   dispatch: ((tr: Transaction) => void) | undefined,
   surgery: ParagraphSurgery
 ): boolean {
-  const styles = documentStyles(state);
-  const defaultStyleId = defaultParagraphStyleId(state);
   const changed = editableParagraphs(state).flatMap((spot) => {
-    const props = surgery(spot.node, styles, defaultStyleId);
+    const props = surgery(spot.node);
     return props ? [{ spot, props }] : [];
   });
   if (changed.length === 0) return false;

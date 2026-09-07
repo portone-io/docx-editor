@@ -113,29 +113,49 @@ export function lineHeightValue(spacing: LineSpacing | null): string {
   return `max(${pt(spacing.pt)},${SINGLE_LINE_RATIO}em)`;
 }
 
+/**
+ * The lines drawn through and under the text. A line switched off outright is declared as none,
+ * so it beats the one the paragraph's style would otherwise hand down.
+ */
 function textDecoration(format: RunFormat): string[] {
+  const underline =
+    format.underline !== undefined && format.underline !== "none"
+      ? format.underline
+      : undefined;
   const lines: string[] = [];
-  if (format.underline) lines.push("underline");
+  if (underline) lines.push("underline");
   if (format.strike) lines.push("line-through");
-  if (lines.length === 0) return [];
+  if (lines.length === 0) {
+    return format.underline === "none" || format.strike === false
+      ? ["text-decoration-line:none"]
+      : [];
+  }
 
   const css = [`text-decoration-line:${lines.join(" ")}`];
-  const style = format.underline
-    ? UNDERLINE_STYLES[format.underline]
-    : undefined;
+  const style = underline ? UNDERLINE_STYLES[underline] : undefined;
   if (style) css.push(`text-decoration-style:${style}`);
   return css;
 }
 
-/** The character declarations that carry down to the text inside the element that wrote them */
+/**
+ * The character declarations that carry down to the text inside the element that wrote them.
+ * A toggle switched off outright is declared as off for the same reason a line is: the style
+ * around the text may have switched it on.
+ */
 function inheritedRunCss(
   format: RunFormat,
   fontFallbacks: FontFallbacks
 ): string[] {
   const css: string[] = [];
-  if (format.bold) css.push("font-weight:bold");
-  if (format.italic) css.push("font-style:italic");
-  if (format.smallCaps) css.push("font-variant:small-caps");
+  if (format.bold !== undefined) {
+    css.push(`font-weight:${format.bold ? "bold" : "normal"}`);
+  }
+  if (format.italic !== undefined) {
+    css.push(`font-style:${format.italic ? "italic" : "normal"}`);
+  }
+  if (format.smallCaps !== undefined) {
+    css.push(`font-variant:${format.smallCaps ? "small-caps" : "normal"}`);
+  }
   css.push(...textDecoration(format));
   if (format.fontSizePt !== undefined)
     css.push(`font-size:${pt(format.fontSizePt)}`);

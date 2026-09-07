@@ -166,3 +166,32 @@ describe("line spacing", () => {
     );
   });
 });
+
+/**
+ * A run inside a paragraph whose style switched a toggle on inherits that from the paragraph's own
+ * declarations, so a run that switched it off has to say so rather than say nothing.
+ */
+describe("a toggle switched off outright", () => {
+  it("is declared as off, where one nobody mentioned is left undeclared", () => {
+    expect(runStyle({ bold: false, italic: false, smallCaps: false })).toBe(
+      "font-weight:normal;font-style:normal;font-variant:normal"
+    );
+    expect(runStyle({})).toBeUndefined();
+    expect(runStyle({ bold: true })).toBe("font-weight:bold");
+  });
+
+  it("takes the line away when both lines are off, and keeps the one still on", () => {
+    expect(runStyle({ underline: "none" })).toBe("text-decoration-line:none");
+    expect(runStyle({ strike: false })).toBe("text-decoration-line:none");
+    expect(runStyle({ underline: "single", strike: false })).toBe(
+      "text-decoration-line:underline"
+    );
+    expect(runStyle({ underline: "none", strike: true })).toBe(
+      "text-decoration-line:line-through"
+    );
+  });
+
+  it("carries down from a paragraph the same way", () => {
+    expect(paragraphStyle(null, { bold: false })).toBe("font-weight:normal");
+  });
+});

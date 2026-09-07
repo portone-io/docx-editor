@@ -50,10 +50,10 @@ function sameLineSpacing(a: LineSpacing, b: LineSpacing): boolean {
 export function setLineSpacing(spacing: LineSpacing): Command {
   return (state, dispatch) => {
     const defaults = documentDefaults(state);
-    return editParagraphs(state, dispatch, (node, styles, defaultStyleId) =>
+    return editParagraphs(state, dispatch, (node) =>
       sameLineSpacing(lineSpacingOf(node, defaults), spacing)
         ? null
-        : withLineSpacing(paragraphPPr(node), spacing, styles, defaultStyleId)
+        : withLineSpacing(paragraphPPr(node), spacing)
     );
   };
 }

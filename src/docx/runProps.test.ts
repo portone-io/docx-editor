@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
+import { NO_FILL, type RunFormat } from "../model/format";
 import {
   editRunProps,
   isRunToggleOn,
@@ -9,18 +10,18 @@ import {
   readRunProps,
 } from "./runProps";
 
-/** Changes one piece of formatting inside a paragraph that points at no style */
-function edit(rPr: string | null, change: RunEdit): RunProps | null {
-  return editRunProps({ rPr, format: readRunProps(rPr) }, null, change);
+/** Changes one piece of formatting. `inherited` is what the layers below the run lay down, nothing unless said */
+function edit(
+  rPr: string | null,
+  change: RunEdit,
+  inherited: RunFormat = {}
+): RunProps | null {
+  return editRunProps({ rPr, format: readRunProps(rPr) }, inherited, change);
 }
 
-/** Changes one piece of formatting inside a paragraph that points at a style */
+/** Changes one piece of formatting under a style that switched bold and the underline on */
 function editStyled(rPr: string | null, change: RunEdit): RunProps | null {
-  return editRunProps(
-    { rPr, format: readRunProps(rPr) },
-    '<w:pPr><w:pStyle w:val="Heading1"/></w:pPr>',
-    change
-  );
+  return edit(rPr, change, { bold: true, underline: "single" });
 }
 
 const bold = (on: boolean): RunEdit => ({ kind: "toggle", toggle: "bold", on });
@@ -115,10 +116,32 @@ describe("turning formatting off", () => {
   });
 
   it("pins the off down when the run points at a character style too", () => {
+    // The character style's values arrive in `inherited`; the reference itself stays where it was
     const rPr = '<w:rPr><w:rStyle w:val="Strong"/><w:b/></w:rPr>';
-    expect(edit(rPr, bold(false))?.rPr).toBe(
+    expect(edit(rPr, bold(false), { bold: true })?.rPr).toBe(
       '<w:rPr><w:rStyle w:val="Strong"/><w:b w:val="0"/>' +
         '<w:bCs w:val="0"/></w:rPr>'
+    );
+  });
+
+  it("removes the element where the layers below leave the setting off anyway", () => {
+    expect(edit("<w:rPr><w:b/></w:rPr>", bold(false), { bold: false })).toEqual(
+      { rPr: null, format: null }
+    );
+    expect(
+      edit('<w:rPr><w:u w:val="single"/></w:rPr>', underline(false), {
+        underline: "none",
+      })?.rPr
+    ).toBeNull();
+  });
+
+  it("a layer below that paints nothing behind the text leaves nothing to pin a background against", () => {
+    const background: RunEdit = { kind: "background", hex: null };
+    const shaded =
+      '<w:rPr><w:shd w:val="clear" w:color="auto" w:fill="FFFF00"/></w:rPr>';
+    expect(edit(shaded, background, { background: NO_FILL })?.rPr).toBeNull();
+    expect(edit(shaded, background, { highlight: "yellow" })?.rPr).toBe(
+      '<w:rPr><w:highlight w:val="none"/></w:rPr>'
     );
   });
 });
@@ -319,14 +342,18 @@ describe("text color and highlight", () => {
     expect(edit(null, { kind: "color", hex: "#12345" })).toBeNull();
   });
 
-  it("turning the color off pins auto down only when something is inherited", () => {
+  it("turning the color off pins auto down only when a color is inherited", () => {
     const rPr = '<w:rPr><w:color w:val="FF0000"/><w:b/></w:rPr>';
     expect(edit(rPr, { kind: "color", hex: null })?.rPr).toBe(
       "<w:rPr><w:b/></w:rPr>"
     );
+    // A style switching bold on says nothing about the color, so there is nothing to pin against
     expect(editStyled(rPr, { kind: "color", hex: null })?.rPr).toBe(
-      '<w:rPr><w:color w:val="auto"/><w:b/></w:rPr>'
+      "<w:rPr><w:b/></w:rPr>"
     );
+    expect(
+      edit(rPr, { kind: "color", hex: null }, { color: "#2E74B5" })?.rPr
+    ).toBe('<w:rPr><w:color w:val="auto"/><w:b/></w:rPr>');
   });
 
   it("writes a background color as w:shd", () => {
@@ -359,11 +386,21 @@ describe("text color and highlight", () => {
     });
   });
 
-  it("pins the background off down when something is inherited", () => {
+  it("pins the background off down against the fill and the highlight inherited", () => {
     const rPr = '<w:rPr><w:b/><w:shd w:val="clear" w:fill="FF0000"/></w:rPr>';
-    expect(editStyled(rPr, { kind: "background", hex: null })?.rPr).toBe(
+    expect(
+      edit(
+        rPr,
+        { kind: "background", hex: null },
+        { background: "#FFFF00", highlight: "yellow" }
+      )?.rPr
+    ).toBe(
       '<w:rPr><w:b/><w:highlight w:val="none"/>' +
         '<w:shd w:val="clear" w:color="auto" w:fill="auto"/></w:rPr>'
+    );
+    // A style switching bold on paints nothing behind the text, so the shading simply goes
+    expect(editStyled(rPr, { kind: "background", hex: null })?.rPr).toBe(
+      "<w:rPr><w:b/></w:rPr>"
     );
   });
 
@@ -404,12 +441,12 @@ describe("deriving the display values again", () => {
         rPr: "<w:rPr><w:b/></w:rPr>",
         format: { bold: true, color: "#2E74B5" },
       },
-      '<w:pPr><w:pStyle w:val="Heading1"/></w:pPr>',
+      { bold: true, color: "#2E74B5" },
       bold(false)
     );
     expect(next).toEqual({
       rPr: '<w:rPr><w:b w:val="0"/><w:bCs w:val="0"/></w:rPr>',
-      format: { color: "#2E74B5" },
+      format: { bold: false, color: "#2E74B5" },
     });
   });
 

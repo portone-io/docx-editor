@@ -8,11 +8,13 @@ import {
 } from "prosemirror-model";
 import { type EditorState, Plugin } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
-import { effectiveParagraphFormat, styleIdOf } from "../docx/formatting";
-import { type ParagraphProps, withParagraphStyle } from "../docx/paraProps";
+import { paragraphAttrsFor, styleIdOf } from "../docx/formatting";
+import {
+  type ParagraphProps,
+  withListNumbering,
+  withParagraphStyle,
+} from "../docx/paraProps";
 import { type ListKind, MAX_ILVL, nextNumId } from "../numbering/listTemplate";
-import { elementXml } from "../ooxml/element";
-import { wName } from "../ooxml/names";
 import { docxSchema, isPageBreak } from "../schema";
 import { editorClassNames } from "../styles/classNames";
 import { PASTED_IMAGE_ATTRIBUTE } from "./clipboard/images";
@@ -26,12 +28,7 @@ import {
   withInlineStyle,
 } from "./clipboard/inlineFormatting";
 import { listRefOf } from "./commands/listCommands";
-import {
-  defaultParagraphStyleId,
-  documentParagraphFormatting,
-  documentParagraphStyles,
-  documentStyles,
-} from "./documentStyles";
+import { documentFormatting, documentParagraphStyles } from "./documentStyles";
 import type { ImageToInsert } from "./insertImage";
 import { insertPlainText } from "./plainText";
 import { moveCaretToDrop } from "./plugins/dropCaret";
@@ -387,15 +384,7 @@ function blockContext(
     };
   }
   const styleId = destinationStyleId(state, sourceStyleId, level);
-  const paragraph =
-    styleId === null
-      ? null
-      : withParagraphStyle(
-          null,
-          styleId,
-          documentStyles(state),
-          defaultParagraphStyleId(state)
-        );
+  const paragraph = styleId === null ? null : withParagraphStyle(null, styleId);
   const usesDestinationStyle =
     editorParagraph && (sourceStyleId === null || paragraph !== null);
   let inline = parent;
@@ -408,30 +397,13 @@ function blockContext(
   };
 }
 
-function listParagraphAttrs(
-  state: EditorState,
-  list: ListContext | null
-): Record<string, unknown> | null {
+/** A pasted list item joins the list the way a list command puts a paragraph into one */
+function listParagraphProps(list: ListContext | null): ParagraphProps | null {
   if (!list || list.numId === null) return null;
-  const ilvl = Math.min(MAX_ILVL, list.level);
-  const pPr = elementXml(
-    wName("pPr"),
-    [],
-    [
-      elementXml(
-        wName("numPr"),
-        [],
-        [
-          elementXml(wName("ilvl"), [[wName("val"), `${ilvl}`]]),
-          elementXml(wName("numId"), [[wName("val"), `${list.numId}`]]),
-        ]
-      ),
-    ]
-  );
-  return {
-    pPr,
-    format: effectiveParagraphFormat(pPr, documentParagraphFormatting(state)),
-  };
+  return withListNumbering(null, {
+    numbering: { numId: list.numId, ilvl: Math.min(MAX_ILVL, list.level) },
+    indent: { kind: "keep" },
+  });
 }
 
 function paragraphAttrs(
@@ -439,16 +411,11 @@ function paragraphAttrs(
   list: ListContext | null,
   paragraph: ParagraphProps | null
 ): Record<string, unknown> | null {
-  const listed = listParagraphAttrs(state, list);
-  if (listed) return listed;
-  return paragraph
+  const props = listParagraphProps(list) ?? paragraph;
+  return props
     ? {
-        pPr: paragraph.pPr,
-        format: effectiveParagraphFormat(
-          paragraph.pPr,
-          documentParagraphFormatting(state)
-        ),
-        styleRun: paragraph.styleRun,
+        pPr: props.pPr,
+        ...paragraphAttrsFor(props.pPr, documentFormatting(state)),
       }
     : null;
 }

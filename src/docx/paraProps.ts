@@ -5,18 +5,15 @@
  * When one paragraph is changed, the formatting we do not touch, such as tab stops and borders,
  * must stay as the original text wrote it. So we never rebuild the fragment; we change it one child
  * at a time, and within a child one attribute at a time.
- * The fragment we operated on is read back with the parser used when opening the document to build
- * the display values, and the style the paragraph points at is layered in the same order as it was
- * then. That way a changed paragraph's display values are the same as they would be after saving
- * and reopening.
+ * What the edited fragment is drawn with is not decided here: the caller hands the fragment to the
+ * resolver (`formatting/resolve`), the same one opening the document uses, so a changed paragraph's
+ * display values are the same as they would be after saving and reopening.
  */
 
 import type {
   LineSpacing,
   NumberingRef,
   ParagraphAlign,
-  ParagraphFormat,
-  RunFormat,
 } from "../model/format";
 import type { LevelIndent } from "../numbering/parseNumbering";
 import {
@@ -31,7 +28,6 @@ import {
   childElement,
   type Props,
   parseProps,
-  parsePropsXml,
   renderProps,
   setChild,
 } from "../ooxml/props";
@@ -40,15 +36,7 @@ import {
   ST_SignedTwipsMeasure,
   TWIPS_PER_PT,
 } from "../ooxml/simpleTypes";
-import {
-  LINE_UNITS_PER_LINE,
-  layerParagraphFormat,
-  layerRunFormat,
-  NO_STYLES,
-  paragraphStyleFormat,
-  readParagraphFormat,
-  type StyleTable,
-} from "./formatting";
+import { LINE_UNITS_PER_LINE } from "./formatting";
 
 /** What to do with the indents */
 export type IndentChange =
@@ -65,12 +53,9 @@ export interface ListChange {
   indent: IndentChange;
 }
 
-/** The paragraph formatting we operated on, and the display values read back out of it */
+/** The paragraph formatting we operated on. A null `pPr` is a fragment with nothing left in it */
 export interface ParagraphProps {
   pPr: string | null;
-  format: ParagraphFormat | null;
-  /** The character formatting the style the paragraph now wears lays down (`styleRun` in `schema`) */
-  styleRun: RunFormat | null;
 }
 
 /** The attributes that record the left indent. They are removed together when a new left indent is written */
@@ -88,32 +73,6 @@ const FIRST_LINE_IND_ATTRS = [
   "firstLine",
   "firstLineChars",
 ];
-
-/**
- * Reads the fragment we operated on back along the same path used when opening the document.
- *
- * The values of the style the paragraph wears are laid down underneath (the same order as import),
- * which for a paragraph pointing at no style of its own is the document's default paragraph style.
- */
-export function readParagraphProps(
-  pPr: string | null,
-  styles: StyleTable = NO_STYLES,
-  defaultStyleId: string | null = null
-): ParagraphFormat | null {
-  const direct = pPr === null ? null : readParagraphFormat(parsePropsXml(pPr));
-  const style = paragraphStyleFormat(pPr, styles, defaultStyleId);
-  return layerParagraphFormat(style?.paragraph ?? {}, direct);
-}
-
-/** The character formatting the style the paragraph wears lays down, read back the same way */
-function readParagraphStyleRun(
-  pPr: string | null,
-  styles: StyleTable = NO_STYLES,
-  defaultStyleId: string | null = null
-): RunFormat | null {
-  const style = paragraphStyleFormat(pPr, styles, defaultStyleId);
-  return layerRunFormat(style?.run ?? {}, null);
-}
 
 function numPrXml(ref: NumberingRef | null): string | null {
   if (!ref) return null;
@@ -197,8 +156,6 @@ type ChildEdit = readonly [name: string, xml: string | null];
  */
 function editParagraphProps(
   pPr: string | null,
-  styles: StyleTable,
-  defaultStyleId: string | null,
   plan: (props: Props) => readonly ChildEdit[] | null
 ): ParagraphProps | null {
   const props = pPr === null ? EMPTY_P_PR : parseProps(pPr);
@@ -209,21 +166,14 @@ function editParagraphProps(
   const rendered = renderProps(
     edits.reduce((kept, [name, xml]) => setChild(kept, name, xml), props)
   );
-  const next = rendered === "" ? null : rendered;
-  return {
-    pPr: next,
-    format: readParagraphProps(next, styles, defaultStyleId),
-    styleRun: readParagraphStyleRun(next, styles, defaultStyleId),
-  };
+  return { pPr: rendered === "" ? null : rendered };
 }
 
 export function withListNumbering(
   pPr: string | null,
-  change: ListChange,
-  styles: StyleTable = NO_STYLES,
-  defaultStyleId: string | null = null
+  change: ListChange
 ): ParagraphProps | null {
-  return editParagraphProps(pPr, styles, defaultStyleId, (props) => {
+  return editParagraphProps(pPr, (props) => {
     const current = childElement(props, "ind");
     if (!current) return null;
     const ind = nextIndXml(current.attrs, change.indent);
@@ -239,11 +189,9 @@ export function withListNumbering(
  */
 export function withLeftIndent(
   pPr: string | null,
-  leftTwips: number,
-  styles: StyleTable = NO_STYLES,
-  defaultStyleId: string | null = null
+  leftTwips: number
 ): ParagraphProps | null {
-  return editParagraphProps(pPr, styles, defaultStyleId, (props) => {
+  return editParagraphProps(pPr, (props) => {
     const ind = childElement(props, "ind");
     if (!ind) return null;
     return [["ind", indXml(leftIndAttrs(ind.attrs, leftTwips))]];
@@ -274,16 +222,14 @@ function spacingAttrs(
  */
 export function withLineSpacing(
   pPr: string | null,
-  spacing: LineSpacing,
-  styles: StyleTable = NO_STYLES,
-  defaultStyleId: string | null = null
+  spacing: LineSpacing
 ): ParagraphProps | null {
   const line =
     spacing.rule === "auto"
       ? ST_DecimalNumber.format(Math.round(spacing.lines * LINE_UNITS_PER_LINE))
       : ST_SignedTwipsMeasure.format(Math.round(spacing.pt * TWIPS_PER_PT));
   if (line === null) return null;
-  return editParagraphProps(pPr, styles, defaultStyleId, (props) => {
+  return editParagraphProps(pPr, (props) => {
     const current = childElement(props, "spacing");
     if (!current) return null;
     const attrs = spacingAttrs(current.attrs, [
@@ -303,17 +249,13 @@ export function withLineSpacing(
  */
 export function withParagraphStyle(
   pPr: string | null,
-  styleId: string | null,
-  styles: StyleTable = NO_STYLES,
-  defaultStyleId: string | null = null
+  styleId: string | null
 ): ParagraphProps | null {
   const pStyle =
     styleId === null
       ? null
       : elementXml(wName("pStyle"), [[wName("val"), styleId]]);
-  return editParagraphProps(pPr, styles, defaultStyleId, () => [
-    ["pStyle", pStyle],
-  ]);
+  return editParagraphProps(pPr, () => [["pStyle", pStyle]]);
 }
 
 /** OOXML writes justified alignment as `both` */
@@ -330,10 +272,8 @@ const JC_BY_ALIGN: Record<ParagraphAlign, string> = {
  */
 export function withParagraphAlign(
   pPr: string | null,
-  align: ParagraphAlign,
-  styles: StyleTable = NO_STYLES,
-  defaultStyleId: string | null = null
+  align: ParagraphAlign
 ): ParagraphProps | null {
   const jc = elementXml(wName("jc"), [[wName("val"), JC_BY_ALIGN[align]]]);
-  return editParagraphProps(pPr, styles, defaultStyleId, () => [["jc", jc]]);
+  return editParagraphProps(pPr, () => [["jc", jc]]);
 }

@@ -9,6 +9,7 @@ import {
   makeStyledNumberedDocx,
 } from "../../__testing__/docx";
 import { posOfText, runCommand, select } from "../../__testing__/editing";
+import { NO_FORMATTING } from "../../docx/formatting";
 import { importDocx } from "../../docx/importDocx";
 import { toParagraphFormat } from "../../model/format";
 import {
@@ -71,7 +72,10 @@ function listPPr(numId: number, ilvl: number, ind: string): string {
 /** A state over list definitions the test writes, which the body points into */
 function openState(body: string, numbering = EMPTY_NUMBERING): EditorState {
   const { doc } = importDocx(makeDocx(body));
-  const withLists: EditorDocument = { ...NO_DOCUMENT, numbering };
+  const withLists: EditorDocument = {
+    ...NO_DOCUMENT,
+    formatting: { ...NO_FORMATTING, numbering },
+  };
   return createEditorState(doc, { document: withLists });
 }
 

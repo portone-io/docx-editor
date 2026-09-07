@@ -29,6 +29,7 @@ import {
   setParagraphAlign,
   setParagraphStyle,
 } from "./paragraphCommands";
+import { setLineSpacing } from "./spacingCommands";
 
 function paragraph(text: string, pPr = ""): string {
   return `<w:p>${pPr}<w:r><w:t xml:space="preserve">${text}</w:t></w:r></w:p>`;
@@ -499,6 +500,37 @@ describe("the default paragraph style", () => {
       styleRun: { fontSizePt: 11 },
     });
   });
+
+  it("keeps the spacing the document defaults lay down when a style is applied", () => {
+    const { state } = openedStyled(
+      paragraph("Body"),
+      "<w:docDefaults><w:pPrDefault><w:pPr>" +
+        '<w:spacing w:after="160"/></w:pPr></w:pPrDefault></w:docDefaults>' +
+        '<w:style w:type="paragraph" w:styleId="Normal" w:default="1">' +
+        '<w:name w:val="Normal"/></w:style>' +
+        HEADING_STYLE
+    );
+    expect(displayValuesOf(state.doc, 0).format).toEqual({ spaceAfterPt: 8 });
+
+    const heading = runCommand(
+      at(state, "Body"),
+      setParagraphStyle("Heading1")
+    );
+    expect(displayValuesOf(heading.doc, 0)).toEqual({
+      format: { align: "left", spaceAfterPt: 8 },
+      styleRun: { bold: true, fontSizePt: 20 },
+    });
+
+    const spaced = runCommand(
+      heading,
+      setLineSpacing({ rule: "auto", lines: 1.5 })
+    );
+    expect(displayValuesOf(spaced.doc, 0).format).toEqual({
+      align: "left",
+      spaceAfterPt: 8,
+      lineSpacing: { rule: "auto", lines: 1.5 },
+    });
+  });
 });
 
 /** The paragraph as it is drawn on screen */
@@ -564,5 +596,30 @@ describe("typing in a paragraph that wears a style", () => {
       fontSizePt: 16,
     });
     expect(renderedParagraph(typedIn.doc, 1)).toContain("font-style: italic");
+  });
+});
+
+/**
+ * The paragraph declares the style's character formatting for the text typed into it, so a run
+ * that switched that formatting off has to declare the off itself or it would inherit the on.
+ */
+describe("a run that switches off what its style switched on", () => {
+  const BOLD_NORMAL_STYLE =
+    '<w:style w:type="paragraph" w:styleId="Normal" w:default="1">' +
+    '<w:name w:val="Normal"/><w:rPr><w:b/></w:rPr></w:style>';
+
+  it("is drawn plain inside the styled paragraph", () => {
+    const { state } = openedStyled(
+      '<w:p><w:r><w:t xml:space="preserve">Body</w:t></w:r>' +
+        '<w:r><w:rPr><w:b w:val="0"/></w:rPr>' +
+        '<w:t xml:space="preserve">plain</w:t></w:r></w:p>',
+      BOLD_NORMAL_STYLE
+    );
+
+    expect(markFormatOf(state.doc, "Body")).toEqual({ bold: true });
+    expect(markFormatOf(state.doc, "plain")).toEqual({ bold: false });
+    const drawn = renderedParagraph(state.doc, 0);
+    expect(drawn).toMatch(/^<p[^>]*font-weight: bold/);
+    expect(drawn).toMatch(/<span[^>]*font-weight: normal;[^]*?>plain</);
   });
 });

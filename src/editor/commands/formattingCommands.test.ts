@@ -3,7 +3,11 @@ import type { Node as PMNode } from "prosemirror-model";
 import type { EditorState } from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
 import { describe, expect, it } from "vitest";
-import { documentXmlOf, makeDocx } from "../../__testing__/docx";
+import {
+  documentXmlOf,
+  makeDocx,
+  makeStyledDocx,
+} from "../../__testing__/docx";
 import { runCommand, select } from "../../__testing__/editing";
 import { exportDocx } from "../../docx/exportDocx";
 import { importDocx } from "../../docx/importDocx";
@@ -164,6 +168,77 @@ describe("toggle direction", () => {
         '<w:r><w:t xml:space="preserve">c</w:t></w:r>'
     );
   });
+});
+
+/**
+ * A toggle switched on below the run - by its paragraph style or by the document defaults - is
+ * switched off by pinning the off down in the rPr, since removing the element would let the layer
+ * below win again.
+ */
+describe("switching off what a style or the document defaults switched on", () => {
+  const BOLD_NORMAL =
+    '<w:style w:type="paragraph" w:styleId="Normal" w:default="1">' +
+    '<w:name w:val="Normal"/><w:rPr><w:b/></w:rPr></w:style>';
+  const PINNED_OFF = '<w:rPr><w:b w:val="0"/><w:bCs w:val="0"/></w:rPr>';
+
+  it("turns bold off on text whose bold comes from the default style and keeps it off after reopen", () => {
+    const { doc, session } = importDocx(
+      makeStyledDocx("<w:p>" + paragraph("", "Body") + "</w:p>", BOLD_NORMAL)
+    );
+    const state = select(editorStateForSession({ doc, session }), 1, 5);
+    expect(isBoldActive(state)).toBe(true);
+
+    const plain = runCommand(state, toggleBold);
+    expect(isBoldActive(plain)).toBe(false);
+    expect(
+      toRunFormat(plain.doc.child(0).child(0).marks[0].attrs.format)
+    ).toEqual({ bold: false });
+    expect(documentXmlOf(plain.doc, session)).toContain(
+      `<w:r>${PINNED_OFF}<w:t xml:space="preserve">Body</w:t></w:r>`
+    );
+
+    const reopened = importDocx(exportDocx(plain.doc, session));
+    const again = select(editorStateForSession(reopened), 1, 5);
+    expect(
+      toRunFormat(again.doc.child(0).child(0).marks[0].attrs.format)
+    ).toEqual({ bold: false });
+    expect(isBoldActive(again)).toBe(false);
+  });
+
+  it("turns bold off on text whose bold comes from docDefaults by pinning w:b w:val=0", () => {
+    const { state, session } = opened(
+      "<w:p>" + paragraph("", "ab") + "</w:p>",
+      "<w:rPr><w:b/></w:rPr>"
+    );
+    const selected = select(state, 1, 3);
+    expect(isBoldActive(selected)).toBe(true);
+    const plain = runCommand(selected, toggleBold);
+    expect(isBoldActive(plain)).toBe(false);
+    expect(documentXmlOf(plain.doc, session)).toContain(
+      `<w:r>${PINNED_OFF}<w:t xml:space="preserve">ab</w:t></w:r>`
+    );
+  });
+});
+
+describe("removing a direct setting", () => {
+  it.each(["paragraph", "character"])(
+    "restores the %s style in the toolbar immediately",
+    (kind) => {
+      const styles = `<w:style w:type="${kind}" w:styleId="Sized"${kind === "paragraph" ? ' w:default="1"' : ""}><w:rPr><w:sz w:val="40"/></w:rPr></w:style>`;
+      const rPr = `<w:rPr>${kind === "character" ? '<w:rStyle w:val="Sized"/>' : ""}<w:sz w:val="60"/></w:rPr>`;
+      const opened = importDocx(
+        makeStyledDocx(`<w:p>${paragraph(rPr, "Body")}</w:p>`, styles)
+      );
+      const state = select(editorStateForSession(opened), 1, 5);
+      expect(activeFontSize(state)).toEqual({ kind: "size", pt: 30 });
+      const cleared = runCommand(state, setFontSize(null));
+      expect(activeFontSize(cleared)).toEqual({ kind: "size", pt: 20 });
+      const reopened = importDocx(exportDocx(cleared.doc, opened.session));
+      expect(
+        activeFontSize(select(editorStateForSession(reopened), 1, 5))
+      ).toEqual({ kind: "size", pt: 20 });
+    }
+  );
 });
 
 describe("applying formatting at the caret", () => {

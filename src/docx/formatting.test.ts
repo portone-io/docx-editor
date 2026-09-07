@@ -88,24 +88,31 @@ describe("readRunFormat", () => {
     });
   });
 
-  it("honors the val of an on/off formatting flag", () => {
+  it("honors the val of an on/off formatting flag, an off reading as false", () => {
     expect(runFormat("<w:rPr><w:b/><w:i/></w:rPr>")).toEqual({
       bold: true,
       italic: true,
     });
+    // Switched off outright is not the same as unmentioned: it beats a style that switched it on
     expect(
-      runFormat('<w:rPr><w:b w:val="0"/><w:strike w:val="0"/></w:rPr>')
-    ).toEqual({});
+      runFormat('<w:rPr><w:b w:val="0"/><w:strike w:val="false"/></w:rPr>')
+    ).toEqual({ bold: false, strike: false });
     expect(runFormat('<w:rPr><w:smallCaps w:val="1"/></w:rPr>')).toEqual({
       smallCaps: true,
     });
+    expect(runFormat('<w:rPr><w:smallCaps w:val="off"/></w:rPr>')).toEqual({
+      smallCaps: false,
+    });
   });
 
-  it("keeps the underline kind and leaves out none", () => {
+  it("keeps the underline kind, none included", () => {
     expect(runFormat('<w:rPr><w:u w:val="single"/></w:rPr>')).toEqual({
       underline: "single",
     });
-    expect(runFormat('<w:rPr><w:u w:val="none"/></w:rPr>')).toEqual({});
+    expect(runFormat('<w:rPr><w:u w:val="none"/></w:rPr>')).toEqual({
+      underline: "none",
+    });
+    expect(runFormat('<w:rPr><w:u w:val="squiggle"/></w:rPr>')).toEqual({});
   });
 
   it("reads the text color and the highlight", () => {
