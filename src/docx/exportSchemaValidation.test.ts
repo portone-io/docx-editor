@@ -27,7 +27,9 @@ import {
   makeDocx,
   makeHeadersFootersDocx,
   makeNotesDocx,
+  producerFixtureNames,
   readFixture,
+  readProducerFixture,
 } from "../__testing__/docx";
 import { posOfText } from "../__testing__/editing";
 import {
@@ -552,6 +554,145 @@ describe("the exported package against the OOXML schemas", () => {
     expect(report).toContain(session.mainPartPath);
     expect(report).toContain("notInWml");
   });
+});
+
+/** The prefixes the reports below are read in, since xmllint names a namespace by its URI */
+const REPORT_PREFIXES = new Map([
+  [W_NS, "w"],
+  [W14_NS, "w14"],
+  [MC_NS, "mc"],
+]);
+
+const SCHEMA_ERROR = "Schemas validity error : ";
+
+/**
+ * One xmllint report reduced to the distinct kinds of violation in it.
+ *
+ * A producer writes the same invalid measurement on every cell in the document, so a pin over
+ * the raw report would record how often its writer is wrong rather than what it is wrong about,
+ * and one added table cell would then have to be approved as a schema change.
+ */
+function violationKinds(report: string): readonly string[] {
+  const kinds = new Set<string>();
+  for (const line of report.split("\n")) {
+    const at = line.indexOf(SCHEMA_ERROR);
+    if (at === -1) continue;
+    kinds.add(
+      line
+        .slice(at + SCHEMA_ERROR.length)
+        .replaceAll(
+          /\{([^}]*)\}/g,
+          (_whole, uri: string) => `${REPORT_PREFIXES.get(uri) ?? uri}:`
+        )
+        .replace(/'[^']*' is not a valid value/, "'…' is not a valid value")
+    );
+  }
+  return Array.from(kinds).sort();
+}
+
+const strayParaId =
+  "Element 'w:p', attribute 'w14:paraId': " +
+  "The attribute 'w14:paraId' is not allowed.";
+
+const notAMeasurement = (element: string) =>
+  `Element '${element}', attribute 'w:w': '…' is not a valid value of` +
+  " the union type 'w:ST_MeasurementOrPercent'.";
+
+/** The cell margins a producer may write as decimals, on the four sides and in a style */
+const DECIMAL_CELL_MARGINS = [
+  notAMeasurement("w:bottom"),
+  notAMeasurement("w:left"),
+  notAMeasurement("w:right"),
+  notAMeasurement("w:top"),
+];
+
+/**
+ * What the schemas turn down in each producer package, approved as a file a reviewer reads.
+ *
+ * Every one of these is markup the producer wrote and this editor hands back untouched, so the
+ * pin says what a real word processor puts in a package that ECMA-376 does not describe. A diff
+ * here means either that a producer file changed or that the export stopped preserving what it
+ * was handed, and `__fixtures__/README.md` explains each entry under "Known gaps".
+ */
+const PRODUCER_VIOLATIONS: Readonly<
+  Record<string, Readonly<Record<string, readonly string[]>>>
+> = {
+  "google-docs-export.docx": {
+    "word/document.xml": [
+      ...DECIMAL_CELL_MARGINS,
+      strayParaId,
+      "Element 'w:pgMar': The attribute 'w:gutter' is required but missing.",
+      notAMeasurement("w:tblW"),
+    ],
+    "word/styles.xml": DECIMAL_CELL_MARGINS,
+    "word/header1.xml": [strayParaId],
+    "word/footer1.xml": [strayParaId],
+    "word/footnotes.xml": [strayParaId],
+    "word/comments.xml": [strayParaId],
+  },
+};
+
+function expectOnlyApprovedViolations(
+  name: string,
+  parts: Map<string, string>
+): void {
+  expect(parts.size).toBeGreaterThan(0);
+  const found = Object.fromEntries(
+    Array.from(validateParts(parts), ([path, report]) => [
+      path,
+      violationKinds(report),
+    ])
+  );
+  const approved = Object.fromEntries(
+    Object.entries(PRODUCER_VIOLATIONS[name] ?? {}).map(([path, kinds]) => [
+      path,
+      Array.from(kinds).sort(),
+    ])
+  );
+
+  expect(found, `${name}: the violations the schemas found`).toEqual(approved);
+}
+
+/**
+ * The producer lane, whose files a word processor saved rather than this project.
+ *
+ * A hand-written fixture only ever carries markup this project chose to write, so this lane is
+ * the only place the export meets what a producer actually puts in a package - and what Google
+ * Docs puts in one is not valid against the transitional schemas. The export preserves those
+ * bytes, so the promise the lane can hold is that the violations are exactly the ones the
+ * producer wrote in and no others.
+ */
+describe("the exported producer package against the OOXML schemas", () => {
+  it("there are producer fixtures, each with its violations approved", () => {
+    expect(producerFixtureNames.length).toBeGreaterThan(0);
+    expect(Object.keys(PRODUCER_VIOLATIONS)).toEqual(
+      Array.from(producerFixtureNames)
+    );
+  });
+
+  it.each(producerFixtureNames)(
+    "%s: every WordprocessingML part validates but for the approved violations",
+    (name) => {
+      const { doc, session } = importDocx(readProducerFixture(name));
+      expectOnlyApprovedViolations(
+        name,
+        wordprocessingParts(exportDocx(doc, session))
+      );
+    }
+  );
+
+  it.each(producerFixtureNames)(
+    "%s: editing a paragraph adds no violation of its own",
+    (name) => {
+      const { doc, session } = importDocx(readProducerFixture(name));
+      const parts = wordprocessingParts(
+        exportDocx(withEditedParagraph(doc), session)
+      );
+
+      expect(parts.get(session.mainPartPath)).toContain(EDITED);
+      expectOnlyApprovedViolations(name, parts);
+    }
+  );
 });
 
 describe("the markup-compatibility preprocessing", () => {
