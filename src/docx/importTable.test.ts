@@ -24,7 +24,7 @@ function element(xml: string): Element {
 
 /** Moves a single XML fragment into a table node */
 function table(xml: string): PMNode | null {
-  return buildTable(element(xml), 0);
+  return buildTable(element(xml), null);
 }
 
 function requireTable(xml: string): PMNode {
@@ -41,7 +41,7 @@ function styledTable(
 ): PMNode {
   const node = buildTable(
     element(xml),
-    0,
+    null,
     NO_IMPORT_SOURCES,
     readStyles(parseXml(`<w:styles ${W_NS}>${styles}</w:styles>`)),
     defaultTableStyleId

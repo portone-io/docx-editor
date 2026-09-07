@@ -38,8 +38,16 @@ function stateOf(doc: PMNode): EditorState {
   return createEditorState(doc, { editableComments: "all" });
 }
 
+/**
+ * The one import every document below is built from. Two imports are two documents, and a block
+ * of one is not a block of the other (`docx/session`), so comparing across them would say the
+ * document changed when only the reading of it did.
+ */
+let openedOnce: EditorState | null = null;
+
 function opened(): EditorState {
-  return stateOf(importDocx(makeDocx(BODY)).doc);
+  openedOnce ??= stateOf(importDocx(makeDocx(BODY)).doc);
+  return openedOnce;
 }
 
 function applied(state: EditorState, command: Command): EditorState {

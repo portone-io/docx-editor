@@ -472,7 +472,7 @@ describe("a lock made in the editor", () => {
     expect(written).toContain('<w:lock w:val="sdtContentLocked"/>');
     expect(written).toContain("<w:sdtContent>");
 
-    const reopened = buildParagraph(element(written), 0);
+    const reopened = buildParagraph(element(written), null);
     if (!reopened) throw new Error("the paragraph could not be modelled");
     expect(reopened.textContent).toBe("abc");
     expect(sdtMarkOf(reopened.child(0))).toEqual(

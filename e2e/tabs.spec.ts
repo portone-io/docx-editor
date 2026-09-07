@@ -10,6 +10,11 @@ import {
   settle,
 } from "./support/harness";
 
+// A block key reads `<sessionId>:<story>:<index>`, and a test does not know the session id.
+function bodyParagraph(index: number): string {
+  return `p[data-src$=":body:${index}"]`;
+}
+
 async function followingTextLeft(page: Page, suffix: string): Promise<number> {
   return page.evaluate(
     ({ paragraphClass, wanted }) => {
@@ -47,14 +52,12 @@ interface TextBox {
 
 async function textBox(
   page: Page,
-  sourceId: number,
+  blockIndex: number,
   wanted: string
 ): Promise<TextBox> {
   return page.evaluate(
-    ({ paragraphClass, id, text }) => {
-      const paragraph = document.querySelector(
-        `p.${paragraphClass}[data-src="${id}"]`
-      );
+    ({ selector, id, text }) => {
+      const paragraph = document.querySelector(selector);
       if (!(paragraph instanceof HTMLElement)) {
         throw new Error(`paragraph ${id} was not drawn`);
       }
@@ -75,19 +78,20 @@ async function textBox(
       throw new Error(`text was not drawn in paragraph ${id}`);
     },
     {
-      paragraphClass: editorClassNames.paragraph,
-      id: sourceId,
+      selector: `${bodyParagraph(blockIndex)}.${editorClassNames.paragraph}`,
+      id: blockIndex,
       text: wanted,
     }
   );
 }
 
-async function paragraphOrigin(page: Page, sourceId: number): Promise<number> {
+async function paragraphOrigin(
+  page: Page,
+  blockIndex: number
+): Promise<number> {
   return page.evaluate(
-    ({ paragraphClass, id }) => {
-      const paragraph = document.querySelector(
-        `p.${paragraphClass}[data-src="${id}"]`
-      );
+    ({ selector, id }) => {
+      const paragraph = document.querySelector(selector);
       if (!(paragraph instanceof HTMLElement)) {
         throw new Error(`paragraph ${id} was not drawn`);
       }
@@ -97,19 +101,20 @@ async function paragraphOrigin(page: Page, sourceId: number): Promise<number> {
         Number.parseFloat(style.marginLeft || "0")
       );
     },
-    { paragraphClass: editorClassNames.paragraph, id: sourceId }
+    {
+      selector: `${bodyParagraph(blockIndex)}.${editorClassNames.paragraph}`,
+      id: blockIndex,
+    }
   );
 }
 
 async function paragraphEndOrigin(
   page: Page,
-  sourceId: number
+  blockIndex: number
 ): Promise<number> {
   return page.evaluate(
-    ({ paragraphClass, id }) => {
-      const paragraph = document.querySelector(
-        `p.${paragraphClass}[data-src="${id}"]`
-      );
+    ({ selector, id }) => {
+      const paragraph = document.querySelector(selector);
       if (!(paragraph instanceof HTMLElement)) {
         throw new Error(`paragraph ${id} was not drawn`);
       }
@@ -119,7 +124,10 @@ async function paragraphEndOrigin(
         Number.parseFloat(style.marginRight || "0")
       );
     },
-    { paragraphClass: editorClassNames.paragraph, id: sourceId }
+    {
+      selector: `${bodyParagraph(blockIndex)}.${editorClassNames.paragraph}`,
+      id: blockIndex,
+    }
   );
 }
 
@@ -187,7 +195,7 @@ test("a tab caret follows document zoom changes", async ({ page }) => {
   await settle(page);
 
   const tab = await page
-    .locator(`p[data-src="0"] .${editorClassNames.tabSlot}`)
+    .locator(`${bodyParagraph(0)} .${editorClassNames.tabSlot}`)
     .boundingBox();
   const caret = await page
     .locator(`.${editorClassNames.tabCaret}`)
@@ -266,7 +274,7 @@ test("carets remain on both sides of successive tabs", async ({ page }) => {
   await openHarness(page, "tabs");
   const paragraphIndex = 17;
   const tabs = page.locator(
-    `p[data-src="${paragraphIndex}"] .${editorClassNames.tabSlot}`
+    `${bodyParagraph(paragraphIndex)} .${editorClassNames.tabSlot}`
   );
   await expect(tabs).toHaveCount(3);
   const tabEdges = await tabs.evaluateAll((elements) =>
@@ -292,7 +300,7 @@ test("carets use each boundary between adjacent tabs", async ({ page }) => {
   await openHarness(page, "tabs");
   const paragraphIndex = 18;
   const tabs = page.locator(
-    `p[data-src="${paragraphIndex}"] .${editorClassNames.tabSlot}`
+    `${bodyParagraph(paragraphIndex)} .${editorClassNames.tabSlot}`
   );
   await expect(tabs).toHaveCount(4);
   const tabEdges = await tabs.evaluateAll((elements) =>
@@ -318,7 +326,7 @@ test("character formatting changes a selected tab's line box", async ({
   page,
 }) => {
   await openHarness(page, "tabs");
-  const slot = page.locator(`p[data-src="0"] .${editorClassNames.tabSlot}`);
+  const slot = page.locator(`${bodyParagraph(0)} .${editorClassNames.tabSlot}`);
   const before = await slot.boundingBox();
   if (!before) throw new Error("the tab was not drawn");
 
@@ -343,7 +351,7 @@ test("a commented tab paints its annotation at text height", async ({
   await page.keyboard.press("Tab");
   await settle(page);
 
-  const boxes = await page.locator(`p[data-src="${paragraph.index}"]`).evaluate(
+  const boxes = await page.locator(bodyParagraph(paragraph.index)).evaluate(
     (element, classes) => {
       const text = element.querySelector<HTMLElement>(
         `.${classes.comment}:not(.${classes.slot})`
@@ -389,7 +397,7 @@ test("successive selected tabs expose continuous selection geometry", async ({
 }) => {
   await openHarness(page, "tabs");
   const paragraphIndex = 18;
-  const paragraph = page.locator(`p[data-src="${paragraphIndex}"]`);
+  const paragraph = page.locator(bodyParagraph(paragraphIndex));
   const tabs = paragraph.locator(`.${editorClassNames.tabSlot}`);
   await expect(tabs).toHaveCount(4);
   const tabRects = await tabs.evaluateAll((elements) =>
@@ -457,7 +465,7 @@ test("font loading completion invalidates measured tab widths", async ({
   await openHarness(page, "tabs");
   const origin = await paragraphOrigin(page, 2);
 
-  await page.locator('p[data-src="2"]').evaluate((paragraph) => {
+  await page.locator(bodyParagraph(2)).evaluate((paragraph) => {
     if (!(paragraph instanceof HTMLElement)) {
       throw new Error("the centered paragraph was not drawn");
     }
@@ -487,7 +495,7 @@ test("a tab inside a link keeps its line height, caret baseline, and underline",
 }) => {
   await openHarness(page, "tabs");
   const paragraph = page.locator(
-    `p[data-src="8"].${editorClassNames.paragraph}`
+    `${bodyParagraph(8)}.${editorClassNames.paragraph}`
   );
   const before = await paragraph.boundingBox();
   await caretAt(page, 8, 8);
@@ -497,11 +505,11 @@ test("a tab inside a link keeps its line height, caret baseline, and underline",
   const report = await blocks(page);
   expect(report[8]?.docText).toBe("https://\texample.com");
   const slot = page.locator(
-    `p[data-src="8"] .${editorClassNames.link} .${editorClassNames.tabSlot}`
+    `${bodyParagraph(8)} .${editorClassNames.link} .${editorClassNames.tabSlot}`
   );
   await expect(slot).toHaveCount(1);
   await expect(
-    page.locator(`p[data-src="8"] .${editorClassNames.link}`)
+    page.locator(`${bodyParagraph(8)} .${editorClassNames.link}`)
   ).toHaveCSS("border-bottom-style", "solid");
   const slotBox = await slot.boundingBox();
   expect(slotBox?.width).toBeGreaterThan(1);
