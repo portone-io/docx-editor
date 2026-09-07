@@ -12,13 +12,7 @@
  * runs the same way, so a node that says the same thing in a different shape is still a change.
  */
 
-import {
-  Fragment,
-  type Mark,
-  type MarkType,
-  type NodeType,
-  type Node as PMNode,
-} from "prosemirror-model";
+import type { Mark, Node as PMNode } from "prosemirror-model";
 import { displayAttrsOf } from "./attrRoles";
 
 /** Whether two attr values are the same, reading through the arrays and objects attrs are allowed to hold */
@@ -94,46 +88,4 @@ export function sameSource(a: PMNode, b: PMNode): boolean {
     if (!sameSource(a.child(at), b.child(at))) return false;
   }
   return true;
-}
-
-/** The attrs with every worked-out one back at the value the schema starts it on */
-function withoutDisplay(
-  type: MarkType | NodeType,
-  attrs: Readonly<Record<string, unknown>>
-): Record<string, unknown> {
-  return Object.fromEntries(
-    Object.entries(attrs).map(([name, value]) =>
-      displayAttrsOf(type).includes(name)
-        ? [name, type.spec.attrs?.[name]?.default ?? null]
-        : [name, value]
-    )
-  );
-}
-
-function withoutDisplayMarkAttrs(mark: Mark): Mark {
-  return displayAttrsOf(mark.type).length === 0
-    ? mark
-    : mark.type.create(withoutDisplay(mark.type, mark.attrs));
-}
-
-const childrenOf = (node: PMNode): PMNode[] =>
-  Array.from({ length: node.childCount }, (_, at) => node.child(at));
-
-/**
- * The node with every worked-out attr back at the value the schema starts it on, on itself and on
- * everything inside it.
- *
- * `sameSource` needs no such copy, and takes none. This is for a caller that has to hand a whole
- * document to something comparing the ordinary way.
- */
-export function withoutDisplayAttrs(node: PMNode): PMNode {
-  const marks = node.marks.map(withoutDisplayMarkAttrs);
-  if (node.isText) return node.mark(marks);
-  return node.type.create(
-    withoutDisplay(node.type, node.attrs),
-    Fragment.fromArray(
-      childrenOf(node).map((child) => withoutDisplayAttrs(child))
-    ),
-    marks
-  );
 }

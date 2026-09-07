@@ -13,9 +13,22 @@ Raw XML reaches the model from three directions: import puts what it cut out of 
 
 The fragment gate checks every explicit namespace declaration in the parsed subtree, so a nested declaration cannot hide a rebinding of `w` or `r`. A fragment whose namespace declaration stayed on the original part is checked by local name; the wrapper's placeholder namespace is not evidence of a foreign namespace. Explicit foreign bindings remain rejected for named element shapes.
 
-Each node and mark attr declares a role in `schema/attrRoles.ts`: `source` is what the writer writes from, `display` is worked out from the source and the formatting around it, and `session` identifies a block, control, or link of the open document.
+Each node and mark attr declares a role in `schema/attrRoles.ts`: `source` is what the writer writes from, `display` is worked out from the source and the formatting around it and is never written into a block's XML, and `session` is a value export reads but neither writes nor re-derives, such as which block a node was opened from or whether a comment came in with the file.
 Export compares two nodes with `sameSource`, which reads the source and session attrs and ignores the display ones.
 The distinction matters because opening a document works its display values out again - a table's shared cell borders among them - and a block judged changed is a block rebuilt, which costs it the markup the writer does not model.
+
+### Display derivation
+
+A display value is worked out again whenever what it depends on moves, through one walk over the document's blocks (`schema/displayDerivation`).
+A deriver answers for the node types it names and hands back, for one node, the display attrs that node, its descendants, and their existing run marks should carry; the walk writes one step per node whose attrs would change and reads only the display attrs of what a deriver hands back, so a deriver cannot write a source attr.
+The interface stands in `schema`, below `docx` and `editor`, so that a module of either can write a deriver; `editor/plugins/displayDerivation` registers them (`paragraphDisplay` for paragraph and run style values, `tableDisplay` for the lines of a table's cells) and runs the walk after every edit, over the nodes the edit moved, and over every node when the document snapshot (`editor/editorDocument`) is replaced.
+A state is built over a document whose every display value was worked out against the state's own snapshot, so a document opened without one draws as one that laid nothing down.
+
+The transaction the walk appends carries the display-only pass: `transactionAllowed` in `schema/guards` lets a transaction through every guard when it carries the pass and every step of it, judged off the role table alone, changes display attrs and nothing else.
+The pass is a claim rather than a key: a step that rewrites a source attr, a lock flag included, or puts content anywhere fails it, and the transaction is judged as any edit.
+Replacing an existing run mark is also display-only when its source and session attrs remain identical throughout the range. New marks and changed XML remain edits.
+
+The re-derivation after an edit goes to the history with that edit; the one after a snapshot change goes to the history not at all, since the values follow the snapshot.
 
 A protection level is a policy object in `docx/protectionPolicy`: the package parts it lets a change rewrite, the grammar their entries are written in, and how the document story is compared once its own markup is taken out.
 The part planners and the server verifier read the same object, so a part the writer starts adding is a part the verifier already excuses from the byte comparison and judges entry by entry.

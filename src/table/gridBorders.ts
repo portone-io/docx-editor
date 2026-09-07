@@ -1,5 +1,5 @@
 /**
- * The lines a cell draws because of where it sits in the grid, kept true after a structure edit.
+ * The lines a cell draws because of where it sits in the grid.
  *
  * Every line of a table is drawn by its cells (see `docx/tableFormatting`), so which line a side
  * falls back on depends on where in the grid the cell sits. A new cell inherits its neighbour's
@@ -9,13 +9,13 @@
  *
  * So the cells of a table whose grid moved derive their display values again, along the same path
  * the import takes. What a cell wrote down itself lives in its `w:tcPr` and is read straight back
- * out of it, so only the share that came from the table can change.
+ * out of it, so only the share that came from the table can change. `cellFixes` says which cells
+ * carry the wrong lines and `sameFormattingInputs` whether anything they depend on moved; the
+ * deriver that runs them after an edit is `editor/plugins/tableDisplay`.
  */
 
 import type { Node as PMNode } from "prosemirror-model";
-import { Plugin } from "prosemirror-state";
 import { TableMap } from "prosemirror-tables";
-import { Transform } from "prosemirror-transform";
 import {
   type CellBorderDefaults,
   cellBorderDefaults,
@@ -108,7 +108,7 @@ function sameCellFormat(a: CellFormat | null, b: CellFormat | null): boolean {
   return CELL_FORMAT_KEYS.every((key) => a[key] === b[key]);
 }
 
-interface CellFix {
+export interface CellFix {
   /** The position of the cell within the table's content */
   pos: number;
   attrs: NodeAttrs;
@@ -179,7 +179,7 @@ function reconcileSharedBorders(
 }
 
 /** The cells of this table whose display values do not match the spot they now sit in */
-function cellFixes(table: PMNode): CellFix[] {
+export function cellFixes(table: PMNode): CellFix[] {
   const map = TableMap.get(table);
   const sources = tableCellSources(table);
   const cells = new Map<number, DerivedCell>();
@@ -209,26 +209,6 @@ function cellFixes(table: PMNode): CellFix[] {
     fixes.push({ pos: cell.pos, attrs: { ...cell.attrs, format } });
   }
   return fixes;
-}
-
-interface PlacedTable {
-  /** The position of the table itself */
-  pos: number;
-  table: PMNode;
-}
-
-/**
- * Every table of the document, in the order they stand.
- * The text inside a paragraph is not walked into: this runs after every edit that changed the
- * document, typing included, so it may not cost more than a walk over the blocks.
- */
-function tablesOf(doc: PMNode): PlacedTable[] {
-  const tables: PlacedTable[] = [];
-  doc.descendants((node, pos) => {
-    if (node.type.spec.tableRole === "table") tables.push({ pos, table: node });
-    return !node.isTextblock;
-  });
-  return tables;
 }
 
 function sameSpans(a: PMNode, b: PMNode): boolean {
@@ -262,7 +242,8 @@ function sameCellFormattingInputs(a: PMNode, b: PMNode): boolean {
   );
 }
 
-function sameFormattingInputs(a: PMNode, b: PMNode): boolean {
+/** Whether everything the cells' lines are derived from reads the same in both tables */
+export function sameFormattingInputs(a: PMNode, b: PMNode): boolean {
   return (
     sameGrid(a, b) &&
     a.attrs.tblPr === b.attrs.tblPr &&
@@ -271,44 +252,4 @@ function sameFormattingInputs(a: PMNode, b: PMNode): boolean {
     a.attrs.styleCellMargins === b.attrs.styleCellMargins &&
     sameCellFormattingInputs(a, b)
   );
-}
-
-/** Derives shared-border display values before the first editor view is drawn. */
-export function withDerivedGridBorders(doc: PMNode): PMNode {
-  const transform = new Transform(doc);
-  for (const { pos, table } of tablesOf(doc)) {
-    for (const fix of cellFixes(table)) {
-      transform.setNodeMarkup(pos + 1 + fix.pos, null, fix.attrs);
-    }
-  }
-  return transform.doc;
-}
-
-/**
- * Keeps the derived lines current after a table's grid or border inputs change.
- *
- * The tables are paired up by the order they stand in. A document that gained or lost a whole table
- * pairs the ones after it with the wrong partner, which costs a derivation that changes no cell.
- *
- * No transaction of its own goes to the history: ProseMirror hands an appended transaction to the
- * history as part of the same event, so a single undo takes the edit and this correction back together.
- */
-export function gridBorders(): Plugin {
-  return new Plugin({
-    appendTransaction(transactions, oldState, newState) {
-      if (!transactions.some((transaction) => transaction.docChanged)) {
-        return null;
-      }
-      const before = tablesOf(oldState.doc);
-      const tr = newState.tr;
-      tablesOf(newState.doc).forEach(({ pos, table }, index) => {
-        const was = before[index]?.table;
-        if (was && sameFormattingInputs(was, table)) return;
-        for (const fix of cellFixes(table)) {
-          tr.setNodeMarkup(pos + 1 + fix.pos, null, fix.attrs);
-        }
-      });
-      return tr.docChanged ? tr : null;
-    },
-  });
 }

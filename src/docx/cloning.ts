@@ -142,7 +142,7 @@ export const CLONE_POLICIES: Readonly<
       // for whatever claims one.
       srcId: (value, side) => (side === "before" ? value : undefined),
     },
-    // `format` and `styleRun` among them: display values `editor/plugins/styledParagraphs` derives
+    // `format` and `styleRun` among them: display values `editor/plugins/paragraphDisplay` derives
     // again from the formatting context, which nothing compares and nothing writes out.
     carried
   ),

@@ -228,11 +228,10 @@ describe("the editor view under protection", () => {
 });
 
 /**
- * The plugins that put a document right after an edit - the derived table lines
- * (`table/gridBorders`) and the styles read into new paragraphs (`styledParagraphs`) - append
- * transactions of their own. An appended transaction the guard refuses is dropped without a word,
- * which would leave the document half corrected, so under `comments` nothing they append may be
- * refused.
+ * The plugin that puts a document right after an edit - the derived table lines and the styles
+ * read into new paragraphs (`./displayDerivation`) - appends a transaction of its own. An appended
+ * transaction the guard refuses is dropped without a word, which would leave the document half
+ * corrected, so under `comments` nothing it appends may be refused.
  */
 describe("the corrections the plugins append", () => {
   const cell = (text: string) =>

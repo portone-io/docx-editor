@@ -55,7 +55,10 @@ describe("insertTab", () => {
 
   it("leaves list paragraphs to their level-changing controls", () => {
     const paragraph = docxSchema.nodes.paragraph.create(
-      { format: { numbering: { numId: 1, ilvl: 0 } } },
+      {
+        pPr: '<w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr></w:pPr>',
+        format: { numbering: { numId: 1, ilvl: 0 } },
+      },
       docxSchema.text("item")
     );
     const state = select(

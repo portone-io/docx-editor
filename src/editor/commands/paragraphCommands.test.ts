@@ -21,6 +21,7 @@ import {
   toRunFormat,
 } from "../../model/format";
 import { docxSchema } from "../../schema";
+import { sameSource } from "../../schema/sourceEquality";
 import { editorStateForSession } from "../createEditor";
 import { docxKeymap } from "../plugins/keymap";
 import {
@@ -312,7 +313,14 @@ describe("applying a paragraph style", () => {
     expect(quoted.doc.child(1).attrs.pPr).toContain(
       '<w:pStyle w:val="Quote"/>'
     );
-    expect(markFormatOf(quoted.doc, "Locked")).toBeNull();
+    expect(markFormatOf(quoted.doc, "Locked")).toEqual({
+      italic: true,
+      color: "#2E74B5",
+      fontSizePt: 16,
+    });
+    expect(
+      sameSource(state.doc.child(0).child(0), quoted.doc.child(0).child(0))
+    ).toBe(true);
     expect(markFormatOf(quoted.doc, "Body")).toEqual({
       italic: true,
       color: "#2E74B5",

@@ -28,6 +28,7 @@ import type {
   Selection,
   Transaction,
 } from "prosemirror-state";
+import { changesOnlyDisplayAttrs, displayOnly } from "./displayDerivation";
 import {
   type ChangeGuard,
   type EditGuard,
@@ -118,6 +119,25 @@ function lifted(guard: EditGuard, tr: Transaction): boolean {
 }
 
 /**
+ * Whether the transaction is the re-derivation it claims to be: it carries the pass, and every
+ * step of it changes display attrs and nothing else, judged off the role table alone
+ * (`./displayDerivation`).
+ *
+ * Such a transaction edits nothing any guard answers for - no lock shuts a display value and no
+ * protection holds one back - so it goes through the whole list, whatever the editor runs under
+ * and whatever lock the node stands inside. The claim itself buys nothing: a step that touches a
+ * source attr, a lock flag or any content fails it, and the transaction is judged as any edit.
+ */
+function displayOnlyTransaction(tr: Transaction, state: EditorState): boolean {
+  return (
+    tr.getMeta(displayOnly) === true &&
+    tr.steps.every((step, index) =>
+      changesOnlyDisplayAttrs(step, tr.docs[index] ?? state.doc)
+    )
+  );
+}
+
+/**
  * Whether every guard would let this transaction through, decided and nothing else.
  *
  * The refusal a guard itself answers with carries a side effect - the composition it ends
@@ -125,15 +145,17 @@ function lifted(guard: EditGuard, tr: Transaction): boolean {
  * decision stands apart from it and every caller building an edit asks this rather than handing
  * the transaction to a state.
  *
- * The whole-change judgements come first and take no pass, since a pass lifts one guard's reading
- * of a step rather than another guard's reading of the change. What is left is judged step by
- * step, each step over the document it was built against.
+ * A re-derivation of display values is no edit and is let through before any guard is asked. The
+ * whole-change judgements then come first and take no pass, since a pass lifts one guard's
+ * reading of a step rather than another guard's reading of the change. What is left is judged
+ * step by step, each step over the document it was built against.
  */
 export function transactionAllowed(
   tr: Transaction,
   state: EditorState
 ): boolean {
   if (!tr.docChanged) return true;
+  if (displayOnlyTransaction(tr, state)) return true;
   if (EDIT_GUARDS.some((guard) => guard.change?.(tr, state) === false)) {
     return false;
   }

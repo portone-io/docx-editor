@@ -1,8 +1,11 @@
 /**
  * Each attr has two independent classifications. Its role controls source comparison: `source`
- * values feed serialization, `display` values are derived, and `session` values distinguish
- * imported content or tell export how to handle it. `sourceEquality` compares source and session
- * values so a display refresh does not rebuild an untouched block.
+ * values are what the writer writes a block from; `display` values are worked out from the source
+ * and the formatting around it, and are never written into a block's XML (`docx/newLists` reads a
+ * list reference off one to decide what numbering.xml needs); `session` values are what export
+ * reads but neither writes nor derives again - which block, control or link this is, whether a
+ * comment came in with the file, the name of a preserved element. `sourceEquality` compares source
+ * and session values so a display refresh does not rebuild an untouched block.
  *
  * Its class records provenance: `preserved` holds XML, `derived` is calculated from other data,
  * `identity` identifies content (imported or allocated here), and `model` holds editable values.

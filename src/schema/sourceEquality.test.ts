@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import { docxSchema } from "./index";
-import { sameSource, withoutDisplayAttrs } from "./sourceEquality";
+import { sameSource } from "./sourceEquality";
 
 const paragraph = (attrs: Record<string, unknown>, text = "text") =>
   docxSchema.nodes.paragraph.create(attrs, [docxSchema.text(text)]);
@@ -120,6 +120,34 @@ describe("judging two nodes by what they would be written as", () => {
     ).toBe(false);
   });
 
+  /**
+   * Every other case here hands both sides one attrs object, which `===` alone would settle. A
+   * table's column widths are an array the writer writes from, and two tables opened apart hold
+   * two arrays: the comparison has to read through them.
+   */
+  it("reads two tables built apart with the same column widths as the same source", () => {
+    const a = table({ gridCols: [1000, 1000] }, {});
+    const b = table({ gridCols: [1000, 1000] }, {});
+
+    expect(a.attrs.gridCols).not.toBe(b.attrs.gridCols);
+    expect(sameSource(a, b)).toBe(true);
+  });
+
+  it("reads two tables built apart with different column widths as a different source", () => {
+    expect(
+      sameSource(
+        table({ gridCols: [1000, 1000] }, {}),
+        table({ gridCols: [1000, 1200] }, {})
+      )
+    ).toBe(false);
+    expect(
+      sameSource(
+        table({ gridCols: [1000, 1000] }, {}),
+        table({ gridCols: [1000, 1000, 1000] }, {})
+      )
+    ).toBe(false);
+  });
+
   it("reads a paragraph that lost its link as a different source", () => {
     const linked = docxSchema.nodes.paragraph.create(null, [
       docxSchema.text("text", [
@@ -128,35 +156,5 @@ describe("judging two nodes by what they would be written as", () => {
     ]);
 
     expect(sameSource(paragraph({}), linked)).toBe(false);
-  });
-});
-
-describe("putting the derived values back where the schema starts them", () => {
-  it("clears them on the node and on everything inside it", () => {
-    const derived = table({ format: { width: 1 } }, { format: { top: 1 } });
-    const cleared = withoutDisplayAttrs(derived);
-
-    expect(cleared.attrs.format).toBeNull();
-    expect(cleared.child(0).child(0).attrs.format).toBeNull();
-    expect(cleared.eq(withoutDisplayAttrs(table({}, {})))).toBe(true);
-  });
-
-  it("leaves what the exporter writes from alone", () => {
-    const pPr = '<w:pPr><w:jc w:val="center"/></w:pPr>';
-    const cleared = withoutDisplayAttrs(
-      paragraph({ pPr, format: { align: "center" } })
-    );
-
-    expect(cleared.attrs.pPr).toBe(pPr);
-    expect(cleared.textContent).toBe("text");
-  });
-
-  it("clears them on a mark as well", () => {
-    const cleared = withoutDisplayAttrs(
-      run({ rPr: "<w:rPr><w:b/></w:rPr>", format: { bold: true } })
-    );
-
-    expect(cleared.child(0).marks[0].attrs.format).toBeNull();
-    expect(cleared.child(0).marks[0].attrs.rPr).toBe("<w:rPr><w:b/></w:rPr>");
   });
 });
