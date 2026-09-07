@@ -23,6 +23,29 @@ describe("readTag", () => {
     expect(readTag("<!DOCTYPE p>", 0)?.kind).toBe("other");
   });
 
+  /**
+   * A `>` may stand inside a comment or a CDATA section, so each is read to its own closing
+   * marker rather than to the first `>`, or the text after it would be read as markup.
+   */
+  it("reads a comment and a CDATA section to their own end, past a > inside them", () => {
+    const comment = "<!-- a > b -->";
+    expect(readTag(`${comment}<w:p/>`, 0)).toEqual({
+      kind: "other",
+      name: "",
+      nameEnd: comment.length,
+      end: comment.length,
+    });
+    const cdata = "<![CDATA[ a > b ]]>";
+    expect(readTag(`${cdata}<w:p/>`, 0)).toEqual({
+      kind: "other",
+      name: "",
+      nameEnd: cdata.length,
+      end: cdata.length,
+    });
+    const declaration = '<?xml version="1.0"?>';
+    expect(readTag(`${declaration}<w:p/>`, 0)?.end).toBe(declaration.length);
+  });
+
   it("is null for a tag that never ends and for one with no name", () => {
     expect(readTag('<w:p w:a="1"', 0)).toBeNull();
     expect(readTag("<!-- unterminated", 0)).toBeNull();

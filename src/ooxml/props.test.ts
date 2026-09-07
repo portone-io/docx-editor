@@ -68,7 +68,7 @@ describe("parseProps", () => {
   });
 
   it("does not read an angle bracket inside an attribute value as the end of the tag", () => {
-    expect(names('<w:tcPr><w:tcW w:w="a&gt;b"/></w:tcPr>')).toEqual(["tcW"]);
+    expect(names('<w:tcPr><w:tcW w:w="a>b"/></w:tcPr>')).toEqual(["tcW"]);
   });
 
   it("is null when it does not recognize the shape", () => {
