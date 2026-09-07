@@ -8,6 +8,7 @@
  */
 
 import type { Node as PMNode } from "prosemirror-model";
+import type { FidelityNote } from "./docx/fidelity";
 import {
   type DocxBytes,
   type ImportOptions,
@@ -18,7 +19,12 @@ import type { DocxSession } from "./docx/session";
 export type { CommentOnlyVerdict } from "./docx/commentOnlyChange";
 export { onlyCommentsChangedBy } from "./docx/commentOnlyChange";
 export type { ExportOptions } from "./docx/exportDocx";
-export { exportDocx } from "./docx/exportDocx";
+export { exportDocx, exportDocxReport } from "./docx/exportDocx";
+export type {
+  FidelityCode,
+  FidelityNote,
+  FidelitySeverity,
+} from "./docx/fidelity";
 export type { ParagraphStyleOption } from "./docx/formatting";
 export type { DocxBytes, ImportOptions } from "./docx/importDocx";
 export type { DocxSession } from "./docx/session";
@@ -73,8 +79,8 @@ export type { XmlParser } from "./ooxml/xml";
 export { docxSchema } from "./schema";
 
 /**
- * Opens docx bytes into the document to work on and the session that remembers the file they came
- * from.
+ * Opens docx bytes into the document to work on, the session that remembers the file they came
+ * from, and what the file holds that this editor could not model.
  *
  * The engine hands out the store it fills in; this is where it narrows to the opaque session, so
  * that the original XML behind it stays the exporter's business.
@@ -85,6 +91,7 @@ export function importDocx(
 ): {
   doc: PMNode;
   session: DocxSession;
+  notes: FidelityNote[];
 } {
   return openDocx(input, options);
 }

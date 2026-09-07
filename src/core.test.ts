@@ -7,6 +7,7 @@ import { Fragment, type Node as PMNode } from "prosemirror-model";
 import { TextSelection } from "prosemirror-state";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  bytesEqual,
   decode,
   fixtureNames,
   importErrorCode,
@@ -24,6 +25,7 @@ import {
   documentPartPath,
   docxSchema,
   exportDocx,
+  exportDocxReport,
   importDocx,
   type NumberingRef,
   onlyCommentsChangedBy,
@@ -166,6 +168,26 @@ describe("core entry", () => {
     expect(() => importDocx(new Uint8Array([1, 2, 3]))).toThrow(
       DocxImportError
     );
+  });
+
+  it("exportDocxReport returns the same bytes as exportDocx and a note list", () => {
+    const { doc, session, notes } = importDocx(readFixture("demo.docx"));
+    const report = exportDocxReport(doc, session);
+
+    expect(bytesEqual(report.bytes, exportDocx(doc, session))).toBe(true);
+    expect(report.notes).toEqual(notes);
+    expect(
+      report.notes.every((note) => note.part === "word/document.xml")
+    ).toBe(true);
+  });
+
+  it("reports what an opened document holds that it cannot model", () => {
+    const { notes } = importDocx(readFixture("demo.docx"));
+
+    expect(notes.map((note) => note.element)).toEqual([
+      "w:bookmarkStart",
+      "w:bookmarkEnd",
+    ]);
   });
 
   it("refuses a session it never handed out", () => {

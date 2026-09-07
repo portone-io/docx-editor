@@ -4,10 +4,9 @@ import { describe, expect, it } from "vitest";
 import { exportErrorCode } from "../__testing__/docx";
 import { parseXml, R_NS } from "../ooxml/xml";
 import { docxSchema } from "../schema";
-import type { ExportRefs } from "./exportRefs";
+import { type ExportRefs, NO_EXPORT_REFS } from "./exportRefs";
 import type { LinkTargets } from "./hyperlink";
 import { buildParagraph, NO_IMPORT_SOURCES } from "./importParagraph";
-import { NO_IMAGE_REFS } from "./media";
 import { serializeParagraph } from "./serializeParagraph";
 
 const W_NS =
@@ -168,7 +167,7 @@ function linkMark(attrs: {
 /** The relationships an export hands out: one address, on the id given */
 function linkRefs(entries: Record<string, string>): ExportRefs {
   return {
-    images: NO_IMAGE_REFS,
+    ...NO_EXPORT_REFS,
     links: {
       relIdOf: (href, was) =>
         was !== null && entries[was] === href
