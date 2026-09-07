@@ -282,5 +282,25 @@ or a browser edit, and a fragment that is none of those is turned down there, ta
 mark down one level with it. A paragraph then keeps its text and loses its properties, a run loses
 its formatting, and a content control or a hyperlink loses its wrapper.
 
+## What a plugin may rely on
+
+A node or mark carries two kinds of attr, and only one kind is part of what this package promises.
+
+Stable across releases are the node and mark names of `docxSchema`, the `srcId` a block keeps, the
+`format` attrs together with the `to*Format` readers that turn one into a typed value, and every
+name and type the four entry points export.
+
+Internal are the attrs holding the original OOXML a node was read from: a paragraph's `pPr`, a run's
+`rPr`, a cell's `tcPr`, the `xml` an unmodelled block, an image or a comment marker keeps, the
+`sdtPrefix` and `linkPrefix` a content control or a hyperlink opens with, and a comment's
+`commentXml`. They are how a document nobody edited goes back out as the file it arrived as, so
+their names and shapes follow what the format needs rather than what a plugin would like, and any
+release may change them.
+
+Read one to find out what a document holds. Do not build on its name, and prefer a command over
+writing one: a value put there by hand is judged twice before it reaches a file, once when the page
+is read back as above, and again by `exportDocx`, which refuses a document whose fragment it cannot
+rewrite with `malformed-xml`.
+
 See [Features](/docs/features) for behavioral limits and the published TypeScript declarations for
 complete signatures.

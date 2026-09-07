@@ -290,4 +290,6 @@ On the way out, `downloadDocx` and `exportBytes` rethrow `DocxExportError` as it
 The core entry exports the document schema (`docxSchema`), the numbering reader
 (`parseNumbering`), typed format readers such as `toRunFormat` and `toParagraphFormat`, and the
 unit conversions `emuToPx` and `pxToEmu` used for programmatic transforms. The published
-TypeScript declarations describe the complete surface.
+TypeScript declarations give their signatures, and
+[What a plugin may rely on](/docs/custom-controls#what-a-plugin-may-rely-on) says which parts of the
+document model hold across releases and which are this editor's own bookkeeping.
