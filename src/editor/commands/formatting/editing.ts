@@ -2,7 +2,11 @@
 
 import type { Mark } from "prosemirror-model";
 import type { Command, EditorState, Transaction } from "prosemirror-state";
-import { inheritedRunFormat, resolveParagraph } from "../../../docx/formatting";
+import {
+  inheritedRunFormat,
+  resolveParagraph,
+  resolveRun,
+} from "../../../docx/formatting";
 import {
   editRunProps,
   isRunToggleOn,
@@ -30,9 +34,10 @@ function editedMark(
 ): Mark | null {
   const context = documentFormatting(state);
   const rPr = text(target.mark?.attrs.rPr);
+  const paragraph = resolveParagraph(target.pPr, context);
   const next = editRunProps(
     { rPr, format: target.format },
-    inheritedRunFormat(rPr, resolveParagraph(target.pPr, context), context),
+    inheritedRunFormat(rPr, paragraph, context),
     edit
   );
   if (!next) return null;
@@ -40,7 +45,7 @@ function editedMark(
   return docxSchema.marks.run.create({
     ...target.mark?.attrs,
     rPr: next.rPr,
-    format: next.format,
+    format: resolveRun(next.rPr, paragraph, context),
   });
 }
 

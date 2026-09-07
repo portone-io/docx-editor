@@ -53,7 +53,7 @@ export interface LayeredTabStop extends TabStop {
 export interface ResolvedParagraph {
   /** `format` in `schema`: docDefaults < table style < numbering level < paragraph style < direct */
   format: ParagraphFormat | null;
-  /** `styleRun` in `schema`: table style rPr < paragraph style rPr. The docDefaults rPr stays in the CSS variables */
+  /** `styleRun` in `schema`: run defaults < table style rPr < paragraph style rPr. Default font and size stay in CSS variables */
   styleRun: RunFormat | null;
   /** Everything below a run's own formatting, docDefaults included. What a removed run property falls back to */
   inheritedRun: RunFormat;
@@ -211,7 +211,18 @@ export function resolveParagraph(
   if (tabStops.length > 0) {
     format.tabStops = tabStops.map(({ layer: _layer, ...stop }) => stop);
   }
-  const styleRun: RunFormat = { ...tableStyle?.run, ...style?.run };
+  // Only the default font and size are supplied by the sheet's CSS variables. Other
+  // run defaults need display values too, or a bold default is invisible to both text and toolbar.
+  const {
+    fontSizePt: _size,
+    fontFamily: _font,
+    ...displayDefaults
+  } = context.runDefaults;
+  const styleRun: RunFormat = {
+    ...displayDefaults,
+    ...tableStyle?.run,
+    ...style?.run,
+  };
   return {
     format: orNull(format),
     styleRun: orNull(styleRun),

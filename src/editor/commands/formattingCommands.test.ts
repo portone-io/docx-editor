@@ -206,23 +206,39 @@ describe("switching off what a style or the document defaults switched on", () =
   });
 
   it("turns bold off on text whose bold comes from docDefaults by pinning w:b w:val=0", () => {
-    // The docDefaults bold is not drawn from the run (it stays in the CSS variables), so the
-    // first press switches the run on outright and the second is the one that has to pin the off
     const { state, session } = opened(
       "<w:p>" + paragraph("", "ab") + "</w:p>",
       "<w:rPr><w:b/></w:rPr>"
     );
-    const bolded = runCommand(select(state, 1, 3), toggleBold);
-    expect(documentXmlOf(bolded.doc, session)).toContain(
-      "<w:rPr><w:b/><w:bCs/></w:rPr>"
-    );
-
-    const plain = runCommand(bolded, toggleBold);
+    const selected = select(state, 1, 3);
+    expect(isBoldActive(selected)).toBe(true);
+    const plain = runCommand(selected, toggleBold);
     expect(isBoldActive(plain)).toBe(false);
     expect(documentXmlOf(plain.doc, session)).toContain(
       `<w:r>${PINNED_OFF}<w:t xml:space="preserve">ab</w:t></w:r>`
     );
   });
+});
+
+describe("removing a direct setting", () => {
+  it.each(["paragraph", "character"])(
+    "restores the %s style in the toolbar immediately",
+    (kind) => {
+      const styles = `<w:style w:type="${kind}" w:styleId="Sized"${kind === "paragraph" ? ' w:default="1"' : ""}><w:rPr><w:sz w:val="40"/></w:rPr></w:style>`;
+      const rPr = `<w:rPr>${kind === "character" ? '<w:rStyle w:val="Sized"/>' : ""}<w:sz w:val="60"/></w:rPr>`;
+      const opened = importDocx(
+        makeStyledDocx(`<w:p>${paragraph(rPr, "Body")}</w:p>`, styles)
+      );
+      const state = select(editorStateForSession(opened), 1, 5);
+      expect(activeFontSize(state)).toEqual({ kind: "size", pt: 30 });
+      const cleared = runCommand(state, setFontSize(null));
+      expect(activeFontSize(cleared)).toEqual({ kind: "size", pt: 20 });
+      const reopened = importDocx(exportDocx(cleared.doc, opened.session));
+      expect(
+        activeFontSize(select(editorStateForSession(reopened), 1, 5))
+      ).toEqual({ kind: "size", pt: 20 });
+    }
+  );
 });
 
 describe("applying formatting at the caret", () => {

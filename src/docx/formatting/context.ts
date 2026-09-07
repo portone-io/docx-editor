@@ -29,8 +29,8 @@ export interface FormattingContext {
   /** `pPrDefault`, the layer at the base of the hierarchy */
   paragraphDefaults: ParagraphFormatLayer;
   /**
-   * `rPrDefault` read in full. It decides what a removed run property falls back to; the screen
-   * draws it through the CSS variables `DocumentDefaults` fills, not through a run's values
+   * `rPrDefault` read in full. It decides what a removed run property falls back to. The default
+   * font and size are supplied through CSS variables; other properties enter derived run values.
    */
   runDefaults: RunFormat;
   numbering: Numbering;
