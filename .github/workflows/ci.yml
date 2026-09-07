@@ -25,7 +25,7 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-      - uses: ./.github/actions/xmllint
+      - uses: $/.github/actions/xmllint
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
 

@@ -64,7 +64,7 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
-      - uses: ./.github/actions/xmllint
+      - uses: $/.github/actions/xmllint
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
       - run: pnpm test:package
@@ -123,6 +123,6 @@ jobs:
     if: needs.release.outputs.published == 'true'
     permissions:
       contents: write # the verified demo version commit; no npm publishing permission
-    uses: ./.github/workflows/site-release.yml
+    uses: $/.github/workflows/site-release.yml
     with:
       version: ${{ needs.release.outputs.version }}
