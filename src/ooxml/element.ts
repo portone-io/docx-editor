@@ -13,7 +13,13 @@
  * `w:val`). The two readers below are named for which of those they answer.
  */
 
-import { type KnownPrefix, NAMESPACES, wName } from "./names";
+import {
+  type KnownPrefix,
+  NAMESPACES,
+  qualify,
+  W_PREFIX,
+  wName,
+} from "./names";
 import { escapeXml, localPart } from "./xml";
 
 /** One attribute as it is written: the whole name, prefix included, and the value before escaping */
@@ -53,14 +59,19 @@ export function xmlnsAttr(prefix: KnownPrefix): XmlAttr {
 }
 
 /**
- * The local name this written name stands for as a WordprocessingML attribute: `w:val` and `val`
- * both answer `val`. null for a name another prefix qualifies, which is not one of ours to read
- * or to write.
+ * The local name this written name stands for under that prefix's vocabulary: given `w`, `w:val`
+ * and `val` both answer `val`. null for a name another prefix qualifies, which is not one of ours
+ * to read or to write there.
  */
-export function wLocalName(name: string): string | null {
+function localNameUnder(prefix: KnownPrefix, name: string): string | null {
   if (!name.includes(":")) return name;
   const local = localPart(name);
-  return name === wName(local) ? local : null;
+  return name === qualify(prefix, local) ? local : null;
+}
+
+/** The same for the WordprocessingML vocabulary, which is the one almost everything is written in */
+export function wLocalName(name: string): string | null {
+  return localNameUnder(W_PREFIX, name);
 }
 
 /** Where the WordprocessingML attribute of this local name sits, the `w:` spelling ahead of an unprefixed one. -1 for none */
@@ -103,13 +114,20 @@ export function withAttr(
   );
 }
 
-/** The attributes without the WordprocessingML ones of these local names, in either spelling */
+/**
+ * The attributes without the ones of these local names, in either spelling.
+ *
+ * The names are read under the WordprocessingML vocabulary unless another prefix is named, which
+ * is what reaches the handful of attributes Word writes beside it: `w14:paraId` is a name under
+ * `w14` and no more a `w:` attribute than `x:val` is.
+ */
 export function withoutAttrs(
   attrs: readonly XmlAttr[],
-  localNames: readonly string[]
+  localNames: readonly string[],
+  prefix: KnownPrefix = W_PREFIX
 ): XmlAttr[] {
   return attrs.filter(([name]) => {
-    const local = wLocalName(name);
+    const local = localNameUnder(prefix, name);
     return local === null || !localNames.includes(local);
   });
 }

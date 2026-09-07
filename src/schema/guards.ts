@@ -29,7 +29,7 @@ import {
   transactionReaches,
 } from "./editGuard";
 import { lockGuard } from "./locks";
-import { bookmarkGuard, noteGuard } from "./preservedGuards";
+import { bookmarkGuard, noteGuard, sectionGuard } from "./preservedGuards";
 import {
   isCommentNode,
   type ProtectionState,
@@ -98,6 +98,7 @@ export const EDIT_GUARDS: readonly EditGuard[] = [
   lockGuard,
   bookmarkGuard,
   noteGuard,
+  sectionGuard,
 ];
 
 function judgesSteps(guard: EditGuard): guard is StepGuard {

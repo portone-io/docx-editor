@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { baseKeymap, chainCommands } from "prosemirror-commands";
 import { type EditorState, TextSelection } from "prosemirror-state";
 import { describe, expect, it } from "vitest";
 import { documentXmlOf, makeDocx } from "../__testing__/docx";
@@ -84,6 +85,48 @@ describe("moving between cells with Tab", () => {
 });
 
 describe("splitting a paragraph with Enter", () => {
+  it("handles Backspace without joining away a section-ending paragraph", () => {
+    const { doc } = importDocx(
+      makeDocx(
+        "<w:p><w:r><w:t>before</w:t></w:r></w:p>" +
+          "<w:p><w:pPr><w:sectPr/></w:pPr><w:r><w:t>section</w:t></w:r></w:p>"
+      )
+    );
+    const state = withCaretAt(
+      createEditorState(doc),
+      doc.child(0).nodeSize + 1
+    );
+    const backspace = chainCommands(docxKeymap.Backspace, baseKeymap.Backspace);
+    let next = state;
+    expect(
+      backspace(state, (tr) => {
+        next = state.apply(tr);
+      })
+    ).toBe(true);
+    expect(next.doc).toBe(state.doc);
+    expect(next.selection.eq(state.selection)).toBe(true);
+  });
+
+  it("replaces selected text with a line break inside a section paragraph", () => {
+    const sectPr = '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/></w:sectPr>';
+    const { doc, session } = importDocx(
+      makeDocx(`<w:p><w:pPr>${sectPr}</w:pPr><w:r><w:t>text</w:t></w:r></w:p>`)
+    );
+    const state = createEditorState(doc);
+    const selected = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, 1, 5))
+    );
+    expect(docxKeymap["Shift-Enter"](selected)).toBe(true);
+    let next = selected;
+    expect(
+      docxKeymap["Shift-Enter"](selected, (tr) => {
+        next = selected.apply(tr);
+      })
+    ).toBe(true);
+    expect(next.doc.firstChild?.firstChild?.type.name).toBe("hardBreak");
+    expect(documentXmlOf(next.doc, session)).toContain(sectPr);
+  });
+
   it("the new paragraph inherits the original paragraph's formatting", () => {
     const pPr = '<w:pPr><w:jc w:val="center"/></w:pPr>';
     const bytes = makeDocx(
@@ -100,6 +143,45 @@ describe("splitting a paragraph with Enter", () => {
     expect(documentXml).toContain(
       `<w:p>${pPr}<w:r><w:t xml:space="preserve">front</w:t></w:r></w:p>` +
         `<w:p>${pPr}<w:r><w:t xml:space="preserve">back</w:t></w:r></w:p>`
+    );
+  });
+
+  it("Enter after a paragraph carrying w14:paraId writes one paraId", () => {
+    const bytes = makeDocx(
+      '<w:p w14:paraId="1EADBEEF" w14:textId="77777777">' +
+        '<w:r><w:t xml:space="preserve">frontback</w:t></w:r></w:p>'
+    );
+    const { doc, session } = importDocx(bytes);
+    const split = press(createEditorState(doc), "Enter", 6);
+
+    const documentXml = documentXmlOf(split.doc, session);
+    // Paragraph identifiers are unique within their document part.
+    expect(documentXml.match(/1EADBEEF/g)).toHaveLength(1);
+    expect(documentXml.match(/77777777/g)).toHaveLength(1);
+    expect(documentXml).toContain(
+      '<w:p w14:paraId="1EADBEEF" w14:textId="77777777">' +
+        '<w:r><w:t xml:space="preserve">front</w:t></w:r></w:p>' +
+        '<w:p><w:r><w:t xml:space="preserve">back</w:t></w:r></w:p>'
+    );
+  });
+
+  it("Enter at the end of a section's last paragraph keeps one w:sectPr on the new last paragraph", () => {
+    const sectPr = '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/></w:sectPr>';
+    const bytes = makeDocx(
+      `<w:p><w:pPr>${sectPr}</w:pPr>` +
+        '<w:r><w:t xml:space="preserve">last</w:t></w:r></w:p>' +
+        '<w:p><w:r><w:t xml:space="preserve">next</w:t></w:r></w:p>'
+    );
+    const { doc, session } = importDocx(bytes);
+    const split = press(createEditorState(doc), "Enter", 5);
+
+    const documentXml = documentXmlOf(split.doc, session);
+    // The break ends the section, so it stays on whichever paragraph now ends it
+    expect(documentXml.match(/<w:sectPr/g)).toHaveLength(1);
+    expect(documentXml).toContain(
+      '<w:p><w:r><w:t xml:space="preserve">last</w:t></w:r></w:p>' +
+        `<w:p><w:pPr>${sectPr}</w:pPr></w:p>` +
+        '<w:p><w:r><w:t xml:space="preserve">next</w:t></w:r></w:p>'
     );
   });
 });
