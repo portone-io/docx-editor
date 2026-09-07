@@ -67,7 +67,7 @@ Parts with no committed validation schema, including relationships, content type
 `pnpm test:package` runs four isolated checks against a clean build:
 
 - `packaging/tarballContents.test.ts` packs the project and verifies exported files, declarations, the documents a consumer reads before installing, excluded development files, and resolved dependency ranges.
-- `packaging/leafImportSize.test.ts` rebuilds the output and protects small leaf imports from accidentally pulling in a large shared bundle.
+- `packaging/leafImportSize.test.ts` rebuilds the output, budgets what a small leaf import costs a consumer, and pins the modules it keeps, so that neither a shared bundle nor a top-level statement in an unrelated module rides along with it.
 - `packaging/apiReport.test.ts` rebuilds the declarations and fails when a committed report in `etc/` no longer matches them.
 - `packaging/coreRuntime.test.ts` loads the built core entry in a Node environment with no DOM globals, which is the runtime a server verifying a returned file actually has. The rest of the suite runs under jsdom, so this is the only place a global reached for by accident shows up as a failure.
 

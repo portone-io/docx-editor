@@ -50,10 +50,28 @@ const exportsByEntry = runtimeExports();
  * that way, and `emuToPx`, one multiplication, to 22 kB.
  * The budgets are a few times what each costs today, so they catch that collapse rather than
  * a module gaining a line.
+ *
+ * The modules are the ones the bundle keeps any bytes of, because the same impure statement
+ * pins a module at any size: `image.ts` reading the namespace table at its top level held
+ * `names.js` and `xml.js` in place for a consumer that never wrote a drawing, and `emuToPx`
+ * came to 817 bytes, well under its budget. A module in the received list that the name never
+ * calls into is one such statement to take out, not a module to add. `index.js` stays in for
+ * the ProseMirror classes it re-exports, because an import of an external package is kept as
+ * it is written.
  */
 const budgets = [
-  { name: "downloadDocx", entry: "dist/index.js", bytes: 4096 },
-  { name: "emuToPx", entry: "dist/core.js", bytes: 2048 },
+  {
+    name: "downloadDocx",
+    entry: "dist/index.js",
+    bytes: 4096,
+    modules: ["dist/download.js", "dist/index.js"],
+  },
+  {
+    name: "emuToPx",
+    entry: "dist/core.js",
+    bytes: 1024,
+    modules: ["dist/ooxml/image.js"],
+  },
 ];
 
 let workDir = "";
@@ -70,8 +88,14 @@ afterAll(async () => {
   if (workDir) await rm(workDir, { recursive: true, force: true });
 });
 
-/** The bytes one imported name adds to a consumer's bundle, minified as one ships */
-async function bundledSize(name: string, entry: string): Promise<number> {
+/**
+ * What one imported name adds to a consumer's bundle, minified as one ships: the bytes, and
+ * the modules under `dist` any of those bytes came from
+ */
+async function consumerBundle(
+  name: string,
+  entry: string
+): Promise<{ bytes: number; modules: string[] }> {
   const file = join(workDir, `${name}.js`);
   await writeFile(
     file,
@@ -79,6 +103,7 @@ async function bundledSize(name: string, entry: string): Promise<number> {
       `globalThis.keep = ${name};\n`
   );
   const bundled = await build({
+    absWorkingDir: packageDir,
     entryPoints: [file],
     bundle: true,
     format: "esm",
@@ -89,8 +114,15 @@ async function bundledSize(name: string, entry: string): Promise<number> {
     minify: true,
     write: false,
     logLevel: "silent",
+    metafile: true,
   });
-  return bundled.outputFiles[0].contents.length;
+  const [output] = Object.values(bundled.metafile.outputs);
+  return {
+    bytes: bundled.outputFiles[0].contents.length,
+    modules: Object.keys(output.inputs)
+      .filter((path) => path.startsWith("dist/"))
+      .sort(),
+  };
 }
 
 async function unusedImportSize(
@@ -123,7 +155,14 @@ describe("what one imported name costs a consumer", () => {
   it.each(budgets)(
     "$name off $entry stays under $bytes bytes",
     async ({ name, entry, bytes }) => {
-      expect(await bundledSize(name, entry)).toBeLessThan(bytes);
+      expect((await consumerBundle(name, entry)).bytes).toBeLessThan(bytes);
+    }
+  );
+
+  it.each(budgets)(
+    "$name off $entry keeps only the modules it reads",
+    async ({ name, entry, modules }) => {
+      expect((await consumerBundle(name, entry)).modules).toEqual(modules);
     }
   );
 
