@@ -50,7 +50,7 @@ export type CommentOnlyVerdict = {
     reason: "body-changed" | "comment-not-owned" | "comment-author-forged";
 } | {
     ok: false;
-    reason: "part-changed" | "relationship-changed";
+    reason: "part-changed" | "relationship-changed" | "comment-markup-rejected";
     part: string;
 };
 
@@ -418,7 +418,7 @@ export interface XmlParser {
 
 // Warnings were encountered during analysis:
 //
-// dist/docx/commentOnlyChange.d.ts:49:5 - (ae-forgotten-export) The symbol "EditableComments" needs to be exported by the entry point core.d.ts
+// dist/docx/commentOnlyChange.d.ts:50:5 - (ae-forgotten-export) The symbol "EditableComments" needs to be exported by the entry point core.d.ts
 
 // (No @packageDocumentation comment for this package)
 

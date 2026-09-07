@@ -268,6 +268,11 @@ describe("onlyCommentsChangedBy", () => {
     reason: "part-changed",
     part,
   });
+  const markupRefused = (part: string): CommentOnlyVerdict => ({
+    ok: false,
+    reason: "comment-markup-rejected",
+    part,
+  });
 
   describe("over the document story", () => {
     it("holds for an unchanged file and for a comment the author added", () => {
@@ -795,7 +800,7 @@ describe("onlyCommentsChangedBy", () => {
       );
 
       expect(onlyCommentsChangedBy(bytes, forged, "me")).toEqual(
-        partRefused(COMMENTS_PART)
+        markupRefused(COMMENTS_PART)
       );
     });
 
@@ -810,7 +815,7 @@ describe("onlyCommentsChangedBy", () => {
       );
 
       expect(onlyCommentsChangedBy(bytes, orphaned, "me")).toEqual(
-        partRefused(COMMENTS_PART)
+        markupRefused(COMMENTS_PART)
       );
     });
 
@@ -825,7 +830,7 @@ describe("onlyCommentsChangedBy", () => {
       );
 
       expect(onlyCommentsChangedBy(bytes, wrapped, "me")).toEqual(
-        partRefused(COMMENTS_PART)
+        markupRefused(COMMENTS_PART)
       );
     });
   });

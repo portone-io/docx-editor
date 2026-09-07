@@ -358,7 +358,7 @@ export function commentPartsKept(
     const path = kind.pathOf(after) ?? kind.pathOf(before);
     if (path === null) continue;
     if (!partKept(kind, before, after, authorId, editableComments)) {
-      return { ok: false, reason: "part-changed", part: path };
+      return { ok: false, reason: "comment-markup-rejected", part: path };
     }
   }
   return { ok: true };

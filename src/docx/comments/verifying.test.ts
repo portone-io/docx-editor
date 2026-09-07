@@ -108,7 +108,11 @@ const verdict = (
   );
 
 const allowed = { ok: true };
-const refused = { ok: false, reason: "part-changed", part: COMMENTS_PART };
+const refused = {
+  ok: false,
+  reason: "comment-markup-rejected",
+  part: COMMENTS_PART,
+};
 
 const elementOf = (xml: string): Element => parseXml(xml).documentElement;
 
@@ -430,7 +434,7 @@ describe("over the comment parts of a submitted file", () => {
     if (extendedPath === undefined) throw new Error("no extended part");
     const refusedThere = {
       ok: false,
-      reason: "part-changed",
+      reason: "comment-markup-rejected",
       part: extendedPath,
     };
     const ghost = '<w15:commentEx w15:paraId="DEADBEEF" w15:done="1"/>';
@@ -482,7 +486,7 @@ describe("over the comment parts of a submitted file", () => {
     expect(verdict(withGhost, withGhost, "me")).toEqual(allowed);
     expect(verdict(withGhost, dropped, "me")).toEqual({
       ok: false,
-      reason: "part-changed",
+      reason: "comment-markup-rejected",
       part: peoplePath,
     });
   });
@@ -506,7 +510,7 @@ describe("over the comment parts of a submitted file", () => {
 
     expect(verdict(commented, added, "me")).toEqual({
       ok: false,
-      reason: "part-changed",
+      reason: "comment-markup-rejected",
       part: peoplePath,
     });
   });
