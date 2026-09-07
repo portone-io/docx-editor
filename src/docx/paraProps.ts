@@ -20,14 +20,21 @@ import type {
 } from "../model/format";
 import type { LevelIndent } from "../numbering/parseNumbering";
 import {
-  attrPairs,
   elementXml,
+  wAttrValue,
   withoutAttrs,
   type XmlAttr,
 } from "../ooxml/element";
 import { wName } from "../ooxml/names";
 import { setAttr } from "../ooxml/precedence";
-import { childByLocalName, localPart } from "../ooxml/xml";
+import {
+  childElement,
+  type Props,
+  parseProps,
+  parsePropsXml,
+  renderProps,
+  setChild,
+} from "../ooxml/props";
 import {
   layerParagraphFormat,
   layerRunFormat,
@@ -36,13 +43,6 @@ import {
   readParagraphFormat,
   type StyleTable,
 } from "./formatting";
-import {
-  P_PR_ORDER,
-  parseProps,
-  parsePropsXml,
-  renderProps,
-  setPropsChild,
-} from "./propsXml";
 
 /** What to do with the indents */
 export type IndentChange =
@@ -140,17 +140,17 @@ function indXml(attrs: readonly XmlAttr[]): string | null {
 
 /** The new `<w:ind>` fragment. undefined when the intent is to leave it as it is */
 function nextIndXml(
-  ind: Element | null,
+  ind: readonly XmlAttr[],
   change: IndentChange
 ): string | null | undefined {
   if (change.kind === "keep") return undefined;
   if (change.kind === "clearHanging") {
-    return indXml(withoutAttrs(attrPairs(ind), HANGING_IND_ATTRS));
+    return indXml(withoutAttrs(ind, HANGING_IND_ATTRS));
   }
   const dropped = [...LEFT_IND_ATTRS, ...FIRST_LINE_IND_ATTRS];
   return indXml([
     ...levelIndAttrs(change.indent),
-    ...withoutAttrs(attrPairs(ind), dropped),
+    ...withoutAttrs(ind, dropped),
   ]);
 }
 
@@ -162,20 +162,20 @@ function nextIndXml(
  * that had none to begin with gets none back.
  * The character-unit spellings drop out, because Word lets them override the value we just wrote.
  */
-function leftIndAttrs(ind: Element | null, leftTwips: number): XmlAttr[] {
-  const original = attrPairs(ind);
-  const slot = original.find(([name]) =>
-    LEFT_TWIPS_IND_ATTRS.includes(localPart(name))
-  )?.[0];
+function leftIndAttrs(
+  original: readonly XmlAttr[],
+  leftTwips: number
+): XmlAttr[] {
+  const slot = LEFT_TWIPS_IND_ATTRS.find(
+    (name) => wAttrValue(original, name) !== null
+  );
   const written = leftTwips > 0 ? `${leftTwips}` : null;
   // Every other spelling of the left indent goes, so the one value is recorded in one place
   const kept = withoutAttrs(
     original,
-    LEFT_IND_ATTRS.filter(
-      (name) => slot === undefined || name !== localPart(slot)
-    )
+    LEFT_IND_ATTRS.filter((name) => name !== slot)
   );
-  if (slot !== undefined) return setAttr(kept, "ind", localPart(slot), written);
+  if (slot !== undefined) return setAttr(kept, "ind", slot, written);
   return written === null ? kept : [[wName("left"), written], ...kept];
 }
 
@@ -186,24 +186,22 @@ type ChildEdit = readonly [name: string, xml: string | null];
 
 /**
  * The result of swapping out a few of the fragment's children.
- * If the fragment could not be made out the result is null, and in that case the caller leaves
- * that paragraph untouched.
+ * If the fragment, or the child an edit reads, could not be made out the result is null, and in
+ * that case the caller leaves that paragraph untouched.
  */
 function editParagraphProps(
   pPr: string | null,
   styles: StyleTable,
   defaultStyleId: string | null,
-  plan: (element: Element | null) => readonly ChildEdit[]
+  plan: (props: Props) => readonly ChildEdit[] | null
 ): ParagraphProps | null {
   const props = pPr === null ? EMPTY_P_PR : parseProps(pPr);
-  const element = pPr === null ? null : parsePropsXml(pPr);
-  if (!props || (pPr !== null && !element)) return null;
+  if (!props) return null;
+  const edits = plan(props);
+  if (!edits) return null;
 
   const rendered = renderProps(
-    plan(element).reduce(
-      (kept, [name, xml]) => setPropsChild(kept, name, xml, P_PR_ORDER),
-      props
-    )
+    edits.reduce((kept, [name, xml]) => setChild(kept, name, xml), props)
   );
   const next = rendered === "" ? null : rendered;
   return {
@@ -219,11 +217,10 @@ export function withListNumbering(
   styles: StyleTable = NO_STYLES,
   defaultStyleId: string | null = null
 ): ParagraphProps | null {
-  return editParagraphProps(pPr, styles, defaultStyleId, (element) => {
-    const ind = nextIndXml(
-      element ? childByLocalName(element, "ind") : null,
-      change.indent
-    );
+  return editParagraphProps(pPr, styles, defaultStyleId, (props) => {
+    const current = childElement(props, "ind");
+    if (!current) return null;
+    const ind = nextIndXml(current.attrs, change.indent);
     const numPr: ChildEdit = ["numPr", numPrXml(change.numbering)];
     return ind === undefined ? [numPr] : [numPr, ["ind", ind]];
   });
@@ -240,9 +237,10 @@ export function withLeftIndent(
   styles: StyleTable = NO_STYLES,
   defaultStyleId: string | null = null
 ): ParagraphProps | null {
-  return editParagraphProps(pPr, styles, defaultStyleId, (element) => {
-    const ind = element ? childByLocalName(element, "ind") : null;
-    return [["ind", indXml(leftIndAttrs(ind, leftTwips))]];
+  return editParagraphProps(pPr, styles, defaultStyleId, (props) => {
+    const ind = childElement(props, "ind");
+    if (!ind) return null;
+    return [["ind", indXml(leftIndAttrs(ind.attrs, leftTwips))]];
   });
 }
 
@@ -255,20 +253,12 @@ type AttrEdit = readonly [name: string, value: string];
  * spacing can be set without disturbing the space above and below the paragraph.
  */
 function spacingAttrs(
-  spacing: Element | null,
+  spacing: readonly XmlAttr[],
   edits: readonly AttrEdit[]
-): XmlAttr[] {
-  // Spacing has always updated every spelling of an edited local name. Updating only the first
-  // would leave the WML value unchanged when an extension attribute with that name comes first.
-  const changed = attrPairs(spacing).map(
-    ([name, value]): XmlAttr => [
-      name,
-      edits.find(([edited]) => edited === localPart(name))?.[1] ?? value,
-    ]
-  );
+): readonly XmlAttr[] {
   return edits.reduce(
     (attrs, [name, value]) => setAttr(attrs, "spacing", name, value),
-    changed
+    spacing
   );
 }
 
@@ -286,9 +276,10 @@ export function withLineSpacing(
     spacing.rule === "auto"
       ? Math.round(spacing.lines * 240)
       : Math.round(spacing.pt * 20);
-  return editParagraphProps(pPr, styles, defaultStyleId, (element) => {
-    const current = element ? childByLocalName(element, "spacing") : null;
-    const attrs = spacingAttrs(current, [
+  return editParagraphProps(pPr, styles, defaultStyleId, (props) => {
+    const current = childElement(props, "spacing");
+    if (!current) return null;
+    const attrs = spacingAttrs(current.attrs, [
       ["line", `${line}`],
       ["lineRule", spacing.rule],
     ]);

@@ -27,7 +27,7 @@ A folder may import itself and folders with a lower rank only.
 | --- | --- | --- |
 | 0 | `model` | Shared format values and validation |
 | 1 | `styles` | Visual styles, presets, and font fallbacks |
-| 2 | `ooxml` | XML, errors, units, and image primitives |
+| 2 | `ooxml` | XML reading and writing primitives, child order, errors, units, and image primitives |
 | 3 | `numbering` | Numbering definitions and list markers |
 | 4 | `schema` | ProseMirror nodes, marks, rendering, locks, and edit guards |
 | 5 | `docx` | Import, export, session state, and page geometry |
@@ -57,7 +57,9 @@ For example, `docx/formatting` separates direct-format parsing from style layeri
 
 The root entry adds the React editor to the same import and export engine exposed through `./core`. Code reachable from `./core` stays below the editor and UI layers so programmatic document processing does not load a view.
 
-The repository is a pnpm workspace whose root package is the library itself. `demo/` and `site/` are the other two packages: each depends on the library as `workspace:*` and imports `@portone/docx-editor` and `@portone/docx-editor/styles.css`, so both exercise the same entry points a consumer resolves. `demo/` exports the `DocxEditorDemo` component, and `demo/main.tsx` holds the Vite-only shell that loads the fixture and mounts it. The component module stays free of Vite-specific syntax because the site imports it too.
+The repository is a pnpm workspace whose root package is the library itself. `demo/` and `site/` are the other two packages: each imports `@portone/docx-editor` and `@portone/docx-editor/styles.css`, so both exercise the same entry points a consumer resolves. `demo/` exports the `DocxEditorDemo` component, and `demo/main.tsx` holds the Vite-only shell that loads the fixture and mounts it. The component module stays free of Vite-specific syntax because the site imports it too.
+
+Both pin the library to an exact released version rather than depending on it as `workspace:*`, because the site's landing page demonstrates a version to a visitor and names it on a badge. `demo/vite.config.ts` aliases those entry points back to `src/` so `pnpm dev` and `pnpm build:demo` still read the working tree. [The site guide](../site/README.md#the-version-the-demo-runs) owns automatic release updates, local site preparation, and the offline check that guards the installed version.
 
 `insertTable` belongs to `./commands` rather than `./table` because a new table uses page geometry stored by the editor layer. Other table commands operate on a table that already exists and do not need that dependency.
 

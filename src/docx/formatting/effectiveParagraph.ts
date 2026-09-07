@@ -5,7 +5,7 @@ import {
   levelIndentPt,
   type Numbering,
 } from "../../numbering/parseNumbering";
-import { parsePropsXml } from "../propsXml";
+import { parsePropsXml } from "../../ooxml/props";
 import { readParagraphFormat } from "./direct";
 import {
   paragraphStyleFormat,

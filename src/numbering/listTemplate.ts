@@ -11,6 +11,7 @@
 
 import { elementXml, type XmlAttr } from "../ooxml/element";
 import { wName } from "../ooxml/names";
+import { orderedElement } from "../ooxml/props";
 import type {
   LevelIndent,
   NumberFormat,
@@ -109,20 +110,36 @@ function indXml(indent: LevelIndent | null): string {
     .filter((slot): slot is readonly [string, number] => slot[1] !== null)
     .map(([name, twips]): XmlAttr => [wName(name), `${twips}`]);
   if (attrs.length === 0) return "";
-  return elementXml(wName("pPr"), [], [elementXml(wName("ind"), attrs)]);
+  return orderedElement(
+    wName("pPr"),
+    [],
+    [{ name: "ind", xml: elementXml(wName("ind"), attrs) }]
+  );
 }
 
 function levelXml(ilvl: number, level: NumberingLevel): string {
   const ind = indXml(level.indent);
-  return elementXml(
+  return orderedElement(
     wName("lvl"),
     [[wName("ilvl"), `${ilvl}`]],
     [
-      elementXml(wName("start"), [[wName("val"), `${level.start}`]]),
-      elementXml(wName("numFmt"), [[wName("val"), level.format]]),
-      elementXml(wName("lvlText"), [[wName("val"), level.text]]),
-      elementXml(wName("lvlJc"), [[wName("val"), "left"]]),
-      ind,
+      {
+        name: "start",
+        xml: elementXml(wName("start"), [[wName("val"), `${level.start}`]]),
+      },
+      {
+        name: "numFmt",
+        xml: elementXml(wName("numFmt"), [[wName("val"), level.format]]),
+      },
+      {
+        name: "lvlText",
+        xml: elementXml(wName("lvlText"), [[wName("val"), level.text]]),
+      },
+      {
+        name: "lvlJc",
+        xml: elementXml(wName("lvlJc"), [[wName("val"), "left"]]),
+      },
+      ...(ind === "" ? [] : [{ name: "pPr", xml: ind }]),
     ]
   );
 }

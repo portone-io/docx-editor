@@ -13,6 +13,7 @@
 import { xmlnsAttr } from "../../ooxml/element";
 import { DocxExportError } from "../../ooxml/errors";
 import { xmlnsDecl } from "../../ooxml/names";
+import { readTag, rootTagAt } from "../../ooxml/tagScan";
 import {
   attributeByLocalName,
   childByLocalName,
@@ -144,54 +145,6 @@ function w15Prefix(root: Element): string | null {
   return prefix === "" ? "" : `${prefix}:`;
 }
 
-/**
- * Where the root element's opening tag starts. The prolog is walked construct by construct so that
- * a `<` inside a comment or a processing instruction is not taken for the root. Every construct is
- * terminated, the part having been parsed already.
- */
-function rootTagStart(xml: string): number {
-  let at = 0;
-  for (;;) {
-    const opens = xml.indexOf("<", at);
-    if (opens === -1) return -1;
-    if (xml.startsWith("<!--", opens)) {
-      at = xml.indexOf("-->", opens + 4) + 3;
-      continue;
-    }
-    if (xml.startsWith("<?", opens)) {
-      at = xml.indexOf("?>", opens + 2) + 2;
-      continue;
-    }
-    return opens;
-  }
-}
-
-/**
- * Where the opening tag that starts at `at` ends, and whether it closed the element on its own.
- * Quoted attribute values are stepped over, as a `>` inside one does not end the tag.
- */
-function openTagEnd(
-  xml: string,
-  at: number
-): { end: number; selfClosing: boolean } | null {
-  let quote: string | null = null;
-  for (let i = at; i < xml.length; i += 1) {
-    const character = xml[i];
-    if (quote !== null) {
-      if (character === quote) quote = null;
-      continue;
-    }
-    if (character === '"' || character === "'") {
-      quote = character;
-      continue;
-    }
-    if (character === ">") {
-      return { end: i + 1, selfClosing: xml[i - 1] === "/" };
-    }
-  }
-  return null;
-}
-
 function malformed(detail: string): DocxExportError {
   return new DocxExportError("malformed-xml", `the people part ${detail}`);
 }
@@ -226,10 +179,10 @@ function peopleXml(
     )
   ).join("");
 
-  const start = rootTagStart(xml);
-  const open = start === -1 ? null : openTagEnd(xml, start);
+  const start = rootTagAt(xml);
+  const open = start === -1 ? null : readTag(xml, start);
   if (open === null) throw malformed("has no people root element");
-  if (open.selfClosing) {
+  if (open.kind === "empty") {
     return (
       `${xml.slice(0, open.end - 2)}>${persons}</${root.nodeName}>` +
       xml.slice(open.end)

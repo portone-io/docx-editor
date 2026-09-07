@@ -85,6 +85,10 @@ describe("setting the line spacing", () => {
     );
   });
 
+  /**
+   * An extension's attribute is not the spacing Word reads, so the WML value is the one written
+   * and the extension's own is left as its producer wrote it.
+   */
   it.each(["line", "lineRule"])(
     "updates the WML spacing when an extension's %s attribute comes first",
     (name) => {
@@ -99,7 +103,7 @@ describe("setting the line spacing", () => {
 
       expect(activeLineSpacing(spaced)).toEqual(DOUBLE);
       expect(documentXmlOf(spaced.doc, session)).toContain(
-        `<w:spacing x:${name}="${name === "line" ? "480" : "auto"}" w:line="480" w:lineRule="auto"/>`
+        `<w:spacing x:${name}="${value}" w:line="480" w:lineRule="auto"/>`
       );
       expect(setLineSpacing(DOUBLE)(spaced)).toBe(false);
     }
