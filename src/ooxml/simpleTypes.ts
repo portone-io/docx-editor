@@ -63,7 +63,8 @@ export function universalMeasureToTwips(value: string): number | null {
   const matched = UNIVERSAL_MEASURE.exec(value.trim());
   if (!matched) return null;
   const amount = Number(matched[1]);
-  return Number.isFinite(amount) ? amount * TWIPS_PER_UNIT[matched[2]] : null;
+  const twips = amount * TWIPS_PER_UNIT[matched[2]];
+  return Number.isFinite(twips) ? twips : null;
 }
 
 /**
@@ -251,7 +252,10 @@ export const ST_MeasurementOrPercent: SimpleType<MeasurementOrPercent> = {
     if (value === null) return null;
     const text = value.trim();
     const percent = PERCENT.exec(text);
-    if (percent) return { kind: "percent", value: Number(percent[1]) };
+    if (percent) {
+      const amount = decimalNumber(percent[1]);
+      return amount === null ? null : { kind: "percent", value: amount };
+    }
     const counted = decimalNumber(text);
     if (counted !== null) return { kind: "number", value: counted };
     const twips = universalMeasureToTwips(text);

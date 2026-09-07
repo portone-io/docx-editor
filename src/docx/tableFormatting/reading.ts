@@ -57,10 +57,8 @@ export function readTableWidth(
   const type = wAttr(el, "type") ?? "dxa";
   const width = ST_MeasurementOrPercent.parse(wAttr(el, "w"));
   if (width?.kind === "percent") {
-    return {
-      type: "pct",
-      fiftieths: Math.round(width.value * FIFTIETHS_PER_PERCENT),
-    };
+    const fiftieths = Math.round(width.value * FIFTIETHS_PER_PERCENT);
+    return Number.isFinite(fiftieths) ? { type: "pct", fiftieths } : null;
   }
   if (type === "auto") return { type: "auto" };
   if (type === "nil") return { type: "nil" };
