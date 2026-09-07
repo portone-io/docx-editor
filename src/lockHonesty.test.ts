@@ -521,6 +521,7 @@ const NOT_A_COMMAND: Readonly<Record<string, string>> = {
   documentBodyWidthPx: "a measurement read off the open document",
   documentComments: "the comments displayed alongside the document",
   documentDefaults: "the formatting the document declares",
+  documentFidelity: "what the document holds that the editor cannot model",
   documentFontNames: "the fonts the document names",
   documentHasLocked: "a query about the document",
   documentNotes: "the notes displayed after the document",

@@ -1454,6 +1454,7 @@ export const NOT_A_WRITER: Readonly<Record<string, string>> = {
   documentBodyWidthPx: "a measurement read off the open document",
   documentComments: "the comments displayed alongside the document",
   documentDefaults: "the formatting the document declares",
+  documentFidelity: "a query about the document, writing nothing",
   documentFontNames: "the fonts the document names",
   documentHasLocked: "a query about the document",
   documentNotes: "the notes displayed after the document",

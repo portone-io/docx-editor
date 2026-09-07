@@ -72,6 +72,9 @@ Content outside the supported editing surface is not silently discarded. Untouch
 and document blocks are written back from their original XML, while placeholders retain structures
 the editor cannot safely model.
 
+What a given document kept this way is not a guess: `documentFidelity` lists it, and `importDocx`
+returns the same list for a file opened outside the editor.
+
 If a safe round trip cannot be guaranteed, import or export fails with a stable error code instead
 of returning a damaged document. [Core API](/docs/core) documents the package limits and the
 server parser requirements.

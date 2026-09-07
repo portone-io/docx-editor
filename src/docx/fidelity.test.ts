@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import { makeDocx } from "../__testing__/docx";
+import { documentFidelity } from "../editor/commands/fidelityQueries";
+import { createEditorState } from "../editor/createEditor";
 import { fidelityNotesOf } from "./fidelity";
 import { importDocx } from "./importDocx";
 
@@ -123,5 +125,41 @@ describe("the notes a document opens with", () => {
     expect(fidelityNotesOf(doc, null)).toEqual([
       expect.objectContaining({ part: null, code: "range-marker" }),
     ]);
+  });
+});
+
+describe("documentFidelity", () => {
+  const BOOKMARKED =
+    `<w:p>${run("a")}<w:bookmarkStart w:id="1" w:name="Here"/>` +
+    '<w:bookmarkEnd w:id="1"/></w:p>';
+
+  it("reads the open document, naming no part", () => {
+    const state = createEditorState(importDocx(makeDocx(BOOKMARKED)).doc);
+
+    expect(documentFidelity(state)).toEqual([
+      {
+        severity: "hidden",
+        code: "range-marker",
+        part: null,
+        block: 0,
+        pos: 2,
+        element: "w:bookmarkStart",
+      },
+      {
+        severity: "hidden",
+        code: "range-marker",
+        part: null,
+        block: 0,
+        pos: 3,
+        element: "w:bookmarkEnd",
+      },
+    ]);
+  });
+
+  it("follows the document as it is edited", () => {
+    const state = createEditorState(importDocx(makeDocx(BOOKMARKED)).doc);
+    const edited = state.apply(state.tr.insertText("bcd", 2));
+
+    expect(documentFidelity(edited).map((note) => note.pos)).toEqual([5, 6]);
   });
 });
