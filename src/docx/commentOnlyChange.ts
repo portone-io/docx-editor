@@ -8,42 +8,11 @@
  * styles, its headers - and a document comparison would see none of it.
  */
 
-import {
-  decodeUtf8,
-  elementChildren,
-  parseXml,
-  withXmlParser,
-  type XmlParser,
-} from "../ooxml/xml";
-import {
-  commentAdditionsBy,
-  commentEditsOwned,
-  commentIdentitiesKept,
-  type EditableComments,
-  withoutComments,
-} from "../schema/protection";
-import {
-  COMMENTS_CONTENT_TYPE,
-  COMMENTS_EXTENDED_CONTENT_TYPE,
-  COMMENTS_EXTENDED_REL_TYPE,
-  COMMENTS_REL_TYPE,
-  CONTENT_TYPES_PATH,
-  PEOPLE_CONTENT_TYPE,
-  PEOPLE_REL_TYPE,
-} from "./comments/constants";
-import { commentPartsKept } from "./comments/verifying";
-import { type DocxBytes, importDocx } from "./importDocx";
-import {
-  type Relationship,
-  readRelationships,
-  relsPathOf,
-} from "./relationships";
-import type { SessionStore } from "./session";
-import {
-  comparableStory,
-  isModelledBlock,
-  type Story,
-} from "./storyProjection";
+import type { XmlParser } from "../ooxml/xml";
+import type { EditableComments } from "../schema/protection";
+import { commentsPolicy } from "./comments/policy";
+import type { DocxBytes } from "./importDocx";
+import { verifyChange } from "./protectionPolicy";
 
 /**
  * Why a file is not the one it claims to be. `part-changed`, `relationship-changed` and
@@ -65,260 +34,6 @@ export type CommentOnlyVerdict =
       part: string;
     };
 
-/** The three parts a comment is written across, which are the parts a comment edit may rewrite */
-const COMMENT_REL_TYPES: readonly string[] = [
-  COMMENTS_REL_TYPE,
-  COMMENTS_EXTENDED_REL_TYPE,
-  PEOPLE_REL_TYPE,
-];
-
-const COMMENT_CONTENT_TYPES: readonly string[] = [
-  COMMENTS_CONTENT_TYPE,
-  COMMENTS_EXTENDED_CONTENT_TYPE,
-  PEOPLE_CONTENT_TYPE,
-];
-
-const refused = (
-  reason: "body-changed" | "comment-not-owned" | "comment-author-forged"
-): CommentOnlyVerdict => ({ ok: false, reason });
-
-function sameBytes(before: Uint8Array, after: Uint8Array): boolean {
-  return (
-    before.length === after.length &&
-    before.every((byte, index) => byte === after[index])
-  );
-}
-
-/**
- * The comment parts of this package, which are the ones this judgement excuses from the byte
- * comparison.
- *
- * They are the parts the reader actually opened as comment parts, not every part a comment
- * relationship points at. A package is free to relate a second part under a comment type, and the
- * reader takes the first of each; excusing the rest would let a submission name any part it liked
- * and have it go uncompared.
- */
-/** Where the reader found each comment part, in the order `COMMENT_REL_TYPES` names them */
-function commentPartsOf(session: SessionStore): readonly (string | null)[] {
-  const { partPath, extendedPartPath, people } = session.comments;
-  return [partPath, extendedPartPath, people.partPath];
-}
-
-function commentPartPaths(session: SessionStore): Set<string> {
-  return new Set(
-    commentPartsOf(session).filter((path): path is string => path !== null)
-  );
-}
-
-/**
- * The main document part with the blocks the document model carries taken out of it.
- *
- * What is left is everything the document comparison cannot see: the namespaces the story is
- * written under, the section properties that set the paper and its margins, and every block kept
- * as the XML it arrived as. A comment is written inside a paragraph, so nothing a comment edit
- * writes reaches this text.
- */
-function aroundTheStory(session: SessionStore): string {
-  const preserved = session.blocks
-    .filter((block) => !isModelledBlock(block.node))
-    .map((block) => block.xml)
-    .join("");
-  return session.documentPrefix + preserved + session.documentSuffix;
-}
-
-/**
- * Whether the relationships of the main document part are the ones it arrived with, save for the
- * comment parts it may have gained. An id already handed out keeps pointing where it pointed.
- *
- * A comment part the file did not have may be gained, once. Writing a comment relates each of the
- * three parts a single time, so a second one under the same type is not something this editor
- * writes, and it is how a submission would otherwise name a part of its choosing.
- *
- * An id names one relationship. A part naming one twice is read differently depending on which of
- * the two a reader keeps, so it is turned down rather than judged.
- */
-function relationshipsKept(
-  before: readonly Relationship[],
-  after: readonly Relationship[]
-): boolean {
-  if (
-    new Set(before.map((entry) => entry.id)).size !== before.length ||
-    new Set(after.map((entry) => entry.id)).size !== after.length
-  ) {
-    return false;
-  }
-  const now = new Map(after.map((entry) => [entry.id, entry]));
-  const kept = before.every((entry) => {
-    const current = now.get(entry.id);
-    return (
-      current !== undefined &&
-      current.type === entry.type &&
-      current.target === entry.target &&
-      current.external === entry.external
-    );
-  });
-  const ids = new Set(before.map((entry) => entry.id));
-  // Every original relationship survives where `kept` holds, so a type standing once in the
-  // submission is a type gained where the file had none. Only the relationships a reader opens
-  // count: one pointing outside the package names no part, whatever type it carries
-  const parts = after.filter((entry) => !entry.external);
-  return (
-    kept &&
-    after
-      .filter((entry) => !ids.has(entry.id))
-      .every(
-        (entry) =>
-          COMMENT_REL_TYPES.includes(entry.type) &&
-          !entry.external &&
-          parts.filter((other) => other.type === entry.type).length === 1
-      )
-  );
-}
-
-/** What `[Content_Types].xml` declares, each declaration under the name it is keyed by */
-function contentTypes(bytes: Uint8Array | undefined): Map<string, string> {
-  if (bytes === undefined) return new Map();
-  const declared = new Map<string, string>();
-  for (const el of elementChildren(
-    parseXml(decodeUtf8(bytes).text).documentElement
-  )) {
-    const key =
-      el.localName === "Default"
-        ? el.getAttribute("Extension")
-        : el.localName === "Override"
-          ? el.getAttribute("PartName")
-          : null;
-    if (key !== null) declared.set(key, el.getAttribute("ContentType") ?? "");
-  }
-  return declared;
-}
-
-/**
- * Whether the package declares the content types it arrived with, save for an override a comment
- * part it gained needs. A declaration that was there keeps naming the type it named.
- */
-function contentTypesKept(
-  before: Map<string, string>,
-  after: Map<string, string>
-): boolean {
-  for (const [key, type] of before) {
-    if (after.get(key) !== type) return false;
-  }
-  for (const [key, type] of after) {
-    if (!before.has(key) && !COMMENT_CONTENT_TYPES.includes(type)) return false;
-  }
-  return true;
-}
-
-/**
- * Whether a comment part the submission relates for the first time is one it brought with it.
- *
- * Writing the first comment writes a new part. Relating a part the file already had turns this
- * judgement's excuse for the comment parts into an excuse for that part, whatever it holds.
- */
-function gainedCommentPartsAreNew(
-  before: SessionStore,
-  after: SessionStore
-): boolean {
-  const had = commentPartsOf(before);
-  return commentPartsOf(after).every(
-    (path, kind) =>
-      path === null || path === had[kind] || !before.parts.has(path)
-  );
-}
-
-/** Whether every part outside the document story is the one the file arrived with */
-function packageKept(
-  before: SessionStore,
-  after: SessionStore
-): CommentOnlyVerdict {
-  if (before.mainPartPath !== after.mainPartPath) {
-    return { ok: false, reason: "part-changed", part: before.mainPartPath };
-  }
-  const relsPath = relsPathOf(before.mainPartPath);
-  const untouched = new Set([
-    before.mainPartPath,
-    relsPath,
-    CONTENT_TYPES_PATH,
-    ...commentPartPaths(before),
-    ...commentPartPaths(after),
-  ]);
-  for (const path of new Set([...before.parts.keys(), ...after.parts.keys()])) {
-    if (untouched.has(path)) continue;
-    const was = before.parts.get(path);
-    const now = after.parts.get(path);
-    if (was === undefined || now === undefined || !sameBytes(was, now)) {
-      return { ok: false, reason: "part-changed", part: path };
-    }
-  }
-  if (
-    !relationshipsKept(
-      readRelationships(before.parts, relsPath),
-      readRelationships(after.parts, relsPath)
-    ) ||
-    !gainedCommentPartsAreNew(before, after)
-  ) {
-    return { ok: false, reason: "relationship-changed", part: relsPath };
-  }
-  if (
-    !contentTypesKept(
-      contentTypes(before.parts.get(CONTENT_TYPES_PATH)),
-      contentTypes(after.parts.get(CONTENT_TYPES_PATH))
-    )
-  ) {
-    return { ok: false, reason: "part-changed", part: CONTENT_TYPES_PATH };
-  }
-  if (aroundTheStory(before) !== aroundTheStory(after)) {
-    return { ok: false, reason: "part-changed", part: before.mainPartPath };
-  }
-  return { ok: true };
-}
-
-/**
- * Whether the two stories say the same thing once the comments are taken out of them.
- *
- * The two files were written by different hands, so they are compared as this editor's writer
- * puts them out rather than as they are worded (`./storyProjection`). A story the writer cannot
- * put out at all is answered the way a changed one is: there is nothing to compare it against.
- * No file this package opens reaches that answer today, since every attr the writer needs is set
- * on import; it is here so that a story it cannot write is refused rather than thrown over.
- */
-function sameBody(before: Story, after: Story): boolean {
-  const was = comparableStory(before, withoutComments);
-  const now = comparableStory(after, withoutComments);
-  return (
-    was !== null &&
-    now !== null &&
-    was.length === now.length &&
-    was.every((block, at) => block === now[at])
-  );
-}
-
-function storyKept(
-  before: Story,
-  after: Story,
-  authorId: string,
-  editableComments: EditableComments
-): CommentOnlyVerdict {
-  if (!sameBody(before, after)) return refused("body-changed");
-  if (
-    !commentIdentitiesKept(before.doc, after.doc) ||
-    !commentAdditionsBy(before.doc, after.doc, authorId)
-  ) {
-    return refused("comment-author-forged");
-  }
-  if (
-    !commentEditsOwned(before.doc, after.doc, {
-      protection: "comments",
-      authorId,
-      editableComments,
-    })
-  ) {
-    return refused("comment-not-owned");
-  }
-  return { ok: true };
-}
-
 /**
  * Whether the submitted file differs from the original in nothing but comments, every one of them
  * added, edited, moved, deleted, replied to or settled by the author with this identity.
@@ -326,7 +41,7 @@ function storyKept(
  * Every part of the package has to arrive as it left, save for the three a comment is written
  * across and the relationship and content type they are declared with; the document story itself
  * has to read as it did, comments aside. Those three parts are read entry by entry instead
- * (`./comments/verifying`), since a comment edit is free to rewrite them and something has to say
+ * (`./comments/policy`), since a comment edit is free to rewrite them and something has to say
  * what it may have written there. A comment carrying no recorded identity is everyone's to
  * edit here as it is in the editor (`schema/protection`), while a comment that appeared has to
  * carry this identity: a file can claim any author, and the editor's own hand in writing it is
@@ -349,18 +64,8 @@ export function onlyCommentsChangedBy(
     xmlParser,
   }: { editableComments?: EditableComments; xmlParser?: XmlParser } = {}
 ): CommentOnlyVerdict {
-  // Both files are opened inside the one scope, so the parser named here is the parser both
-  // reads go through even though neither `importDocx` call is given it
-  return withXmlParser(xmlParser, () => {
-    const before = importDocx(original);
-    const after = importDocx(submitted);
-    const packaged = packageKept(before.session, after.session);
-    if (!packaged.ok) return packaged;
-    const story = storyKept(before, after, authorId, editableComments);
-    // The parts are judged last, so a comment the wrong hand touched is named for that rather
-    // than for the part it was written across
-    return story.ok
-      ? commentPartsKept(before, after, authorId, editableComments)
-      : story;
+  return verifyChange(commentsPolicy, original, submitted, authorId, {
+    editableComments,
+    xmlParser,
   });
 }

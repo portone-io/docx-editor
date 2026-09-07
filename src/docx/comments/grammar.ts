@@ -14,7 +14,7 @@ import {
   type XmlAttr,
   xmlnsAttr,
 } from "../../ooxml/element";
-import { qualify, wName } from "../../ooxml/names";
+import { NAMESPACES, qualify, wName } from "../../ooxml/names";
 import {
   attributeByLocalName,
   elementChildren,
@@ -82,21 +82,45 @@ function threadKeyOrNone(el: Element, localName: string): boolean {
 }
 
 /**
- * Whether the element carries no attribute outside this set.
+ * The namespaces this package writes a declaration for, each under the prefix it writes it under.
  *
- * A namespace declaration is not an attribute of the element in this sense: it says where the
- * names come from rather than anything about the entry, and where a producer puts one is its own
- * business.
+ * The writer declares a namespace on an entry it builds itself and nowhere else: `w` on a comment,
+ * `w14` on the paragraph a thread key goes on, `w15` on an identity written into a part whose root
+ * binds nothing.
+ */
+const WRITTEN_NAMESPACES: ReadonlyMap<string, string> = new Map([
+  ["w", NAMESPACES.w],
+  ["w14", NAMESPACES.w14],
+  ["w15", NAMESPACES.w15],
+]);
+
+/**
+ * Whether the namespace declaration is one this editor's writer puts out, its value included.
+ *
+ * A declaration decides what every name around it means, so one binding a prefix to a namespace
+ * this package does not write is markup the writer did not put there however ordinary the names
+ * under it look. The default declaration is never one of them: the writer spells out a prefix on
+ * everything it writes.
+ */
+export function declarationWritten(attr: Attr): boolean {
+  if (!attr.name.startsWith("xmlns:")) return false;
+  return (
+    WRITTEN_NAMESPACES.get(attr.name.slice("xmlns:".length)) === attr.value
+  );
+}
+
+/**
+ * Whether the element carries no attribute outside this set, and declares no namespace outside
+ * what the writer declares.
  */
 export function attributesWithin(
   el: Element,
   allowed: ReadonlySet<string>
 ): boolean {
-  return Array.from(el.attributes).every(
-    (attr) =>
-      attr.namespaceURI === XMLNS_NS ||
-      attr.name === "xmlns" ||
-      allowed.has(nameKey(attr.namespaceURI, attr.localName))
+  return Array.from(el.attributes).every((attr) =>
+    attr.namespaceURI === XMLNS_NS
+      ? declarationWritten(attr)
+      : allowed.has(nameKey(attr.namespaceURI, attr.localName))
   );
 }
 

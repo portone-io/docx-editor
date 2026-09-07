@@ -13,9 +13,9 @@
  */
 
 import type { Node as PMNode } from "prosemirror-model";
+import { NAMESPACES } from "../../ooxml/names";
 import {
   attributeByLocalName,
-  elementChildren,
   isElement,
   parseXml,
   serializeXml,
@@ -43,6 +43,7 @@ import {
 import {
   attributesWithin,
   COMMENT_ATTRIBUTES,
+  declarationWritten,
   lastBodyParagraph,
   readStrictCommentBody,
   recordedIdentity,
@@ -174,11 +175,91 @@ interface CommentPartShape {
   /** The name a new part takes, ahead of the number that tells it from one the package has */
   baseName: string;
   namespace: string;
+  /** The element the entries stand in, which shares their namespace */
+  rootName: string;
   localName: string;
   idAttr: string;
   xmlIn(session: SessionStore): string | null;
   pathIn(session: SessionStore): string | null;
   referents(story: Story): ReadonlySet<string>;
+}
+
+const TEXT_NODE = 3;
+
+/** The compatibility declarations the writer adds to a part it writes a thread key into */
+const COMPATIBILITY: ReadonlyMap<string, string> = new Map([
+  ["xmlns:w14", NAMESPACES.w14],
+  ["xmlns:mc", NAMESPACES.mc],
+]);
+
+/** The flag those declarations go with, which names the markup a reader may pass over */
+const IGNORABLE = "mc:Ignorable";
+
+/** The one thing the writer adds to it */
+const IGNORED = "w14";
+
+/**
+ * Whether the node says nothing.
+ *
+ * A part this editor writes holds its entries with nothing between them, but one that arrived may
+ * be laid out over several lines, and it comes back that way wherever nothing rewrote it. Anything
+ * else standing between the entries - a comment, text, a CDATA section - is bytes no entry
+ * judgement ever looks at.
+ */
+function isLayout(node: Node): boolean {
+  return node.nodeType === TEXT_NODE && (node.nodeValue ?? "").trim() === "";
+}
+
+function ignorableTokens(value: string): ReadonlySet<string> {
+  return new Set(value.split(/\s+/).filter(Boolean));
+}
+
+/** Whether the compatibility flag still names what it named, and at most `w14` on top of it */
+function ignorableKept(now: string, was: string | null): boolean {
+  const gained = ignorableTokens(now);
+  const had = was === null ? new Set<string>() : ignorableTokens(was);
+  return (
+    Array.from(had).every((token) => gained.has(token)) &&
+    Array.from(gained).every((token) => had.has(token) || token === IGNORED)
+  );
+}
+
+/** Whether the root is one this editor writes a part from nothing as */
+function writtenRoot(root: Element, shape: CommentPartShape): boolean {
+  if (root.namespaceURI !== shape.namespace) return false;
+  if (root.localName !== shape.rootName) return false;
+  return Array.from(root.attributes).every((attr) =>
+    attr.name === IGNORABLE
+      ? ignorableKept(attr.value, null)
+      : declarationWritten(attr) || COMPATIBILITY.get(attr.name) === attr.value
+  );
+}
+
+/**
+ * Whether the element the entries stand in came back as it left.
+ *
+ * The writer keeps the opening tag it read and adds to it only what a thread key needs to mean
+ * anything, so the root's name, the prefixes it binds and what it binds them to all have to come
+ * back as they went. A part the package did not have is held to what this editor writes a new one
+ * as instead: nothing else could have put it there.
+ */
+function rootKeptAgainst(
+  now: Element,
+  was: Element | null,
+  shape: CommentPartShape
+): boolean {
+  if (was === null) return writtenRoot(now, shape);
+  if (now.nodeName !== was.nodeName) return false;
+  const had = new Map(
+    Array.from(was.attributes, (attr) => [attr.name, attr.value] as const)
+  );
+  const kept = Array.from(now.attributes).every((attr) => {
+    const before = had.get(attr.name) ?? null;
+    if (attr.name === IGNORABLE) return ignorableKept(attr.value, before);
+    if (before === null) return COMPATIBILITY.get(attr.name) === attr.value;
+    return before === attr.value;
+  });
+  return kept && Array.from(had.keys()).every((name) => now.hasAttribute(name));
 }
 
 /**
@@ -198,7 +279,12 @@ function entriesOf(
   const entries = new Map<string, StoryEntry>();
   if (xml === null) return entries;
   const strict = reading === "submitted";
-  for (const el of elementChildren(parseXml(xml).documentElement)) {
+  for (const node of Array.from(parseXml(xml).documentElement.childNodes)) {
+    if (!isElement(node)) {
+      if (strict && !isLayout(node)) return null;
+      continue;
+    }
+    const el = node;
     const named = strict
       ? el.namespaceURI === shape.namespace && el.localName === shape.localName
       : el.localName === shape.localName;
@@ -242,6 +328,16 @@ function storyPart(shape: CommentPartShape): StoryPartKind {
       shape.pathIn(session) ?? availablePath(session, shape.baseName),
     entriesIn: (session, reading) =>
       entriesOf(shape, shape.xmlIn(session), reading),
+    rootKept: (before, after) => {
+      const submitted = shape.xmlIn(after);
+      if (submitted === null) return true;
+      const arrived = shape.xmlIn(before);
+      return rootKeptAgainst(
+        parseXml(submitted).documentElement,
+        arrived === null ? null : parseXml(arrived).documentElement,
+        shape
+      );
+    },
     referents: shape.referents,
     wellFormed: wellFormedEntry,
     anyonesChange: threadKeyAlone,
@@ -271,6 +367,7 @@ const commentsShape: CommentPartShape = {
   contentType: COMMENTS_CONTENT_TYPE,
   baseName: "comments",
   namespace: W_NS,
+  rootName: "comments",
   localName: "comment",
   idAttr: "id",
   xmlIn: (session) => session.comments.xml,
@@ -293,6 +390,7 @@ export const commentsExtendedPart: StoryPartKind = storyPart({
   contentType: COMMENTS_EXTENDED_CONTENT_TYPE,
   baseName: "commentsExtended",
   namespace: W15_NS,
+  rootName: "commentsEx",
   localName: "commentEx",
   idAttr: "paraId",
   xmlIn: (session) => session.comments.extendedXml,
@@ -312,6 +410,7 @@ export const peoplePart: StoryPartKind = storyPart({
   contentType: PEOPLE_CONTENT_TYPE,
   baseName: "people",
   namespace: W15_NS,
+  rootName: "people",
   localName: "person",
   idAttr: "author",
   xmlIn: (session) => session.comments.people.xml,

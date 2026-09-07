@@ -18,9 +18,10 @@ import { createEditorState } from "../../editor/createEditor";
 import { parseXml } from "../../ooxml/xml";
 import { exportDocx } from "../exportDocx";
 import { importDocx } from "../importDocx";
+import { partsKept } from "../protectionPolicy";
 import { W14_NS, W15_NS } from "./constants";
 import { entryAllowed, wellFormedEntry } from "./parts";
-import { commentPartsKept } from "./verifying";
+import { commentsPolicy } from "./policy";
 
 const encoder = new TextEncoder();
 const COMMENTS_PART = "word/comments.xml";
@@ -101,12 +102,9 @@ const verdict = (
   authorId: string,
   editableComments: "own" | "all" = "own"
 ) =>
-  commentPartsKept(
-    importDocx(before),
-    importDocx(after),
-    authorId,
-    editableComments
-  );
+  partsKept(commentsPolicy, importDocx(before), importDocx(after), authorId, {
+    editableComments,
+  });
 
 const allowed = { ok: true };
 const refused = {
@@ -187,6 +185,30 @@ describe("the shape this editor writes", () => {
     expect(
       wellFormedEntry(comment('w:id="0"', "<w:p><w:r><w:t>a</w:t></w:r></w:p>"))
     ).toBe(false);
+  });
+
+  /**
+   * A declaration decides what every name under it means, so a rebound prefix is a body that says
+   * one thing to this reader and another to Word.
+   */
+  it("refuses a namespace declaration the writer does not write", () => {
+    for (const entry of [
+      elementOf(
+        `<w:comment xmlns:w="${W_NS}" xmlns:evil="urn:x" w:id="0">${BODY}</w:comment>`
+      ),
+      elementOf(
+        `<w:comment xmlns:w="${W_NS}" w:id="0">` +
+          '<w:p xmlns:w14="urn:not-word" w14:paraId="12345678">' +
+          '<w:r><w:t xml:space="preserve">note</w:t></w:r></w:p></w:comment>'
+      ),
+      elementOf(
+        `<w15:person xmlns:w15="${W15_NS}" w15:author="Someone">` +
+          '<w15:presenceInfo xmlns:w15="urn:not-word"' +
+          ' w15:providerId="portone-docx-editor" w15:userId="me"/></w15:person>'
+      ),
+    ]) {
+      expect(wellFormedEntry(entry)).toBe(false);
+    }
   });
 
   const extension = (attrs: string): Element =>
@@ -527,6 +549,85 @@ describe("over the comment parts of a submitted file", () => {
     expect(
       verdict(bytes, repacked(commented, COMMENTS_PART, twice), "me")
     ).toEqual(refused);
+  });
+
+  /**
+   * The entries are judged one by one, so the room around them is where bytes go that no entry
+   * judgement ever reads. Whitespace is the one thing that says nothing, and a part that arrived
+   * laid out over several lines comes back that way.
+   */
+  it("refuses bytes riding between the entries of a part, and takes the layout of one", () => {
+    const { bytes, commented } = commentedBy("me");
+    const text = partText(commented, COMMENTS_PART);
+    for (const between of [
+      "<!-- payload -->",
+      "payload",
+      "<![CDATA[payload]]>",
+    ]) {
+      const ridden = text.replace("</w:comments>", `${between}</w:comments>`);
+      expect([
+        between,
+        verdict(bytes, repacked(commented, COMMENTS_PART, ridden), "me"),
+      ]).toEqual([between, refused]);
+    }
+
+    const laidOut = repacked(
+      commented,
+      COMMENTS_PART,
+      text.replace("</w:comments>", "\n  </w:comments>")
+    );
+    expect(verdict(laidOut, laidOut, "me")).toEqual(allowed);
+  });
+
+  it("refuses a part root the file did not arrive with", () => {
+    const settled = settledByMe();
+    const text = partText(settled, COMMENTS_PART);
+    const roots: readonly (readonly [string, string])[] = [
+      [
+        "a rebound prefix",
+        text.replace(`xmlns:w14="${W14_NS}"`, 'xmlns:w14="urn:x"'),
+      ],
+      [
+        "a declaration the writer never adds",
+        text.replace(
+          `xmlns:w="${W_NS}"`,
+          `xmlns:w="${W_NS}" xmlns:evil="urn:x"`
+        ),
+      ],
+      [
+        "another name passed over",
+        text.replace('mc:Ignorable="w14"', 'mc:Ignorable="w14 evil"'),
+      ],
+    ];
+    for (const [what, root] of roots) {
+      expect([
+        what,
+        verdict(settled, repacked(settled, COMMENTS_PART, root), "me"),
+      ]).toEqual([what, refused]);
+    }
+
+    // and a declaration the file arrived with cannot go away either
+    const declared = repacked(
+      settled,
+      COMMENTS_PART,
+      text.replace(`xmlns:w="${W_NS}"`, `xmlns:w="${W_NS}" xmlns:extra="urn:x"`)
+    );
+    expect(verdict(declared, settled, "me")).toEqual(refused);
+  });
+
+  /** Settling a thread is where the writer adds the compatibility markup to a root that arrived */
+  it("takes the compatibility markup the writer adds to a part it settles a thread in", () => {
+    const { commented } = commentedBy("me");
+    const { doc, session } = importDocx(commented);
+    const settled = applied(
+      createEditorState(doc),
+      setCommentResolved("0", true)
+    );
+    const after = exportDocx(settled.doc, session);
+
+    expect(partText(commented, COMMENTS_PART)).not.toContain("mc:Ignorable");
+    expect(partText(after, COMMENTS_PART)).toContain('mc:Ignorable="w14"');
+    expect(verdict(commented, after, "me")).toEqual(allowed);
   });
 
   /**
