@@ -12,8 +12,8 @@ import { Decoration, DecorationSet, type EditorView } from "prosemirror-view";
 import { editorAttributes } from "../styles/classNames";
 import type { PageCut } from "./blockKinds";
 import { paragraphKind } from "./kinds/paragraphKind";
+import { columnCount, headerRowsOf } from "./kinds/tableKind";
 import type { BlockPush } from "./pageLayout";
-import { columnCount, headerRowsOf } from "./tableMeasurements";
 
 /** Everything one measurement has to say about the page (`page/pageLayout`) */
 export interface PageMarksInput {

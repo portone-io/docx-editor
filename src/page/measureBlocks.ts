@@ -14,7 +14,7 @@ import type { EditorView } from "prosemirror-view";
 import { editorAttributes } from "../styles/classNames";
 import type { BreakCandidate, MeasuredBlock } from "./blockKinds";
 import { pageBreaksIn } from "./kinds/paragraphKind";
-import { measureTable } from "./tableMeasurements";
+import { measureTable } from "./kinds/tableKind";
 
 /**
  * The measurements taken in order to draw the page overlay. Positions are relative to

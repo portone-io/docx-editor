@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 import { EditorView } from "prosemirror-view";
 import { afterEach, describe, expect, it } from "vitest";
-import { createEditorState } from "../editor/createEditor";
-import { docxSchema } from "../schema";
-import { editorAttributes } from "../styles/classNames";
-import { setPageMarks } from "./pageDecorations";
-import { measureTable } from "./tableMeasurements";
+import { createEditorState } from "../../editor/createEditor";
+import { docxSchema } from "../../schema";
+import { editorAttributes } from "../../styles/classNames";
+import { setPageMarks } from "../pageDecorations";
+import { measureTable } from "./tableKind";
 
 let view: EditorView | null = null;
 

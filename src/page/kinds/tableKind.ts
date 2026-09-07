@@ -2,9 +2,9 @@
 
 import type { Node as PMNode } from "prosemirror-model";
 import type { EditorView } from "prosemirror-view";
-import { toRowFormat } from "../model/format";
-import { editorAttributes } from "../styles/classNames";
-import type { BreakCandidate } from "./blockKinds";
+import { toRowFormat } from "../../model/format";
+import { editorAttributes } from "../../styles/classNames";
+import type { BreakCandidate } from "../blockKinds";
 
 interface RowEntry {
   node: PMNode;
