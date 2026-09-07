@@ -337,8 +337,11 @@ export interface RunFormat {
     background?: string;
     // (undocumented)
     bold?: boolean;
+    caps?: boolean;
+    characterSpacingPt?: number;
     // (undocumented)
     color?: string;
+    doubleStrike?: boolean;
     fontFamily?: string;
     // (undocumented)
     fontSizePt?: number;
