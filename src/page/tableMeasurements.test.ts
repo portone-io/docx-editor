@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createEditorState } from "../editor/createEditor";
 import { docxSchema } from "../schema";
 import { editorAttributes } from "../styles/classNames";
-import { setTableContinuations } from "./pageDecorations";
+import { setPageMarks } from "./pageDecorations";
 import { measureTable } from "./tableMeasurements";
 
 let view: EditorView | null = null;
@@ -117,15 +117,10 @@ describe("measureTable", () => {
 
   it("subtracts its own spacer and repeated header on the next pass", () => {
     const { live, table, rowPositions } = mountedTable();
-    setTableContinuations(live, [
-      {
-        pos: rowPositions[3] ?? 0,
-        height: 200,
-        headerRows: [rowPositions[0] ?? 0],
-        headerSignature: "heading-a",
-        columns: 2,
-      },
-    ]);
+    setPageMarks(live, {
+      pushes: [],
+      cuts: [{ at: rowPositions[3] ?? 0, height: 200 }],
+    });
 
     rect(table, 0, 580);
     const originalTops = [0, 40, 140, 480];

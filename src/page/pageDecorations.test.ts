@@ -1,24 +1,21 @@
 // @vitest-environment jsdom
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorView } from "prosemirror-view";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { makeDocx } from "../__testing__/docx";
 import { importDocx } from "../docx/importDocx";
 import { serializeParagraph } from "../docx/serializeParagraph";
 import { createEditorState } from "../editor/createEditor";
 import { docxSchema, isPageBreak } from "../schema";
 import { editorAttributes } from "../styles/classNames";
-import {
-  setPageBreakSpaces,
-  setPagePushes,
-  setTableContinuations,
-} from "./pageDecorations";
+import { setPageMarks } from "./pageDecorations";
 
 let view: EditorView | null = null;
 
 afterEach(() => {
   view?.destroy();
   view = null;
+  document.body.replaceChildren();
 });
 
 function mounted(doc: PMNode): EditorView {
@@ -64,51 +61,8 @@ function own(element: HTMLElement | undefined): string {
   return element?.style.marginTop ?? "";
 }
 
-describe("setPagePushes", () => {
-  it("only the pushed block gets a wider gap", () => {
-    const live = editor();
-    setPagePushes(live, [
-      { pos: secondBlock(live), marginTop: 300, push: 300 },
-    ]);
-
-    const [first, second] = paragraphs(live);
-    expect(pushed(first)).toBe("");
-    expect(pushed(second)).toBe("300px");
-    expect(second?.getAttribute("data-page-push")).toBe("300");
-  });
-
-  it("the gap the paragraph already had of its own remains after the push is taken away", () => {
-    const live = editor();
-    setPagePushes(live, [{ pos: 0, marginTop: 316, push: 300 }]);
-    expect(pushed(paragraphs(live)[0])).toBe("316px");
-    expect(own(paragraphs(live)[0])).toBe("12pt");
-
-    setPagePushes(live, []);
-    expect(pushed(paragraphs(live)[0])).toBe("");
-    expect(own(paragraphs(live)[0])).toBe("12pt");
-    expect(paragraphs(live)[0]?.hasAttribute("data-page-push")).toBe(false);
-  });
-
-  it("does not touch the document when the same value is applied again", () => {
-    const live = editor();
-    setPagePushes(live, [{ pos: 0, marginTop: 16, push: 16 }]);
-    const before = live.state;
-    setPagePushes(live, [{ pos: 0, marginTop: 16, push: 16 }]);
-    expect(live.state).toBe(before);
-  });
-
-  it("a push leaves nothing behind in the document or in the edit history", () => {
-    const live = editor();
-    const doc = live.state.doc;
-    setPagePushes(live, [{ pos: 0, marginTop: 40, push: 24 }]);
-    expect(live.state.doc).toBe(doc);
-  });
-});
-
 /** One editor with a single paragraph broken twice, so the breaks have ordinals that can shift */
 function brokenEditor(): EditorView {
-  const pageBreak = () =>
-    docxSchema.nodes.hardBreak.create({ brAttrs: 'w:type="page"' });
   return mounted(
     docxSchema.nodes.doc.create(null, [
       docxSchema.nodes.paragraph.create({}, [
@@ -122,6 +76,10 @@ function brokenEditor(): EditorView {
   );
 }
 
+function pageBreak(): PMNode {
+  return docxSchema.nodes.hardBreak.create({ brAttrs: 'w:type="page"' });
+}
+
 /** The height standing on each break's space, in document order */
 function spaceHeights(live: EditorView): string[] {
   return Array.from(
@@ -130,91 +88,36 @@ function spaceHeights(live: EditorView): string[] {
   );
 }
 
-/** Where the first `br` of the document stands */
-function firstBreak(live: EditorView): number {
-  let found = -1;
+/** Where the document's page breaks stand, in document order */
+function breaks(live: EditorView): number[] {
+  const found: number[] = [];
   live.state.doc.descendants((node, pos) => {
-    if (found < 0 && node.type === docxSchema.nodes.hardBreak) found = pos;
+    if (node.type === docxSchema.nodes.hardBreak) found.push(pos);
   });
-  if (found < 0) throw new Error("the document holds no break");
   return found;
 }
 
+/** Where the first `br` of the document stands */
+function firstBreak(live: EditorView): number {
+  const [first] = breaks(live);
+  if (first === undefined) throw new Error("the document holds no break");
+  return first;
+}
+
 /** The two heights the layout works out for the two breaks */
-const TWO_SPACES = [
-  { pos: 0, index: 0, height: 111 },
-  { pos: 0, index: 1, height: 222 },
-];
-
-describe("setPageBreakSpaces", () => {
-  it("opens each break the height it was given", () => {
-    const live = brokenEditor();
-    setPageBreakSpaces(live, TWO_SPACES);
-    expect(spaceHeights(live)).toEqual(["111", "222"]);
-  });
-
-  it("every break is left with an empty space when they are taken away", () => {
-    const live = brokenEditor();
-    setPageBreakSpaces(live, TWO_SPACES);
-
-    setPageBreakSpaces(live, []);
-    expect(spaceHeights(live)).toEqual(["0", "0"]);
-  });
-
-  it("does not touch the document when the same values are applied again", () => {
-    const live = brokenEditor();
-    setPageBreakSpaces(live, TWO_SPACES);
-    const before = live.state;
-    setPageBreakSpaces(live, TWO_SPACES);
-    expect(live.state).toBe(before);
-  });
-
-  it("a space leaves nothing behind in the document or in the edit history", () => {
-    const live = brokenEditor();
-    const doc = live.state.doc;
-    setPageBreakSpaces(live, TWO_SPACES);
-    expect(live.state.doc).toBe(doc);
-  });
-
-  /**
-   * A space is measured for one break and would be a page-sized height on any other, so it has to
-   * follow the very `br` it was worked out for. Keyed by the ordinal the layout counted, the
-   * survivor of a deletion took the height of the break that went away.
-   */
-  it("a space stays with its own break when an earlier break is deleted", () => {
-    const live = brokenEditor();
-    setPageBreakSpaces(live, TWO_SPACES);
-
-    const first = firstBreak(live);
-    live.dispatch(live.state.tr.delete(first, first + 1));
-
-    expect(spaceHeights(live)).toEqual(["222"]);
-  });
-
-  it("a break put in before another one starts out with no space of its own", () => {
-    const live = brokenEditor();
-    setPageBreakSpaces(live, TWO_SPACES);
-
-    live.dispatch(
-      live.state.tr.insert(
-        firstBreak(live),
-        docxSchema.nodes.hardBreak.create({ brAttrs: 'w:type="page"' })
-      )
-    );
-
-    expect(spaceHeights(live)).toEqual(["0", "111", "222"]);
-  });
-});
+function twoSpaces(live: EditorView) {
+  const heights = [111, 222];
+  return breaks(live).map((at, index) => ({
+    at,
+    height: heights[index] ?? 0,
+  }));
+}
 
 function tableEditor(): {
   live: EditorView;
   secondRow: number;
   headerRow: number;
 } {
-  const paragraph = (text: string) =>
-    docxSchema.nodes.paragraph.create({}, [docxSchema.text(text)]);
-  const cell = (text: string) =>
-    docxSchema.nodes.tableCell.create({}, [paragraph(text)]);
   const first = docxSchema.nodes.tableRow.create(
     { format: { repeatHeader: true } },
     [cell("Heading A"), cell("Heading B")]
@@ -231,18 +134,119 @@ function tableEditor(): {
   };
 }
 
-describe("setTableContinuations", () => {
+function cell(text: string) {
+  return docxSchema.nodes.tableCell.create({}, [
+    docxSchema.nodes.paragraph.create({}, [docxSchema.text(text)]),
+  ]);
+}
+
+describe("setPageMarks", () => {
+  it("only the pushed block gets a wider gap", () => {
+    const live = editor();
+    setPageMarks(live, {
+      pushes: [{ pos: secondBlock(live), marginTop: 300, push: 300 }],
+      cuts: [],
+    });
+
+    const [first, second] = paragraphs(live);
+    expect(pushed(first)).toBe("");
+    expect(pushed(second)).toBe("300px");
+    expect(second?.getAttribute("data-page-push")).toBe("300");
+  });
+
+  it("the gap the paragraph already had of its own remains after the push is taken away", () => {
+    const live = editor();
+    setPageMarks(live, {
+      pushes: [{ pos: 0, marginTop: 316, push: 300 }],
+      cuts: [],
+    });
+    expect(pushed(paragraphs(live)[0])).toBe("316px");
+    expect(own(paragraphs(live)[0])).toBe("12pt");
+
+    setPageMarks(live, { pushes: [], cuts: [] });
+    expect(pushed(paragraphs(live)[0])).toBe("");
+    expect(own(paragraphs(live)[0])).toBe("12pt");
+    expect(paragraphs(live)[0]?.hasAttribute("data-page-push")).toBe(false);
+  });
+
+  it("does not touch the document when the same value is applied again", () => {
+    const live = editor();
+    const marks = { pushes: [{ pos: 0, marginTop: 16, push: 16 }], cuts: [] };
+    setPageMarks(live, marks);
+    const before = live.state;
+    setPageMarks(live, marks);
+    expect(live.state).toBe(before);
+  });
+
+  it("a push leaves nothing behind in the document or in the edit history", () => {
+    const live = editor();
+    const doc = live.state.doc;
+    setPageMarks(live, {
+      pushes: [{ pos: 0, marginTop: 40, push: 24 }],
+      cuts: [],
+    });
+    expect(live.state.doc).toBe(doc);
+  });
+
+  it("opens each break the height it was given", () => {
+    const live = brokenEditor();
+    setPageMarks(live, { pushes: [], cuts: twoSpaces(live) });
+    expect(spaceHeights(live)).toEqual(["111", "222"]);
+  });
+
+  it("every break is left with an empty space when they are taken away", () => {
+    const live = brokenEditor();
+    setPageMarks(live, { pushes: [], cuts: twoSpaces(live) });
+
+    setPageMarks(live, { pushes: [], cuts: [] });
+    expect(spaceHeights(live)).toEqual(["0", "0"]);
+  });
+
+  it("does not touch the document when the same values are applied again", () => {
+    const live = brokenEditor();
+    setPageMarks(live, { pushes: [], cuts: twoSpaces(live) });
+    const before = live.state;
+    setPageMarks(live, { pushes: [], cuts: twoSpaces(live) });
+    expect(live.state).toBe(before);
+  });
+
+  it("a space leaves nothing behind in the document or in the edit history", () => {
+    const live = brokenEditor();
+    const doc = live.state.doc;
+    setPageMarks(live, { pushes: [], cuts: twoSpaces(live) });
+    expect(live.state.doc).toBe(doc);
+  });
+
+  /**
+   * A space is measured for one break and would be a page-sized height on any other, so it has to
+   * follow the very `br` it was worked out for. Keyed by the ordinal the layout counted, the
+   * survivor of a deletion took the height of the break that went away.
+   */
+  it("a space stays with its own break when an earlier break is deleted", () => {
+    const live = brokenEditor();
+    setPageMarks(live, { pushes: [], cuts: twoSpaces(live) });
+
+    const first = firstBreak(live);
+    live.dispatch(live.state.tr.delete(first, first + 1));
+
+    expect(spaceHeights(live)).toEqual(["222"]);
+  });
+
+  it("a break put in before another one starts out with no space of its own", () => {
+    const live = brokenEditor();
+    setPageMarks(live, { pushes: [], cuts: twoSpaces(live) });
+
+    live.dispatch(live.state.tr.insert(firstBreak(live), pageBreak()));
+
+    expect(spaceHeights(live)).toEqual(["0", "111", "222"]);
+  });
+
   it("inserts a non-editable spacer and header projection before the continued row", () => {
-    const { live, headerRow, secondRow } = tableEditor();
-    setTableContinuations(live, [
-      {
-        pos: secondRow,
-        height: 240,
-        headerRows: [headerRow],
-        headerSignature: "heading-a",
-        columns: 2,
-      },
-    ]);
+    const { live, secondRow } = tableEditor();
+    setPageMarks(live, {
+      pushes: [],
+      cuts: [{ at: secondRow, height: 240 }],
+    });
 
     const rows = Array.from(live.dom.querySelectorAll("tr"));
     expect(rows.map((row) => row.textContent)).toEqual([
@@ -260,33 +264,22 @@ describe("setTableContinuations", () => {
   });
 
   it("leaves the document and history untouched", () => {
-    const { live, headerRow, secondRow } = tableEditor();
+    const { live, secondRow } = tableEditor();
     const doc = live.state.doc;
-    setTableContinuations(live, [
-      {
-        pos: secondRow,
-        height: 240,
-        headerRows: [headerRow],
-        headerSignature: "heading-a",
-        columns: 2,
-      },
-    ]);
+    setPageMarks(live, { pushes: [], cuts: [{ at: secondRow, height: 240 }] });
     expect(live.state.doc).toBe(doc);
 
-    setTableContinuations(live, []);
+    setPageMarks(live, { pushes: [], cuts: [] });
     expect(live.dom.querySelectorAll("tr")).toHaveLength(2);
   });
 
+  /**
+   * The projection is read off the table as it stands, so the edit alone redraws it. Nothing
+   * measured has to be handed back for a header to say what its source row now says.
+   */
   it("refreshes a repeated header when its source row changes", () => {
-    const { live, headerRow, secondRow } = tableEditor();
-    const continuation = {
-      pos: secondRow,
-      height: 240,
-      headerRows: [headerRow],
-      headerSignature: "heading-a",
-      columns: 2,
-    };
-    setTableContinuations(live, [continuation]);
+    const { live, secondRow } = tableEditor();
+    setPageMarks(live, { pushes: [], cuts: [{ at: secondRow, height: 240 }] });
 
     let heading = -1;
     live.state.doc.descendants((node, pos) => {
@@ -295,14 +288,113 @@ describe("setTableContinuations", () => {
     });
     if (heading < 0) throw new Error("heading not found");
     live.dispatch(live.state.tr.insertText("Heading C", heading, heading + 9));
-    setTableContinuations(live, [
-      { ...continuation, headerSignature: "heading-c" },
-    ]);
 
     const repeated = live.dom.querySelector(
       `[${editorAttributes.tableRepeatedHeader}]`
     );
     expect(repeated?.textContent).toBe("Heading CHeading B");
+  });
+
+  /**
+   * One measurement decides a push, a break space and a table continuation together, and the
+   * three used to be dispatched one after another. They are one set of marks and one transaction.
+   */
+  it("a push, a space and a continuation applied together are one transaction", () => {
+    const live = mounted(
+      docxSchema.nodes.doc.create(null, [
+        docxSchema.nodes.paragraph.create({}, [
+          docxSchema.text("before"),
+          pageBreak(),
+          docxSchema.text("after"),
+        ]),
+        docxSchema.nodes.table.create({ gridCols: [1000, 1000] }, [
+          docxSchema.nodes.tableRow.create({ format: { repeatHeader: true } }, [
+            cell("H1"),
+            cell("H2"),
+          ]),
+          docxSchema.nodes.tableRow.create({}, [cell("A"), cell("B")]),
+        ]),
+        docxSchema.nodes.paragraph.create({}, [docxSchema.text("below")]),
+      ])
+    );
+    const dispatched = vi.spyOn(live, "dispatch");
+    const tablePos = live.state.doc.child(0).nodeSize;
+    const secondRow = tablePos + 1 + live.state.doc.child(1).child(0).nodeSize;
+
+    setPageMarks(live, {
+      pushes: [{ pos: tablePos, marginTop: 30, push: 30 }],
+      cuts: [
+        { at: firstBreak(live), height: 120 },
+        { at: secondRow, height: 200 },
+      ],
+    });
+
+    expect(dispatched).toHaveBeenCalledTimes(1);
+    expect(dispatched.mock.calls.every(([tr]) => !tr.docChanged)).toBe(true);
+    expect(spaceHeights(live)).toEqual(["120"]);
+    expect(
+      live.dom
+        .querySelector(`[${editorAttributes.tablePageSpace}]`)
+        ?.getAttribute(editorAttributes.tablePageSpace)
+    ).toBe("200");
+  });
+
+  it("applying the same marks again dispatches nothing", () => {
+    const { live, secondRow } = tableEditor();
+    const marks = { pushes: [], cuts: [{ at: secondRow, height: 240 }] };
+    setPageMarks(live, marks);
+    const dispatched = vi.spyOn(live, "dispatch");
+
+    setPageMarks(live, marks);
+    expect(dispatched).not.toHaveBeenCalled();
+  });
+
+  /**
+   * A cut names the row its spacer opens before. When that row goes, so does the cut: mapped onto
+   * whatever slid into its place, the spacer would open before the wrong row.
+   */
+  it("a cut whose row was deleted is dropped and the others keep their places", () => {
+    const live = mounted(
+      docxSchema.nodes.doc.create(null, [
+        docxSchema.nodes.table.create({ gridCols: [1000] }, [
+          docxSchema.nodes.tableRow.create({ format: { repeatHeader: true } }, [
+            cell("Heading"),
+          ]),
+          docxSchema.nodes.tableRow.create({}, [cell("A")]),
+          docxSchema.nodes.tableRow.create({}, [cell("B")]),
+          docxSchema.nodes.tableRow.create({}, [cell("C")]),
+        ]),
+      ])
+    );
+    const rows: { at: number; size: number }[] = [];
+    live.state.doc.child(0).forEach((row, offset) => {
+      rows.push({ at: 1 + offset, size: row.nodeSize });
+    });
+    const rowB = rows[2] ?? { at: 0, size: 0 };
+    const rowC = rows[3] ?? { at: 0, size: 0 };
+
+    setPageMarks(live, {
+      pushes: [],
+      cuts: [
+        { at: rowB.at, height: 100 },
+        { at: rowC.at, height: 200 },
+      ],
+    });
+    expect(
+      Array.from(
+        live.dom.querySelectorAll(`[${editorAttributes.tablePageSpace}]`),
+        (row) => row.getAttribute(editorAttributes.tablePageSpace)
+      )
+    ).toEqual(["100", "200"]);
+
+    live.dispatch(live.state.tr.delete(rowB.at, rowB.at + rowB.size));
+
+    const drawn = Array.from(live.dom.querySelectorAll("tr"), (row) =>
+      row.hasAttribute(editorAttributes.tablePageSpace)
+        ? `space:${row.getAttribute(editorAttributes.tablePageSpace)}`
+        : row.textContent
+    );
+    expect(drawn).toEqual(["Heading", "A", "space:200", "Heading", "C"]);
   });
 });
 
