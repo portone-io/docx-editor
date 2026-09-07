@@ -47,7 +47,12 @@ import { readNotes } from "./notes";
 import { readBodyGeometry } from "./pageGeometry";
 import { resolveTarget } from "./relationships";
 import { type BodyScan, scanBody } from "./scan";
-import { newSessionId, SessionStore } from "./session";
+import {
+  BODY_STORY_KEY,
+  blockKey,
+  newSessionId,
+  SessionStore,
+} from "./session";
 import { NO_THEME_FONTS, readThemeFonts } from "./theme";
 
 const OFFICE_DOCUMENT_REL = `${R_NS}/officeDocument`;
@@ -113,7 +118,7 @@ function readPart(
 /** Moves a single body block into a node. If we cannot model it, the result is a preservation node pointing at the original fragment */
 function buildBlock(
   el: Element,
-  srcId: number,
+  srcId: string,
   sources: ImportSources,
   styles: StyleTable,
   defaultTableStyleId: string | null
@@ -361,7 +366,13 @@ function readDocx(input: DocxBytes): {
   const sessionId = newSessionId();
   const blockNodes = blockElements.map((el, i) =>
     withStyleFormats(
-      buildBlock(el, i, sources, styles, defaultTableStyleId),
+      buildBlock(
+        el,
+        blockKey({ sessionId }, BODY_STORY_KEY, i),
+        sources,
+        styles,
+        defaultTableStyleId
+      ),
       paragraphFormatting
     )
   );

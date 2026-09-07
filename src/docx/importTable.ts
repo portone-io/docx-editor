@@ -408,7 +408,7 @@ function tableStyleOf(
 /** Moves a `<w:tbl>` into a table node. null if it cannot be modelled */
 export function buildTable(
   el: Element,
-  srcId: number | null,
+  srcId: string | null,
   sources: ImportSources = NO_IMPORT_SOURCES,
   styles: StyleTable = NO_STYLES,
   defaultTableStyleId: string | null = null

@@ -8,6 +8,7 @@
 
 import type { Node as PMNode } from "prosemirror-model";
 import { localPart } from "../ooxml/xml";
+import { splitBlockKey } from "./session";
 
 export type FidelitySeverity =
   /** Carried through whole, with nothing of it on screen */
@@ -100,7 +101,9 @@ function preservedInline(element: string | null): Preserved | null {
 }
 
 function blockNumberOf(node: PMNode): number | null {
-  return typeof node.attrs.srcId === "number" ? node.attrs.srcId : null;
+  const srcId = stringAttr(node.attrs.srcId);
+  const key = srcId === null ? null : splitBlockKey(srcId);
+  return key?.index ?? null;
 }
 
 /**
