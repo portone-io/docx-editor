@@ -11,7 +11,7 @@ import {
   TextSelection,
 } from "prosemirror-state";
 import { createTableNode, isTableSide } from "../docx/tableTemplate";
-import { editsShut } from "../schema/protectionState";
+import { editShut } from "../schema/guards";
 import { documentGeometry } from "./documentStyles";
 
 /** Whether this position is inside a table */
@@ -24,13 +24,15 @@ function isInTable($pos: ResolvedPos): boolean {
 
 /**
  * Where the new table goes.
- * Right after the body block the caret sits in, so the text being written is not split in two
- * by the table. Null when the table cannot be inserted here, a protection shutting the body included.
+ * Right after the body block the caret sits in, so the text being written is not split in two by
+ * the table. Nothing there goes away, which is the insert intent the guards answer: null wherever
+ * one of them shuts that spot, a protection shutting the body included (`schema/guards`).
  */
 function insertPosition(state: EditorState): number | null {
   const $from = state.selection.$from;
-  if (editsShut(state) || $from.depth === 0 || isInTable($from)) return null;
-  return $from.after(1);
+  if ($from.depth === 0 || isInTable($from)) return null;
+  const at = $from.after(1);
+  return editShut(state, { kind: "insert", at }) ? null : at;
 }
 
 /** Whether a table can be inserted at the current position. Used to enable and disable the toolbar button */

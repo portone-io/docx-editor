@@ -1,8 +1,7 @@
 import { isHistoryTransaction } from "prosemirror-history";
 import { Plugin, PluginKey, type Transaction } from "prosemirror-state";
 import { Decoration, DecorationSet, type EditorView } from "prosemirror-view";
-import { replacementShut } from "../../schema/locks";
-import { editsShut } from "../../schema/protectionState";
+import { editShut, selectionIntents } from "../../schema/guards";
 import {
   hasResolvableClipboardImages,
   type ResolvedClipboardImages,
@@ -287,9 +286,12 @@ export function imagePaste(): Plugin<ImagePasteState> {
     props: {
       decorations: (state) => imagePasteKey.getState(state)?.decorations,
       handlePaste(view, event) {
+        // The image goes in in place of whatever is selected, so what the guards answer for is
+        // that replacement (`schema/guards`)
         if (
-          editsShut(view.state) ||
-          replacementShut(view.state.selection, view.state.doc)
+          selectionIntents(view.state.selection, "replace").some((intent) =>
+            editShut(view.state, intent)
+          )
         ) {
           return false;
         }
