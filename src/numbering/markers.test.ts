@@ -62,7 +62,7 @@ function texts(
   );
 }
 
-describe("the five number formats", () => {
+describe("the number formats a marker counts in", () => {
   const sequence = items(0, 0, 0);
 
   it.each([

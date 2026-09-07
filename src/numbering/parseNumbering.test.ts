@@ -110,16 +110,34 @@ describe("parseNumbering", () => {
     });
   });
 
-  it("a number format we do not know is left as decimal", () => {
-    const numbering = parseNumbering(
+  const formatted = (format: string) =>
+    parseNumbering(
       numberingXml(
         '<w:abstractNum w:abstractNumId="0"><w:lvl w:ilvl="0">' +
-          '<w:numFmt w:val="ganada"/><w:lvlText w:val="%1."/>' +
+          `<w:numFmt w:val="${format}"/><w:lvlText w:val="%1."/>` +
           "</w:lvl></w:abstractNum>" +
           '<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>'
       )
-    );
-    expect(numbering.lists.get(1)?.levels.get(0)?.format).toBe("decimal");
+    )
+      .lists.get(1)
+      ?.levels.get(0)?.format;
+
+  it("a format no speller covers falls back to decimal and says so", () => {
+    // A format the corpus does not use, so nothing spells it and the count is drawn as a number
+    expect(formatted("japaneseCounting")).toBe("decimal");
+    expect(formatted("")).toBe("decimal");
+  });
+
+  it("reads upperRoman, decimalZero, koreanDigital, ganada and chineseCounting", () => {
+    for (const format of [
+      "upperRoman",
+      "decimalZero",
+      "koreanDigital",
+      "ganada",
+      "chineseCounting",
+    ]) {
+      expect(formatted(format)).toBe(format);
+    }
   });
 
   it("resolves numStyleLink through the numbering style's numPr to the linked abstractNum", () => {

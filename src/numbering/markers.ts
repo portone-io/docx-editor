@@ -12,11 +12,11 @@ import {
   type LevelIndentPt,
   type LevelSuffix,
   levelIndentPt,
-  type NumberFormat,
   type Numbering,
   type NumberingLevel,
   type NumberingList,
 } from "./parseNumbering";
+import { spellNumber } from "./spellers";
 
 /** The number to draw in front of one paragraph */
 export interface ListMarker {
@@ -36,76 +36,12 @@ export interface ListMarker {
   align: LevelAlign;
 }
 
-const ROMAN: ReadonlyArray<readonly [number, string]> = [
-  [1000, "M"],
-  [900, "CM"],
-  [500, "D"],
-  [400, "CD"],
-  [100, "C"],
-  [90, "XC"],
-  [50, "L"],
-  [40, "XL"],
-  [10, "X"],
-  [9, "IX"],
-  [5, "V"],
-  [4, "IV"],
-  [1, "I"],
-];
-
-function toRoman(value: number): string {
-  let rest = value;
-  let out = "";
-  for (const [amount, sign] of ROMAN) {
-    while (rest >= amount) {
-      out += sign;
-      rest -= amount;
-    }
-  }
-  return out;
-}
-
-/** As in Word, z is followed by aa, then bb */
-function toLetters(value: number): string {
-  const index = (value - 1) % 26;
-  const repeat = Math.floor((value - 1) / 26) + 1;
-  return String.fromCharCode(65 + index).repeat(repeat);
-}
-
 /**
  * Cap on a rendered marker's length. `w:lvlText` is drawn verbatim, so without a cap a crafted
  * megabyte-long one would render in front of every list paragraph and rebuild on every keystroke.
+ * It bounds the spelled numbers as well, so that a crafted `w:start` cannot grow one either.
  */
 const MAX_MARKER_CHARS = 64;
-
-/**
- * The largest value each format spells out. A number past it is drawn as a decimal, which
- * is where a format we do not spell lands as well.
- *
- * A letter marker takes one character per 26 counted and a roman one one M per 1000, so a
- * crafted `w:start` of two billion would otherwise build a marker of tens of millions of
- * characters.
- */
-const MAX_SPELLED_VALUE: Record<NumberFormat, number> = {
-  decimal: Number.POSITIVE_INFINITY,
-  bullet: Number.POSITIVE_INFINITY,
-  lowerLetter: 26 * MAX_MARKER_CHARS,
-  upperLetter: 26 * MAX_MARKER_CHARS,
-  lowerRoman: 1000 * MAX_MARKER_CHARS,
-};
-
-function formatNumber(value: number, format: NumberFormat): string {
-  if (value < 1 || value > MAX_SPELLED_VALUE[format]) return `${value}`;
-  switch (format) {
-    case "lowerLetter":
-      return toLetters(value).toLowerCase();
-    case "upperLetter":
-      return toLetters(value);
-    case "lowerRoman":
-      return toRoman(value).toLowerCase();
-    default:
-      return `${value}`;
-  }
-}
 
 /**
  * Replaces each `%n` in something like `%1.%2.` with the current number of the nth level.
@@ -122,7 +58,11 @@ function fillLevels(
     const level = list.levels.get(ilvl);
     if (!level) return "";
     const count = counters.get(ilvl) ?? level.start;
-    return formatNumber(count, legal ? "decimal" : level.format);
+    return spellNumber(
+      count,
+      legal ? "decimal" : level.format,
+      MAX_MARKER_CHARS
+    );
   });
 }
 

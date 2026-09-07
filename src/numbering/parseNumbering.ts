@@ -27,17 +27,9 @@ import {
   withXmlParser,
   type XmlParser,
 } from "../ooxml/xml";
+import { isNumberFormat, type NumberFormat } from "./spellers";
 
-/** The number formats actually used across every fixture */
-const NUMBER_FORMATS = [
-  "decimal",
-  "bullet",
-  "lowerLetter",
-  "upperLetter",
-  "lowerRoman",
-] as const;
-
-export type NumberFormat = (typeof NUMBER_FORMATS)[number];
+export type { NumberFormat } from "./spellers";
 
 /**
  * The indent a level defines. The unit is twips (1/20 of a point), and a slot that is
@@ -91,10 +83,6 @@ export interface Numbering {
 }
 
 export const EMPTY_NUMBERING: Numbering = { lists: new Map() };
-
-function isNumberFormat(value: string | null): value is NumberFormat {
-  return NUMBER_FORMATS.some((format) => format === value);
-}
 
 function indentOf(lvl: Element): LevelIndent | null {
   const pPr = childByLocalName(lvl, "pPr");
