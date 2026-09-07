@@ -28,6 +28,8 @@ The suite uses a 30-second timeout because schema validation and tests that exer
 
 `src/docx/fidelity.test.ts` records what each fixture loses on the way in as a file snapshot under `src/docx/__snapshots__/fidelity/<fixture>.json`, and a producer file's under `src/docx/__snapshots__/fidelity/producers/`, written through `toMatchFileSnapshot`. Update them with `pnpm exec vitest run -u src/docx/fidelity.test.ts`. A diff there is a change in what a document keeps, not test noise: read it in the PR and approve it deliberately, the way any behavior change is approved. A snapshot that grows says the editor started hiding something it used to model; one that shrinks says it learned to keep something it used to lose.
 
+The fixture sanitizer CLI is checked by `pnpm test:fixtures`, also included in `pnpm check`.
+
 ## Tests that guard package rules
 
 | Test | Rule it protects |
