@@ -162,14 +162,19 @@ export interface ParagraphFormat {
   background?: string;
 }
 
-/** The character formatting to render on screen */
+/**
+ * The character formatting to render on screen.
+ *
+ * A toggle the run switches off outright (`w:val="0"`) is false rather than absent: absent means
+ * the run says nothing and what the style laid down stands, false is the run beating that style.
+ */
 export interface RunFormat {
-  bold?: true;
-  italic?: true;
-  /** The underline kind. Absent entirely when there is no underline */
-  underline?: UnderlineKind;
-  strike?: true;
-  smallCaps?: true;
+  bold?: boolean;
+  italic?: boolean;
+  /** The underline kind, or `none` for an underline switched off outright. Absent when the run says nothing */
+  underline?: UnderlineKind | "none";
+  strike?: boolean;
+  smallCaps?: boolean;
   fontSizePt?: number;
   /** A CSS font name list in the form `"맑은 고딕","Malgun Gothic"` */
   fontFamily?: string;
@@ -385,11 +390,13 @@ export function toParagraphFormat(value: unknown): ParagraphFormat | null {
 export function toRunFormat(value: unknown): RunFormat | null {
   if (!isRecord(value)) return null;
   const format: RunFormat = {};
-  if (value.bold === true) format.bold = true;
-  if (value.italic === true) format.italic = true;
-  if (value.strike === true) format.strike = true;
-  if (value.smallCaps === true) format.smallCaps = true;
-  if (isUnderlineKind(value.underline)) format.underline = value.underline;
+  if (typeof value.bold === "boolean") format.bold = value.bold;
+  if (typeof value.italic === "boolean") format.italic = value.italic;
+  if (typeof value.strike === "boolean") format.strike = value.strike;
+  if (typeof value.smallCaps === "boolean") format.smallCaps = value.smallCaps;
+  if (isUnderlineKind(value.underline) || value.underline === "none") {
+    format.underline = value.underline;
+  }
   if (typeof value.fontSizePt === "number")
     format.fontSizePt = value.fontSizePt;
   const fontFamily = matching(FONT_FAMILY, value.fontFamily);

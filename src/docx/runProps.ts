@@ -295,8 +295,8 @@ export function isRunToggleOn(
   if (toggle === "bold") return format.bold === true;
   if (toggle === "italic") return format.italic === true;
   if (toggle === "strike") return format.strike === true;
-  // Underline holds a kind rather than an on/off state
-  return format.underline !== undefined;
+  // Underline holds a kind rather than an on/off state, `none` being the kind that is off
+  return format.underline !== undefined && format.underline !== "none";
 }
 
 /** Whether this text is already in the state the job wants. If it already is, we leave it untouched */

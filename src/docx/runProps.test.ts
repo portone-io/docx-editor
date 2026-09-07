@@ -409,7 +409,7 @@ describe("deriving the display values again", () => {
     );
     expect(next).toEqual({
       rPr: '<w:rPr><w:b w:val="0"/><w:bCs w:val="0"/></w:rPr>',
-      format: { color: "#2E74B5" },
+      format: { bold: false, color: "#2E74B5" },
     });
   });
 

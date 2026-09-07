@@ -30,6 +30,7 @@ import {
   childValue,
   halfPointsToPt,
   isOn,
+  isOnElement,
   round,
   shadingOf,
   toHexColor,
@@ -103,6 +104,12 @@ function langOf(rPr: Element): string | null {
   if (eastAsia !== null && eastAsia.length > 0) return eastAsia;
   const value = wAttr(lang, "val");
   return value !== null && value.length > 0 ? value : null;
+}
+
+/** A toggle property (§17.7.3) as the run wrote it: on, switched off outright, or not mentioned */
+function toggleState(rPr: Element, name: string): boolean | null {
+  const toggle = childByLocalName(rPr, name);
+  return toggle ? isOnElement(toggle) : null;
 }
 
 /** Paragraph borders carry only the sides actually drawn. A side pinned down as not drawn is the same as none at all */
@@ -222,13 +229,19 @@ export function readRunFormat(
 ): RunFormat | null {
   if (!rPr) return null;
   const format: RunFormat = {};
-  if (isOn(rPr, "b")) format.bold = true;
-  if (isOn(rPr, "i")) format.italic = true;
-  if (isOn(rPr, "strike")) format.strike = true;
-  if (isOn(rPr, "smallCaps")) format.smallCaps = true;
+  const bold = toggleState(rPr, "b");
+  if (bold !== null) format.bold = bold;
+  const italic = toggleState(rPr, "i");
+  if (italic !== null) format.italic = italic;
+  const strike = toggleState(rPr, "strike");
+  if (strike !== null) format.strike = strike;
+  const smallCaps = toggleState(rPr, "smallCaps");
+  if (smallCaps !== null) format.smallCaps = smallCaps;
 
   const underline = childValue(rPr, "u");
-  if (isUnderlineKind(underline)) format.underline = underline;
+  if (isUnderlineKind(underline) || underline === "none") {
+    format.underline = underline;
+  }
 
   const fontSizePt = halfPointsToPt(ST_HpsMeasure.parse(childValue(rPr, "sz")));
   if (fontSizePt !== null) format.fontSizePt = fontSizePt;
