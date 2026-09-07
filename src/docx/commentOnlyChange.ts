@@ -46,8 +46,9 @@ import {
 } from "./storyProjection";
 
 /**
- * Why a file is not the one it claims to be. `part-changed` and `relationship-changed` name the
- * part they were reached over; the other three are about the document story itself.
+ * Why a file is not the one it claims to be. `part-changed`, `relationship-changed` and
+ * `comment-markup-rejected` name the part they were reached over; the other three are about the
+ * document story itself.
  */
 export type CommentOnlyVerdict =
   | { ok: true }
@@ -57,7 +58,10 @@ export type CommentOnlyVerdict =
     }
   | {
       ok: false;
-      reason: "part-changed" | "relationship-changed";
+      reason:
+        | "part-changed"
+        | "relationship-changed"
+        | "comment-markup-rejected";
       part: string;
     };
 
