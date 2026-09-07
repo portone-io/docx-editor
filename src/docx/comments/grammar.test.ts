@@ -204,14 +204,14 @@ describe("the thread state this editor writes", () => {
 
 describe("the identity this editor records", () => {
   it("is recognised by the half that reads it, and says whose it is", () => {
-    const person = renderPerson("Someone", "me", "w15:", "");
+    const person = renderPerson("Someone", "me", "w15:", null);
 
     expect(wellFormedPerson(alone(person))).toBe(true);
     expect(recordedIdentity(alone(person))).toBe("me");
   });
 
   it("is not recognised where another provider recorded it", () => {
-    const theirs = renderPerson("Someone", "me", "w15:", "").replace(
+    const theirs = renderPerson("Someone", "me", "w15:", null).replace(
       "portone-docx-editor",
       "AD"
     );

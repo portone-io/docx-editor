@@ -10,7 +10,9 @@
  * identities for one name, where a reader keying by name hands one author's comments to the other.
  */
 
+import { xmlnsAttr } from "../../ooxml/element";
 import { DocxExportError } from "../../ooxml/errors";
+import { xmlnsDecl } from "../../ooxml/names";
 import {
   attributeByLocalName,
   childByLocalName,
@@ -202,11 +204,11 @@ function peopleXml(
   const xml = people.xml;
   if (xml === null) {
     const persons = Array.from(added, ([author, userId]) =>
-      renderPerson(author, userId, "w15:", "")
+      renderPerson(author, userId, "w15:", null)
     );
     return (
       '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
-      `<w15:people xmlns:w15="${W15_NS}">${persons.join("")}</w15:people>`
+      `<w15:people ${xmlnsDecl("w15")}>${persons.join("")}</w15:people>`
     );
   }
 
@@ -220,7 +222,7 @@ function peopleXml(
       author,
       userId,
       prefix ?? "w15:",
-      prefix === null ? ` xmlns:w15="${W15_NS}"` : ""
+      prefix === null ? xmlnsAttr("w15") : null
     )
   ).join("");
 

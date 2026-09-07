@@ -16,7 +16,9 @@ import {
   toTableWidth,
   widthNumber,
 } from "../model/format";
+import { elementXml, openTagXml, type XmlAttr } from "../ooxml/element";
 import { DocxExportError } from "../ooxml/errors";
+import { wName } from "../ooxml/names";
 import { type ExportRefs, NO_EXPORT_REFS } from "./exportRefs";
 import {
   innerXml,
@@ -29,8 +31,8 @@ import {
   TC_PR_ORDER,
 } from "./propsXml";
 import {
-  openTag,
   preservedXml,
+  rawAttrsOf,
   serializeParagraph,
 } from "./serializeParagraph";
 
@@ -54,12 +56,11 @@ function propsOf(xml: unknown, tag: string): Props {
  */
 function modelled(
   name: string,
-  attrs: string,
+  attrs: readonly XmlAttr[],
   replacing: string | undefined
 ): string {
   const inner = replacing === undefined ? "" : innerXml(replacing);
-  const open = attrs === "" ? `<w:${name}` : `<w:${name} ${attrs}`;
-  return inner === "" ? `${open}/>` : `${open}>${inner}</w:${name}>`;
+  return elementXml(wName(name), attrs, inner === "" ? [] : [inner]);
 }
 
 /** A width that carries no number goes out with the 0 Word writes in its place */
@@ -68,8 +69,14 @@ function widthXml(
   width: TableWidth,
   replacing: string | undefined
 ): string {
-  const attrs = `w:w="${widthNumber(width) ?? 0}" w:type="${width.type}"`;
-  return modelled(name, attrs, replacing);
+  return modelled(
+    name,
+    [
+      [wName("w"), `${widthNumber(width) ?? 0}`],
+      [wName("type"), width.type],
+    ],
+    replacing
+  );
 }
 
 /**
@@ -99,8 +106,10 @@ function tablePropsXml(table: PMNode): string {
 function tableGridXml(table: PMNode): string {
   const gridCols = toGridCols(table.attrs.gridCols);
   if (gridCols.length === 0) return "";
-  const cols = gridCols.map((w) => `<w:gridCol w:w="${w}"/>`).join("");
-  return `<w:tblGrid>${cols}</w:tblGrid>`;
+  const cols = gridCols
+    .map((w) => elementXml(wName("gridCol"), [[wName("w"), `${w}`]]))
+    .join("");
+  return elementXml(wName("tblGrid"), [], [cols]);
 }
 
 type CellRole = "start" | "continue";
@@ -114,7 +123,7 @@ function cellPropsXml(cell: PMNode, role: CellRole): string {
     colspan > 1
       ? modelled(
           "gridSpan",
-          `w:val="${colspan}"`,
+          [[wName("val"), `${colspan}`]],
           propsChild(props.children, "gridSpan")?.xml
         )
       : null;
@@ -122,11 +131,11 @@ function cellPropsXml(cell: PMNode, role: CellRole): string {
   // own to keep, and keeping the starting cell's would copy it down the whole merge
   const vMerge =
     role === "continue"
-      ? "<w:vMerge/>"
+      ? elementXml(wName("vMerge"), [])
       : rowspan > 1
         ? modelled(
             "vMerge",
-            'w:val="restart"',
+            [[wName("val"), "restart"]],
             propsChild(props.children, "vMerge")?.xml
           )
         : null;
@@ -163,10 +172,10 @@ function cellXml(cell: PMNode, role: CellRole, refs: ExportRefs): string {
   // A continuing cell only holds the spot, so it carries a single empty paragraph
   const body =
     role === "continue"
-      ? "<w:p/>"
+      ? elementXml(wName("p"), [])
       : cell.children.map((block) => cellBlockXml(block, refs)).join("");
   const xml =
-    openTag("w:tc", cell.attrs.tcAttrs) +
+    openTagXml(wName("tc"), rawAttrsOf(cell.attrs.tcAttrs)) +
     cellPropsXml(cell, role) +
     body +
     "</w:tc>";
@@ -227,7 +236,7 @@ function rowXml(row: PMNode, covering: Covering[], refs: ExportRefs): string {
   const trPr: unknown = row.attrs.trPr;
   // Inside a row the table property exceptions come ahead of the row properties
   return (
-    openTag("w:tr", row.attrs.trAttrs) +
+    openTagXml(wName("tr"), rawAttrsOf(row.attrs.trAttrs)) +
     (typeof tblPrEx === "string" ? tblPrEx : "") +
     (typeof trPr === "string" ? trPr : "") +
     cells +
@@ -251,7 +260,7 @@ export function serializeTable(
     );
   }
   return (
-    openTag("w:tbl", table.attrs.tblAttrs) +
+    openTagXml(wName("tbl"), rawAttrsOf(table.attrs.tblAttrs)) +
     tablePropsXml(table) +
     tableGridXml(table) +
     rows +

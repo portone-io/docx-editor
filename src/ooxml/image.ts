@@ -12,6 +12,7 @@
  * image goes back out byte for byte. A resize rewrites nothing but the two extents.
  */
 
+import { NAMESPACES } from "./names";
 import { childByLocalName, escapeXml, R_NS } from "./xml";
 
 /**
@@ -119,7 +120,7 @@ export interface DrawingPicture {
   alt: string | null;
 }
 
-const PICTURE_URI = "http://schemas.openxmlformats.org/drawingml/2006/picture";
+const PICTURE_URI = NAMESPACES.pic;
 
 function childOf(el: Element | null, name: string): Element | null {
   return el ? childByLocalName(el, name) : null;
@@ -192,9 +193,8 @@ export function withExtent(xml: string, extent: ImageExtent): string {
     .replace(EXT_TAG, (_match, prefix) => `<${prefix ?? ""}ext ${size}/>`);
 }
 
-const WP_NS =
-  "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing";
-const A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
+const WP_NS = NAMESPACES.wp;
+const A_NS = NAMESPACES.a;
 
 /** A picture that was inserted during editing and has no original XML to go back to */
 export interface NewImage {

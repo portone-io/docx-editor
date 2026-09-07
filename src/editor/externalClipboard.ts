@@ -11,6 +11,8 @@ import type { EditorView } from "prosemirror-view";
 import { effectiveParagraphFormat, styleIdOf } from "../docx/formatting";
 import { type ParagraphProps, withParagraphStyle } from "../docx/paraProps";
 import { type ListKind, MAX_ILVL, nextNumId } from "../numbering/listTemplate";
+import { elementXml } from "../ooxml/element";
+import { wName } from "../ooxml/names";
 import { docxSchema, isPageBreak } from "../schema";
 import { editorClassNames } from "../styles/classNames";
 import { PASTED_IMAGE_ATTRIBUTE } from "./clipboard/images";
@@ -146,7 +148,7 @@ function stripPrivateAttributes(spec: DOMOutputSpec): DOMOutputSpec {
   return attrs === null ? [tag, ...children] : [tag, attrs, ...children];
 }
 
-function withAttribute(
+function withDomAttribute(
   spec: DOMOutputSpec,
   name: string,
   value: string
@@ -177,7 +179,7 @@ function copiedMarkSpec(mark: Mark, spec: DOMOutputSpec): DOMOutputSpec {
   );
   return href === null
     ? stripped
-    : asTag(withAttribute(stripped, "href", href), "a");
+    : asTag(withDomAttribute(stripped, "href", href), "a");
 }
 
 function copiedNodeSpec(node: PMNode, spec: DOMOutputSpec): DOMOutputSpec {
@@ -186,7 +188,7 @@ function copiedNodeSpec(node: PMNode, spec: DOMOutputSpec): DOMOutputSpec {
   const styleId = styleIdOf(node.attrs.pPr);
   return styleId === null
     ? stripped
-    : withAttribute(stripped, COPIED_STYLE_ATTRIBUTE, styleId);
+    : withDomAttribute(stripped, COPIED_STYLE_ATTRIBUTE, styleId);
 }
 
 /**
@@ -412,9 +414,20 @@ function listParagraphAttrs(
 ): Record<string, unknown> | null {
   if (!list || list.numId === null) return null;
   const ilvl = Math.min(MAX_ILVL, list.level);
-  const pPr =
-    `<w:pPr><w:numPr><w:ilvl w:val="${ilvl}"/>` +
-    `<w:numId w:val="${list.numId}"/></w:numPr></w:pPr>`;
+  const pPr = elementXml(
+    wName("pPr"),
+    [],
+    [
+      elementXml(
+        wName("numPr"),
+        [],
+        [
+          elementXml(wName("ilvl"), [[wName("val"), `${ilvl}`]]),
+          elementXml(wName("numId"), [[wName("val"), `${list.numId}`]]),
+        ]
+      ),
+    ]
+  );
   return {
     pPr,
     format: effectiveParagraphFormat(pPr, documentParagraphFormatting(state)),

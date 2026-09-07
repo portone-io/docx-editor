@@ -9,6 +9,8 @@
 
 import type { Node as PMNode } from "prosemirror-model";
 import type { CellFormat, TableWidth } from "../model/format";
+import { elementXml } from "../ooxml/element";
+import { wName } from "../ooxml/names";
 import { docxSchema } from "../schema";
 import { A4_PORTRAIT, bodyWidth, type PageGeometry } from "./pageGeometry";
 import { parsePropsXml } from "./propsXml";
@@ -48,7 +50,12 @@ const BORDER_SIDES = [
 ] as const;
 
 function borderXml(side: string): string {
-  return `<w:${side} w:val="single" w:sz="${BORDER_EIGHTHS}" w:space="0" w:color="000000"/>`;
+  return elementXml(wName(side), [
+    [wName("val"), "single"],
+    [wName("sz"), `${BORDER_EIGHTHS}`],
+    [wName("space"), "0"],
+    [wName("color"), "000000"],
+  ]);
 }
 
 /**
@@ -59,17 +66,27 @@ function borderXml(side: string): string {
  */
 function tablePropsXml(width: number): string {
   const borders = BORDER_SIDES.map(borderXml).join("");
-  return (
-    "<w:tblPr>" +
-    `<w:tblW w:w="${width}" w:type="dxa"/>` +
-    `<w:tblBorders>${borders}</w:tblBorders>` +
-    '<w:tblLayout w:type="fixed"/>' +
-    "</w:tblPr>"
+  return elementXml(
+    wName("tblPr"),
+    [],
+    [
+      widthXml("tblW", width),
+      elementXml(wName("tblBorders"), [], [borders]),
+      elementXml(wName("tblLayout"), [[wName("type"), "fixed"]]),
+    ]
   );
 }
 
+/** A width pinned to the grid, in twips */
+function widthXml(name: "tblW" | "tcW", width: number): string {
+  return elementXml(wName(name), [
+    [wName("w"), `${width}`],
+    [wName("type"), "dxa"],
+  ]);
+}
+
 function cellPropsXml(width: number): string {
-  return `<w:tcPr><w:tcW w:w="${width}" w:type="dxa"/></w:tcPr>`;
+  return elementXml(wName("tcPr"), [], [widthXml("tcW", width)]);
 }
 
 /**

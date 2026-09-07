@@ -10,6 +10,7 @@
  */
 
 import type { Mark, Node as PMNode } from "prosemirror-model";
+import { elementXml, emptyTagXml, openTagXml } from "../ooxml/element";
 import { DocxExportError } from "../ooxml/errors";
 import {
   imageDrawingXml,
@@ -17,6 +18,7 @@ import {
   toImageSrc,
   withExtent,
 } from "../ooxml/image";
+import { wName } from "../ooxml/names";
 import { escapeXml } from "../ooxml/xml";
 import { type ExportRefs, NO_EXPORT_REFS } from "./exportRefs";
 import { type LinkRefs, relIdIn, withRelId } from "./hyperlink";
@@ -32,12 +34,9 @@ function markOf(node: PMNode, name: string): Mark | null {
   return node.marks.find((mark) => mark.type.name === name) ?? null;
 }
 
-export function openTag(name: string, attrs: unknown): string {
-  return typeof attrs === "string" ? `<${name} ${attrs}>` : `<${name}>`;
-}
-
-function emptyTag(name: string, attrs: unknown): string {
-  return typeof attrs === "string" ? `<${name} ${attrs}/>` : `<${name}/>`;
+/** The attribute text a node attr holds, which is either what the original wrote or nothing */
+export function rawAttrsOf(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
 }
 
 /**
@@ -83,23 +82,32 @@ function renderInline(node: PMNode, images: ImageRefs): string {
       .split("\t")
       .flatMap((text, index, pieces) => {
         const rendered = text
-          ? [`<w:t xml:space="preserve">${escapeXml(text)}</w:t>`]
+          ? [
+              elementXml(
+                wName("t"),
+                [["xml:space", "preserve"]],
+                [escapeXml(text)]
+              ),
+            ]
           : [];
         return index < pieces.length - 1
-          ? [...rendered, emptyTag("w:tab", tab?.attrs.tabAttrs)]
+          ? [
+              ...rendered,
+              emptyTagXml(wName("tab"), rawAttrsOf(tab?.attrs.tabAttrs)),
+            ]
           : rendered;
       })
       .join("");
   }
   if (node.type.name === "hardBreak")
-    return emptyTag("w:br", node.attrs.brAttrs);
+    return emptyTagXml(wName("br"), rawAttrsOf(node.attrs.brAttrs));
   if (node.type.name === "image") return renderImage(node, images);
   if (node.type.name === "commentReference") {
     const original: unknown = node.attrs.referenceXml;
     if (typeof original === "string") return original;
     const id: unknown = node.attrs.id;
     if (typeof id === "string") {
-      return `<w:commentReference w:id="${escapeXml(id)}"/>`;
+      return elementXml(wName("commentReference"), [[wName("id"), id]]);
     }
     throw new DocxExportError(
       "lost-original",
@@ -113,7 +121,7 @@ function renderInline(node: PMNode, images: ImageRefs): string {
     const name =
       node.attrs.kind === "endnote" ? "endnoteReference" : "footnoteReference";
     if (typeof id === "string") {
-      return `<w:${name} w:id="${escapeXml(id)}"/>`;
+      return elementXml(wName(name), [[wName("id"), id]]);
     }
     throw new DocxExportError(
       "lost-original",
@@ -180,7 +188,10 @@ function addInline(
       child.type.name === "commentStart"
         ? "commentRangeStart"
         : "commentRangeEnd";
-    parts.push({ kind: "raw", xml: `<w:${name} w:id="${escapeXml(id)}"/>` });
+    parts.push({
+      kind: "raw",
+      xml: elementXml(wName(name), [[wName("id"), id]]),
+    });
     return;
   }
   const piece = renderInline(child, images);
@@ -218,7 +229,7 @@ function splitParagraphGroups(
 
 function renderParagraphPart(part: ParagraphPart): string {
   if (part.kind === "raw") return part.xml;
-  const open = openTag("w:r", part.mark?.attrs.rAttrs);
+  const open = openTagXml(wName("r"), rawAttrsOf(part.mark?.attrs.rAttrs));
   const rPr: unknown = part.mark?.attrs.rPr;
   return (
     open +
@@ -290,7 +301,7 @@ export function serializeParagraph(
   node: PMNode,
   refs: ExportRefs = NO_EXPORT_REFS
 ): string {
-  const open = openTag("w:p", node.attrs.pAttrs);
+  const open = openTagXml(wName("p"), rawAttrsOf(node.attrs.pAttrs));
   const pPr: unknown = node.attrs.pPr;
   const body = splitParagraphGroups(node, refs)
     .map((group) => renderParagraphGroup(group, refs))
