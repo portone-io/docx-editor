@@ -225,12 +225,15 @@ describe("a hyperlink around a stretch of text", () => {
     ).toContain('<w:hyperlink r:id="rId12" w:history="1">');
   });
 
-  it("gives a link the editor made an opening tag naming the namespace", () => {
+  /**
+   * The prefix the attribute is written under is bound on the part's root rather than on the tag
+   * (`docx/exportDocx`), so the tag carries nothing but what says where the link goes.
+   */
+  it("gives a link the editor made an opening tag naming the relationship alone", () => {
     const link = linkMark({ href: "https://example.com" });
     const node = paragraph(docxSchema.text("terms", [link, runMark()]));
     expect(serializeParagraph(node, REFS)).toBe(
-      `<w:p><w:hyperlink xmlns:r="${R_NS}" r:id="rId9">` +
-        `${wr("terms")}</w:hyperlink></w:p>`
+      `<w:p><w:hyperlink r:id="rId9">${wr("terms")}</w:hyperlink></w:p>`
     );
   });
 
@@ -241,7 +244,7 @@ describe("a hyperlink around a stretch of text", () => {
     });
     const node = paragraph(docxSchema.text("terms", [link, runMark()]));
     expect(serializeParagraph(node, REFS)).toContain(
-      `<w:hyperlink xmlns:r="${R_NS}" r:id="rId9" w:anchor="chapter3">`
+      '<w:hyperlink r:id="rId9" w:anchor="chapter3">'
     );
   });
 

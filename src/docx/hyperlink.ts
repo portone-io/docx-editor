@@ -86,16 +86,15 @@ export function relIdIn(prefix: string): string | null {
  *
  * A tag that already names one has only that value rewritten, so a link nobody retargeted comes
  * out as the very string it went in as. A tag that named none is given the attribute, which the
- * specification has supersede any `w:anchor` beside it, along with the namespace it lives in: the
- * body we write into is not always one that declares it, and declaring it again where it is
- * already bound to the same namespace changes nothing.
+ * specification has supersede any `w:anchor` beside it. The namespace it lives in is the part
+ * root's to bind, which `hyperlinkRefs` reports and `docx/exportDocx` sees to.
  */
 export function withRelId(prefix: string, relId: string): string {
   if (REL_ID_VALUE.test(prefix)) {
     return prefix.replace(REL_ID_VALUE, ` ${REL_ID_ATTR}="${relId}"`);
   }
   const name = "<w:hyperlink";
-  return `${name} xmlns:r="${R_NS}" ${REL_ID_ATTR}="${relId}"${prefix.slice(name.length)}`;
+  return `${name} ${REL_ID_ATTR}="${relId}"${prefix.slice(name.length)}`;
 }
 
 /** Which relationship each address goes out on while the body is being written */
@@ -113,6 +112,18 @@ export interface LinkRefs {
 export const NO_LINK_REFS: LinkRefs = { relIdOf: () => undefined };
 
 /**
+ * The refs a body is written through, and what the part it went into has to declare afterwards.
+ *
+ * `withRelId` puts the attribute on exactly the tag that arrived without one, and that is the tag
+ * `relIdOf` is handed a null `was` for, so what is recorded here and what is written cannot come
+ * apart.
+ */
+export interface LinkWriting extends LinkRefs {
+  /** Whether a link went out under an `r:id` its own opening tag did not arrive carrying */
+  addedRelId(): boolean;
+}
+
+/**
  * Hands out the relationship for every address the body points at, adding one where the package
  * has none.
  *
@@ -122,13 +133,16 @@ export const NO_LINK_REFS: LinkRefs = { relIdOf: () => undefined };
  * relationship a link arrived on is kept wherever it still leads where the link now goes, so
  * retargeting one link in a document leaves every other link's XML alone.
  */
-export function hyperlinkRefs(relationships: RelationshipWriter): LinkRefs {
+export function hyperlinkRefs(relationships: RelationshipWriter): LinkWriting {
   const external = relationships.opened.filter(
     (rel) => rel.type === HYPERLINK_REL_TYPE && rel.external
   );
   const added = new Map<string, string>();
+  let attributeAdded = false;
   return {
+    addedRelId: () => attributeAdded,
     relIdOf: (href, was) => {
+      if (was === null) attributeAdded = true;
       const kept = external.find((rel) => rel.id === was);
       if (kept?.target === href) return was ?? undefined;
       const found = external.find((rel) => rel.target === href);

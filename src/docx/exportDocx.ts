@@ -15,8 +15,13 @@
 import type { Node as PMNode } from "prosemirror-model";
 import { DocxExportError } from "../ooxml/errors";
 import {
+  ensureRootDeclarations,
+  type RootDeclarations,
+} from "../ooxml/partSplice";
+import {
   encodeUtf8,
   parseXml,
+  R_NS,
   W_NS,
   withXmlParser,
   type XmlParser,
@@ -146,6 +151,12 @@ function assertBookmarkPairs(documentXml: string): void {
   }
 }
 
+/**
+ * What the main part has to declare once a link has gone out under an `r:id` put on its tag: the
+ * attribute names a relationship, and it names nothing at all in a part that binds no `r`.
+ */
+const LINK_MARKUP: RootDeclarations = { namespaces: { r: R_NS } };
+
 /** The parts written beside the body, in the order their parts go into the package */
 const PART_PLANNERS: readonly PartPlanner[] = [
   numberingPlanner,
@@ -242,11 +253,15 @@ function writeDocx(
   // The body has to know which relationship a newly inserted image ends up on, so the
   // media is planned before the body is written
   const media = planImageMedia(doc, store, context);
-  const documentXml = buildDocumentXml(doc, store, {
+  const links = hyperlinkRefs(context.relationships);
+  const body = buildDocumentXml(doc, store, {
     images: media?.refs ?? NO_IMAGE_REFS,
-    links: hyperlinkRefs(context.relationships),
+    links,
     notes,
   });
+  const documentXml = links.addedRelId()
+    ? ensureRootDeclarations(body, LINK_MARKUP)
+    : body;
   assertBookmarkPairs(documentXml);
 
   const parts = runPartPlanners(planners, doc, store, context, media?.parts);

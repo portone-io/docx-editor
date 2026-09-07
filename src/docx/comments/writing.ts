@@ -3,7 +3,7 @@
  */
 
 import type { Node as PMNode } from "prosemirror-model";
-import { elementXml, type XmlAttr, xmlnsAttr } from "../../ooxml/element";
+import { elementXml, type XmlAttr } from "../../ooxml/element";
 import { NAMESPACES, wName, xmlnsDecl } from "../../ooxml/names";
 import {
   ensureRootDeclarations,
@@ -203,7 +203,6 @@ function renderedComment(
       : comment.commentXml;
   }
   const attrs: readonly (XmlAttr | null)[] = [
-    xmlnsAttr("w"),
     [wName("id"), comment.id],
     comment.author === null ? null : [wName("author"), comment.author],
     comment.date === null ? null : [wName("date"), comment.date],
@@ -219,11 +218,17 @@ function renderedComment(
 }
 
 /**
- * What a part carrying a thread key has to declare: the key is a `w14:paraId`, and a reader that
- * does not know that namespace is told it may pass over it.
+ * What a part carrying comments this editor wrote has to declare. Every entry it writes is spelled
+ * under `w`, so the root binds it rather than each entry declaring it again.
+ */
+const COMMENT_MARKUP: RootDeclarations = { namespaces: { w: NAMESPACES.w } };
+
+/**
+ * The same, for a part carrying a thread key: the key is a `w14:paraId`, and a reader that does
+ * not know that namespace is told it may pass over it.
  */
 const THREAD_MARKUP: RootDeclarations = {
-  namespaces: { w14: NAMESPACES.w14, mc: NAMESPACES.mc },
+  namespaces: { w: NAMESPACES.w, w14: NAMESPACES.w14, mc: NAMESPACES.mc },
   ignorable: ["w14"],
 };
 
@@ -308,9 +313,10 @@ function commentsXml(
     root: COMMENTS_ROOT,
     replaceChildren: pieces.join(""),
   });
-  return hasThreadMetadata
-    ? ensureRootDeclarations(rewritten, THREAD_MARKUP)
-    : rewritten;
+  return ensureRootDeclarations(
+    rewritten,
+    hasThreadMetadata ? THREAD_MARKUP : COMMENT_MARKUP
+  );
 }
 
 /**
