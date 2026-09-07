@@ -29,11 +29,15 @@ const REPACK = { level: 6, mtime: new Date(2026, 0, 1) };
 const decoder = new TextDecoder("utf-8");
 const encoder = new TextEncoder();
 
-/** Rewrites the value of an attribute wherever it appears, whichever quote character it uses */
+/**
+ * Rewrites the value of an attribute wherever it appears, in the quotes and spacing the producer
+ * used. Only the quote that opened a value closes it (XML 1.0, AttValue): a name may hold an
+ * apostrophe inside double quotes, and whitespace is allowed on either side of the equals sign.
+ */
 function withAttribute(xml, name, value) {
   return xml.replace(
-    new RegExp(`(\\s${name}=)(["'])[^"']*\\2`, "g"),
-    (_match, prefix, quote) => `${prefix}${quote}${value}${quote}`
+    new RegExp(`(\\s${name}\\s*=\\s*)("[^"]*"|'[^']*')`, "g"),
+    (_match, prefix, quoted) => `${prefix}${quoted[0]}${value}${quoted[0]}`
   );
 }
 

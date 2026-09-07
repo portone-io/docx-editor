@@ -70,7 +70,7 @@ The script sets `dc:creator` and `cp:lastModifiedBy` to `Fixture Author`, emptie
 
 It leaves rsids, `w14:paraId`, and `docProps/app.xml`'s `Application` and `AppVersion` alone: the first two are the markup the lane exists to test, and the last is how a package names the software that wrote it.
 
-Because it repacks with the settings every fixture uses, running it over its own output gives back the same bytes. That equality is the producer-lane replacement for the rebuild-without-edits check above, and it is what to run after replacing a file.
+Because it repacks with the settings every fixture uses, running it over its own output gives back the same bytes. That equality is the producer-lane replacement for the rebuild-without-edits check above, and it is what to run after replacing a file. `src/sanitizeFixture.test.ts` runs the script over packages shaped like what a producer saves, and over every committed file in the lane, which the script has to give back byte for byte.
 
 ### The body text
 
