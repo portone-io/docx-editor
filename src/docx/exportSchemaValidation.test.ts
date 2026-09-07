@@ -17,7 +17,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { unzipSync } from "fflate";
-import { Fragment, type Node as PMNode } from "prosemirror-model";
+import type { Node as PMNode } from "prosemirror-model";
 import { type EditorState, TextSelection } from "prosemirror-state";
 import { afterAll, describe, expect, it } from "vitest";
 import {
@@ -27,7 +27,9 @@ import {
   makeDocx,
   makeHeadersFootersDocx,
   makeNotesDocx,
+  producerFixtureNames,
   readFixture,
+  readProducerFixture,
 } from "../__testing__/docx";
 import { posOfText } from "../__testing__/editing";
 import {
@@ -41,6 +43,7 @@ import { createEditorState } from "../editor/createEditor";
 import { parseXml, W_NS } from "../ooxml/xml";
 import { docxSchema } from "../schema";
 import { setCellPadding } from "../table";
+import { type EditedBlock, withEditedFirst } from "./__testing__/blockEdits";
 import { withoutIgnorableMarkup } from "./__testing__/mce";
 import {
   afterTheBattery,
@@ -263,38 +266,12 @@ function expectEveryXmlPartParses(name: string, bytes: Uint8Array): void {
 
 const EDITED = "edited before the export was validated";
 
-function withEditedText(paragraph: PMNode): PMNode {
-  const inline: PMNode[] = [];
-  let edited = false;
-  paragraph.forEach((child) => {
-    if (!edited && child.isText) {
-      inline.push(docxSchema.text(EDITED, child.marks));
-      edited = true;
-    } else {
-      inline.push(child);
-    }
-  });
-  return paragraph.copy(Fragment.from(inline));
-}
-
 /**
  * The document with the first paragraph holding text rewritten, so that the part the validator
  * reads is one the export built rather than one it handed back untouched.
  */
 function withEditedParagraph(doc: PMNode): PMNode {
-  let target = -1;
-  doc.forEach((block, _offset, index) => {
-    const editable =
-      block.type.name === "paragraph" && block.textContent !== "";
-    if (target === -1 && editable) target = index;
-  });
-  if (target === -1) throw new Error("the fixture has no paragraph to edit");
-
-  const blocks: PMNode[] = [];
-  doc.forEach((block, _offset, index) => {
-    blocks.push(index === target ? withEditedText(block) : block);
-  });
-  return docxSchema.nodes.doc.create(null, blocks);
+  return withEditedFirst(doc, "paragraph", EDITED);
 }
 
 /** The same document with its tables dropped, so the one a probe inserts is the only one */
@@ -553,6 +530,354 @@ describe("the exported package against the OOXML schemas", () => {
     expect(valid).toBe(false);
     expect(report).toContain(session.mainPartPath);
     expect(report).toContain("notInWml");
+  });
+});
+
+/** The prefixes the reports below are read in, since xmllint names a namespace by its URI */
+const REPORT_PREFIXES = new Map([
+  [W_NS, "w"],
+  [W14_NS, "w14"],
+  [MC_NS, "mc"],
+]);
+
+const SCHEMA_ERROR = "Schemas validity error : ";
+
+/**
+ * Every violation in one xmllint report, one entry per occurrence in the order the part carries
+ * them, worded as xmllint worded it with the offending value left in.
+ */
+function violationOccurrences(report: string): readonly string[] {
+  return report.split("\n").flatMap((line) => {
+    const at = line.indexOf(SCHEMA_ERROR);
+    if (at === -1) return [];
+    return [
+      line
+        .slice(at + SCHEMA_ERROR.length)
+        .replaceAll(
+          /\{([^}]*)\}/g,
+          (_whole, uri: string) => `${REPORT_PREFIXES.get(uri) ?? uri}:`
+        ),
+    ];
+  });
+}
+
+/**
+ * The same report reduced to the distinct kinds of violation in it.
+ *
+ * A producer writes the same invalid measurement on every cell in the document, so a pin over
+ * the raw report would record how often its writer is wrong rather than what it is wrong about,
+ * and one added table cell would then have to be approved as a schema change. This is the shape
+ * the approved list below is written in; it says nothing about how many times, which is what
+ * `violationsChanged` is for.
+ */
+function violationKinds(report: string): readonly string[] {
+  const kinds = new Set(
+    violationOccurrences(report).map((occurrence) =>
+      occurrence.replace(
+        /'[^']*' is not a valid value/,
+        "'…' is not a valid value"
+      )
+    )
+  );
+  return Array.from(kinds).sort();
+}
+
+const strayParaId =
+  "Element 'w:p', attribute 'w14:paraId': " +
+  "The attribute 'w14:paraId' is not allowed.";
+
+const notAMeasurement = (element: string, value = "…") =>
+  `Element '${element}', attribute 'w:w': '${value}' is not a valid value of` +
+  " the union type 'w:ST_MeasurementOrPercent'.";
+
+/** The cell margins a producer may write as decimals, on the four sides and in a style */
+const DECIMAL_CELL_MARGINS = [
+  notAMeasurement("w:bottom"),
+  notAMeasurement("w:left"),
+  notAMeasurement("w:right"),
+  notAMeasurement("w:top"),
+];
+
+/**
+ * What the schemas turn down in each producer package, approved as a file a reviewer reads.
+ *
+ * Every one of these is markup the producer wrote and this editor hands back untouched, so the
+ * pin says what a real word processor puts in a package that ECMA-376 does not describe. A diff
+ * here means either that a producer file changed or that the export stopped preserving what it
+ * was handed, and `__fixtures__/README.md` explains each entry under "Known gaps".
+ */
+const PRODUCER_VIOLATIONS: Readonly<
+  Record<string, Readonly<Record<string, readonly string[]>>>
+> = {
+  "google-docs-export.docx": {
+    "word/document.xml": [
+      ...DECIMAL_CELL_MARGINS,
+      strayParaId,
+      "Element 'w:pgMar': The attribute 'w:gutter' is required but missing.",
+      notAMeasurement("w:tblW"),
+    ],
+    "word/styles.xml": DECIMAL_CELL_MARGINS,
+    "word/header1.xml": [strayParaId],
+    "word/footer1.xml": [strayParaId],
+    "word/footnotes.xml": [strayParaId],
+    "word/comments.xml": [strayParaId],
+  },
+};
+
+const MAIN_PART = "word/document.xml";
+
+/**
+ * What a rebuilt block stops being turned down for, per producer file and per kind of block.
+ *
+ * An untouched block goes out as the producer's bytes, but an edited one goes through the
+ * writer, which writes the measurements it models in the schema's own form and has no model for
+ * some of what a producer put in a cell. Each entry is one occurrence the untouched export
+ * carries and the edited one no longer does, in the sorted order `violationsChanged` returns. A block
+ * that starts dropping more of a producer's markup, or normalizing more of it, shows up here and
+ * is approved rather than absorbed; `__fixtures__/README.md` explains each entry under "Known
+ * gaps".
+ */
+const REBUILD_DROPS: Readonly<
+  Record<string, Readonly<Record<EditedBlock, readonly string[]>>>
+> = {
+  "google-docs-export.docx": {
+    paragraph: [],
+    table: [
+      // The paragraph of each cell continuing a vertical merge, which the writer writes empty
+      `${MAIN_PART}: ${strayParaId}`,
+      `${MAIN_PART}: ${strayParaId}`,
+      // The width the producer wrote with a decimal point, written back as an integer
+      `${MAIN_PART}: ${notAMeasurement("w:tblW", "9026.0")}`,
+    ],
+  },
+};
+
+function expectOnlyApprovedViolations(
+  name: string,
+  reports: Map<string, string>
+): void {
+  const found = Object.fromEntries(
+    Array.from(reports, ([path, report]) => [path, violationKinds(report)])
+  );
+  const approved = Object.fromEntries(
+    Object.entries(PRODUCER_VIOLATIONS[name] ?? {}).map(([path, kinds]) => [
+      path,
+      Array.from(kinds).sort(),
+    ])
+  );
+
+  expect(found, `${name}: the violations the schemas found`).toEqual(approved);
+}
+
+interface ViolationsChanged {
+  /** What the edited export is turned down for and the untouched one was not */
+  added: string[];
+  /** What the untouched export was turned down for and the edited one is not */
+  dropped: string[];
+}
+
+/**
+ * The violations of one export against another, occurrence by occurrence.
+ *
+ * The kinds of violation a producer writes are the same before and after almost any edit,
+ * because the producer already wrote each kind somewhere in the file. What an edit can change is
+ * how many times a part is turned down and for which values, so the two reports are compared as
+ * multisets of occurrences and only the difference is returned, each entry prefixed by its part.
+ */
+function violationsChanged(
+  untouched: Map<string, string>,
+  edited: Map<string, string>
+): ViolationsChanged {
+  const changed: ViolationsChanged = { added: [], dropped: [] };
+  const paths = new Set([...untouched.keys(), ...edited.keys()]);
+  for (const path of Array.from(paths).sort()) {
+    const before = violationOccurrences(untouched.get(path) ?? "");
+    const after = violationOccurrences(edited.get(path) ?? "");
+    const counts = new Map<string, number>();
+    for (const occurrence of before) {
+      counts.set(occurrence, (counts.get(occurrence) ?? 0) + 1);
+    }
+    for (const occurrence of after) {
+      counts.set(occurrence, (counts.get(occurrence) ?? 0) - 1);
+    }
+    for (const [occurrence, count] of counts) {
+      const into = count > 0 ? changed.dropped : changed.added;
+      for (let n = 0; n < Math.abs(count); n += 1) {
+        into.push(`${path}: ${occurrence}`);
+      }
+    }
+  }
+  changed.added.sort();
+  changed.dropped.sort();
+  return changed;
+}
+
+interface UntouchedExport {
+  doc: PMNode;
+  session: SessionStore;
+  parts: Map<string, string>;
+  reports: Map<string, string>;
+}
+
+const untouchedExports = new Map<string, UntouchedExport>();
+
+/**
+ * A producer file opened and exported with nothing edited, validated once.
+ *
+ * Every test below compares an edited export against this one, and compiling the schema set is
+ * what a validation costs, so the untouched verdict is worked out once per file and kept.
+ */
+function untouchedExportOf(name: string): UntouchedExport {
+  const kept = untouchedExports.get(name);
+  if (kept !== undefined) return kept;
+  const { doc, session } = importDocx(readProducerFixture(name));
+  const parts = wordprocessingParts(exportDocx(doc, session));
+  expect(parts.size).toBeGreaterThan(0);
+  const opened = { doc, session, parts, reports: validateParts(parts) };
+  untouchedExports.set(name, opened);
+  return opened;
+}
+
+/** The edited export of a producer file, with the first block of this kind rewritten */
+function editedExportOf(
+  name: string,
+  kind: EditedBlock
+): { parts: Map<string, string>; reports: Map<string, string> } {
+  const { doc, session } = untouchedExportOf(name);
+  const parts = wordprocessingParts(
+    exportDocx(withEditedFirst(doc, kind, EDITED), session)
+  );
+  expect(parts.get(session.mainPartPath)).toContain(EDITED);
+  return { parts, reports: validateParts(parts) };
+}
+
+/** The document part with a page-margin element that has no gutter put inside the edited paragraph */
+function withGutterlessMarginInEditedParagraph(documentXml: string): string {
+  const edited = documentXml.indexOf(EDITED);
+  const paragraph = documentXml.lastIndexOf("<w:p ", edited);
+  const close = documentXml.indexOf("</w:pPr>", paragraph);
+  if (edited === -1 || paragraph === -1 || close === -1 || close > edited) {
+    throw new Error(
+      "the edited paragraph has no paragraph properties to add to"
+    );
+  }
+  return (
+    documentXml.slice(0, close) +
+    '<w:sectPr><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"' +
+    ' w:header="720" w:footer="720"/></w:sectPr>' +
+    documentXml.slice(close)
+  );
+}
+
+/** The document part with the rebuilt table's width written as a value no reader accepts */
+function withUnreadableWidthOnEditedTable(documentXml: string): string {
+  const edited = documentXml.indexOf(EDITED);
+  const table = documentXml.lastIndexOf("<w:tbl>", edited);
+  const width = documentXml.indexOf("<w:tblW ", table);
+  if (edited === -1 || table === -1 || width === -1 || width > edited) {
+    throw new Error("the edited table declares no width to spoil");
+  }
+  const end = documentXml.indexOf("/>", width);
+  const spoiled = documentXml
+    .slice(width, end)
+    .replace(/w:w="[^"]*"/, 'w:w="NaN"');
+  return documentXml.slice(0, width) + spoiled + documentXml.slice(end);
+}
+
+/**
+ * The producer whose file the negative controls are run over. A control has to spoil the export
+ * with a violation of a kind the producer already wrote in, so that only a comparison that counts
+ * occurrences can tell the spoiled export from the approved one, and that is a property of one
+ * particular file rather than of the lane.
+ */
+const CONTROL_FIXTURE = "google-docs-export.docx";
+
+/**
+ * The producer lane, whose files a word processor saved rather than this project.
+ *
+ * A hand-written fixture only ever carries markup this project chose to write, so this lane is
+ * the only place the export meets what a producer actually puts in a package - and what Google
+ * Docs puts in one is not valid against the transitional schemas. The export preserves those
+ * bytes on every block nobody edited, so the promise the lane can hold is that the untouched
+ * export is turned down for exactly what the producer wrote in, and that an edit adds no
+ * occurrence of its own: not a new kind, and not one more of a kind the producer already wrote.
+ */
+describe("the exported producer package against the OOXML schemas", () => {
+  it("there are producer fixtures, each with its violations approved", () => {
+    expect(producerFixtureNames.length).toBeGreaterThan(0);
+    expect(Object.keys(PRODUCER_VIOLATIONS)).toEqual(
+      Array.from(producerFixtureNames)
+    );
+    expect(Object.keys(REBUILD_DROPS)).toEqual(
+      Array.from(producerFixtureNames)
+    );
+    expect(producerFixtureNames).toContain(CONTROL_FIXTURE);
+  });
+
+  it.each(producerFixtureNames)(
+    "%s: every WordprocessingML part validates but for the approved violations",
+    (name) => {
+      expectOnlyApprovedViolations(name, untouchedExportOf(name).reports);
+    }
+  );
+
+  it.each(
+    producerFixtureNames.flatMap((name) =>
+      (["paragraph", "table"] as const).map((kind) => ({ name, kind }))
+    )
+  )("$name: editing a $kind adds no violation of its own", ({ name, kind }) => {
+    const untouched = untouchedExportOf(name);
+    const edited = editedExportOf(name, kind);
+
+    expect(violationsChanged(untouched.reports, edited.reports)).toEqual({
+      added: [],
+      dropped: REBUILD_DROPS[name]?.[kind] ?? [],
+    });
+  });
+
+  /**
+   * The gap a comparison of kinds leaves: the producer already wrote a page margin without a
+   * gutter, so a second one the edit put inside the rewritten paragraph is of an approved kind.
+   */
+  it("tells a second violation of an approved kind inside the edited paragraph from the first", () => {
+    const untouched = untouchedExportOf(CONTROL_FIXTURE);
+    const edited = editedExportOf(CONTROL_FIXTURE, "paragraph");
+    const spoiled = new Map(edited.parts);
+    spoiled.set(
+      MAIN_PART,
+      withGutterlessMarginInEditedParagraph(edited.parts.get(MAIN_PART) ?? "")
+    );
+    const reports = validateParts(spoiled);
+
+    expect(violationKinds(reports.get(MAIN_PART) ?? "")).toEqual(
+      violationKinds(untouched.reports.get(MAIN_PART) ?? "")
+    );
+    expect(violationsChanged(untouched.reports, reports).added).toEqual([
+      `${MAIN_PART}: Element 'w:pgMar': The attribute 'w:gutter' is required but missing.`,
+    ]);
+  });
+
+  /**
+   * The same gap on the table path: a writer that spoils a width only when the original carried
+   * a decimal point fires on producer input alone, and the producer already wrote a width the
+   * schemas turn down, so the kind was approved before the writer went wrong.
+   */
+  it("tells a width the rebuilt table spoiled from the one the producer wrote", () => {
+    const untouched = untouchedExportOf(CONTROL_FIXTURE);
+    const edited = editedExportOf(CONTROL_FIXTURE, "table");
+    const spoiled = new Map(edited.parts);
+    spoiled.set(
+      MAIN_PART,
+      withUnreadableWidthOnEditedTable(edited.parts.get(MAIN_PART) ?? "")
+    );
+    const reports = validateParts(spoiled);
+
+    expect(violationKinds(reports.get(MAIN_PART) ?? "")).toEqual(
+      violationKinds(untouched.reports.get(MAIN_PART) ?? "")
+    );
+    expect(violationsChanged(untouched.reports, reports).added).toEqual([
+      `${MAIN_PART}: ${notAMeasurement("w:tblW", "NaN")}`,
+    ]);
   });
 });
 

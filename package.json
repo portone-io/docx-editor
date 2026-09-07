@@ -71,10 +71,11 @@
     "build:demo": "vite build --config demo/vite.config.ts",
     "dev:site": "pnpm --filter @portone/docx-editor-site dev",
     "build:site": "pnpm --filter @portone/docx-editor-site build",
-    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm test:site-release && pnpm check:demo-library",
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm test:fixtures && pnpm test:site-release && pnpm check:demo-library",
     "typecheck": "tsc --noEmit && tsc --noEmit -p e2e && tsc --noEmit -p demo && pnpm --filter @portone/docx-editor-site typecheck",
     "lint": "pnpm biome check . --diagnostic-level=error",
     "test": "vitest run",
+    "test:fixtures": "node --test scripts/sanitize-fixture.test.mjs",
     "test:package": "vitest run --dir packaging --no-file-parallelism",
     "verify:package": "node scripts/verify-package.mjs",
     "check:demo-library": "node scripts/demo-library-pin.mjs",
@@ -84,7 +85,7 @@
     "changeset": "changeset",
     "changeset:version": "changeset version",
     "test:e2e": "playwright test",
-    "test:site-release": "node --test scripts/*.test.mjs"
+    "test:site-release": "node --test scripts/site-release.test.mjs"
   },
   "dependencies": {
     "fflate": "^0.8.2",

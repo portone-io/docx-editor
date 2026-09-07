@@ -27,6 +27,21 @@ export function readFixture(name: string): Uint8Array {
   return new Uint8Array(readFileSync(join(fixturesDir, name)));
 }
 
+const producersDir = join(fixturesDir, "producers");
+
+/**
+ * The producer lane: documents a word processor saved rather than ones this project built.
+ * They live in a subdirectory of their own precisely because `fixtureNames` reads only the top
+ * level, so a suite opts into markup no hand-written fixture would carry instead of inheriting it.
+ */
+export const producerFixtureNames = readdirSync(producersDir).filter((name) =>
+  name.endsWith(".docx")
+);
+
+export function readProducerFixture(name: string): Uint8Array {
+  return new Uint8Array(readFileSync(join(producersDir, name)));
+}
+
 /** The one fixture written on paper that is not A4 */
 export const LETTER_FIXTURE = "letter-page.docx";
 

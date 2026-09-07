@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { fixtureNames, makeDocx, readFixture } from "../__testing__/docx";
+import {
+  fixtureNames,
+  makeDocx,
+  producerFixtureNames,
+  readFixture,
+  readProducerFixture,
+} from "../__testing__/docx";
 import { documentFidelity } from "../editor/commands/fidelityQueries";
 import { createEditorState } from "../editor/createEditor";
 import { exportDocxReport } from "./exportDocx";
@@ -212,6 +218,22 @@ describe("the fixture corpus", () => {
 
       await expect(`${JSON.stringify(notes, null, 2)}\n`).toMatchFileSnapshot(
         `./__snapshots__/fidelity/${name.replace(/\.docx$/, "")}.json`
+      );
+    }
+  );
+
+  /**
+   * The producer lane, where the notes say what an editing session loses out of a document this
+   * project did not write. Its snapshot is the reason the lane exists: nothing else says which
+   * of a real word processor's constructs reach the reader as placeholders.
+   */
+  it.each(producerFixtureNames)(
+    "%s: opens with the recorded fidelity notes",
+    async (name) => {
+      const { notes } = importDocx(readProducerFixture(name));
+
+      await expect(`${JSON.stringify(notes, null, 2)}\n`).toMatchFileSnapshot(
+        `./__snapshots__/fidelity/producers/${name.replace(/\.docx$/, "")}.json`
       );
     }
   );
