@@ -59,7 +59,7 @@ The root entry adds the React editor to the same import and export engine expose
 
 The repository is a pnpm workspace whose root package is the library itself. `demo/` and `site/` are the other two packages: each imports `@portone/docx-editor` and `@portone/docx-editor/styles.css`, so both exercise the same entry points a consumer resolves. `demo/` exports the `DocxEditorDemo` component, and `demo/main.tsx` holds the Vite-only shell that loads the fixture and mounts it. The component module stays free of Vite-specific syntax because the site imports it too.
 
-Both pin the library to an exact released version rather than depending on it as `workspace:*`, because the site's landing page demonstrates a version to a visitor and names it on a badge. `demo/vite.config.ts` aliases those entry points back to `src/` so `pnpm dev` and `pnpm build:demo` still read the working tree. [The site guide](../site/README.md#the-version-the-demo-runs) owns the pin, the check that guards it, and how to point the site at the working tree.
+Both pin the library to an exact released version rather than depending on it as `workspace:*`, because the site's landing page demonstrates a version to a visitor and names it on a badge. `demo/vite.config.ts` aliases those entry points back to `src/` so `pnpm dev` and `pnpm build:demo` still read the working tree. [The site guide](../site/README.md#the-version-the-demo-runs) owns automatic release updates, local site preparation, and the offline check that guards the installed version.
 
 `insertTable` belongs to `./commands` rather than `./table` because a new table uses page geometry stored by the editor layer. Other table commands operate on a table that already exists and do not need that dependency.
 

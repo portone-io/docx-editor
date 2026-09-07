@@ -6,9 +6,9 @@
   "license": "Apache-2.0",
   "type": "module",
   "scripts": {
-    "predev": "node scripts/copy-demo-fixture.mjs",
+    "predev": "node ../scripts/demo-library-pin.mjs --write && node scripts/copy-demo-fixture.mjs",
     "dev": "next dev",
-    "prebuild": "node scripts/copy-demo-fixture.mjs",
+    "prebuild": "node ../scripts/demo-library-pin.mjs && node scripts/copy-demo-fixture.mjs",
     "build": "next build",
     "start": "next start",
     "typecheck": "next typegen && tsc --noEmit"

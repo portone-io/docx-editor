@@ -24,31 +24,51 @@ The library it imports is deliberately not listed: the site installs it from npm
 
 ## The version the demo runs
 
-`site/package.json` and `demo/package.json` pin `@portone/docx-editor` to an exact released version rather than to `workspace:*`, and the `v{version}` badge beside the demo reads that same pin.
-A visitor who tries the demo and then installs the version the badge names gets the behavior they just used.
+The site demonstrates a published, stable npm release. Its source files and documentation still come from the working tree.
 
-Both packages have to name the same version, and the demo cannot be left on `workspace:*`: the site depends on the demo, so the library would arrive twice in one build, once from npm and once from the working tree.
+| Command or deployment | Site and docs | Editor library |
+| --- | --- | --- |
+| `pnpm dev` / `pnpm build:demo` | The development demo shell | Current `src/`, through Vite aliases |
+| `pnpm dev:site` | Current working tree, with hot reload | npm `latest`, resolved once at startup |
+| `pnpm build:site` / Vercel | The checked-out site and docs | The exact committed pin |
 
-`pnpm check:demo-library` holds that together, and `pnpm check` runs it.
-It fails when the two pins disagree, when either is a range rather than a release, when the lockfile has not caught up with a changed pin, when the dependency resolves to this repository's own package, and when a release has arrived that the demo is not running yet.
-`pnpm pin:demo-library` moves both pins to the newest release and installs it.
+`site/package.json` and `demo/package.json` name the same exact library version, and the badge reads that pin. Both are consumers of the published package; leaving one on `workspace:*` would mix released and unreleased code. The library's JavaScript and CSS resolve from the same installation.
 
-`pnpm changeset:version` runs that same command, so preparing a release also picks up a pin that the previous release left behind.
-It cannot pin the version being prepared, because that version reaches the registry only when the release publishes, and a dependency on a version npm does not have yet leaves the whole workspace uninstallable.
-So the pin moves after a publish rather than with it, and `pnpm check:demo-library` is what reports the gap in between.
+Starting the local site runs `pnpm pin:demo-library` before Next starts. If a newer release exists, it updates both manifests, the lockfile, and the installed package. Those three tracked files may therefore change when starting the site from an older checkout. It does not change `src/` or move the site's documentation to a release tag. The server keeps that version until restarted.
 
-`pnpm-workspace.yaml` excludes the library from pnpm's release-maturity delay.
-That delay is there to let a compromised third-party release be yanked before anything depends on it, and applying it to this repository's own package would hold the demo a day behind every release of the library it demonstrates.
+`pnpm check:demo-library` checks agreement between both pins and installed packages and rejects a workspace link. It is offline: a new npm release cannot make an unchanged library commit fail `pnpm check`. Fresh CI installs use the committed lockfile. The root package version may legitimately be ahead of the demo while a release is being prepared.
 
-### Working on the library itself
+### Automatic updates after publishing
 
-`pnpm dev:site` serves the released library, so an unreleased change under `src/` does not show up in the site's demo.
-Library work belongs in `pnpm dev`, which serves the same demo component through Vite: `demo/vite.config.ts` aliases every `@portone/docx-editor` entry point to the sources it is built from, so edits under `src/` reload there.
-Docs pages under `content/docs` are site files and still hot-reload under `pnpm dev:site`.
+The [release workflow](../.github/workflows/release.yml) waits for Changesets to finish. When it successfully publishes this package, it passes that exact version to [Update site release](../.github/workflows/site-release.yml). Preparing a release pull request or failing to publish does not start a site update.
 
-To make the site itself read the working tree for a one-off check, put `workspace:*` back in `site/package.json` and `demo/package.json`, add `@portone/docx-editor` to `transpilePackages`, and run `pnpm install`.
-Revert all three before committing; `pnpm check` fails while they are in place.
-A pnpm `overrides` entry does not do this, because it does not displace a direct dependency that already resolves.
+The site workflow:
+
+1. Checks out current `main` so it includes the latest site and docs.
+2. Waits for the requested version to be readable from npm and installs it for both consumers.
+3. Builds the site against that version.
+4. Creates one commit containing only the two manifests and lockfile. The existing Vercel Git integration deploys that commit.
+
+Registry reads and installation each have at most six attempts, with five seconds between attempts. Each registry command times out after 15 seconds and each installation after two minutes. The version is resolved once; retries never switch to a newer `latest`. If preparation fails, the workflow creates no commit and the current site's demo version remains in place.
+
+The commit uses GitHub's `expectedHeadOid` check. If `main` advances during the build, it fails rather than overwriting the newer commit. A delayed or manually retried older release cannot downgrade a newer demo pin.
+
+The existing GitHub token creates the version commit; no additional Vercel credential is needed. Vercel's Git integration must remain enabled for production `main`. GitHub does not start another CI or release workflow for this token's commit, so the site build runs before the commit is created. This also avoids a release loop. Vercel performs its own deployment build and retains the previous production deployment if that fails.
+
+### Retrying and checking a specific release
+
+If the site update fails before the commit, run **Update site release** from GitHub Actions on `main`, supplying the already published version. This also recovers a package that reached npm before a later release step failed. It does not republish the package. If the version commit exists and Vercel failed, retry that deployment in Vercel; rerunning the update workflow with unchanged pins does not create an empty commit.
+
+To prepare a specific published version locally:
+
+```sh
+pnpm pin:demo-library 0.3.0
+pnpm build:site
+```
+
+The update command explicitly permits lockfile changes in CI; ordinary installs remain frozen. On failure it restores manifests and lockfile. Run `pnpm install` before retrying to reconcile any partially changed installation. Site startup requires the registry to be available and fails clearly if it cannot resolve a release; it does not fall back to unreleased source code.
+
+`pnpm-workspace.yaml` excludes this repository's own package from pnpm's release-age delay, so the newly published version can be installed immediately.
 
 ## Markdown for AI agents
 

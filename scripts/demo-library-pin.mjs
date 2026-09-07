@@ -1,186 +1,177 @@
 import { execFile } from "node:child_process";
-import { readFile, realpath, writeFile } from "node:fs/promises";
+import { readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { setTimeout } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
-const run = promisify(execFile);
+const exec = promisify(execFile);
 const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
-
 const LIBRARY = "@portone/docx-editor";
-
-/**
- * The workspace packages that serve the library to a visitor rather than develop it. They name a
- * released version, so the landing page's demo runs what `npm install` would give the reader and
- * the version badge beside it can be believed.
- */
 const DEPENDENTS = ["site", "demo"];
+const STABLE_VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 
-/** A pin, not a range: the badge prints this string, and `v^0.2.1` would be nonsense */
-const EXACT_VERSION = /^\d+\.\d+\.\d+(?:-[\w.-]+)?$/;
+const readJson = async (path) => JSON.parse(await readFile(path, "utf8"));
 
-const manifestPath = (packageDir) =>
-  join(repositoryRoot, packageDir, "package.json");
-
-async function readManifest(path) {
-  return JSON.parse(await readFile(path, "utf8"));
-}
-
-async function readPin(packageDir) {
-  const manifest = await readManifest(manifestPath(packageDir));
-  return manifest.dependencies?.[LIBRARY];
-}
-
-/**
- * Asks the registry for a version, distinguishing "no such version" from "could not ask". A
- * missing answer is the release window, and a missing registry has to be reported rather than
- * read as one.
- */
-async function registryVersion(spec) {
-  try {
-    const { stdout } = await run("npm", ["view", spec, "version"]);
-    return { status: "published", version: stdout.trim() };
-  } catch (cause) {
-    const detail = String(cause.stderr || cause.message || cause);
-    if (detail.includes("E404")) return { status: "unpublished" };
-    return { status: "unreachable", detail: detail.trim() };
-  }
-}
-
-/**
- * What the dependent actually loads. An exact pin makes this predictable, so a mismatch means the
- * lockfile was left behind, and a copy that is this repository's own root manifest means the
- * workspace link is back and the demo is running the working tree again.
- */
-async function readInstalled(packageDir) {
-  const entry = join(
-    repositoryRoot,
-    packageDir,
-    "node_modules",
-    ...LIBRARY.split("/"),
-    "package.json"
-  );
-  try {
-    const manifest = await readManifest(entry);
-    const path = await realpath(entry);
-    return {
-      version: manifest.version,
-      isWorkingTree: path === (await realpath(manifestPath("."))),
-    };
-  } catch {
-    return null;
-  }
-}
-
-async function check() {
+/** Checks the installed build inputs without consulting mutable registry state. */
+export async function check(root = repositoryRoot) {
   const problems = [];
-  const rootVersion = (await readManifest(manifestPath("."))).version;
-
-  const pins = new Map();
-  for (const packageDir of DEPENDENTS) {
-    const pin = await readPin(packageDir);
-    pins.set(packageDir, pin);
-    const where = `${packageDir}/package.json`;
-
-    if (!pin) {
-      problems.push(`${where} does not depend on ${LIBRARY}`);
+  const pins = [];
+  const workingTree = await realpath(join(root, "package.json"));
+  for (const dir of DEPENDENTS) {
+    const manifest = await readJson(join(root, dir, "package.json"));
+    const pin = manifest.dependencies?.[LIBRARY];
+    pins.push(pin);
+    if (typeof pin !== "string" || !STABLE_VERSION.test(pin)) {
+      problems.push(`${dir} must pin ${LIBRARY} to an exact stable version`);
       continue;
     }
-    if (!EXACT_VERSION.test(pin)) {
+    const entry = join(root, dir, "node_modules", LIBRARY, "package.json");
+    try {
+      const installed = await readJson(entry);
+      if ((await realpath(entry)) === workingTree) {
+        problems.push(`${dir} resolves the library to the working tree`);
+      } else if (installed.name !== LIBRARY || installed.version !== pin) {
+        problems.push(
+          `${dir} pins ${pin}, but its installed library does not match`
+        );
+      }
+    } catch {
       problems.push(
-        `${where} pins ${LIBRARY} to "${pin}", which is a range rather than a released version`
-      );
-      continue;
-    }
-
-    const installed = await readInstalled(packageDir);
-    if (!installed) {
-      problems.push(
-        `${where} pins ${pin}, but nothing is installed at ${packageDir}/node_modules/${LIBRARY}. Run \`pnpm install\`.`
-      );
-      continue;
-    }
-    if (installed.version !== pin) {
-      problems.push(
-        `${where} pins ${pin}, but ${installed.version} is installed. The lockfile is behind the manifest; run \`pnpm install\`.`
-      );
-    }
-    if (installed.isWorkingTree) {
-      problems.push(
-        `${packageDir} resolves ${LIBRARY} to this repository's own package, so it runs the working tree rather than the released one.`
+        `${dir} has no readable installed library; run pnpm install`
       );
     }
   }
+  if (new Set(pins).size !== 1)
+    problems.push("site and demo must use the same version");
+  if (problems.length) throw new Error(problems.join("\n"));
+  return pins[0];
+}
 
-  const distinct = new Set(pins.values());
-  if (distinct.size > 1) {
-    const named = DEPENDENTS.map((dir) => `${dir} ${pins.get(dir)}`).join(", ");
-    problems.push(
-      `the dependents disagree on which version to run (${named}), so the site would build two copies of the library`
+/** Publication and registry reads can become visible at different times. */
+async function retry(operation, { wait, attempts }) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await operation();
+    } catch (cause) {
+      if (attempt >= attempts) throw cause;
+      await wait(5000);
+    }
+  }
+}
+
+/** Resolves once, then installs that exact version for both consumers and the badge. */
+export async function pin(
+  root = repositoryRoot,
+  { version = "latest", run = exec, wait = setTimeout, attempts = 6 } = {}
+) {
+  if (version !== "latest" && !STABLE_VERSION.test(version)) {
+    throw new Error(
+      "Use latest or an exact stable version (for example, 0.3.0)"
     );
   }
-
-  // A pin behind the repository's own version is the release window, and only that: between the
-  // release pull request being written and its publish landing, the registry has nothing to move
-  // to. Once the registry has that version the pin is simply stale.
-  const pin = pins.get(DEPENDENTS[0]);
-  const agreed = distinct.size === 1 && pin && EXACT_VERSION.test(pin);
-  if (agreed && pin !== rootVersion) {
-    const released = await registryVersion(`${LIBRARY}@${rootVersion}`);
-    if (released.status === "published") {
-      problems.push(
-        `${LIBRARY}@${rootVersion} is released, but the demo still runs ${pin}. Run \`pnpm pin:demo-library\` and commit the result.`
-      );
-    }
-    if (released.status === "unreachable") {
-      problems.push(
-        `the demo runs ${pin} while this repository is at ${rootVersion}, and the registry could not be asked whether ${rootVersion} is released yet:\n${released.detail}`
-      );
-    }
-  }
-
-  if (problems.length > 0) {
-    process.stderr.write(
-      `The demo does not run the version the site advertises.\n\n${problems
-        .map((problem) => `  - ${problem}`)
-        .join("\n")}\n`
+  const policy = { wait, attempts };
+  const resolved = await retry(async () => {
+    const { stdout } = await run(
+      "npm",
+      [
+        "view",
+        `${LIBRARY}@${version}`,
+        "version",
+        "--json",
+        "--registry=https://registry.npmjs.org",
+        "--fetch-retries=0",
+      ],
+      { cwd: root, timeout: 15000 }
     );
-    process.exitCode = 1;
-    return;
+    const found = JSON.parse(stdout);
+    if (
+      typeof found !== "string" ||
+      !STABLE_VERSION.test(found) ||
+      (version !== "latest" && found !== version)
+    ) {
+      throw new Error(
+        `The registry did not return the requested stable version: ${stdout.trim()}`
+      );
+    }
+    return found;
+  }, policy);
+
+  try {
+    if ((await check(root)) === resolved) return resolved;
+  } catch {
+    // A missing installation or a changed pin needs the same install path.
   }
 
-  process.stdout.write(
-    `${LIBRARY}@${pin} is what the demo runs and what the badge names.\n`
+  const paths = [
+    ...DEPENDENTS.map((dir) => join(root, dir, "package.json")),
+    join(root, "pnpm-lock.yaml"),
+  ];
+  const originals = await Promise.all(
+    paths.map(async (path) => {
+      try {
+        return await readFile(path, "utf8");
+      } catch (cause) {
+        if (cause.code === "ENOENT") return null;
+        throw cause;
+      }
+    })
   );
-}
-
-async function write() {
-  const latest = await registryVersion(LIBRARY);
-  if (latest.status !== "published") {
-    const detail =
-      latest.status === "unreachable" ? `:\n${latest.detail}` : ".";
-    process.stderr.write(
-      `Could not ask the registry for ${LIBRARY}${detail}\n`
-    );
-    process.exitCode = 1;
-    return;
-  }
-
-  for (const packageDir of DEPENDENTS) {
-    const path = manifestPath(packageDir);
-    const before = await readFile(path, "utf8");
-    const after = before.replace(
-      new RegExp(`("${LIBRARY}":\\s*)"[^"]*"`),
-      `$1"${latest.version}"`
-    );
-    if (after === before) {
-      process.stdout.write(`  ${packageDir} already runs ${latest.version}\n`);
-      continue;
+  try {
+    for (let i = 0; i < DEPENDENTS.length; i++) {
+      const manifest = JSON.parse(originals[i]);
+      if (!manifest.dependencies?.[LIBRARY])
+        throw new Error(`${paths[i]} has no library dependency`);
+      manifest.dependencies[LIBRARY] = resolved;
+      await writeFile(paths[i], `${JSON.stringify(manifest, null, 2)}\n`);
     }
-    await writeFile(path, after);
-    process.stdout.write(`  ${packageDir} now runs ${latest.version}\n`);
+    // This command intentionally updates the lockfile, including in CI. Ordinary installs stay frozen.
+    await retry(
+      () =>
+        run("pnpm", ["install", "--no-frozen-lockfile", "--ignore-scripts"], {
+          cwd: root,
+          timeout: 120000,
+        }),
+      policy
+    );
+    await check(root);
+    return resolved;
+  } catch (cause) {
+    await Promise.all(
+      paths.map((path, i) =>
+        originals[i] === null
+          ? rm(path, { force: true })
+          : writeFile(path, originals[i])
+      )
+    );
+    throw new Error(
+      "Could not prepare the released demo; manifests and lockfile were restored. Run pnpm install before retrying.",
+      { cause }
+    );
   }
 }
 
-const wanted = process.argv.includes("--write") ? write : check;
-await wanted();
+if (
+  process.argv[1] &&
+  (await realpath(process.argv[1]).catch(() => null)) ===
+    fileURLToPath(import.meta.url)
+) {
+  try {
+    const args = process.argv.slice(2);
+    if (args.length && (args[0] !== "--write" || args.length > 2)) {
+      throw new Error(
+        "Usage: node scripts/demo-library-pin.mjs [--write [latest|VERSION]]"
+      );
+    }
+    const version =
+      args[0] === "--write"
+        ? await pin(repositoryRoot, { version: args[1] })
+        : await check();
+    process.stdout.write(
+      `${LIBRARY}@${version} is installed for the demo and its badge.\n`
+    );
+  } catch (error) {
+    process.stderr.write(`${error.message}\n${error.cause?.message ?? ""}\n`);
+    process.exitCode = 1;
+  }
+}

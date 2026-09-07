@@ -2,7 +2,9 @@
   "$schema": "https://unpkg.com/@changesets/config@4.0.0/schema.json",
   "changelog": [
     "@changesets/changelog-github",
-    { "repo": "portone-io/docx-editor" }
+    {
+      "repo": "portone-io/docx-editor"
+    }
   ],
   "commit": false,
   "fixed": [],
@@ -11,5 +13,6 @@
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
   "privatePackages": false,
-  "ignore": []
+  "ignore": [],
+  "bumpVersionsWithWorkspaceProtocolOnly": true
 }
