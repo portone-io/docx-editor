@@ -294,6 +294,23 @@ describe("pageLayout", () => {
     expect(result.splits.map((split) => split.crossed)).toEqual([true]);
   });
 
+  it("leaves a candidate uncut when the piece after it is taller than a page", () => {
+    const result = layout(
+      blocks({
+        height: 1600,
+        candidates: rowBoundaries(0, 300),
+        minFirstPiece: 300,
+      })
+    );
+
+    // Cutting here would open a space the piece cannot be made to fit behind, and the text would
+    // cross the next boundary anyway: one more page for nothing
+    expect(result.cuts).toEqual([]);
+    expect(result.splits.map((split) => split.crossed)).toEqual([true]);
+    expect(result.pages).toHaveLength(2);
+    expect(result.bodyHeight).toBe(2 * PAGE);
+  });
+
   it("a forced candidate and an optional one in the same block cut in document order", () => {
     const result = layout(
       blocks({
@@ -313,6 +330,28 @@ describe("pageLayout", () => {
       { at: 105, height: 600 },
     ]);
     expect(result.splits.map((split) => split.forced)).toEqual([true, false]);
+  });
+
+  it("an optional candidate is answered before the forced one that follows it", () => {
+    const result = layout(
+      blocks({
+        height: 1400,
+        candidates: [
+          { at: 100, offset: 300, forced: false, repeatHeight: 0 },
+          { at: 200, offset: 1200, forced: true, repeatHeight: 0 },
+        ],
+        minFirstPiece: 300,
+      })
+    );
+
+    // Reading the block as breaks first and boundaries second would carry the forced cut's space
+    // back to a piece that stands before it, leaving the optional one uncut and crossed instead
+    expect(result.cuts).toEqual([
+      { at: 100, height: 900 },
+      { at: 200, height: 300 },
+    ]);
+    expect(result.splits.map((split) => split.forced)).toEqual([false, true]);
+    expect(result.splits.map((split) => split.crossed)).toEqual([false, false]);
   });
 
   it("an optional candidate with a repeat height carries it onto the next page before the piece", () => {
