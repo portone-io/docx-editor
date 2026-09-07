@@ -2,7 +2,7 @@
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 import { Decoration, EditorView } from "prosemirror-view";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { docxSchema } from "../schema";
 import { editorAttributes } from "../styles/classNames";
 import { type BlockKind, blockKindFor } from "./blockKinds";
@@ -145,7 +145,7 @@ describe("a kind the editor was built with", () => {
     return docxSchema.nodes.hardBreak.create({});
   }
 
-  function mounted(): EditorView {
+  function mounted(custom: BlockKind = lineBreakKind): EditorView {
     const mount = document.createElement("div");
     document.body.append(mount);
     view = new EditorView(mount, {
@@ -158,7 +158,7 @@ describe("a kind the editor was built with", () => {
           ),
           paragraph(docxSchema.text("below")),
         ]),
-        plugins: [pageDecorations([lineBreakKind, ...DEFAULT_BLOCK_KINDS])],
+        plugins: [pageDecorations([custom, ...DEFAULT_BLOCK_KINDS])],
       }),
     });
     return view;
@@ -190,6 +190,25 @@ describe("a kind the editor was built with", () => {
       y = top + height;
     });
   }
+
+  it("asks the registered kind whether a mapped cut still belongs", () => {
+    const holdsCut = vi.fn(lineBreakKind.holdsCut);
+    const live = mounted({ ...lineBreakKind, holdsCut });
+    setPageMarks(live, { pushes: [], cuts: [{ at: 4, height: 80 }] });
+
+    live.dispatch(live.state.tr.insertText("x", 1));
+    expect(holdsCut).toHaveBeenLastCalledWith(live.state.doc, 5);
+    expect(
+      live.dom.querySelector(`[${LINE_SPACE}]`)?.getAttribute(LINE_SPACE)
+    ).toBe("80");
+
+    holdsCut.mockReturnValue(false);
+    live.dispatch(live.state.tr.insertText("y", 1));
+    expect(holdsCut).toHaveBeenLastCalledWith(live.state.doc, 6);
+    expect(
+      live.dom.querySelector(`[${LINE_SPACE}]`)?.getAttribute(LINE_SPACE)
+    ).toBe("0");
+  });
 
   it("a kind registered for a custom block type measures it and the layout cuts at its candidate", () => {
     const live = mounted();
