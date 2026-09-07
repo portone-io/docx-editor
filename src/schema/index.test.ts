@@ -121,7 +121,7 @@ describe("toDOM", () => {
 
   it("renders only a table it could not model as a placeholder box", () => {
     const host = render(
-      docxSchema.nodes.docxRaw.create({ srcId: 1, name: "w:tbl" })
+      docxSchema.nodes.docxRaw.create({ srcId: "opened:body:1", name: "w:tbl" })
     );
     expect(host.innerHTML).toContain("docx-editor-table");
     expect(host.textContent).toContain("original is preserved");
@@ -130,7 +130,7 @@ describe("toDOM", () => {
   it("renders a body-level bookmark as a hidden marker without placeholder text", () => {
     const host = render(
       docxSchema.nodes.bookmarkBlock.create({
-        srcId: 1,
+        srcId: "opened:body:1",
         name: "w:bookmarkStart",
       })
     );
@@ -309,7 +309,7 @@ describe("parseDOM", () => {
   const original = docxSchema.nodes.doc.create(null, [
     paragraph(
       {
-        srcId: 0,
+        srcId: "opened:body:0",
         pAttrs: 'w:rsidR="00A"',
         pPr: '<w:pPr><w:pageBreakBefore/><w:jc w:val="center"/></w:pPr>',
         format: { align: "center", pageBreakBefore: true },
@@ -334,7 +334,7 @@ describe("parseDOM", () => {
     ),
     table(
       {
-        srcId: 1,
+        srcId: "opened:body:1",
         tblAttrs: 'w:rsidR="00C"',
         tblPr: '<w:tblPr><w:tblW w:type="dxa" w:w="4500"/></w:tblPr>',
         tblW: { type: "dxa", twips: 4500 },
@@ -374,8 +374,11 @@ describe("parseDOM", () => {
         tableRow(cell({}, "a"), cell({}, "b")),
       ]
     ),
-    docxSchema.nodes.docxRaw.create({ srcId: 2, name: "w:tbl" }),
-    docxSchema.nodes.docxRaw.create({ srcId: 3, name: "w:sectPr" }),
+    docxSchema.nodes.docxRaw.create({ srcId: "opened:body:2", name: "w:tbl" }),
+    docxSchema.nodes.docxRaw.create({
+      srcId: "opened:body:3",
+      name: "w:sectPr",
+    }),
   ]);
 
   it("reading the rendered DOM back loses neither the original XML nor the display formatting", () => {
@@ -396,6 +399,21 @@ describe("parseDOM", () => {
 
     expect(parsed.firstChild?.type.name).not.toBe("docxRaw");
     expect(parsed.textContent).toBe("outer text");
+  });
+
+  /**
+   * A block with no original behind it still needs the attribute, because the selector that
+   * recognizes it is the attribute itself. Reading the empty string back as a block of the open
+   * document would point it at a fragment that is not its own.
+   */
+  it("a data-src that is empty reads back as no srcId", () => {
+    const host = render(
+      docxSchema.nodes.docxRaw.create({ srcId: null, name: "w:tbl" })
+    );
+    const parsed = parser.parse(host);
+
+    expect(parsed.firstChild?.type.name).toBe("docxRaw");
+    expect(parsed.firstChild?.attrs.srcId).toBeNull();
   });
 
   it("a stretch of text inside a content control round trips too", () => {

@@ -112,9 +112,12 @@ describe("judging two nodes by what they would be written as", () => {
   });
 
   it("reads a block that came from elsewhere in the file as a different source", () => {
-    expect(sameSource(paragraph({ srcId: 3 }), paragraph({ srcId: 4 }))).toBe(
-      false
-    );
+    expect(
+      sameSource(
+        paragraph({ srcId: "opened:body:3" }),
+        paragraph({ srcId: "opened:body:4" })
+      )
+    ).toBe(false);
   });
 
   it("reads a paragraph that lost its link as a different source", () => {

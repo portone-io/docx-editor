@@ -392,7 +392,7 @@ function buildSdtNodes(el: Element, sources: ImportSources): PMNode[] | null {
 /** Moves a paragraph into an editable node. null if it holds content we do not model */
 export function buildParagraph(
   el: Element,
-  srcId: number | null,
+  srcId: string | null,
   sources: ImportSources = NO_IMPORT_SOURCES
 ): PMNode | null {
   const { images, themeFonts } = sources;

@@ -99,11 +99,15 @@ export function isPageBreak(brAttrs: unknown): boolean {
   );
 }
 
-function srcIdOf(dom: HTMLElement): number | null {
+/**
+ * The key of the block this came from (`docx/session`), read back as it stands.
+ *
+ * The nodes whose selector is the attribute itself write an absent key as the empty string, so
+ * that reads back as no key rather than as a block of the open document.
+ */
+function srcIdOf(dom: HTMLElement): string | null {
   const raw = dom.getAttribute("data-src");
-  if (raw === null) return null;
-  const parsed = Number.parseInt(raw, 10);
-  return Number.isNaN(parsed) ? null : parsed;
+  return raw === null || raw === "" ? null : raw;
 }
 
 /**
@@ -221,8 +225,7 @@ export const docxSchema = new Schema({
           {
             class: editorClassNames.paragraph,
             style: paragraphStyle(format, styleRun),
-            "data-src":
-              node.attrs.srcId === null ? undefined : `${node.attrs.srcId}`,
+            "data-src": text(node.attrs.srcId),
             "data-pattrs": text(node.attrs.pAttrs),
             "data-ppr": text(node.attrs.pPr),
             "data-fmt": formatJson(format),
@@ -295,8 +298,7 @@ export const docxSchema = new Schema({
         const attrs = {
           class: editorClassNames.table,
           style: tableStyle(format, width),
-          "data-src":
-            node.attrs.srcId === null ? undefined : `${node.attrs.srcId}`,
+          "data-src": text(node.attrs.srcId),
           "data-tblattrs": text(node.attrs.tblAttrs),
           "data-tblpr": text(node.attrs.tblPr),
           "data-tblw": formatJson(width),
@@ -537,12 +539,12 @@ export const docxSchema = new Schema({
       },
       toDOM(node) {
         const { className, label } = rawBlockDom(text(node.attrs.name));
-        // This is the mark that identifies the node when the DOM is read back, so it is attached even without an original number
+        // This is the mark that identifies the node when the DOM is read back, so it is attached even without a block key
         return [
           "div",
           {
             class: className,
-            "data-src": node.attrs.srcId === null ? "" : `${node.attrs.srcId}`,
+            "data-src": text(node.attrs.srcId) ?? "",
             "data-name": text(node.attrs.name),
           },
           label,
@@ -573,7 +575,7 @@ export const docxSchema = new Schema({
           "div",
           {
             class: editorClassNames.bookmarkBlock,
-            "data-src": node.attrs.srcId === null ? "" : `${node.attrs.srcId}`,
+            "data-src": text(node.attrs.srcId) ?? "",
             "data-name": text(node.attrs.name),
             hidden: "hidden",
           },
