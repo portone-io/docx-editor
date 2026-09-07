@@ -7,7 +7,6 @@ import type { EditorView } from "prosemirror-view";
 import { describe, expect, it } from "vitest";
 import { decode, documentXmlOf, makeDocx } from "../__testing__/docx";
 import { exportDocx } from "../docx/exportDocx";
-import { NO_DOCUMENT_DEFAULTS } from "../docx/formatting";
 import { importDocx } from "../docx/importDocx";
 import type { SessionStore } from "../docx/session";
 import type { EditingProtection } from "../schema/protection";
@@ -25,7 +24,6 @@ function openEditor(protection: EditingProtection = "none"): {
   const view = createEditorView({
     mount: document.createElement("div"),
     state: createEditorState(doc, { protection }),
-    defaults: session.defaults,
     onStateChange: () => {},
   });
   view.dispatch(
@@ -175,7 +173,6 @@ describe("pasting what was copied out of a locked cell", () => {
     const view = createEditorView({
       mount: document.createElement("div"),
       state: createEditorState(doc),
-      defaults: NO_DOCUMENT_DEFAULTS,
       onStateChange: () => {},
     });
 

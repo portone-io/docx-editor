@@ -15,7 +15,8 @@ import type {
   ParagraphStyleOption,
   StyleTable,
 } from "../docx/formatting";
-import { A4_PORTRAIT, type PageGeometry } from "../docx/pageGeometry";
+import type { PageGeometry } from "../docx/pageGeometry";
+import type { SessionStore } from "../docx/session";
 import type { DocumentDefaults } from "../model/format";
 import type { Numbering } from "../numbering/parseNumbering";
 import { pageDecorations } from "../page/pageDecorations";
@@ -30,10 +31,11 @@ import {
 import { documentDefaultsStyle } from "../styles/inlineStyle";
 import { gridBorders, withDerivedGridBorders } from "../table/gridBorders";
 import type { CommentAuthor } from "./commands/comments/model";
-import { documentDefaultTabStopPt } from "./documentStyles";
 import {
+  documentOf,
   type EditorDocument,
   editorDocument,
+  editorDocumentOf,
   NO_DOCUMENT,
 } from "./editorDocument";
 import { externalClipboard } from "./externalClipboard";
@@ -208,12 +210,47 @@ export function createEditorState(
   });
 }
 
+/**
+ * The state for a document that was opened, which is the one way a session becomes an editing
+ * state: what the screen builds and what a test builds are then the same values.
+ */
+export function editorStateForSession(
+  opened: { doc: PMNode; session: SessionStore },
+  options: Omit<EditorStateOptions, "document"> = {}
+): EditorState {
+  return createEditorState(opened.doc, {
+    ...options,
+    document: editorDocumentOf(opened.session),
+  });
+}
+
+/**
+ * The sheet one document is drawn on: the paper it names and the defaults it wrote down.
+ *
+ * Both come off the state, so a document-level edit reaches the sheet, and both are remembered
+ * against the snapshot they were built from, which an ordinary edit leaves as it is.
+ */
+const sheetStyles = new WeakMap<
+  EditorDocument,
+  { fallbacks: FontFallbacks; style: string }
+>();
+
+function sheetStyleOf(
+  document: EditorDocument,
+  fallbacks: FontFallbacks
+): string {
+  const remembered = sheetStyles.get(document);
+  if (remembered?.fallbacks === fallbacks) return remembered.style;
+  const style =
+    `${pageGeometryStyle(pagePixels(document.geometry))};` +
+    `${documentDefaultsStyle(document.defaults, fallbacks)};`;
+  sheetStyles.set(document, { fallbacks, style });
+  return style;
+}
+
 export interface EditorOptions {
   mount: HTMLElement;
   state: EditorState;
-  defaults: DocumentDefaults;
-  /** The paper the document names. The sheet is drawn from it, A4 where a document names none */
-  geometry?: PageGeometry;
   /** The fonts stood in for the ones the document declares. The built-in set when none is given */
   fontFallbacks?: FontFallbacks;
   onStateChange: (state: EditorState) => void;
@@ -222,30 +259,27 @@ export interface EditorOptions {
 export function createEditorView({
   mount,
   state,
-  defaults,
-  geometry = A4_PORTRAIT,
   fontFallbacks = DEFAULT_FONT_FALLBACKS,
   onStateChange,
 }: EditorOptions): EditorView {
-  // The paper and the document's own defaults hold for every state the view ever takes, so the
-  // sheet's style is built once here; the tab width is the one part read off the state
-  const sheetStyle =
-    `${pageGeometryStyle(pagePixels(geometry))};` +
-    `${documentDefaultsStyle(defaults, fontFallbacks)};`;
   const view = new EditorView(mount, {
     state,
     // A protection that shuts the body shuts typing with it, and is read off the state so that a
     // mode switched on an open document takes effect without a new view. Selecting stays open
     // either way, which is what a reader marking a stretch for a comment needs
     editable: (current) => !editsShut(current),
-    attributes: (current) => ({
-      class: editorClassNames.sheet,
-      // The paper first, so a document that names one is drawn on it from the first frame
-      style: `${sheetStyle}tab-size:${documentDefaultTabStopPt(current)}pt`,
-      // A sheet that takes no typing is no longer focusable of itself, so a reader or a commenter
-      // is handed the focus another way: the keys reach it, and the selection stays its own
-      ...(editsShut(current) ? { tabindex: "0" } : {}),
-    }),
+    attributes: (current) => {
+      const document = documentOf(current);
+      return {
+        class: editorClassNames.sheet,
+        // The paper first, so a document that names one is drawn on it from the first frame
+        style: `${sheetStyleOf(document, fontFallbacks)}tab-size:${document.defaultTabStopPt}pt`,
+        // A sheet that takes no typing is no longer focusable of itself, so a reader or a
+        // commenter is handed the focus another way: the keys reach it, and the selection stays
+        // its own
+        ...(editsShut(current) ? { tabindex: "0" } : {}),
+      };
+    },
     // The schema can only draw a run with the default fallback fonts, so this editor draws its own
     markViews: { run: runMarkView(fontFallbacks) },
     // An image is drawn by a view of its own, which is what carries the resize handles

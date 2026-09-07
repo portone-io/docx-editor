@@ -28,7 +28,6 @@ import {
   createEditorView,
   type EditorStateOptions,
 } from "../createEditor";
-import { documentDefaults } from "../documentStyles";
 import { setProtection } from "./documentProtection";
 
 const run = (text: string) =>
@@ -221,7 +220,6 @@ describe("the editor view under protection", () => {
     const view = createEditorView({
       mount,
       state,
-      defaults: documentDefaults(state),
       onStateChange: () => {},
     });
     expect(view.editable).toBe(editable);

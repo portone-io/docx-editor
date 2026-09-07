@@ -12,7 +12,7 @@ import {
   TINY_PNG_DATA_URL,
 } from "../__testing__/docx";
 import { exportDocx } from "../docx/exportDocx";
-import { NO_DOCUMENT_DEFAULTS, styleIdOf } from "../docx/formatting";
+import { styleIdOf } from "../docx/formatting";
 import { importDocx } from "../docx/importDocx";
 import type { SessionStore } from "../docx/session";
 import { toRunFormat } from "../model/format";
@@ -37,7 +37,6 @@ function openEditor(canStartNewList = true): {
       numbering: parseNumbering(session.numberingXml),
       canStartNewList,
     }),
-    defaults: NO_DOCUMENT_DEFAULTS,
     onStateChange: () => {},
   });
   view.dispatch(
@@ -63,7 +62,6 @@ function openStyledEditor(): { view: EditorView; session: SessionStore } {
       paragraphStyles: session.paragraphStyles,
       canStartNewList: false,
     }),
-    defaults: session.defaults,
     onStateChange: () => {},
   });
   view.dispatch(
@@ -126,7 +124,6 @@ function openLoadedEditor(): EditorView {
   const view = createEditorView({
     mount: document.createElement("div"),
     state: createEditorState(docxSchema.nodes.doc.create(null, [paragraph])),
-    defaults: NO_DOCUMENT_DEFAULTS,
     onStateChange: () => {},
   });
   view.dispatch(view.state.tr.setSelection(new AllSelection(view.state.doc)));
@@ -143,7 +140,6 @@ function copiedText(doc: PMNode): string {
   const view = createEditorView({
     mount: document.createElement("div"),
     state: createEditorState(doc),
-    defaults: NO_DOCUMENT_DEFAULTS,
     onStateChange: () => {},
   });
   view.dispatch(view.state.tr.setSelection(new AllSelection(view.state.doc)));
@@ -187,7 +183,6 @@ describe("copying out of the editor", () => {
     const view = createEditorView({
       mount: document.createElement("div"),
       state: createEditorState(docxSchema.nodes.doc.create(null, [paragraph])),
-      defaults: NO_DOCUMENT_DEFAULTS,
       onStateChange: () => {},
     });
     view.dispatch(view.state.tr.setSelection(new AllSelection(view.state.doc)));
@@ -263,7 +258,6 @@ describe("copying out of the editor", () => {
           ]),
         ])
       ),
-      defaults: NO_DOCUMENT_DEFAULTS,
       onStateChange: () => {},
     });
     view.dispatch(view.state.tr.setSelection(new AllSelection(view.state.doc)));
@@ -301,7 +295,6 @@ describe("copying out of the editor", () => {
     const view = createEditorView({
       mount: document.createElement("div"),
       state: createEditorState(docxSchema.nodes.doc.create(null, [paragraph])),
-      defaults: NO_DOCUMENT_DEFAULTS,
       onStateChange: () => {},
     });
     view.dispatch(view.state.tr.setSelection(new AllSelection(view.state.doc)));
@@ -383,7 +376,6 @@ describe("copying out of the editor", () => {
     const view = createEditorView({
       mount: document.createElement("div"),
       state: createEditorState(docxSchema.nodes.doc.create(null, [outer])),
-      defaults: NO_DOCUMENT_DEFAULTS,
       onStateChange: () => {},
     });
     let firstText = -1;
@@ -427,7 +419,6 @@ describe("copying out of the editor", () => {
     const source = createEditorView({
       mount: document.createElement("div"),
       state: createEditorState(docxSchema.nodes.doc.create(null, [paragraph])),
-      defaults: NO_DOCUMENT_DEFAULTS,
       onStateChange: () => {},
     });
     source.dispatch(

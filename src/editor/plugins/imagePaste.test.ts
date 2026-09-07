@@ -36,7 +36,6 @@ function openEditor(
   const view = createEditorView({
     mount: document.createElement("div"),
     state: createEditorState(doc),
-    defaults: session.defaults,
     onStateChange: () => undefined,
   });
   view.dispatch(view.state.tr.setSelection(new AllSelection(view.state.doc)));

@@ -73,7 +73,6 @@ function open(body: string, options: { numbering?: boolean } = {}): Opened {
   const view = createEditorView({
     mount: document.createElement("div"),
     state,
-    defaults: session.defaults,
     onStateChange: () => {},
   });
   mounted.view = view;

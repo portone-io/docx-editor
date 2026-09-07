@@ -223,7 +223,6 @@ describe("the indentation the level specifies", () => {
     const view = createEditorView({
       mount,
       state: createEditorState(doc, { numbering }),
-      defaults: { fontSizePt: null, fontFamily: null, lineSpacing: null },
       onStateChange: () => {},
     });
     mounted.view = view;
@@ -283,13 +282,12 @@ describe("list numbers inside a table cell", () => {
   });
 
   it("a numbered paragraph inside a cell renders whole without losing any text", () => {
-    const { doc, session, numbering } = openWithNumbering(LIST_FIXTURE);
+    const { doc, numbering } = openWithNumbering(LIST_FIXTURE);
     const mount = document.createElement("div");
     document.body.appendChild(mount);
     const view = createEditorView({
       mount,
       state: createEditorState(doc, { numbering }),
-      defaults: session.defaults,
       onStateChange: () => {},
     });
     mounted.view = view;

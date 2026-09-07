@@ -175,7 +175,6 @@ function mountEditor(opened: {
   const view = createEditorView({
     mount,
     state: createEditorState(opened.doc, { geometry: opened.session.geometry }),
-    defaults: opened.session.defaults,
     onStateChange: () => undefined,
   });
   mounted.push(() => {

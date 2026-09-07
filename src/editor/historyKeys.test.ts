@@ -9,7 +9,6 @@ import { importDocx } from "../docx/importDocx";
 import type { EditingProtection } from "../schema/protection";
 import { addComment } from "./commands/commentCommands";
 import { createEditorState, createEditorView } from "./createEditor";
-import { documentDefaults } from "./documentStyles";
 
 const run = (text: string) =>
   `<w:r><w:t xml:space="preserve">${text}</w:t></w:r>`;
@@ -32,7 +31,6 @@ function openView(protection: EditingProtection): EditorView {
   const view = createEditorView({
     mount,
     state,
-    defaults: documentDefaults(state),
     onStateChange: () => {},
   });
   mounted.push(() => {
