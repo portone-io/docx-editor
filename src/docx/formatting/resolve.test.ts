@@ -11,11 +11,21 @@ import { toggleNumberedList } from "../../editor/commands/listCommands";
 import { setParagraphStyle } from "../../editor/commands/paragraphCommands";
 import { editorStateForSession } from "../../editor/createEditor";
 import { docxKeymap } from "../../editor/plugins/keymap";
-import { toParagraphFormat } from "../../model/format";
+import { type ParagraphFormat, toParagraphFormat } from "../../model/format";
+import { templateIndent } from "../../numbering/listTemplate";
 import type { Numbering } from "../../numbering/parseNumbering";
 import { parseXml } from "../../ooxml/xml";
 import { docxSchema } from "../../schema";
 import { importDocx } from "../importDocx";
+import {
+  type ListChange,
+  type ParagraphProps,
+  withLeftIndent,
+  withLineSpacing,
+  withListNumbering,
+  withParagraphAlign,
+  withParagraphStyle,
+} from "../paraProps";
 import { paragraphAttrsFor } from "./attrs";
 import {
   type FormattingContext,
@@ -462,6 +472,117 @@ describe("the values an opened document carries", () => {
     expect(toParagraphFormat(listed.doc.child(0).attrs.format)).toEqual({
       align: "center",
       numbering: { numId: 2, ilvl: 0 },
+    });
+  });
+});
+
+/** The fragments `docx/paraProps` writes, read back the way opening the document would read them */
+describe("the values an edited fragment reads back", () => {
+  const NUM_PR = '<w:numPr><w:ilvl w:val="0"/><w:numId w:val="4"/></w:numPr>';
+
+  /** Turns it into a first-level list while applying that level's indents */
+  function toList(numId: number, ilvl = 0): ListChange {
+    return {
+      numbering: { numId, ilvl },
+      indent: { kind: "level", indent: templateIndent(ilvl) },
+    };
+  }
+
+  const LEAVE_LIST: ListChange = {
+    numbering: null,
+    indent: { kind: "clearHanging" },
+  };
+
+  /** The `Item` style passes down the alignment and the space after the paragraph */
+  const ITEM_STYLE = context(
+    '<w:style w:type="paragraph" w:styleId="Item">' +
+      '<w:pPr><w:jc w:val="center"/><w:spacing w:after="240"/></w:pPr>' +
+      "</w:style>"
+  );
+
+  function formatOf(
+    props: ParagraphProps | null,
+    formatting: FormattingContext = NO_FORMATTING
+  ): ParagraphFormat | null {
+    if (!props) throw new Error("the fragment was not recognized");
+    return resolveParagraph(props.pPr, formatting).format;
+  }
+
+  it("the display values come back out of the operated-on fragment", () => {
+    expect(formatOf(withLeftIndent(null, 1440))).toEqual({ indentStartPt: 72 });
+    expect(formatOf(withLineSpacing(null, { rule: "auto", lines: 2 }))).toEqual(
+      { lineSpacing: { rule: "auto", lines: 2 } }
+    );
+    expect(formatOf(withParagraphAlign(null, "justify"))).toEqual({
+      align: "justify",
+    });
+    expect(
+      formatOf(
+        withListNumbering('<w:pPr><w:jc w:val="center"/></w:pPr>', toList(4, 1))
+      )
+    ).toEqual({
+      align: "center",
+      numbering: { numId: 4, ilvl: 1 },
+      indentStartPt: 72,
+      textIndentPt: -18,
+      tabStops: [{ positionPt: 72, align: "start" }],
+    });
+  });
+
+  it("leaving the list makes the list disappear from the display values too", () => {
+    expect(
+      formatOf(
+        withListNumbering(
+          `<w:pPr>${NUM_PR}<w:ind w:left="720" w:hanging="360"/></w:pPr>`,
+          LEAVE_LIST
+        )
+      )
+    ).toEqual({ indentStartPt: 36 });
+    expect(
+      formatOf(withListNumbering(`<w:pPr>${NUM_PR}</w:pPr>`, LEAVE_LIST))
+    ).toBeNull();
+  });
+
+  it("display values that came from a style survive fixing the alignment", () => {
+    // The alignment the paragraph wrote down beats the style
+    expect(
+      formatOf(
+        withParagraphAlign('<w:pPr><w:pStyle w:val="Item"/></w:pPr>', "right"),
+        ITEM_STYLE
+      )
+    ).toEqual({ align: "right", spaceAfterPt: 12 });
+  });
+
+  it("display values that came from a style survive fixing the list", () => {
+    expect(
+      formatOf(
+        withListNumbering('<w:pPr><w:pStyle w:val="Item"/></w:pPr>', toList(4)),
+        ITEM_STYLE
+      )
+    ).toEqual({
+      align: "center",
+      spaceAfterPt: 12,
+      numbering: { numId: 4, ilvl: 0 },
+      indentStartPt: 36,
+      textIndentPt: -18,
+      tabStops: [{ positionPt: 36, align: "start" }],
+    });
+  });
+
+  it("the display values are read again under the new style", () => {
+    const formatting = context(
+      '<w:style w:styleId="Quote"><w:pPr><w:jc w:val="center"/>' +
+        '<w:spacing w:after="240"/></w:pPr></w:style>' +
+        '<w:style w:styleId="Heading1"><w:pPr><w:spacing w:before="480"/>' +
+        "</w:pPr></w:style>"
+    );
+    const pPr = '<w:pPr><w:pStyle w:val="Quote"/><w:jc w:val="right"/></w:pPr>';
+
+    // The values of the old style are gone and the new one's are underneath,
+    // with the alignment the paragraph wrote down still on top
+    expect(formatOf(withParagraphStyle(pPr, "Heading1"), formatting)).toEqual({
+      align: "right",
+      spaceBeforePt: 24,
     });
   });
 });

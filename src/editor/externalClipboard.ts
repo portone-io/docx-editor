@@ -384,16 +384,7 @@ function blockContext(
     };
   }
   const styleId = destinationStyleId(state, sourceStyleId, level);
-  const formatting = documentFormatting(state);
-  const paragraph =
-    styleId === null
-      ? null
-      : withParagraphStyle(
-          null,
-          styleId,
-          formatting.styles,
-          formatting.defaultParagraphStyleId
-        );
+  const paragraph = styleId === null ? null : withParagraphStyle(null, styleId);
   const usesDestinationStyle =
     editorParagraph && (sourceStyleId === null || paragraph !== null);
   let inline = parent;

@@ -50,12 +50,9 @@ function changeParagraphs(
   dispatch: ((tr: Transaction) => void) | undefined,
   plan: ChangePlan
 ): boolean {
-  return editParagraphs(state, dispatch, (node, styles, defaultStyleId) => {
+  return editParagraphs(state, dispatch, (node) => {
     const change = plan(node);
-    return (
-      change &&
-      withListNumbering(paragraphPPr(node), change, styles, defaultStyleId)
-    );
+    return change && withListNumbering(paragraphPPr(node), change);
   });
 }
 
@@ -235,15 +232,13 @@ export function isInList(state: EditorState): boolean {
  * one is left alone, as is the right indent.
  */
 const leaveListAtLineStart: Command = (state, dispatch) =>
-  editParagraphs(state, dispatch, (node, styles, defaultStyleId) => {
+  editParagraphs(state, dispatch, (node) => {
     if (!listRefOf(node)) return null;
-    const unlisted = withListNumbering(
-      paragraphPPr(node),
-      { numbering: null, indent: { kind: "clearHanging" } },
-      styles,
-      defaultStyleId
-    );
-    return unlisted && withLeftIndent(unlisted.pPr, 0, styles, defaultStyleId);
+    const unlisted = withListNumbering(paragraphPPr(node), {
+      numbering: null,
+      indent: { kind: "clearHanging" },
+    });
+    return unlisted && withLeftIndent(unlisted.pPr, 0);
   });
 
 /**

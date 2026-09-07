@@ -51,11 +51,11 @@ function alignOf(node: PMNode): ParagraphAlign {
  */
 export function setParagraphAlign(align: ParagraphAlign): Command {
   return (state, dispatch) =>
-    editParagraphs(state, dispatch, (node, styles, defaultStyleId) =>
+    editParagraphs(state, dispatch, (node) =>
       // A paragraph already rendered with that alignment is left untouched, so its original XML survives
       alignOf(node) === align
         ? null
-        : withParagraphAlign(paragraphPPr(node), align, styles, defaultStyleId)
+        : withParagraphAlign(paragraphPPr(node), align)
     );
 }
 
@@ -171,12 +171,7 @@ export function setParagraphStyle(styleId: string | null): Command {
       const pPr = paragraphPPr(spot.node);
       // A paragraph already pointing at that style is left untouched, so its original XML survives
       if (styleIdOf(pPr) === styleId) return [];
-      const props = withParagraphStyle(
-        pPr,
-        styleId,
-        context.styles,
-        context.defaultParagraphStyleId
-      );
+      const props = withParagraphStyle(pPr, styleId);
       if (!props) return [];
       // The text takes the values of the style the paragraph now wears, the default one where the name was cleared
       const paragraph = resolveParagraph(props.pPr, context);

@@ -9,7 +9,7 @@
 
 import type { Node as PMNode } from "prosemirror-model";
 import type { EditorState, Transaction } from "prosemirror-state";
-import { paragraphAttrsFor, type StyleTable } from "../docx/formatting";
+import { paragraphAttrsFor } from "../docx/formatting";
 import type { ParagraphProps } from "../docx/paraProps";
 import { docxSchema } from "../schema";
 import { editShut } from "../schema/guards";
@@ -58,16 +58,8 @@ export function paragraphPPr(node: PMNode): string | null {
   return typeof pPr === "string" ? pPr : null;
 }
 
-/**
- * How to edit a single paragraph. Null skips that paragraph.
- * The style table and the document's default paragraph style come along, because the display values
- * of the edited fragment are read back with the style the paragraph wears laid underneath.
- */
-export type ParagraphSurgery = (
-  node: PMNode,
-  styles: StyleTable,
-  defaultStyleId: string | null
-) => ParagraphProps | null;
+/** How to edit a single paragraph. Null skips that paragraph */
+export type ParagraphSurgery = (node: PMNode) => ParagraphProps | null;
 
 interface PlannedChange {
   spot: ParagraphSpot;
@@ -96,9 +88,8 @@ export function editParagraphs(
   dispatch: ((tr: Transaction) => void) | undefined,
   surgery: ParagraphSurgery
 ): boolean {
-  const { styles, defaultParagraphStyleId } = documentFormatting(state);
   const changed = editableParagraphs(state).flatMap((spot) => {
-    const props = surgery(spot.node, styles, defaultParagraphStyleId);
+    const props = surgery(spot.node);
     return props ? [{ spot, props }] : [];
   });
   if (changed.length === 0) return false;
