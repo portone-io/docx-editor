@@ -16,6 +16,8 @@ export type { ParagraphStyleOption } from "../../docx/formatting";
 export type { RunToggle } from "../../docx/runProps";
 export type { LineSpacing, ParagraphAlign } from "../../model/format";
 export type { ListKind } from "../../numbering/listTemplate";
+/** The codes a problem below is reported under, which are the ones `DocxExportError` is thrown with */
+export type { DocxExportErrorCode } from "../../ooxml/errors";
 /** The size an image is shown at, which the insert command asks for */
 export type { ImageExtent } from "../../ooxml/image";
 /**
@@ -89,6 +91,13 @@ export {
   updateComment,
   updateCommentReply,
 } from "./commentCommands";
+/**
+ * Whether the document as it stands can be written back, and every reason it could not, each
+ * with the code `exportDocx` would throw it under. `canExport` is what an export control is
+ * drawn from, and `downloadDocx` answers `blocked` with the same list.
+ */
+export type { ExportProblem } from "./exportQueries";
+export { canExport, documentExportProblems } from "./exportQueries";
 export type {
   FidelityCode,
   FidelityNote,

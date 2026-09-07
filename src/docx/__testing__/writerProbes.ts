@@ -1439,6 +1439,7 @@ export const NOT_A_WRITER: Readonly<Record<string, string>> = {
   canDecreaseIndent: "the query the decrease-indent button is drawn from",
   canEditComment:
     "the query the edit and delete buttons of a comment are drawn from",
+  canExport: "the query an export control is drawn from",
   canFormatText: "the query the character formatting controls are drawn from",
   canIncreaseIndent: "the query the increase-indent button is drawn from",
   canInsertImage: "the query the image button is drawn from",
@@ -1454,6 +1455,7 @@ export const NOT_A_WRITER: Readonly<Record<string, string>> = {
   documentBodyWidthPx: "a measurement read off the open document",
   documentComments: "the comments displayed alongside the document",
   documentDefaults: "the formatting the document declares",
+  documentExportProblems: "a query about the document, writing nothing",
   documentFidelity: "a query about the document, writing nothing",
   documentFontNames: "the fonts the document names",
   documentHasLocked: "a query about the document",

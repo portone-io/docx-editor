@@ -122,6 +122,18 @@ export interface ExportOptions {
     xmlParser?: XmlParser;
 }
 
+// @public
+export interface ExportProblem {
+    // (undocumented)
+    readonly code: DocxExportErrorCode;
+    // (undocumented)
+    readonly message: string;
+    readonly pos?: number;
+}
+
+// @public
+export function exportProblems(doc: Node_2, session: DocxSession, options?: ExportOptions): readonly ExportProblem[];
+
 // @public (undocumented)
 export type FidelityCode = "preserved-run-content" | "preserved-inline" | "preserved-block" | "range-marker" | "paragraph-demoted" | "table-demoted";
 

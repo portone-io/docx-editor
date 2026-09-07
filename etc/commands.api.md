@@ -129,6 +129,9 @@ export function canDecreaseIndent(state: EditorState): boolean;
 export function canEditComment(state: EditorState, commentId: string, replyId?: string | null): boolean;
 
 // @public
+export function canExport(state: EditorState): boolean;
+
+// @public
 export function canFormatText(state: EditorState): boolean;
 
 // @public
@@ -231,6 +234,9 @@ interface DocumentDefaults {
 export function documentDefaults(state: EditorState): DocumentDefaults;
 
 // @public
+export function documentExportProblems(state: EditorState): readonly ExportProblem[];
+
+// @public
 export function documentFidelity(state: EditorState): readonly FidelityNote[];
 
 // @public
@@ -262,6 +268,9 @@ export function documentNotes(state: EditorState): readonly DocumentNote[];
 export function documentParagraphStyles(state: EditorState): ParagraphStyleOption[];
 
 // @public
+export type DocxExportErrorCode = "missing-numbering-part" | "missing-content-types" | "unsupported-content" | "lost-original" | "malformed-xml" | "invalid-table";
+
+// @public
 export type EditableComments = "own" | "all";
 
 // @public (undocumented)
@@ -272,6 +281,15 @@ export function editingProtection(state: EditorState): EditingProtection;
 
 // @public (undocumented)
 export type EditorCommand = Command;
+
+// @public
+export interface ExportProblem {
+    // (undocumented)
+    readonly code: DocxExportErrorCode;
+    // (undocumented)
+    readonly message: string;
+    readonly pos?: number;
+}
 
 // @public (undocumented)
 export type FidelityCode = "preserved-run-content" | "preserved-inline" | "preserved-block" | "range-marker" | "paragraph-demoted" | "table-demoted";
