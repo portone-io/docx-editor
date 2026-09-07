@@ -8,21 +8,32 @@
 import type { NumberingRef } from "../model/format";
 import { listFor } from "./listTemplate";
 import {
+  type LevelAlign,
   type LevelIndentPt,
+  type LevelSuffix,
   levelIndentPt,
   type NumberFormat,
   type Numbering,
+  type NumberingLevel,
   type NumberingList,
 } from "./parseNumbering";
 
 /** The number to draw in front of one paragraph */
 export interface ListMarker {
+  /**
+   * The number as it is drawn, the space a level asking for one (`w:suff`) included: a separator
+   * made of a character belongs to the marker, while the tab every other level asks for is the
+   * width the number sits in rather than anything to draw
+   */
   text: string;
   /**
    * The indent defined by the level this paragraph belongs to. Used when the paragraph
    * records none of its own
    */
   indent: LevelIndentPt;
+  /** Whether the number sits in a width of its own, which is what a tab suffix asks for */
+  suffix: LevelSuffix;
+  align: LevelAlign;
 }
 
 const ROMAN: ReadonlyArray<readonly [number, string]> = [
@@ -96,24 +107,41 @@ function formatNumber(value: number, format: NumberFormat): string {
   }
 }
 
-/** Replaces each `%n` in something like `%1.%2.` with the current number of the nth level */
+/**
+ * Replaces each `%n` in something like `%1.%2.` with the current number of the nth level.
+ * A legal level spells every one of them as a decimal, whatever format that level counts in.
+ */
 function fillLevels(
   text: string,
   list: NumberingList,
-  counters: Map<number, number>
+  counters: Map<number, number>,
+  legal: boolean
 ): string {
   return text.replaceAll(/%([1-9])/g, (_, digit: string) => {
     const ilvl = Number(digit) - 1;
     const level = list.levels.get(ilvl);
     if (!level) return "";
-    return formatNumber(counters.get(ilvl) ?? level.start, level.format);
+    const count = counters.get(ilvl) ?? level.start;
+    return formatNumber(count, legal ? "decimal" : level.format);
   });
+}
+
+/**
+ * The level whose advance sends this one back to its start number, which for a level naming none
+ * is the level right above it (§17.9.10).
+ *
+ * A level naming one no shallower than itself needs no rule of its own: only a shallower level
+ * ever sets a restart off, and every one of those is shallower than the level it named too, so it
+ * restarts exactly as the default does.
+ */
+function restartedBy(level: NumberingLevel | undefined, ilvl: number): number {
+  return level?.restartAfterLevel ?? ilvl - 1;
 }
 
 /**
  * Advances the numbering by one step at this paragraph.
  * A level seen for the first time takes its start number, and when a shallower level
- * advances, the deeper levels start counting from the beginning again.
+ * advances, the deeper levels that answer to it start counting from the beginning again.
  */
 function advance(
   counters: Map<number, number>,
@@ -124,7 +152,9 @@ function advance(
   const current = counters.get(ilvl);
   counters.set(ilvl, current === undefined ? start : current + 1);
   for (const deeper of [...counters.keys(), ...list.levels.keys()]) {
-    if (deeper > ilvl) counters.delete(deeper);
+    if (deeper > ilvl && restartedBy(list.levels.get(deeper), deeper) >= ilvl) {
+      counters.delete(deeper);
+    }
   }
 }
 
@@ -177,8 +207,14 @@ export function computeMarkers(
     const shape =
       level.format === "bullet"
         ? level.text
-        : fillLevels(level.text, list, counters);
-    const text = capped(shape);
-    return text ? { text, indent: levelIndentPt(level.indent) } : null;
+        : fillLevels(level.text, list, counters, level.legal);
+    const drawn = capped(shape);
+    if (!drawn) return null;
+    return {
+      text: level.suffix === "space" ? `${drawn} ` : drawn,
+      indent: levelIndentPt(level.indent),
+      suffix: level.suffix,
+      align: level.align,
+    };
   });
 }

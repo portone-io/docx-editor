@@ -12,6 +12,10 @@ interface LevelSpec {
   text: string;
   start?: number;
   hanging?: number;
+  /** `w:lvlRestart`, counted from one as the document writes it */
+  restart?: number;
+  legal?: boolean;
+  suffix?: string;
 }
 
 function levelXml(ilvl: number, spec: LevelSpec): string {
@@ -19,9 +23,15 @@ function levelXml(ilvl: number, spec: LevelSpec): string {
     spec.hanging === undefined
       ? ""
       : `<w:pPr><w:ind w:left="720" w:hanging="${spec.hanging}"/></w:pPr>`;
+  const restart =
+    spec.restart === undefined ? "" : `<w:lvlRestart w:val="${spec.restart}"/>`;
+  const suffix =
+    spec.suffix === undefined ? "" : `<w:suff w:val="${spec.suffix}"/>`;
   return (
     `<w:lvl w:ilvl="${ilvl}"><w:start w:val="${spec.start ?? 1}"/>` +
-    `<w:numFmt w:val="${spec.format}"/><w:lvlText w:val="${spec.text}"/>` +
+    `<w:numFmt w:val="${spec.format}"/>${restart}` +
+    `${spec.legal ? "<w:isLgl/>" : ""}${suffix}` +
+    `<w:lvlText w:val="${spec.text}"/>` +
     `${ind}</w:lvl>`
   );
 }
@@ -119,6 +129,94 @@ describe("multiple levels", () => {
       { format: "decimal", text: "(%2)" },
     ]);
     expect(texts(items(0, 1, 1), numbering)).toEqual(["1.", "(1)", "(2)"]);
+  });
+});
+
+describe("what a level restarts for", () => {
+  it("a level with lvlRestart 0 never restarts", () => {
+    const numbering = oneList([
+      { format: "decimal", text: "%1." },
+      { format: "decimal", text: "%2.", restart: 0 },
+    ]);
+    expect(texts(items(0, 1, 1, 0, 1), numbering)).toEqual([
+      "1.",
+      "1.",
+      "2.",
+      "2.",
+      "3.",
+    ]);
+  });
+
+  it("a level restarts for the level its lvlRestart names and for none deeper than it", () => {
+    const numbering = oneList([
+      { format: "decimal", text: "%1." },
+      { format: "decimal", text: "%2." },
+      { format: "decimal", text: "%3.", restart: 1 },
+    ]);
+    expect(texts(items(0, 2, 2, 1, 2, 0, 2), numbering)).toEqual([
+      "1.",
+      "1.",
+      "2.",
+      "1.",
+      "3.",
+      "2.",
+      "1.",
+    ]);
+  });
+
+  it("without one, every deeper level starts over when a shallower one advances", () => {
+    const numbering = oneList([
+      { format: "decimal", text: "%1." },
+      { format: "decimal", text: "%2." },
+    ]);
+    expect(texts(items(0, 1, 1, 0, 1), numbering)).toEqual([
+      "1.",
+      "1.",
+      "2.",
+      "2.",
+      "1.",
+    ]);
+  });
+});
+
+describe("a legal level", () => {
+  it("isLgl spells every level in its text as decimal", () => {
+    const numbering = oneList([
+      { format: "upperLetter", text: "%1." },
+      { format: "lowerLetter", text: "%1.%2.", legal: true },
+    ]);
+    expect(texts(items(0, 1, 1), numbering)).toEqual(["A.", "1.1.", "1.2."]);
+  });
+
+  it("a level without it keeps the format each level counts in", () => {
+    const numbering = oneList([
+      { format: "upperLetter", text: "%1." },
+      { format: "lowerLetter", text: "%1.%2." },
+    ]);
+    expect(texts(items(0, 1, 1), numbering)).toEqual(["A.", "A.a.", "A.b."]);
+  });
+});
+
+describe("what stands between the number and the text", () => {
+  it("a space suffix puts one space between the number and the text", () => {
+    const numbering = oneList([
+      { format: "decimal", text: "%1.", suffix: "space" },
+    ]);
+    expect(texts(items(0), numbering)).toEqual(["1. "]);
+  });
+
+  it("a tab or nothing leaves the number as it is", () => {
+    for (const suffix of ["tab", "nothing"]) {
+      const numbering = oneList([{ format: "decimal", text: "%1.", suffix }]);
+      expect(texts(items(0), numbering)).toEqual(["1."]);
+    }
+  });
+
+  it("the level carries which of them it asks for", () => {
+    const numbering = oneList([
+      { format: "decimal", text: "%1.", suffix: "nothing" },
+    ]);
+    expect(computeMarkers(items(0), numbering)[0]?.suffix).toBe("nothing");
   });
 });
 
@@ -264,6 +362,8 @@ describe("hanging indent", () => {
     expect(computeMarkers(items(0), numbering)[0]).toEqual({
       text: "1.",
       indent: { startPt: 36, endPt: null, textIndentPt: -18 },
+      suffix: "tab",
+      align: "left",
     });
   });
 
@@ -272,6 +372,8 @@ describe("hanging indent", () => {
     expect(computeMarkers(items(0), numbering)[0]).toEqual({
       text: "1.",
       indent: { startPt: null, endPt: null, textIndentPt: null },
+      suffix: "tab",
+      align: "left",
     });
   });
 });
@@ -313,6 +415,8 @@ describe("a list number the document does not know", () => {
     expect(computeMarkers([{ numId: 20, ilvl: 3 }], numbering)[0]).toEqual({
       text: "1.",
       indent: { startPt: 144, endPt: null, textIndentPt: -18 },
+      suffix: "tab",
+      align: "left",
     });
   });
 });

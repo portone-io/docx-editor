@@ -14,7 +14,7 @@ import { paragraphPlacementAt } from "../../editor/paragraphPlacement";
 import { docxKeymap } from "../../editor/plugins/keymap";
 import { type ParagraphFormat, toParagraphFormat } from "../../model/format";
 import { templateIndent } from "../../numbering/listTemplate";
-import type { Numbering } from "../../numbering/parseNumbering";
+import type { Numbering, NumberingLevel } from "../../numbering/parseNumbering";
 import { parseXml } from "../../ooxml/xml";
 import { docxSchema } from "../../schema";
 import { importDocx } from "../importDocx";
@@ -57,6 +57,21 @@ function context(
   };
 }
 
+/** One level of a list, with everything the test does not name left as a level that says nothing */
+function level(values: Partial<NumberingLevel>): NumberingLevel {
+  return {
+    format: "decimal",
+    text: "%1.",
+    start: 1,
+    indent: null,
+    restartAfterLevel: null,
+    legal: false,
+    suffix: "tab",
+    align: "left",
+    ...values,
+  };
+}
+
 const NUMBERING: Numbering = {
   lists: new Map([
     [
@@ -65,16 +80,12 @@ const NUMBERING: Numbering = {
         levels: new Map([
           [
             2,
-            {
-              format: "decimal",
-              text: "%1.",
-              start: 1,
-              indent: null,
+            level({
               tabStops: [
                 { positionPt: 36, align: "clear" },
                 { positionPt: 54, align: "num" },
               ],
-            },
+            }),
           ],
         ]),
       },
@@ -324,17 +335,14 @@ describe("tab stops", () => {
             levels: new Map([
               [
                 0,
-                {
-                  format: "decimal",
-                  text: "%1.",
-                  start: 1,
+                level({
                   indent: {
                     startTwips: 1440,
                     endTwips: null,
                     hangingTwips: 360,
                     firstLineTwips: null,
                   },
-                },
+                }),
               ],
             ]),
           },

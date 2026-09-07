@@ -13,7 +13,13 @@ import {
   ST_TwipsMeasure,
 } from "../ooxml/simpleTypes";
 import { readTabStopDirectives } from "../ooxml/tabStops";
-import { childValue, twipsToPt, wAttr } from "../ooxml/units";
+import {
+  ALIGN_BY_JC,
+  childValue,
+  isOn,
+  twipsToPt,
+  wAttr,
+} from "../ooxml/units";
 import {
   childByLocalName,
   elementChildren,
@@ -44,6 +50,12 @@ export interface LevelIndent {
   firstLineTwips: number | null;
 }
 
+/** What stands between a level's number and the text of the paragraph (`w:suff`, §17.9.28) */
+export type LevelSuffix = "tab" | "space" | "nothing";
+
+/** Where a level's number sits in the space kept for it (`w:lvlJc`, §17.9.7) */
+export type LevelAlign = "left" | "center" | "right";
+
 export interface NumberingLevel {
   format: NumberFormat;
   /**
@@ -56,6 +68,16 @@ export interface NumberingLevel {
   indent: LevelIndent | null;
   /** Custom stops contributed by this level's paragraph properties. */
   tabStops?: readonly TabStopDirective[];
+  /**
+   * The deepest level whose advance sends this one back to its start (`w:lvlRestart`, §17.9.10),
+   * as a level number: any level above that one restarts it too. A level of -1 never restarts, and
+   * null is the default, the level right above this one.
+   */
+  restartAfterLevel: number | null;
+  /** Every level in this level's text spelled as a decimal, whatever format it counts in (`w:isLgl`, §17.9.4) */
+  legal: boolean;
+  suffix: LevelSuffix;
+  align: LevelAlign;
 }
 
 export interface NumberingList {
@@ -134,6 +156,37 @@ export function levelIndentPt(indent: LevelIndent | null): LevelIndentPt {
   };
 }
 
+const LEVEL_SUFFIXES: readonly LevelSuffix[] = ["tab", "space", "nothing"];
+
+/** A level that says nothing puts a tab between its number and the text (§17.9.28) */
+function suffixOf(lvl: Element): LevelSuffix {
+  const suffix = childValue(lvl, "suff");
+  return LEVEL_SUFFIXES.find((known) => known === suffix) ?? "tab";
+}
+
+/**
+ * Where the number sits in the space kept for it.
+ * A level that says nothing, or that asks for a justification a number cannot take, keeps it at
+ * the left, which is what §17.9.7 gives a left-to-right paragraph.
+ */
+function alignOf(lvl: Element): LevelAlign {
+  const jc = childValue(lvl, "lvlJc");
+  const align = jc === null ? undefined : ALIGN_BY_JC[jc];
+  return align === undefined || align === "justify" ? "left" : align;
+}
+
+/**
+ * Which level's advance restarts this one.
+ *
+ * `w:lvlRestart` counts levels from one, so the level it names is the number minus one, and the 0
+ * that §17.9.10 gives for a level that never restarts lands below the outermost level of all. A
+ * number that cannot be read at all leaves the default standing.
+ */
+function restartAfterLevelOf(lvl: Element): number | null {
+  const restart = ST_DecimalNumber.parse(childValue(lvl, "lvlRestart"));
+  return restart === null ? null : restart - 1;
+}
+
 function readLevel(lvl: Element): NumberingLevel {
   const format = childValue(lvl, "numFmt");
   const pPr = childByLocalName(lvl, "pPr");
@@ -144,6 +197,10 @@ function readLevel(lvl: Element): NumberingLevel {
     start: ST_DecimalNumber.parse(childValue(lvl, "start")) ?? 1,
     indent: indentOf(lvl),
     ...(tabStops.length === 0 ? {} : { tabStops }),
+    restartAfterLevel: restartAfterLevelOf(lvl),
+    legal: isOn(lvl, "isLgl"),
+    suffix: suffixOf(lvl),
+    align: alignOf(lvl),
   };
 }
 

@@ -48,6 +48,10 @@ describe("parseNumbering", () => {
         hangingTwips: 360,
         firstLineTwips: null,
       },
+      restartAfterLevel: null,
+      legal: false,
+      suffix: "tab",
+      align: "left",
     });
   });
 
@@ -77,6 +81,10 @@ describe("parseNumbering", () => {
         hangingTwips: 360,
         firstLineTwips: null,
       },
+      restartAfterLevel: null,
+      legal: false,
+      suffix: "tab",
+      align: "left",
     });
   });
 
@@ -95,6 +103,10 @@ describe("parseNumbering", () => {
       text: "●",
       start: 1,
       indent: null,
+      restartAfterLevel: null,
+      legal: false,
+      suffix: "tab",
+      align: "left",
     });
   });
 
@@ -162,6 +174,77 @@ describe("parseNumbering", () => {
     );
 
     expect(numbering.lists.get(1)?.levels.size).toBe(0);
+  });
+
+  it("reads lvlRestart, isLgl, suff and lvlJc", () => {
+    const numbering = parseNumbering(
+      numberingXml(
+        '<w:abstractNum w:abstractNumId="0"><w:lvl w:ilvl="2">' +
+          '<w:numFmt w:val="decimal"/><w:lvlRestart w:val="1"/><w:isLgl/>' +
+          '<w:suff w:val="space"/><w:lvlText w:val="%3."/><w:lvlJc w:val="end"/>' +
+          "</w:lvl></w:abstractNum>" +
+          '<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>'
+      )
+    );
+
+    expect(numbering.lists.get(1)?.levels.get(2)).toMatchObject({
+      restartAfterLevel: 0,
+      legal: true,
+      suffix: "space",
+      align: "right",
+    });
+  });
+
+  it("a level that says none of them keeps what OOXML gives a level that says nothing", () => {
+    const numbering = parseNumbering(
+      numberingXml(
+        `<w:abstractNum w:abstractNumId="0">${DECIMAL_LEVEL}</w:abstractNum>` +
+          '<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>'
+      )
+    );
+
+    expect(numbering.lists.get(1)?.levels.get(0)).toMatchObject({
+      restartAfterLevel: null,
+      legal: false,
+      suffix: "tab",
+      align: "left",
+    });
+  });
+
+  it("reads a level that never restarts, and leaves an unreadable restart at the default", () => {
+    const level = (restart: string) =>
+      '<w:abstractNum w:abstractNumId="0"><w:lvl w:ilvl="1">' +
+      `<w:numFmt w:val="decimal"/><w:lvlRestart w:val="${restart}"/>` +
+      '<w:lvlText w:val="%2."/></w:lvl></w:abstractNum>' +
+      '<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>';
+
+    expect(
+      parseNumbering(numberingXml(level("0")))
+        .lists.get(1)
+        ?.levels.get(1)?.restartAfterLevel
+    ).toBe(-1);
+    expect(
+      parseNumbering(numberingXml(level("every level")))
+        .lists.get(1)
+        ?.levels.get(1)?.restartAfterLevel
+    ).toBeNull();
+  });
+
+  it("a suffix or a justification it does not know reads as the one OOXML gives by default", () => {
+    const numbering = parseNumbering(
+      numberingXml(
+        '<w:abstractNum w:abstractNumId="0"><w:lvl w:ilvl="0">' +
+          '<w:numFmt w:val="decimal"/><w:suff w:val="comma"/>' +
+          '<w:lvlText w:val="%1."/><w:lvlJc w:val="distribute"/>' +
+          "</w:lvl></w:abstractNum>" +
+          '<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>'
+      )
+    );
+
+    expect(numbering.lists.get(1)?.levels.get(0)).toMatchObject({
+      suffix: "tab",
+      align: "left",
+    });
   });
 
   it("reads tab directives from numbering-level paragraph properties", () => {

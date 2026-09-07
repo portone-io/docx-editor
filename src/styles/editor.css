@@ -720,14 +720,18 @@ button.docx-editor-comment-body {
  * the space.
  * Because box-sizing is border-box, as long as the number fits inside the space it
  * does not push where the body starts.
+ *
+ * A level that asks for a space or for nothing after its number (w:suff) keeps no
+ * space at all, so both variables are set to zero and the body starts right after
+ * the number. Where the number sits inside the space is the level's w:lvlJc.
  */
 .docx-editor-p[data-marker]::before {
   content: attr(data-marker);
   display: inline-block;
   box-sizing: border-box;
   min-width: var(--docx-editor-marker-width, 18pt);
-  padding-right: 4pt;
-  text-align: left;
+  padding-right: var(--docx-editor-marker-gap, 4pt);
+  text-align: var(--docx-editor-marker-align, left);
   /* Keeps the paragraph's hanging indent (text-indent) from being inherited and shifting the number again inside its own box */
   text-indent: 0;
   user-select: none;
