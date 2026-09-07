@@ -1,24 +1,16 @@
-// @vitest-environment jsdom
+// @vitest-environment node
 import { describe, expect, it } from "vitest";
 import {
-  attrPairs,
   attrValue,
   elementXml,
   emptyTagXml,
   openTagXml,
   withAttr,
   withoutAttrs,
+  type XmlAttr,
   xmlnsAttr,
 } from "./element";
 import { wName } from "./names";
-import { parseXml, W_NS } from "./xml";
-
-/** The element a fragment holds, parsed the way the writers parse the one they are editing */
-function elementOf(xml: string, prefix = "w"): Element {
-  const wrapped = `<props xmlns:${prefix}="${W_NS}">${xml}</props>`;
-  const [el] = Array.from(parseXml(wrapped).documentElement.children);
-  return el;
-}
 
 describe("writing an element", () => {
   /**
@@ -44,7 +36,10 @@ describe("writing an element", () => {
   });
 
   it("keeps the slot of an attribute it rewrites and appends a new one", () => {
-    const ind = attrPairs(elementOf('<w:ind w:left="720" w:right="200"/>'));
+    const ind: XmlAttr[] = [
+      ["w:left", "720"],
+      ["w:right", "200"],
+    ];
     expect(elementXml(wName("ind"), withAttr(ind, "left", "1440"))).toBe(
       '<w:ind w:left="1440" w:right="200"/>'
     );
@@ -54,7 +49,7 @@ describe("writing an element", () => {
   });
 
   it("matches an attribute by its local part so a foreign prefix survives", () => {
-    const shd = attrPairs(elementOf('<x:shd x:fill="FF0000"/>', "x"));
+    const shd: XmlAttr[] = [["x:fill", "FF0000"]];
     expect(attrValue(shd, "fill")).toBe("FF0000");
     expect(elementXml("x:shd", withAttr(shd, "fill", "00FF00"))).toBe(
       '<x:shd x:fill="00FF00"/>'
@@ -62,9 +57,10 @@ describe("writing an element", () => {
   });
 
   it("removes an attribute when the value is null", () => {
-    const spacing = attrPairs(
-      elementOf('<w:spacing w:before="120" w:after="240"/>')
-    );
+    const spacing: XmlAttr[] = [
+      ["w:before", "120"],
+      ["w:after", "240"],
+    ];
     expect(
       elementXml(wName("spacing"), withAttr(spacing, "before", null))
     ).toBe('<w:spacing w:after="240"/>');

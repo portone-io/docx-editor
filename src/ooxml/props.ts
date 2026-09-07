@@ -6,7 +6,10 @@
  * of the children, so the spot to insert a child that was not there is found by that same order.
  */
 
-import { readTag, type Tag } from "./tagScan";
+import { childOrderOf } from "./childOrder";
+import { attrsText, emptyTagXml, openTagXml, type XmlAttr } from "./element";
+import { wName } from "./names";
+import { parseAttrs, readTag, type Tag } from "./tagScan";
 import { elementChildren, localPart, namespaceDecls, parseXml } from "./xml";
 
 export interface PropsChild {
@@ -31,7 +34,7 @@ export interface Props {
   tail?: string;
 }
 
-function attrsOf(source: string, tag: Tag): string | null {
+function rawAttrs(source: string, tag: Tag): string | null {
   const closeLength = tag.kind === "empty" ? 2 : 1;
   const attrs = source.slice(tag.nameEnd, tag.end - closeLength).trim();
   return attrs.length > 0 ? attrs : null;
@@ -57,7 +60,7 @@ export function innerXml(xml: string): string {
 export function parseProps(xml: string): Props | null {
   const open = readTag(xml, 0);
   if (!open || xml[0] !== "<") return null;
-  const attrs = attrsOf(xml, open);
+  const attrs = rawAttrs(xml, open);
   if (open.kind === "empty") {
     return open.end === xml.length
       ? { tag: open.name, attrs, children: [] }
@@ -196,14 +199,19 @@ function tailWith(props: Props, carried: string): { tail?: string } {
 
 /**
  * Replaces a single child with new XML.
- * A null `xml` removes that child. A child that was not there goes into the spot the order calls for.
+ *
+ * A null `xml` removes that child. A child that was not there goes into the spot `CHILD_ORDER`
+ * lays down for this fragment's own tag, so the caller names what it is writing and not where it
+ * goes. Naming the element this fragment stands inside picks the right order where one element
+ * carries children in a different order under a different parent (`pPr/rPr`).
  */
-export function setPropsChild(
+export function setChild(
   props: Props,
   name: string,
   xml: string | null,
-  order: readonly string[]
+  parent?: string
 ): Props {
+  const order = childOrderOf(localPart(props.tag), parent);
   const at = props.children.findIndex((entry) => entry.name === name);
 
   // Keeps the spot it originally occupied, and what stood in front of it. If the same name
@@ -234,10 +242,117 @@ export function setPropsChild(
 }
 
 export function propsChild(
-  children: PropsChild[],
+  children: readonly PropsChild[],
   name: string
 ): PropsChild | undefined {
   return children.find((child) => child.name === name);
+}
+
+/**
+ * The opening tag's attributes as pairs, and null when their shape cannot be made out.
+ *
+ * The pairs are worked out on demand rather than kept on `Props`, because an untouched fragment
+ * has to go back out with the spacing, the quoting and the escaping its producer chose. Only a
+ * fragment something writes to passes through `withAttrs`, which is where they are written again.
+ */
+export function attrsOf(props: Props): XmlAttr[] | null {
+  return props.attrs === null ? [] : parseAttrs(props.attrs);
+}
+
+/** The fragment with these attributes written in place of the ones its opening tag carried */
+export function withAttrs(props: Props, attrs: readonly XmlAttr[]): Props {
+  return { ...props, attrs: attrs.length === 0 ? null : attrsText(attrs) };
+}
+
+/** One child of a fragment as it was written: the tag, null for a child that is not there, and its attributes */
+export interface ChildElement {
+  /** The name as written, prefix included, so an edited child keeps the spelling the document chose */
+  tag: string | null;
+  attrs: readonly XmlAttr[];
+}
+
+/**
+ * The tag and attributes of one child. A child that is not there reads as no tag and no
+ * attributes, and null says its shape cannot be made out, which leaves the caller to back out
+ * rather than write over markup it could not read.
+ */
+export function childElement(props: Props, name: string): ChildElement | null {
+  const child = propsChild(props.children, name);
+  if (child === undefined) return { tag: null, attrs: [] };
+  const parsed = parseProps(child.xml);
+  const attrs = parsed === null ? null : attrsOf(parsed);
+  return parsed === null || attrs === null ? null : { tag: parsed.tag, attrs };
+}
+
+/** Always writes the element, closing it on its own when it holds nothing */
+export function renderElement(props: Props): string {
+  const inner =
+    props.children.map((child) => (child.before ?? "") + child.xml).join("") +
+    (props.tail ?? "");
+  if (inner === "") return emptyTagXml(props.tag, props.attrs);
+  return openTagXml(props.tag, props.attrs) + inner + `</${props.tag}>`;
+}
+
+/**
+ * An element whose children go in the order `CHILD_ORDER` lays down, whatever order they are
+ * handed in. This is how a fragment written from scratch follows the same order an edited one
+ * is held to.
+ */
+export function orderedElement(
+  tag: string,
+  attrs: readonly XmlAttr[],
+  children: readonly PropsChild[]
+): string {
+  const empty = withAttrs({ tag, attrs: null, children: [] }, attrs);
+  return renderElement(
+    children.reduce(
+      (props, child) => setChild(props, child.name, child.xml),
+      empty
+    )
+  );
+}
+
+function editPath(
+  props: Props,
+  path: readonly string[],
+  edit: (child: Props | null) => Props | null,
+  parent: string | undefined
+): Props | null {
+  const [name, ...rest] = path;
+  const current = propsChild(props.children, name);
+  const parsed = current === undefined ? null : parseProps(current.xml);
+  if (current !== undefined && parsed === null) return null;
+
+  if (rest.length === 0) {
+    const next = edit(parsed);
+    return setChild(props, name, next && renderElement(next), parent);
+  }
+  const nested = editPath(
+    parsed ?? { tag: wName(name), attrs: null, children: [] },
+    rest,
+    edit,
+    localPart(props.tag)
+  );
+  if (nested === null) return null;
+  const rendered = renderProps(nested);
+  return setChild(props, name, rendered === "" ? null : rendered, parent);
+}
+
+/**
+ * Edits one child down a path of names, parsing only the fragments the path runs through and
+ * leaving every other child as the original text wrote it.
+ *
+ * The callback is handed the child the path names, null for one that is not there, and answers
+ * with what it is to become, null to take it away. A container along the path that was not there
+ * is written, and one the edit leaves empty is taken away with it. null when a fragment on the
+ * path cannot be made out, which leaves the caller to back out.
+ */
+export function editChild(
+  props: Props,
+  path: readonly [string, ...string[]],
+  edit: (child: Props | null) => Props | null
+): Props | null {
+  return editPath(props, path, edit, undefined);
 }
 
 /**

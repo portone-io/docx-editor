@@ -96,13 +96,3 @@ export function openTagXml(name: string, rawAttrs: string | null): string {
 export function emptyTagXml(name: string, rawAttrs: string | null): string {
   return rawAttrs ? `<${name} ${rawAttrs}/>` : `<${name}/>`;
 }
-
-/**
- * The attributes of a parsed element as pairs, for a caller that still holds the element rather
- * than its text.
- */
-export function attrPairs(el: Element | null): XmlAttr[] {
-  return el
-    ? Array.from(el.attributes, (attr): XmlAttr => [attr.name, attr.value])
-    : [];
-}

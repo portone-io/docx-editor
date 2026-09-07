@@ -10,22 +10,17 @@
  */
 
 import { type RunFormat, toRunFormat } from "../model/format";
-import { CHILD_ORDER } from "../ooxml/childOrder";
-import {
-  attrPairs,
-  attrValue,
-  elementXml,
-  type XmlAttr,
-} from "../ooxml/element";
+import { attrValue, elementXml, type XmlAttr } from "../ooxml/element";
 import { wName } from "../ooxml/names";
 import { setAttr } from "../ooxml/precedence";
 import {
+  attrsOf,
   type Props,
   parseProps,
   parsePropsXml,
   propsChild,
   renderProps,
-  setPropsChild,
+  setChild,
 } from "../ooxml/props";
 import { normalizeHex } from "../ooxml/units";
 import { isEastAsianFontName } from "../styles/fontStack";
@@ -147,9 +142,9 @@ function fontName(value: string): string | null {
  * The attributes we do not decide (`w:hint` and so on) keep their original values.
  */
 function rFontsXml(current: string | null, name: string): string | null {
-  const el = current === null ? null : parsePropsXml(current);
-  if (current !== null && !el) return null;
-  const attrs = attrPairs(el);
+  const props = current === null ? null : parseProps(current);
+  const attrs = props === null ? [] : attrsOf(props);
+  if ((current !== null && props === null) || attrs === null) return null;
   const slots = fontSlots(name, attrValue(attrs, "cs") !== null);
   const kept = slots.reduce(
     (rest, slot) => setAttr(rest, "rFonts", slot, null),
@@ -295,10 +290,7 @@ export function editRunProps(
   if (!edits) return null;
 
   const rPr = renderProps(
-    edits.reduce(
-      (kept, [name, xml]) => setPropsChild(kept, name, xml, CHILD_ORDER.rPr),
-      props
-    )
+    edits.reduce((kept, [name, xml]) => setChild(kept, name, xml), props)
   );
   return nextProps(rPr === "" ? null : rPr, current);
 }

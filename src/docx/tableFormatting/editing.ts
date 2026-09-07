@@ -10,20 +10,22 @@ import type {
   CellVerticalAlign,
   RowFormat,
 } from "../../model/format";
-import { CHILD_ORDER } from "../../ooxml/childOrder";
-import { attrPairs, elementXml, type XmlAttr } from "../../ooxml/element";
+import { attrValue, elementXml, type XmlAttr } from "../../ooxml/element";
 import { wName } from "../../ooxml/names";
 import { setAttr } from "../../ooxml/precedence";
 import {
+  type ChildElement,
+  childElement,
+  editChild,
   type Props,
   parseProps,
   parsePropsXml,
   propsChild,
   renderProps,
-  setPropsChild,
+  setChild,
+  withAttrs,
 } from "../../ooxml/props";
-import { normalizeHex, wAttr } from "../../ooxml/units";
-import { childByLocalName } from "../../ooxml/xml";
+import { normalizeHex } from "../../ooxml/units";
 import {
   type CellBorderDefaults,
   NO_BORDER_DEFAULTS,
@@ -80,9 +82,9 @@ const PRESET_BORDER_EIGHTHS = 4;
 const EMPTY_TC_PR: Props = { tag: "w:tcPr", attrs: null, children: [] };
 
 /** Whether this border side draws a line. A missing side, `nil`, and `none` all draw nothing */
-function drawsLine(side: Element | null): boolean {
-  if (!side) return false;
-  const val = wAttr(side, "val");
+function drawsLine(side: ChildElement): boolean {
+  if (side.tag === null) return false;
+  const val = attrValue(side.attrs, "val");
   return val !== null && val !== "nil" && val !== "none";
 }
 
@@ -95,24 +97,24 @@ type BordersEdit =
 /** The attributes one side is to be changed to. null leaves that side exactly as it is */
 function sideAttrs(
   name: string,
-  current: Element | null,
+  current: ChildElement,
   edit: BordersEdit,
   fallback: string | null = null
 ): readonly XmlAttr[] | null {
   if (edit.kind === "color") {
     if (!drawsLine(current)) {
-      if (current || !fallback || fallback === "none") return null;
+      if (current.tag !== null || !fallback || fallback === "none") return null;
       return inheritedBorderAttrs(fallback, edit.hex);
     }
-    return setAttr(attrPairs(current), name, "color", edit.hex ?? "auto");
+    return setAttr(current.attrs, name, "color", edit.hex ?? "auto");
   }
   if (edit.line === "none") {
     // The thickness and color stay behind, so a line switched off comes back as it was
-    return current
-      ? setAttr(attrPairs(current), name, "val", "none")
+    return current.tag !== null
+      ? setAttr(current.attrs, name, "val", "none")
       : [[wName("val"), "none"]];
   }
-  if (!current) {
+  if (current.tag === null) {
     return [
       [wName("val"), "single"],
       [wName("sz"), `${PRESET_BORDER_EIGHTHS}`],
@@ -122,7 +124,7 @@ function sideAttrs(
   }
   // The color is not ours to decide here, so a themed or explicit color survives the preset
   return setAttr(
-    setAttr(attrPairs(current), name, "val", "single"),
+    setAttr(current.attrs, name, "val", "single"),
     name,
     "sz",
     `${PRESET_BORDER_EIGHTHS}`
@@ -159,62 +161,66 @@ function inheritedBorderAttrs(
 
 /** Which spelling of a side to write, and the other spelling to drop so Word is not left with both */
 function sideNames(
-  borders: Element | null,
+  borders: Props,
   side: CellSide
 ): { write: string; drop: string | null } {
   const [primary, alternate] = SIDE_NAMES[side];
   const usesAlternate =
     alternate !== undefined &&
-    borders !== null &&
-    childByLocalName(borders, primary) === null &&
-    childByLocalName(borders, alternate) !== null;
+    propsChild(borders.children, primary) === undefined &&
+    propsChild(borders.children, alternate) !== undefined;
   if (usesAlternate) return { write: alternate, drop: null };
   return { write: primary, drop: alternate ?? null };
 }
 
+/** A leaf element carrying nothing but the attributes it is given */
+function leafElement(tag: string, attrs: readonly XmlAttr[]): Props {
+  return withAttrs({ tag, attrs: null, children: [] }, attrs);
+}
+
+/** The fragment one child of these properties holds, empty when the child is not there */
+function containerOf(props: Props, name: string): Props | null {
+  const current = propsChild(props.children, name)?.xml;
+  if (current === undefined) {
+    return { tag: wName(name), attrs: null, children: [] };
+  }
+  return parseProps(current);
+}
+
 /**
- * The `<w:tcBorders>` fragment with the sides the job names rewritten.
- * null if the original fragment's shape could not be made out, in which case the caller leaves the
- * cell untouched. `xml` is null when no side is left to write, which removes the fragment.
+ * These cell properties with the sides the job names rewritten inside `<w:tcBorders>`.
+ *
+ * null if a fragment's shape could not be made out, in which case the caller leaves the cell
+ * untouched. A `w:tcBorders` left with no side at all goes away with the last of them.
  */
 function editedBorders(
-  current: string | null,
+  props: Props,
   edit: BordersEdit,
-  defaults: CellBorderDefaults = NO_BORDER_DEFAULTS
-): { xml: string | null } | null {
-  const props =
-    current === null
-      ? { tag: "w:tcBorders", attrs: null, children: [] }
-      : parseProps(current);
-  const borders = current === null ? null : parsePropsXml(current);
-  if (!props || (current !== null && !borders)) return null;
+  defaults: CellBorderDefaults
+): Props | null {
+  const borders = containerOf(props, "tcBorders");
+  if (!borders) return null;
 
   const sides = edit.kind === "line" ? edit.sides : ALL_CELL_SIDES;
-  const edited = sides.reduce((kept, side) => {
+  return sides.reduce<Props | null>((kept, side) => {
+    if (kept === null) return null;
     const { write, drop } = sideNames(borders, side);
-    const currentSide = borders ? childByLocalName(borders, write) : null;
+    const currentSide = childElement(borders, write);
+    if (!currentSide) return null;
     const attrs = sideAttrs(write, currentSide, edit, defaults[side]);
     if (!attrs) return kept;
     // The original tag keeps its prefix, so a document not using `w:` is written back as it was
-    const tag = currentSide?.nodeName ?? wName(write);
-    const written = setPropsChild(
-      kept,
-      write,
-      elementXml(tag, attrs),
-      CHILD_ORDER.tcBorders
+    const written = editChild(kept, ["tcBorders", write], () =>
+      leafElement(currentSide.tag ?? wName(write), attrs)
     );
-    return drop === null
-      ? written
-      : setPropsChild(written, drop, null, CHILD_ORDER.tcBorders);
+    if (written === null || drop === null) return written;
+    return editChild(written, ["tcBorders", drop], () => null);
   }, props);
-
-  const xml = renderProps(edited);
-  return { xml: xml === "" ? null : xml };
 }
 
 /** Whether the shading paints a pattern rather than a plain fill */
-function hasPattern(shd: Element | null): boolean {
-  const val = shd ? wAttr(shd, "val") : null;
+function hasPattern(shd: ChildElement): boolean {
+  const val = attrValue(shd.attrs, "val");
   return val !== null && val !== "clear" && val !== "nil";
 }
 
@@ -227,15 +233,15 @@ function hasPattern(shd: Element | null): boolean {
  * at all) is moved to `clear`.
  */
 function editedShading(
-  current: Element | null,
+  current: ChildElement,
   fill: string | null
 ): string | null {
-  const tag = current?.nodeName ?? wName("shd");
+  const tag = current.tag ?? wName("shd");
   if (fill === null) {
     if (!hasPattern(current)) return null;
-    return elementXml(tag, setAttr(attrPairs(current), "shd", "fill", "auto"));
+    return elementXml(tag, setAttr(current.attrs, "shd", "fill", "auto"));
   }
-  if (!current) {
+  if (current.tag === null) {
     return elementXml(tag, [
       [wName("val"), "clear"],
       [wName("color"), "auto"],
@@ -243,25 +249,9 @@ function editedShading(
     ]);
   }
   const painting = hasPattern(current)
-    ? attrPairs(current)
-    : setAttr(attrPairs(current), "shd", "val", "clear");
+    ? current.attrs
+    : setAttr(current.attrs, "shd", "val", "clear");
   return elementXml(tag, setAttr(painting, "shd", "fill", fill));
-}
-
-/** What one child of the tcPr is to be changed to. A null xml removes that child */
-interface ChildChange {
-  name: string;
-  xml: string | null;
-}
-
-function bordersChange(
-  props: Props,
-  edit: BordersEdit,
-  defaults: CellBorderDefaults
-): ChildChange | null {
-  const current = propsChild(props.children, "tcBorders")?.xml ?? null;
-  const edited = editedBorders(current, edit, defaults);
-  return edited === null ? null : { name: "tcBorders", xml: edited.xml };
 }
 
 const MARGIN_SIDE_NAMES: Readonly<Record<CellSide, readonly string[]>> = {
@@ -271,18 +261,14 @@ const MARGIN_SIDE_NAMES: Readonly<Record<CellSide, readonly string[]>> = {
   left: ["start", "left"],
 };
 
-function paddingChange(
+/** These cell properties with the sides the job names rewritten inside `<w:tcMar>` */
+function editedPadding(
   props: Props,
   values: Partial<Record<CellSide, number>>
-): ChildChange | null {
-  const current = propsChild(props.children, "tcMar")?.xml ?? null;
-  const margins = current === null ? null : parsePropsXml(current);
-  const parsed =
-    current === null
-      ? { tag: "w:tcMar", attrs: null, children: [] }
-      : parseProps(current);
-  if (!parsed || (current !== null && !margins)) return null;
-  let edited = parsed;
+): Props | null {
+  const margins = containerOf(props, "tcMar");
+  if (!margins) return null;
+  let edited: Props | null = props;
   let wrote = false;
   for (const side of ALL_CELL_SIDES) {
     const points = values[side];
@@ -295,74 +281,66 @@ function paddingChange(
     ) {
       return null;
     }
-    const existing = margins
-      ? (MARGIN_SIDE_NAMES[side]
-          .map((name) => childByLocalName(margins, name))
-          .find((element) => element !== null) ?? null)
-      : null;
-    const name = existing?.localName ?? side;
+    // The spelling the document already used for this side, else the newer one of the two
+    const name =
+      MARGIN_SIDE_NAMES[side].find(
+        (spelling) => propsChild(margins.children, spelling) !== undefined
+      ) ?? side;
+    const existing = childElement(margins, name);
+    if (existing === null || edited === null) return null;
     const attrs = setAttr(
-      setAttr(attrPairs(existing), name, "w", `${twips}`),
+      setAttr(existing.attrs, name, "w", `${twips}`),
       name,
       "type",
       "dxa"
     );
-    edited = setPropsChild(
-      edited,
-      name,
-      elementXml(existing?.nodeName ?? wName(side), attrs),
-      CHILD_ORDER.tcMar
+    edited = editChild(edited, ["tcMar", name], () =>
+      leafElement(existing.tag ?? wName(side), attrs)
     );
     wrote = true;
   }
-  if (!wrote) return null;
-  return { name: "tcMar", xml: renderProps(edited) };
+  return wrote ? edited : null;
 }
 
-/** Which child of the tcPr one job changes and how. null for a value that cannot be written down */
-function childChange(
+/** These cell properties after one job. null for a value that cannot be written down */
+function editedProps(
   edit: CellFormatEdit,
   props: Props,
   defaults: CellBorderDefaults
-): ChildChange | null {
+): Props | null {
   switch (edit.kind) {
     case "background": {
       const fill = edit.hex === null ? null : normalizeHex(edit.hex);
       if (edit.hex !== null && fill === null) return null;
-      const current = propsChild(props.children, "shd")?.xml ?? null;
-      const shd = current === null ? null : parsePropsXml(current);
-      if (current !== null && !shd) return null;
-      return { name: "shd", xml: editedShading(shd, fill) };
+      const shd = childElement(props, "shd");
+      if (!shd) return null;
+      return setChild(props, "shd", editedShading(shd, fill));
     }
     case "borders":
-      return bordersChange(
+      return editedBorders(
         props,
-        {
-          kind: "line",
-          line: edit.line,
-          sides: edit.sides,
-        },
+        { kind: "line", line: edit.line, sides: edit.sides },
         defaults
       );
     case "borderColor": {
       const hex = edit.hex === null ? null : normalizeHex(edit.hex);
       if (edit.hex !== null && hex === null) return null;
-      return bordersChange(props, { kind: "color", hex }, defaults);
+      return editedBorders(props, { kind: "color", hex }, defaults);
     }
     case "verticalAlign": {
-      const current = propsChild(props.children, "vAlign")?.xml ?? null;
-      const element = current === null ? null : parsePropsXml(current);
-      if (current !== null && !element) return null;
-      return {
-        name: "vAlign",
-        xml: elementXml(
-          element?.nodeName ?? wName("vAlign"),
-          setAttr(attrPairs(element), "vAlign", "val", edit.align)
-        ),
-      };
+      const current = childElement(props, "vAlign");
+      if (!current) return null;
+      return setChild(
+        props,
+        "vAlign",
+        elementXml(
+          current.tag ?? wName("vAlign"),
+          setAttr(current.attrs, "vAlign", "val", edit.align)
+        )
+      );
     }
     case "padding":
-      return paddingChange(props, edit.values);
+      return editedPadding(props, edit.values);
   }
 }
 
@@ -382,12 +360,10 @@ export function editCellProps(
   const props = tcPr === null ? EMPTY_TC_PR : parseProps(tcPr);
   if (!props) return null;
 
-  const change = childChange(edit, props, defaults);
-  if (!change) return null;
+  const edited = editedProps(edit, props, defaults);
+  if (!edited) return null;
 
-  const rendered = renderProps(
-    setPropsChild(props, change.name, change.xml, CHILD_ORDER.tcPr)
-  );
+  const rendered = renderProps(edited);
   const next = rendered === "" ? null : rendered;
   if (next === tcPr) return null;
   return { tcPr: next, format: readCellProps(next, defaults, margins) };
@@ -399,11 +375,14 @@ export function editCellProps(
  * table's own, which belong to the table rather than to this cell.
  */
 export function drawsOwnCellBorder(tcPr: string | null): boolean {
-  const el = tcPr === null ? null : parsePropsXml(tcPr);
-  const borders = el ? childByLocalName(el, "tcBorders") : null;
+  const props = tcPr === null ? null : parseProps(tcPr);
+  const borders = props && containerOf(props, "tcBorders");
   if (!borders) return false;
   return ALL_CELL_SIDES.some((side) =>
-    SIDE_NAMES[side].some((name) => drawsLine(childByLocalName(borders, name)))
+    SIDE_NAMES[side].some((name) => {
+      const element = childElement(borders, name);
+      return element !== null && drawsLine(element);
+    })
   );
 }
 
@@ -427,24 +406,21 @@ export function editRowHeight(
   }
   const props =
     trPr === null
-      ? { tag: "w:trPr", attrs: null, children: [] }
+      ? { tag: wName("trPr"), attrs: null, children: [] }
       : parseProps(trPr);
   if (!props) return null;
-  const current = propsChild(props.children, "trHeight")?.xml ?? null;
-  const element = current === null ? null : parsePropsXml(current);
-  if (current !== null && !element) return null;
-  const writtenRule = element ? wAttr(element, "hRule") : null;
-  const attrs = setAttr(attrPairs(element), "trHeight", "val", `${twips}`);
+  const current = childElement(props, "trHeight");
+  if (!current) return null;
+  const writtenRule = attrValue(current.attrs, "hRule");
+  const attrs = setAttr(current.attrs, "trHeight", "val", `${twips}`);
   const nextAttrs = setAttr(
     attrs,
     "trHeight",
     "hRule",
     writtenRule === "exact" ? "exact" : "atLeast"
   );
-  const child = elementXml(element?.nodeName ?? wName("trHeight"), nextAttrs);
-  const rendered = renderProps(
-    setPropsChild(props, "trHeight", child, CHILD_ORDER.trPr)
-  );
+  const child = elementXml(current.tag ?? wName("trHeight"), nextAttrs);
+  const rendered = renderProps(setChild(props, "trHeight", child));
   if (rendered === trPr) return null;
   const parsed = parsePropsXml(rendered);
   const format = parsed ? readRowFormat(parsed) : null;

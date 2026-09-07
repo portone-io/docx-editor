@@ -1,14 +1,18 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import { readRunFormat } from "../docx/formatting";
-import { CHILD_ORDER } from "./childOrder";
 import {
+  attrsOf,
+  childElement,
+  editChild,
   innerXml,
   parseProps,
   parsePropsXml,
   propsChild,
+  renderElement,
   renderProps,
-  setPropsChild,
+  setChild,
+  withAttrs,
 } from "./props";
 import { childByLocalName } from "./xml";
 
@@ -73,7 +77,7 @@ describe("parseProps", () => {
   });
 });
 
-describe("setPropsChild", () => {
+describe("setChild", () => {
   const propsOf = (xml: string) => {
     const props = parseProps(xml);
     if (!props) throw new Error("could not read the fragment");
@@ -81,14 +85,13 @@ describe("setPropsChild", () => {
   };
 
   it("an existing child changes in place", () => {
-    const next = setPropsChild(
+    const next = setChild(
       propsOf(
         '<w:tcPr><w:tcW w:w="1"/><w:gridSpan w:val="2"/>' +
           '<w:vAlign w:val="center"/></w:tcPr>'
       ),
       "gridSpan",
-      '<w:gridSpan w:val="3"/>',
-      CHILD_ORDER.tcPr
+      '<w:gridSpan w:val="3"/>'
     );
     expect(next.children.map((child) => child.xml)).toEqual([
       '<w:tcW w:w="1"/>',
@@ -98,23 +101,21 @@ describe("setPropsChild", () => {
   });
 
   it("removes the child when it is null", () => {
-    const next = setPropsChild(
+    const next = setChild(
       propsOf('<w:tcPr><w:gridSpan w:val="2"/><w:vMerge/></w:tcPr>'),
       "gridSpan",
-      null,
-      CHILD_ORDER.tcPr
+      null
     );
     expect(next.children.map((child) => child.name)).toEqual(["vMerge"]);
   });
 
   it("a child that was not there goes into the slot OOXML's order prescribes", () => {
-    const next = setPropsChild(
+    const next = setChild(
       propsOf(
         '<w:tcPr><w:tcW w:w="1"/><w:tcBorders/><w:vAlign w:val="center"/></w:tcPr>'
       ),
       "vMerge",
-      "<w:vMerge/>",
-      CHILD_ORDER.tcPr
+      "<w:vMerge/>"
     );
     expect(next.children.map((child) => child.name)).toEqual([
       "tcW",
@@ -125,11 +126,10 @@ describe("setPropsChild", () => {
   });
 
   it("a child whose order is unknown stays behind the child ahead of it", () => {
-    const next = setPropsChild(
+    const next = setChild(
       propsOf("<w:tcPr><w:tcW/><w:unknownThing/><w:vAlign/></w:tcPr>"),
       "vMerge",
-      "<w:vMerge/>",
-      CHILD_ORDER.tcPr
+      "<w:vMerge/>"
     );
     expect(next.children.map((child) => child.name)).toEqual([
       "tcW",
@@ -140,11 +140,10 @@ describe("setPropsChild", () => {
   });
 
   it("a changed child keeps what stood in front of it", () => {
-    const next = setPropsChild(
+    const next = setChild(
       propsOf('<w:tcPr>\n  <w:gridSpan w:val="2"/></w:tcPr>'),
       "gridSpan",
-      '<w:gridSpan w:val="3"/>',
-      CHILD_ORDER.tcPr
+      '<w:gridSpan w:val="3"/>'
     );
     expect(renderProps(next)).toBe(
       '<w:tcPr>\n  <w:gridSpan w:val="3"/></w:tcPr>'
@@ -152,21 +151,19 @@ describe("setPropsChild", () => {
   });
 
   it("a removed child leaves what stood in front of it to the child that follows", () => {
-    const next = setPropsChild(
+    const next = setChild(
       propsOf("<w:tcPr><!-- kept --><w:gridSpan/><w:vMerge/></w:tcPr>"),
       "gridSpan",
-      null,
-      CHILD_ORDER.tcPr
+      null
     );
     expect(renderProps(next)).toBe("<w:tcPr><!-- kept --><w:vMerge/></w:tcPr>");
   });
 
   it("a removed last child leaves it to the tail", () => {
-    const next = setPropsChild(
+    const next = setChild(
       propsOf("<w:tcPr><w:vMerge/><!-- kept --><w:gridSpan/></w:tcPr>"),
       "gridSpan",
-      null,
-      CHILD_ORDER.tcPr
+      null
     );
     expect(renderProps(next)).toBe("<w:tcPr><w:vMerge/><!-- kept --></w:tcPr>");
   });
@@ -217,6 +214,129 @@ describe("renderProps", () => {
     if (!comment || !blank) throw new Error("could not read the fragment");
     expect(renderProps(comment)).toBe("<w:tcPr><!-- why --></w:tcPr>");
     expect(renderProps(blank)).toBe("");
+  });
+});
+
+describe("attrsOf and withAttrs", () => {
+  it("keeps the raw attribute text of an untouched fragment", () => {
+    const xml = "<w:tcPr w:x='1'\n  w:y=\"a&gt;b\"><w:vMerge/></w:tcPr>";
+    const props = parseProps(xml);
+    if (!props) throw new Error("could not read the fragment");
+    expect(attrsOf(props)).toEqual([
+      ["w:x", "1"],
+      ["w:y", "a>b"],
+    ]);
+    expect(renderProps(props)).toBe(xml);
+  });
+
+  it("writes the pairs again only where they were edited", () => {
+    const props = parseProps('<w:ind w:left="720" w:right="60"/>');
+    if (!props) throw new Error("could not read the fragment");
+    expect(renderElement(withAttrs(props, [["w:left", "0"]]))).toBe(
+      '<w:ind w:left="0"/>'
+    );
+    expect(renderElement(withAttrs(props, []))).toBe("<w:ind/>");
+  });
+
+  it("is null for an attribute string a parser would refuse", () => {
+    const props = parseProps("<w:tcPr w:x=1><w:vMerge/></w:tcPr>");
+    expect(props && attrsOf(props)).toBeNull();
+  });
+});
+
+describe("childElement", () => {
+  it("reads the tag and the pairs of one child, and says when a child is not there", () => {
+    const props = parseProps('<w:tcPr><w14:shd w:fill="FF0000"/></w:tcPr>');
+    if (!props) throw new Error("could not read the fragment");
+    expect(childElement(props, "shd")).toEqual({
+      tag: "w14:shd",
+      attrs: [["w:fill", "FF0000"]],
+    });
+    expect(childElement(props, "vAlign")).toEqual({ tag: null, attrs: [] });
+  });
+
+  it("is null for a child whose shape cannot be made out", () => {
+    const props = parseProps("<w:tcPr><w:shd w:fill=red/></w:tcPr>");
+    expect(props && childElement(props, "shd")).toBeNull();
+  });
+});
+
+describe("renderElement", () => {
+  it("renders an empty leaf as a self-closing element", () => {
+    expect(renderElement({ tag: "w:sdtPr", attrs: null, children: [] })).toBe(
+      "<w:sdtPr/>"
+    );
+    expect(
+      renderElement({ tag: "w:sdtPr", attrs: 'w:x="1"', children: [] })
+    ).toBe('<w:sdtPr w:x="1"/>');
+  });
+
+  it("writes the children of one that holds something", () => {
+    const props = parseProps("<w:tcMar><w:top/></w:tcMar>");
+    if (!props) throw new Error("could not read the fragment");
+    expect(renderElement(props)).toBe("<w:tcMar><w:top/></w:tcMar>");
+  });
+});
+
+describe("editChild", () => {
+  const tcPr = (children: string) => `<w:tcPr>${children}</w:tcPr>`;
+  const propsOf = (xml: string) => {
+    const props = parseProps(xml);
+    if (!props) throw new Error("could not read the fragment");
+    return props;
+  };
+
+  it("edits a nested child along its path and leaves the siblings byte for byte", () => {
+    const original = tcPr(
+      '<w:tcW w:w="1"/>\n  <w:tcBorders><!-- why --><w:top w:val="single"/>' +
+        '<w:bottom w:val="none"/></w:tcBorders><w:shd w:fill="FF0000"/>'
+    );
+    const edited = editChild(propsOf(original), ["tcBorders", "top"], () => ({
+      tag: "w:top",
+      attrs: 'w:val="double"',
+      children: [],
+    }));
+    expect(edited && renderProps(edited)).toBe(
+      original.replace('<w:top w:val="single"/>', '<w:top w:val="double"/>')
+    );
+  });
+
+  it("writes a container that was not there and takes an emptied one away", () => {
+    const written = editChild(
+      propsOf(tcPr('<w:tcW w:w="1"/>')),
+      ["tcMar", "top"],
+      () => ({ tag: "w:top", attrs: 'w:w="80"', children: [] })
+    );
+    expect(written && renderProps(written)).toBe(
+      tcPr('<w:tcW w:w="1"/><w:tcMar><w:top w:w="80"/></w:tcMar>')
+    );
+    const emptied = editChild(
+      propsOf(tcPr('<w:tcMar><w:top w:w="80"/></w:tcMar><w:vMerge/>')),
+      ["tcMar", "top"],
+      () => null
+    );
+    expect(emptied && renderProps(emptied)).toBe(tcPr("<w:vMerge/>"));
+  });
+
+  it("puts a nested child that was not there into the spot the order calls for", () => {
+    const edited = editChild(
+      propsOf(tcPr('<w:tcBorders><w:bottom w:val="single"/></w:tcBorders>')),
+      ["tcBorders", "top"],
+      () => ({ tag: "w:top", attrs: null, children: [] })
+    );
+    expect(edited && renderProps(edited)).toBe(
+      tcPr('<w:tcBorders><w:top/><w:bottom w:val="single"/></w:tcBorders>')
+    );
+  });
+
+  it("is null when a fragment on the path cannot be made out", () => {
+    const broken = {
+      tag: "w:tcPr",
+      attrs: null,
+      children: [{ name: "tcBorders", xml: "<w:tcBorders><w:top/>" }],
+    };
+    expect(editChild(broken, ["tcBorders", "top"], () => null)).toBeNull();
+    expect(editChild(broken, ["tcBorders"], () => null)).toBeNull();
   });
 });
 

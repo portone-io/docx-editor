@@ -12,15 +12,14 @@
  * own way, and the wrapper they put back on export is the same string in both cases.
  */
 
-import { CHILD_ORDER } from "../ooxml/childOrder";
-import { elementXml, emptyTagXml, openTagXml } from "../ooxml/element";
+import { elementXml, openTagXml } from "../ooxml/element";
 import { wName } from "../ooxml/names";
 import {
   type Props,
   parseProps,
   propsChild,
-  renderProps,
-  setPropsChild,
+  renderElement,
+  setChild,
 } from "../ooxml/props";
 import { wAttr } from "../ooxml/units";
 import { attrString, elementChildren, serializeXml } from "../ooxml/xml";
@@ -114,11 +113,6 @@ export function namesNothing(prefix: string): boolean {
   return props.children.every((child) => NAMES_NOTHING.includes(child.name));
 }
 
-/** A `w:sdtPr` left with nothing inside it is still written, because a control without one is not one we read back */
-function emptyProps(props: Props): string {
-  return emptyTagXml(props.tag, props.attrs);
-}
-
 /**
  * The opening of a control with a few children of its `w:sdtPr` swapped out and everything else
  * it carries left exactly as it came.
@@ -133,20 +127,12 @@ export function editSdtPrefix(
   const props = sdtPr ? parseProps(sdtPr.xml) : null;
   if (!sdt || !props) return null;
 
-  const rendered = renderProps(
-    edits.reduce(
-      (kept, [name, xml]) => setPropsChild(kept, name, xml, CHILD_ORDER.sdtPr),
-      props
-    )
+  // A `w:sdtPr` left with nothing inside it is still written, because a control without one is
+  // not one we read back
+  const rendered = renderElement(
+    edits.reduce((kept, [name, xml]) => setChild(kept, name, xml), props)
   );
-  return renderPrefix(
-    setPropsChild(
-      sdt,
-      "sdtPr",
-      rendered === "" ? emptyProps(props) : rendered,
-      CHILD_ORDER.sdt
-    )
-  );
+  return renderPrefix(setChild(sdt, "sdtPr", rendered));
 }
 
 /**
