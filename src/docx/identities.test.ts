@@ -135,7 +135,7 @@ describe("the paragraph id rule", () => {
   });
 
   it.each(["00000000", "80000000", "1EADBEEF0", "DEADBEEG"])(
-    "leaves a value no reader takes for an identifier (%s) as it came",
+    "leaves an out-of-range or malformed identifier (%s) as it came",
     (value) => {
       const original = doc(
         opened({ srcId: null, pAttrs: `w14:paraId="${value}"` }),

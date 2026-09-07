@@ -36,7 +36,7 @@ Observed 2026-09-07 against ECMA-376 5th edition, Part 1, §17.13.6.1 and §17.1
 
 ## What we decide
 
-The export settles every one of these names in one pass over the blocks, in document order, and the rule is the one §17.5.2.18 gives for controls: the first node to claim a name keeps it, and every later claimant yields.
+The export settles source-block identities, paragraph identifiers, and inline content-control copies in one pass over modelled blocks, in document order, and the rule is the one §17.5.2.18 gives for controls: the first node to claim a name keeps it, and every later claimant yields.
 Which node is first is its place in the document at export, not the order the edits happened in, so a copy dragged above its original is the one that keeps the name.
 
 How a later claimant yields depends on the name:
@@ -44,7 +44,7 @@ How a later claimant yields depends on the name:
 - A block opened from the file goes back out as its original bytes only for the first node claiming that block; a later one is written from its own attributes.
 - A later paragraph carrying a `w14:paraId` already written goes out without it, and without its `w14:textId`, which may not stand alone.
   The identifier is compared as the number it spells, so two spellings of one value are one name.
-  A value outside what [MS-DOCX] allows is not an identifier to a reader either, and is left as it came rather than corrected.
+  This pass leaves values outside the specified range or lexical form as they came; it does not repair malformed input.
 - A later copy of a content control opens under a `w:id` of its own, which is what the specification would assign on opening.
 - A block preserved as nothing but its original XML - a body-level bookmark marker or a body element the editor does not model - has nothing to be rewritten from, so a document holding one twice is refused with `unsupported-content` rather than written with two starts under one id or two copies of one section break.
 

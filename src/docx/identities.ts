@@ -67,8 +67,8 @@ const LONG_HEX = /^[0-9A-Fa-f]{8}$/;
 /**
  * The paragraph identifier this paragraph carries, read as the number it spells so that two
  * spellings of one value are one name. null where there is none, and also where the value is
- * not one [MS-DOCX] §2.6.2.3 allows: such a value names nothing to a reader either, so there is
- * nothing to keep unique and the paragraph is left as it came.
+ * not one [MS-DOCX] §2.6.2.3 allows. This pass leaves invalid input as it came rather than
+ * attempting to repair it.
  */
 function paragraphIdOf(pAttrs: unknown): number | null {
   if (typeof pAttrs !== "string") return null;
