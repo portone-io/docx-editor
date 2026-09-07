@@ -10,8 +10,11 @@ import type {
   CellVerticalAlign,
   RowFormat,
 } from "../../model/format";
+import { attrPairs, elementXml, type XmlAttr } from "../../ooxml/element";
+import { wName } from "../../ooxml/names";
+import { setAttr } from "../../ooxml/precedence";
 import { normalizeHex, wAttr } from "../../ooxml/units";
-import { childByLocalName, escapeXml, localPart } from "../../ooxml/xml";
+import { childByLocalName } from "../../ooxml/xml";
 import {
   type Props,
   parseProps,
@@ -92,51 +95,8 @@ const SIDE_NAMES: Record<CellSide, readonly string[]> = {
 /** The thickness a preset writes, in eighths of a point (4 = 0.5pt, the line Word draws by default) */
 const PRESET_BORDER_EIGHTHS = 4;
 
-/** A theme color overrides the plain one, so a color we write drops these along with it */
-const THEME_COLOR_ATTRS = ["themeColor", "themeTint", "themeShade"];
-
-/** The theme fills, dropped for the same reason whenever a fill is written */
-const THEME_FILL_ATTRS = ["themeFill", "themeFillTint", "themeFillShade"];
-
 const EMPTY_TC_PR: Props = { tag: "w:tcPr", attrs: null, children: [] };
 
-type Attr = readonly [name: string, value: string];
-
-function attrsOf(el: Element | null): Attr[] {
-  return el
-    ? Array.from(el.attributes).map((attr): Attr => [attr.name, attr.value])
-    : [];
-}
-
-/**
- * The attributes with `w:{name}` set to `value`.
- *
- * An attribute already there keeps the slot it sat in, so an edited element reads as the original
- * did, and a new one goes on the end. The attributes the new value would be fighting with are
- * dropped as it is written.
- */
-function withAttr(
-  attrs: readonly Attr[],
-  name: string,
-  value: string,
-  overridden: readonly string[] = []
-): Attr[] {
-  const kept = attrs.filter(([attr]) => !overridden.includes(localPart(attr)));
-  const at = kept.findIndex(([attr]) => localPart(attr) === name);
-  if (at === -1) return [...kept, [`w:${name}`, value]];
-  return kept.map(
-    (attr, index): Attr => (index === at ? [attr[0], value] : attr)
-  );
-}
-
-function elementXml(tag: string, attrs: readonly Attr[]): string {
-  const text = attrs
-    .map(([name, value]) => `${name}="${escapeXml(value)}"`)
-    .join(" ");
-  return `<${tag} ${text}/>`;
-}
-
-/** Gathers `#2e74b5` and `2E74B5` alike into the shape the document uses. null if it is not a color */
 /** Whether this border side draws a line. A missing side, `nil`, and `none` all draw nothing */
 function drawsLine(side: Element | null): boolean {
   if (!side) return false;
@@ -152,39 +112,36 @@ type BordersEdit =
 
 /** The attributes one side is to be changed to. null leaves that side exactly as it is */
 function sideAttrs(
+  name: string,
   current: Element | null,
   edit: BordersEdit,
   fallback: string | null = null
-): readonly Attr[] | null {
+): readonly XmlAttr[] | null {
   if (edit.kind === "color") {
     if (!drawsLine(current)) {
       if (current || !fallback || fallback === "none") return null;
       return inheritedBorderAttrs(fallback, edit.hex);
     }
-    return withAttr(
-      attrsOf(current),
-      "color",
-      edit.hex ?? "auto",
-      THEME_COLOR_ATTRS
-    );
+    return setAttr(attrPairs(current), name, "color", edit.hex ?? "auto");
   }
   if (edit.line === "none") {
     // The thickness and color stay behind, so a line switched off comes back as it was
     return current
-      ? withAttr(attrsOf(current), "val", "none")
-      : [["w:val", "none"]];
+      ? setAttr(attrPairs(current), name, "val", "none")
+      : [[wName("val"), "none"]];
   }
   if (!current) {
     return [
-      ["w:val", "single"],
-      ["w:sz", `${PRESET_BORDER_EIGHTHS}`],
-      ["w:space", "0"],
-      ["w:color", "auto"],
+      [wName("val"), "single"],
+      [wName("sz"), `${PRESET_BORDER_EIGHTHS}`],
+      [wName("space"), "0"],
+      [wName("color"), "auto"],
     ];
   }
   // The color is not ours to decide here, so a themed or explicit color survives the preset
-  return withAttr(
-    withAttr(attrsOf(current), "val", "single"),
+  return setAttr(
+    setAttr(attrPairs(current), name, "val", "single"),
+    name,
     "sz",
     `${PRESET_BORDER_EIGHTHS}`
   );
@@ -201,7 +158,7 @@ const BORDER_VAL_BY_CSS_STYLE: Readonly<Record<string, string>> = {
 function inheritedBorderAttrs(
   border: string,
   hex: string | null
-): readonly Attr[] | null {
+): readonly XmlAttr[] | null {
   const matched = border.match(
     /^(\d+(?:\.\d+)?)pt (solid|double|dashed|dotted) (#[0-9a-f]{6})$/i
   );
@@ -211,10 +168,10 @@ function inheritedBorderAttrs(
   const eighths = Math.round(Number.parseFloat(widthText) * 8);
   if (!Number.isSafeInteger(eighths) || eighths <= 0) return null;
   return [
-    ["w:val", BORDER_VAL_BY_CSS_STYLE[style.toLowerCase()]],
-    ["w:sz", `${eighths}`],
-    ["w:space", "0"],
-    ["w:color", hex ?? "auto"],
+    [wName("val"), BORDER_VAL_BY_CSS_STYLE[style.toLowerCase()]],
+    [wName("sz"), `${eighths}`],
+    [wName("space"), "0"],
+    [wName("color"), hex ?? "auto"],
   ];
 }
 
@@ -254,10 +211,10 @@ function editedBorders(
   const edited = sides.reduce((kept, side) => {
     const { write, drop } = sideNames(borders, side);
     const currentSide = borders ? childByLocalName(borders, write) : null;
-    const attrs = sideAttrs(currentSide, edit, defaults[side]);
+    const attrs = sideAttrs(write, currentSide, edit, defaults[side]);
     if (!attrs) return kept;
     // The original tag keeps its prefix, so a document not using `w:` is written back as it was
-    const tag = currentSide?.nodeName ?? `w:${write}`;
+    const tag = currentSide?.nodeName ?? wName(write);
     const written = setPropsChild(
       kept,
       write,
@@ -291,25 +248,22 @@ function editedShading(
   current: Element | null,
   fill: string | null
 ): string | null {
-  const tag = current?.nodeName ?? "w:shd";
+  const tag = current?.nodeName ?? wName("shd");
   if (fill === null) {
     if (!hasPattern(current)) return null;
-    return elementXml(
-      tag,
-      withAttr(attrsOf(current), "fill", "auto", THEME_FILL_ATTRS)
-    );
+    return elementXml(tag, setAttr(attrPairs(current), "shd", "fill", "auto"));
   }
   if (!current) {
     return elementXml(tag, [
-      ["w:val", "clear"],
-      ["w:color", "auto"],
-      ["w:fill", fill],
+      [wName("val"), "clear"],
+      [wName("color"), "auto"],
+      [wName("fill"), fill],
     ]);
   }
   const painting = hasPattern(current)
-    ? attrsOf(current)
-    : withAttr(attrsOf(current), "val", "clear");
-  return elementXml(tag, withAttr(painting, "fill", fill, THEME_FILL_ATTRS));
+    ? attrPairs(current)
+    : setAttr(attrPairs(current), "shd", "val", "clear");
+  return elementXml(tag, setAttr(painting, "shd", "fill", fill));
 }
 
 /** What one child of the tcPr is to be changed to. A null xml removes that child */
@@ -374,15 +328,16 @@ function paddingChange(
           .find((element) => element !== null) ?? null)
       : null;
     const name = existing?.localName ?? side;
-    const attrs = withAttr(
-      withAttr(attrsOf(existing), "w", `${twips}`),
+    const attrs = setAttr(
+      setAttr(attrPairs(existing), name, "w", `${twips}`),
+      name,
       "type",
       "dxa"
     );
     edited = setPropsChild(
       edited,
       name,
-      elementXml(existing?.nodeName ?? `w:${side}`, attrs),
+      elementXml(existing?.nodeName ?? wName(side), attrs),
       TC_MAR_ORDER
     );
     wrote = true;
@@ -428,8 +383,8 @@ function childChange(
       return {
         name: "vAlign",
         xml: elementXml(
-          element?.nodeName ?? "w:vAlign",
-          withAttr(attrsOf(element), "val", edit.align)
+          element?.nodeName ?? wName("vAlign"),
+          setAttr(attrPairs(element), "vAlign", "val", edit.align)
         ),
       };
     }
@@ -506,13 +461,14 @@ export function editRowHeight(
   const element = current === null ? null : parsePropsXml(current);
   if (current !== null && !element) return null;
   const writtenRule = element ? wAttr(element, "hRule") : null;
-  const attrs = withAttr(attrsOf(element), "val", `${twips}`);
-  const nextAttrs = withAttr(
+  const attrs = setAttr(attrPairs(element), "trHeight", "val", `${twips}`);
+  const nextAttrs = setAttr(
     attrs,
+    "trHeight",
     "hRule",
     writtenRule === "exact" ? "exact" : "atLeast"
   );
-  const child = elementXml(element?.nodeName ?? "w:trHeight", nextAttrs);
+  const child = elementXml(element?.nodeName ?? wName("trHeight"), nextAttrs);
   const rendered = renderProps(
     setPropsChild(props, "trHeight", child, TR_PR_ORDER)
   );
