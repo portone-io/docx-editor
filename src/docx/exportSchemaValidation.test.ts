@@ -18,65 +18,36 @@ import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { unzipSync } from "fflate";
 import { Fragment, type Node as PMNode } from "prosemirror-model";
-import {
-  type Command,
-  type EditorState,
-  TextSelection,
-} from "prosemirror-state";
-import { CellSelection, TableMap } from "prosemirror-tables";
+import { type EditorState, TextSelection } from "prosemirror-state";
 import { afterAll, describe, expect, it } from "vitest";
 import {
-  bytesEqual,
   decode,
-  decodeBase64,
   fixtureNames,
   makeDocx,
   makeHeadersFootersDocx,
   makeNotesDocx,
   readFixture,
-  TINY_PNG,
-  TINY_PNG_DATA_URL,
 } from "../__testing__/docx";
 import {
-  type ActiveParagraphAlign,
-  activeLineSpacing,
-  activeParagraphAlign,
   addComment,
   documentComments,
-  type ImageToInsert,
-  insertImage,
-  insertTable,
-  lockSelection,
   setCommentResolved,
-  setLineSpacing,
-  setLink,
-  setParagraphAlign,
-  setTextColor,
-  toggleBold,
-  toggleBulletList,
-  toggleNumberedList,
-  unlockSelection,
 } from "../editor/commands";
-import { createEditorState } from "../editor/createEditor";
-import {
-  type LineSpacing,
-  type ParagraphAlign,
-  toParagraphFormat,
-} from "../model/format";
-import { wAttr } from "../ooxml/units";
-import { childByLocalName, decodeUtf8, parseXml, W_NS } from "../ooxml/xml";
+import { parseXml, W_NS } from "../ooxml/xml";
 import { docxSchema } from "../schema";
-import {
-  addRowAfter,
-  mergeCells,
-  setCellPadding,
-  setCellVerticalAlign,
-} from "../table";
+import { setCellPadding } from "../table";
 import { withoutIgnorableMarkup } from "./__testing__/mce";
+import {
+  afterTheBattery,
+  expectProbesWrote,
+  exportedPackage,
+  openState,
+  ran,
+} from "./__testing__/writerProbes";
 import { MC_NS, W14_NS } from "./comments/constants";
 import { exportDocx } from "./exportDocx";
 import { importDocx } from "./importDocx";
-import { documentNumbering, type SessionStore } from "./session";
+import type { SessionStore } from "./session";
 
 const XSD_NS = "http://www.w3.org/2001/XMLSchema";
 const XML_NS = "http://www.w3.org/XML/1998/namespace";
@@ -319,294 +290,7 @@ function withEditedParagraph(doc: PMNode): PMNode {
   return docxSchema.nodes.doc.create(null, blocks);
 }
 
-/**
- * The battery of edits that runs before the third export.
- *
- * Rewriting a paragraph reaches the paragraph serializer and nothing else: everything the export
- * writes only for content that was not in the file already - a list definition spliced into
- * numbering.xml, a table built from the template, a media part with its relationship and content
- * type, a hyperlink with the external relationship its address lives on, a content control around a
- * locked stretch - stays out of reach. These steps reach them.
- *
- * Each step runs one command of the public surface (`./commands`, `./table`) over an
- * `EditorState` with no view, and refuses to go on when the command reports it changed nothing.
- * A battery that stopped reaching a writer therefore fails here rather than quietly validating
- * an export that never ran it.
- */
-
-const TEXT_COLOR = "#1F4E79";
-
-/** The address the battery links a stretch of text to, which the export writes a relationship for */
-const LINK_ADDRESS = "https://example.com/battery?a=1&b=2";
-
-const A_PICTURE: ImageToInsert = {
-  src: TINY_PNG_DATA_URL,
-  extent: { cx: 952500, cy: 952500 },
-  alt: "the picture the battery inserted",
-};
-
-/** A 1x1 transparent GIF, an image of a kind no fixture's content types declare */
-const TINY_GIF_BASE64 =
-  "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
-
-const TINY_GIF = decodeBase64(TINY_GIF_BASE64);
-
-/**
- * A second picture of that other kind, so the export has to add the declaration rather than find
- * it there already, which is the only way the content types writer runs at all
- */
-const ANOTHER_PICTURE: ImageToInsert = {
-  src: `data:image/gif;base64,${TINY_GIF_BASE64}`,
-  extent: { cx: 476250, cy: 476250 },
-  alt: "the second picture the battery inserted",
-};
-
-interface Spot {
-  pos: number;
-  node: PMNode;
-}
-
-/** The editing state a screen would hold for this document */
-function openState(doc: PMNode, session: SessionStore): EditorState {
-  return createEditorState(doc, {
-    numbering: documentNumbering(session),
-    styles: session.styles,
-    defaults: session.defaults,
-    canStartNewList: session.numberingPartPath !== null,
-    paragraphStyles: session.paragraphStyles,
-  });
-}
-
-/** Runs one command over the selection the state holds, and refuses to go on when it did nothing */
-function ran(state: EditorState, what: string, command: Command): EditorState {
-  let next = state;
-  const handled = command(state, (tr) => {
-    next = state.apply(tr);
-  });
-  if (!handled || next === state) {
-    throw new Error(`the battery could not ${what}`);
-  }
-  return next;
-}
-
-function bodyParagraphs(doc: PMNode): Spot[] {
-  const spots: Spot[] = [];
-  doc.forEach((block, offset) => {
-    if (block.type.name === "paragraph")
-      spots.push({ pos: offset, node: block });
-  });
-  return spots;
-}
-
-/**
- * Which paragraph a step works on is its place among the body's paragraphs rather than its
- * position, because the steps ahead of it insert blocks and change the formatting of others.
- * That place is the one thing none of them moves.
- */
-function paragraphAt(doc: PMNode, index: number): Spot {
-  const spot = bodyParagraphs(doc)[index];
-  if (spot === undefined) {
-    throw new Error(`the document has no paragraph ${index}`);
-  }
-  return spot;
-}
-
-/** The paragraphs holding text and no list marker, which is where a list toggle starts a new list */
-function plainParagraphIndices(doc: PMNode): number[] {
-  return bodyParagraphs(doc).flatMap(({ node }, index) => {
-    const plain =
-      node.textContent !== "" &&
-      toParagraphFormat(node.attrs.format)?.numbering === undefined;
-    return plain ? [index] : [];
-  });
-}
-
-function nth(indices: readonly number[], at: number): number {
-  const index = indices[at];
-  if (index === undefined) {
-    throw new Error(
-      `the battery needs ${at + 1} plain paragraphs and the document has ${indices.length}`
-    );
-  }
-  return index;
-}
-
-/** The caret at the start of that paragraph's text */
-function caretIn(state: EditorState, index: number): EditorState {
-  const { pos } = paragraphAt(state.doc, index);
-  return state.apply(
-    state.tr.setSelection(TextSelection.create(state.doc, pos + 1))
-  );
-}
-
-/** The whole of that paragraph's text selected */
-function textOf(state: EditorState, index: number): EditorState {
-  const { pos, node } = paragraphAt(state.doc, index);
-  return state.apply(
-    state.tr.setSelection(
-      TextSelection.create(state.doc, pos + 1, pos + 1 + node.content.size)
-    )
-  );
-}
-
-/** The table the selection sits in */
-function tableAround(state: EditorState): Spot {
-  const $from = state.selection.$from;
-  for (let depth = $from.depth; depth > 0; depth -= 1) {
-    const node = $from.node(depth);
-    if (node.type.spec.tableRole === "table") {
-      return { pos: $from.before(depth), node };
-    }
-  }
-  throw new Error("the battery left the table it inserted");
-}
-
-/** Two neighbouring cells of one row of that table selected, which is what a merge takes */
-function twoCellsOfRow(state: EditorState, row: number): EditorState {
-  const table = tableAround(state);
-  const map = TableMap.get(table.node);
-  const start = table.pos + 1;
-  return state.apply(
-    state.tr.setSelection(
-      CellSelection.create(
-        state.doc,
-        start + map.positionAt(row, 0, table.node),
-        start + map.positionAt(row, 1, table.node)
-      )
-    )
-  );
-}
-
-const ALIGNS: readonly ParagraphAlign[] = [
-  "center",
-  "right",
-  "justify",
-  "left",
-];
-
-/**
- * An alignment the paragraph is not already drawn with, and a line spacing it does not already
- * carry. Both commands leave a paragraph that already reads that way untouched, so a step asking
- * for the value it already has would report it changed nothing.
- */
-function otherAlign(active: ActiveParagraphAlign): ParagraphAlign {
-  return (
-    ALIGNS.find((align) => active.kind === "mixed" || align !== active.align) ??
-    "center"
-  );
-}
-
-function otherSpacing(active: LineSpacing | null): LineSpacing {
-  const doubled = active?.rule === "auto" && active.lines === 2;
-  return { rule: "auto", lines: doubled ? 1.5 : 2 };
-}
-
-/** The state the whole battery leaves behind */
-function afterTheBattery(state: EditorState): EditorState {
-  const plain = plainParagraphIndices(state.doc);
-  const formatted = nth(plain, 0);
-  const spaced = nth(plain, 1);
-  const numbered = nth(plain, 2);
-  const bulleted = nth(plain, 3);
-  const tabled = nth(plain, 4);
-  const pictured = nth(plain, 5);
-
-  const bold = ran(textOf(state, formatted), "toggle bold", toggleBold);
-  const colored = ran(bold, "color the text", setTextColor(TEXT_COLOR));
-
-  const atSpaced = caretIn(colored, spaced);
-  const aligned = ran(
-    atSpaced,
-    "align a paragraph",
-    setParagraphAlign(otherAlign(activeParagraphAlign(atSpaced)))
-  );
-  const spacedOut = ran(
-    aligned,
-    "space a paragraph's lines out",
-    setLineSpacing(otherSpacing(activeLineSpacing(aligned)))
-  );
-
-  const numberedList = ran(
-    caretIn(spacedOut, numbered),
-    "start a numbered list",
-    toggleNumberedList
-  );
-  const bulletList = ran(
-    caretIn(numberedList, bulleted),
-    "start a bullet list",
-    toggleBulletList
-  );
-
-  const withTable = ran(
-    caretIn(bulletList, tabled),
-    "insert a table",
-    insertTable({ rows: 2, columns: 3 })
-  );
-  const withRow = ran(withTable, "add a row to that table", addRowAfter);
-  const merged = ran(
-    twoCellsOfRow(withRow, 1),
-    "merge two cells of the added row",
-    mergeCells
-  );
-  const verticallyAligned = ran(
-    merged,
-    "align selected cells vertically",
-    setCellVerticalAlign("center")
-  );
-  const padded = ran(
-    verticallyAligned,
-    "pad selected cells",
-    setCellPadding({ top: 6, right: 8, bottom: 6, left: 8 })
-  );
-
-  const withPicture = ran(
-    caretIn(padded, pictured),
-    "insert an image",
-    insertImage(A_PICTURE)
-  );
-  const withPictures = ran(
-    withPicture,
-    "insert an image of another kind",
-    insertImage(ANOTHER_PICTURE)
-  );
-
-  const withLink = ran(
-    textOf(withPictures, formatted),
-    "put a link on a stretch of text",
-    setLink(LINK_ADDRESS)
-  );
-  const withComment = ran(
-    textOf(withLink, spaced),
-    "add a comment to a stretch of text",
-    addComment({
-      text: "The comment written by the export battery",
-      author: "Schema test",
-      initials: "ST",
-      date: "2026-08-22T00:00:00Z",
-    })
-  );
-
-  // The locks go last: the lock guard turns down every edit reaching into a locked stretch,
-  // whichever step asked for it. The stretch locked first is the one now carrying a link, so the
-  // export writes a control around a hyperlink as well
-  const locked = ran(
-    textOf(withComment, formatted),
-    "lock a stretch of text",
-    lockSelection
-  );
-  const lockedTwice = ran(
-    textOf(locked, spaced),
-    "lock a second stretch of text",
-    lockSelection
-  );
-  return ran(
-    textOf(lockedTwice, spaced),
-    "unlock the second stretch",
-    unlockSelection
-  );
-}
-
-/** The same document with its tables dropped, so the one the battery inserts is the only one */
+/** The same document with its tables dropped, so the one a probe inserts is the only one */
 function withoutTables(doc: PMNode): PMNode {
   const blocks: PMNode[] = [];
   doc.forEach((block) => {
@@ -615,153 +299,36 @@ function withoutTables(doc: PMNode): PMNode {
   return docxSchema.nodes.doc.create(null, blocks);
 }
 
-function partText(zip: Record<string, Uint8Array>, path: string): string {
-  const bytes = zip[path];
-  if (bytes === undefined) throw new Error(`the export wrote no ${path}`);
-  return decodeUtf8(bytes).text;
+/** The whole of the first body paragraph that holds text, which a probe of its own works on */
+function firstTextParagraph(state: EditorState): EditorState {
+  let pos = 0;
+  for (let index = 0; index < state.doc.childCount; index += 1) {
+    const block = state.doc.child(index);
+    if (block.type.name === "paragraph" && block.textContent !== "") {
+      return state.apply(
+        state.tr.setSelection(
+          TextSelection.create(state.doc, pos + 1, pos + 1 + block.content.size)
+        )
+      );
+    }
+    pos += block.nodeSize;
+  }
+  throw new Error("the document has no paragraph holding text");
 }
 
-function numbersOf(values: readonly (string | null)[]): number[] {
-  return values.flatMap((value) => {
-    const parsed = Number.parseInt(value ?? "", 10);
-    return Number.isFinite(parsed) ? [parsed] : [];
-  });
-}
-
-/** The list numbers numbering.xml defines */
-function definedNumIds(xml: string): Set<number> {
-  const nums = Array.from(parseXml(xml).getElementsByTagNameNS(W_NS, "num"));
-  return new Set(numbersOf(nums.map((num) => wAttr(num, "numId"))));
-}
-
-/** The list numbers the body's paragraphs point at */
-function referencedNumIds(xml: string): Set<number> {
-  const refs = Array.from(parseXml(xml).getElementsByTagNameNS(W_NS, "numPr"));
-  return new Set(
-    numbersOf(
-      refs.map((ref) => {
-        const numId = childByLocalName(ref, "numId");
-        return numId === null ? null : wAttr(numId, "val");
-      })
-    )
-  );
-}
-
-/** Whether a relationships part of the package points at that media file */
-function pointsAt(zip: Record<string, Uint8Array>, mediaPath: string): boolean {
-  const target = `media/${mediaPath.slice(mediaPath.lastIndexOf("/") + 1)}`;
-  return Object.entries(zip).some(
-    ([path, bytes]) =>
-      path.endsWith(".rels") && decodeUtf8(bytes).text.includes(target)
-  );
-}
-
-function mediaPaths(zip: Record<string, Uint8Array>): string[] {
-  return Object.keys(zip).filter((path) => path.includes("/media/"));
-}
-
-/** The one media part the export wrote for an inserted image, carrying its bytes and a relationship */
-function expectMediaPart(
-  name: string,
-  zip: Record<string, Uint8Array>,
-  added: readonly string[],
-  extension: string,
-  bytes: Uint8Array
-): void {
-  const written = added.filter((path) => path.endsWith(`.${extension}`));
-  expect(written, `${name} .${extension} media parts`).toHaveLength(1);
-
-  const path = written[0];
-  expect(bytesEqual(zip[path], bytes), `${name} ${path}`).toBe(true);
-  expect(pointsAt(zip, path), `${name} ${path} relationship`).toBe(true);
-}
-
-/** Every hyperlink relationship the package holds, wherever it holds it */
-function linkRelationships(zip: Record<string, Uint8Array>): string[] {
-  return Object.entries(zip).flatMap(([path, bytes]) =>
-    path.endsWith(".rels")
-      ? (decodeUtf8(bytes).text.match(/<Relationship[^>]*hyperlink[^>]*\/>/g) ??
-        [])
-      : []
-  );
-}
-
-function lockedControlCount(xml: string): number {
-  return xml.match(/sdtContentLocked/g)?.length ?? 0;
-}
-
-/** Runs the battery over one document and reads back everything the export had to write for it */
+/** Runs every writer probe over one document and reads back what the export had to write for it */
 function expectBatteryValidates(
   name: string,
   doc: PMNode,
   session: SessionStore
 ): void {
-  const bytes = exportDocx(
+  const exported = exportedPackage(
+    name,
     afterTheBattery(openState(doc, session)).doc,
     session
   );
-  expectPartsValidate(name, wordprocessingParts(bytes));
-
-  const zip = unzipSync(bytes);
-  const mainXml = partText(zip, session.mainPartPath);
-
-  // Measured against the same document written out without the battery, because a fixture may
-  // carry a picture and a link of its own
-  const untouched = unzipSync(exportDocx(doc, session));
-
-  const addedMedia = mediaPaths(zip).filter(
-    (path) => !mediaPaths(untouched).includes(path)
-  );
-  expect(addedMedia, `${name} media parts`).toHaveLength(2);
-  expectMediaPart(name, zip, addedMedia, "png", TINY_PNG);
-  expectMediaPart(name, zip, addedMedia, "gif", TINY_GIF);
-
-  const linkRels = linkRelationships(zip);
-  expect(linkRels.length, `${name} hyperlink relationships`).toBe(
-    linkRelationships(untouched).length + 1
-  );
-  const forTheBattery = linkRels.filter((rel) =>
-    rel.includes('Target="https://example.com/battery?a=1&amp;b=2"')
-  );
-  expect(forTheBattery, `${name} hyperlink target`).toHaveLength(1);
-  expect(forTheBattery[0], `${name} hyperlink relationship`).toContain(
-    'TargetMode="External"'
-  );
-
-  const openedTypes = session.parts.get(CONTENT_TYPES_PATH);
-  if (openedTypes === undefined) {
-    throw new Error(`${name} carries no ${CONTENT_TYPES_PATH}`);
-  }
-  expect(
-    decodeUtf8(openedTypes).text,
-    `${name} declares the gif extension already, which leaves the content types writer unreached`
-  ).not.toContain('Extension="gif"');
-  expect(partText(zip, CONTENT_TYPES_PATH), `${name} content types`).toContain(
-    'Extension="gif"'
-  );
-
-  const numberingPath = session.numberingPartPath;
-  const numberingXml = session.numberingXml;
-  if (numberingPath === null || numberingXml === null) {
-    throw new Error(`${name} carries no numbering.xml to define a list in`);
-  }
-  const defined = definedNumIds(numberingXml);
-  const added = Array.from(definedNumIds(partText(zip, numberingPath))).filter(
-    (numId) => !defined.has(numId)
-  );
-  expect(added, `${name} new list definitions`).toHaveLength(2);
-
-  const referenced = referencedNumIds(mainXml);
-  expect(
-    added.filter((numId) => !referenced.has(numId)),
-    `${name} list definitions the body points at nowhere`
-  ).toEqual([]);
-
-  // The count to measure against is the same document written out without the battery, because
-  // the caller may have dropped blocks that carried a control of their own
-  expect(lockedControlCount(mainXml), `${name} locked controls`).toBe(
-    lockedControlCount(partText(untouched, session.mainPartPath)) + 1
-  );
+  expectPartsValidate(name, wordprocessingParts(exported.bytes));
+  expectProbesWrote(exported, exportedPackage(name, doc, session));
 }
 
 describe("the exported package against the OOXML schemas", () => {
@@ -819,11 +386,7 @@ describe("the exported package against the OOXML schemas", () => {
     state = state.apply(
       state.tr.setSelection(TextSelection.create(state.doc, textPos))
     );
-    state = ran(
-      state,
-      "pad a cell with leading and trailing margins",
-      setCellPadding({ top: 6, left: 8 })
-    );
+    state = ran(state, setCellPadding({ top: 6, left: 8 }));
     const parts = wordprocessingParts(exportDocx(state.doc, opened.session));
     expect(parts.get(opened.session.mainPartPath)).toContain(
       '<w:tcMar><w:top w:w="120" w:type="dxa"/><w:start'
@@ -955,8 +518,7 @@ describe("the markup-compatibility preprocessing", () => {
     const { doc, session } = importDocx(readFixture("kitchen-sink.docx"));
     const state = openState(doc, session);
     const commented = ran(
-      textOf(state, nth(plainParagraphIndices(state.doc), 0)),
-      "add a comment to a stretch of text",
+      firstTextParagraph(state),
       addComment({
         text: "The comment whose thread is resolved",
         author: "Schema test",
@@ -967,11 +529,7 @@ describe("the markup-compatibility preprocessing", () => {
     const added = documentComments(commented);
     const comment = added[added.length - 1];
     if (comment === undefined) throw new Error("no comment was added");
-    const resolved = ran(
-      commented,
-      "resolve the thread",
-      setCommentResolved(comment.id, true)
-    );
+    const resolved = ran(commented, setCommentResolved(comment.id, true));
 
     const parts = wordprocessingParts(exportDocx(resolved.doc, session));
     const commentsXml = parts.get("word/comments.xml");
