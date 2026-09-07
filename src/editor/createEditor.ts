@@ -10,17 +10,14 @@ import type { Node as PMNode } from "prosemirror-model";
 import { EditorState, type Plugin } from "prosemirror-state";
 import { tableEditing } from "prosemirror-tables";
 import { EditorView } from "prosemirror-view";
-import { DEFAULT_TAB_STOP_PT } from "../docx/documentSettings";
-import {
-  NO_DOCUMENT_DEFAULTS,
-  NO_STYLES,
-  type ParagraphFormatLayer,
-  type ParagraphStyleOption,
-  type StyleTable,
+import type {
+  ParagraphFormatLayer,
+  ParagraphStyleOption,
+  StyleTable,
 } from "../docx/formatting";
 import { A4_PORTRAIT, type PageGeometry } from "../docx/pageGeometry";
 import type { DocumentDefaults } from "../model/format";
-import { EMPTY_NUMBERING, type Numbering } from "../numbering/parseNumbering";
+import type { Numbering } from "../numbering/parseNumbering";
 import { pageDecorations } from "../page/pageDecorations";
 import { pageGeometryStyle, pagePixels } from "../page/pageLayout";
 import type { EditableComments, EditingProtection } from "../schema/protection";
@@ -33,12 +30,16 @@ import {
 import { documentDefaultsStyle } from "../styles/inlineStyle";
 import { gridBorders, withDerivedGridBorders } from "../table/gridBorders";
 import type { CommentAuthor } from "./commands/comments/model";
-import { documentDefaultTabStopPt, documentStyleTable } from "./documentStyles";
+import { documentDefaultTabStopPt } from "./documentStyles";
+import {
+  type EditorDocument,
+  editorDocument,
+  NO_DOCUMENT,
+} from "./editorDocument";
 import { externalClipboard } from "./externalClipboard";
 import { imageFiles } from "./imageFiles";
 import { columnResize } from "./plugins/columnResize";
 import { commentDecorations } from "./plugins/commentDecorations";
-import { commentReservations } from "./plugins/commentReservations";
 import { documentProtection } from "./plugins/documentProtection";
 import { imagePaste } from "./plugins/imagePaste";
 import { docxKeymap, historyKeys } from "./plugins/keymap";
@@ -58,6 +59,11 @@ import { ImageNodeView } from "./views/imageResize";
 import { runMarkView } from "./views/runMarkView";
 
 export interface EditorStateOptions {
+  /**
+   * What the opened document laid down. A state built without one reads `NO_DOCUMENT`, which
+   * answers as nothing being written down.
+   */
+  document?: EditorDocument;
   numbering?: Numbering;
   styles?: StyleTable;
   defaults?: DocumentDefaults;
@@ -98,30 +104,54 @@ export interface EditorStateOptions {
 }
 
 /**
+ * The snapshot the old option bag adds up to, for the callers that still type the document-level
+ * values out one field at a time. Goes away once they all hand a document in.
+ */
+function documentOption(options: EditorStateOptions): EditorDocument {
+  const document = options.document ?? NO_DOCUMENT;
+  const paragraphStyles = options.paragraphStyles ?? document.paragraphStyles;
+  return {
+    ...document,
+    numbering: options.numbering ?? document.numbering,
+    styles: options.styles ?? document.styles,
+    defaults: options.defaults ?? document.defaults,
+    paragraphDefaults: options.paragraphDefaults ?? document.paragraphDefaults,
+    paragraphStyles,
+    defaultParagraphStyleId:
+      options.paragraphStyles === undefined
+        ? document.defaultParagraphStyleId
+        : (paragraphStyles.find((style) => style.isDefault)?.id ?? null),
+    canStartNewList: options.canStartNewList ?? document.canStartNewList,
+    geometry: options.geometry ?? document.geometry,
+    defaultTabStopPt: options.defaultTabStopPt ?? document.defaultTabStopPt,
+    reservedCommentIds:
+      options.reservedCommentIds === undefined
+        ? document.reservedCommentIds
+        : new Set(options.reservedCommentIds),
+    reservedCommentParaIds:
+      options.reservedCommentParaIds === undefined
+        ? document.reservedCommentParaIds
+        : new Set(options.reservedCommentParaIds),
+  };
+}
+
+/**
  * Creates a single editing state.
  * The list definitions, the style table, and the document defaults are what the document
- * wrote down, and commands and the toolbar read them through plugins.
+ * wrote down, and commands and the toolbar read them off the snapshot the state holds.
  */
 export function createEditorState(
   doc: PMNode,
-  {
-    numbering = EMPTY_NUMBERING,
-    styles = NO_STYLES,
-    defaults = NO_DOCUMENT_DEFAULTS,
-    paragraphDefaults = {},
-    canStartNewList = true,
+  options: EditorStateOptions = {}
+): EditorState {
+  const {
     consumerPlugins = [],
-    paragraphStyles = [],
     contextMenus = true,
-    geometry = A4_PORTRAIT,
-    defaultTabStopPt = DEFAULT_TAB_STOP_PT,
-    reservedCommentIds = [],
-    reservedCommentParaIds = [],
     protection = "none",
     author = null,
     editableComments = "own",
-  }: EditorStateOptions = {}
-): EditorState {
+  } = options;
+  const document = documentOption(options);
   return EditorState.create({
     doc: withDerivedGridBorders(doc),
     plugins: [
@@ -129,13 +159,14 @@ export function createEditorState(
       // first answer for a keypress, a paste, a drop or any other DOM event, so this is the
       // only place from which a consumer handler can win over the built-in one.
       ...consumerPlugins,
+      // Every document-level value the editor reads stands in one snapshot, and it leads the
+      // built-in plugins so that the ones drawing from it are initialized after it
+      editorDocument(document),
       // Refuses every edit no guard in `schema/guards` lets through, whoever asked for it. It is
       // not optional: a document that locked a part of itself stays locked in every consumer, and
       // the preserved bookmark markers and note references stay where the file put them.
       lockedContent(),
       documentProtection({ protection, author, editableComments }),
-      // An orphan Comments-part entry still owns its id and must not be replaced by a new comment.
-      commentReservations(reservedCommentIds, reservedCommentParaIds),
       history(),
       keymap(docxKeymap),
       historyKeys(),
@@ -170,18 +201,9 @@ export function createEditorState(
       // or fall together with the menus the editor draws. The text menu stands ahead of the table
       // menu, and hands a click with nothing selected inside a cell back to it
       ...(contextMenus ? [textContextMenu(), tableContextMenu()] : []),
-      numberingMarkers(numbering, canStartNewList),
+      numberingMarkers(),
       // Values only go in when page display is turned on
       pageDecorations(),
-      documentStyleTable(
-        styles,
-        defaults,
-        paragraphStyles,
-        geometry,
-        paragraphDefaults,
-        numbering,
-        defaultTabStopPt
-      ),
     ],
   });
 }

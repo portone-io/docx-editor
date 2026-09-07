@@ -1,6 +1,7 @@
 /**
  * Draws list markers and inherited indentation as decorations so display-only values never create
- * new OOXML on export. The plugin also exposes numbering definitions to list commands.
+ * new OOXML on export. The definitions the markers are drawn from belong to the document
+ * snapshot, and the readers list commands ask stand here beside the drawing.
  */
 
 import type { Node as PMNode } from "prosemirror-model";
@@ -8,12 +9,9 @@ import { type EditorState, Plugin, PluginKey } from "prosemirror-state";
 import { Decoration, DecorationSet } from "prosemirror-view";
 import { type ParagraphFormat, toParagraphFormat } from "../../model/format";
 import { computeMarkers } from "../../numbering/markers";
-import {
-  EMPTY_NUMBERING,
-  type LevelIndentPt,
-  type Numbering,
-} from "../../numbering/parseNumbering";
+import type { LevelIndentPt, Numbering } from "../../numbering/parseNumbering";
 import { editorAttributes, editorCssVariables } from "../../styles/classNames";
+import { documentOf } from "../editorDocument";
 
 /** Word's default (360 twip), used when neither the list definition nor the paragraph has a hanging indent */
 const FALLBACK_MARKER_WIDTH_PT = 18;
@@ -141,19 +139,11 @@ export function markerDecorations(
   return DecorationSet.create(doc, decorations);
 }
 
-/** What the plugin holds: the document's list definitions and the numbers to draw right now */
-interface NumberingState {
-  numbering: Numbering;
-  /** Whether the document has a place (numbering.xml) to write the definition of a new list */
-  canStartNewList: boolean;
-  decorations: DecorationSet;
-}
-
-const numberingKey = new PluginKey<NumberingState>("docxEditorNumbering");
+const numberingKey = new PluginKey<DecorationSet>("docxEditorNumbering");
 
 /** This document's list definitions. Empty when the editor does not know them */
 export function documentNumbering(state: EditorState): Numbering {
-  return numberingKey.getState(state)?.numbering ?? EMPTY_NUMBERING;
+  return documentOf(state).numbering;
 }
 
 /**
@@ -163,32 +153,23 @@ export function documentNumbering(state: EditorState): Numbering {
  * in the first place.
  */
 export function canStartNewList(state: EditorState): boolean {
-  return numberingKey.getState(state)?.canStartNewList ?? true;
+  return documentOf(state).canStartNewList;
 }
 
-export function numberingMarkers(
-  numbering: Numbering = EMPTY_NUMBERING,
-  canStartNewList = true
-): Plugin<NumberingState> {
-  return new Plugin<NumberingState>({
+/** Draws the numbers this document's lists put in front of their paragraphs */
+export function numberingMarkers(): Plugin<DecorationSet> {
+  return new Plugin<DecorationSet>({
     key: numberingKey,
     state: {
-      init: (_config, state) => ({
-        numbering,
-        canStartNewList,
-        decorations: markerDecorations(state.doc, numbering),
-      }),
-      apply: (tr, current) =>
+      init: (_config, state) =>
+        markerDecorations(state.doc, documentOf(state).numbering),
+      apply: (tr, current, _old, state) =>
         tr.docChanged
-          ? {
-              numbering,
-              canStartNewList,
-              decorations: markerDecorations(tr.doc, numbering),
-            }
+          ? markerDecorations(tr.doc, documentOf(state).numbering)
           : current,
     },
     props: {
-      decorations: (state) => numberingKey.getState(state)?.decorations,
+      decorations: (state) => numberingKey.getState(state),
     },
   });
 }
