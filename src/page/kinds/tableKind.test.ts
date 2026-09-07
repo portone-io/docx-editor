@@ -4,8 +4,9 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createEditorState } from "../../editor/createEditor";
 import { docxSchema } from "../../schema";
 import { editorAttributes } from "../../styles/classNames";
+import type { KindMeasure } from "../blockKinds";
 import { setPageMarks } from "../pageDecorations";
-import { measureTable } from "./tableKind";
+import { tableKind } from "./tableKind";
 
 let view: EditorView | null = null;
 
@@ -76,17 +77,32 @@ function drawNaturalRows(
   });
 }
 
-describe("measureTable", () => {
+/** The mounted table as the sheet hands it to its kind */
+function measure(live: EditorView, table: HTMLElement, scale = 1): KindMeasure {
+  const sheetY = (viewportY: number) => viewportY / scale;
+  return tableKind.measure({
+    view: live,
+    node: live.state.doc.child(0),
+    pos: 0,
+    dom: table,
+    sheetY,
+    top: sheetY(table.getBoundingClientRect().top),
+    scale,
+  });
+}
+
+describe("tableKind", () => {
   it("repeats the leading header and excludes a boundary crossed by rowspan", () => {
     const { live, table, rowPositions } = mountedTable();
     drawNaturalRows(live, table, rowPositions);
 
-    expect(measureTable(live, live.state.doc.child(0), 0, table)).toEqual({
+    expect(measure(live, table)).toEqual({
       candidates: [
         { at: rowPositions[1], offset: 40, forced: false, repeatHeight: 40 },
         { at: rowPositions[3], offset: 240, forced: false, repeatHeight: 40 },
       ],
       minFirstPiece: 240,
+      breakAfter: false,
       appliedHeight: 0,
     });
   });
@@ -95,12 +111,13 @@ describe("measureTable", () => {
     const { live, table, rowPositions } = mountedTable();
     drawNaturalRows(live, table, rowPositions, 0.6);
 
-    expect(measureTable(live, live.state.doc.child(0), 0, table, 0.6)).toEqual({
+    expect(measure(live, table, 0.6)).toEqual({
       candidates: [
         { at: rowPositions[1], offset: 40, forced: false, repeatHeight: 40 },
         { at: rowPositions[3], offset: 240, forced: false, repeatHeight: 40 },
       ],
       minFirstPiece: 240,
+      breakAfter: false,
       appliedHeight: 0,
     });
   });
@@ -129,12 +146,12 @@ describe("measureTable", () => {
     rect(spacer, 240, 200);
     rect(repeated, 440, 40);
 
-    const measured = measureTable(live, live.state.doc.child(0), 0, table);
-    expect(measured?.appliedHeight).toBe(240);
-    expect(measured?.candidates).toEqual([
+    const measured = measure(live, table);
+    expect(measured.appliedHeight).toBe(240);
+    expect(measured.candidates).toEqual([
       { at: rowPositions[1], offset: 40, forced: false, repeatHeight: 40 },
       { at: rowPositions[3], offset: 240, forced: false, repeatHeight: 40 },
     ]);
-    expect(measured?.minFirstPiece).toBe(240);
+    expect(measured.minFirstPiece).toBe(240);
   });
 });

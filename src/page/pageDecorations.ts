@@ -7,12 +7,12 @@
  */
 
 import type { Node as PMNode } from "prosemirror-model";
-import { Plugin, PluginKey } from "prosemirror-state";
+import { Plugin, PluginKey, type Transaction } from "prosemirror-state";
 import { Decoration, DecorationSet, type EditorView } from "prosemirror-view";
 import { editorAttributes } from "../styles/classNames";
 import type { PageCut } from "./blockKinds";
 import { paragraphKind } from "./kinds/paragraphKind";
-import { columnCount, headerRowsOf } from "./kinds/tableKind";
+import { tableKind } from "./kinds/tableKind";
 import type { BlockPush } from "./pageLayout";
 
 /** Everything one measurement has to say about the page (`page/pageLayout`) */
@@ -45,10 +45,6 @@ function pushStyle(marginTop: number): string {
   return `margin-block-start:${marginTop}px`;
 }
 
-function isRow(node: PMNode | null | undefined): boolean {
-  return node?.type.spec.tableRole === "row";
-}
-
 /** The cuts of each top-level block, keyed by the position that block starts at */
 function cutsByBlock(
   doc: PMNode,
@@ -64,71 +60,6 @@ function cutsByBlock(
     else byBlock.set(blockPos, [cut]);
   }
   return byBlock;
-}
-
-function tableSpace(height: number, columns: number): HTMLElement {
-  const row = document.createElement("tr");
-  row.setAttribute(editorAttributes.tablePageSpace, `${height}`);
-  row.setAttribute("aria-hidden", "true");
-  row.setAttribute("contenteditable", "false");
-  row.style.height = `${height}px`;
-
-  const cell = document.createElement("td");
-  cell.colSpan = columns;
-  cell.style.height = `${height}px`;
-  row.append(cell);
-  return row;
-}
-
-function repeatedHeader(view: EditorView, rowPos: number): HTMLElement {
-  const source = view.nodeDOM(rowPos);
-  const row =
-    source instanceof HTMLElement && source.tagName === "TR"
-      ? (source.cloneNode(true) as HTMLElement)
-      : document.createElement("tr");
-  row.setAttribute(editorAttributes.tableRepeatedHeader, "");
-  row.setAttribute("aria-hidden", "true");
-  row.setAttribute("contenteditable", "false");
-  row.removeAttribute("id");
-  row.querySelectorAll("[id]").forEach((element) => {
-    element.removeAttribute("id");
-  });
-  return row;
-}
-
-/**
- * The spacer and the repeated headers a table's cuts are drawn as.
- *
- * What each one needs beyond the cut itself - which rows repeat, how wide a spacer has to be - is
- * read back off the table as it stands now, so an edit to a header row redraws the projection of
- * it without the layout having to be run again.
- */
-function tableContinuations(
-  table: PMNode,
-  tablePos: number,
-  cuts: readonly PageCut[],
-  into: Decoration[]
-): void {
-  if (cuts.length === 0 || table.type.spec.tableRole !== "table") return;
-  const headerRows = headerRowsOf(table, tablePos);
-  const columns = columnCount(table);
-  for (const cut of cuts) {
-    into.push(
-      Decoration.widget(cut.at, () => tableSpace(cut.height, columns), {
-        key: `table-page-space-${cut.at}-${cut.height}-${columns}`,
-        side: -100,
-      })
-    );
-    headerRows.forEach((rowPos, headerIndex) => {
-      into.push(
-        // No `key`: a keyed widget is held to be the same one and left alone, and this one is a
-        // copy of a row that the very edit rebuilding these decorations may have just changed
-        Decoration.widget(cut.at, (view) => repeatedHeader(view, rowPos), {
-          side: -90 + headerIndex,
-        })
-      );
-    });
-  }
 }
 
 /**
@@ -154,9 +85,8 @@ function decorationsFor(
         })
       );
     }
-    const blockCuts = byBlock.get(offset) ?? [];
-    paragraphKind.decorate(offset, node, blockCuts, decorations);
-    tableContinuations(node, offset, blockCuts, decorations);
+    const kind = tableKind.matches(node) ? tableKind : paragraphKind;
+    kind.decorate(offset, node, byBlock.get(offset) ?? [], decorations);
   });
   return DecorationSet.create(doc, decorations);
 }
@@ -167,6 +97,19 @@ function marksFor(
   cuts: readonly PageCut[]
 ): PageMarks {
   return { pushes, cuts, decorations: decorationsFor(doc, pushes, cuts) };
+}
+
+/**
+ * Whether the node the cut named is still there after an edit that replaced its opening token,
+ * as `setNodeMarkup` does to a row. Such an edit maps the node's own position as deleted, and
+ * what tells it apart from a node that really went away is the content: this one still has its
+ * content boundary just inside it.
+ */
+function retainsContent(tr: Transaction, at: number, mapped: number): boolean {
+  const node = tr.before.nodeAt(at);
+  if (!node || node.isLeaf) return false;
+  const content = tr.mapping.mapResult(at + 1, -1);
+  return !content.deletedAcross && content.pos === mapped + 1;
 }
 
 function samePageMarks(a: PageMarksInput, b: PageMarksInput): boolean {
@@ -214,20 +157,11 @@ export function pageDecorations(): Plugin<PageMarks> {
           })),
           value.cuts.flatMap((cut) => {
             const mapped = tr.mapping.mapResult(cut.at, 1);
-            const node = tr.doc.nodeAt(mapped.pos);
             const kept =
-              paragraphKind.holdsCut(tr.doc, mapped.pos) || isRow(node);
-            // setNodeMarkup replaces a row's opening token while retaining its content.
-            // Unlike a deleted row, its content boundary still maps just inside that row.
-            const content = isRow(tr.before.nodeAt(cut.at))
-              ? tr.mapping.mapResult(cut.at + 1, -1)
-              : null;
-            const rowRetained =
-              isRow(node) &&
-              content !== null &&
-              !content.deletedAcross &&
-              content.pos === mapped.pos + 1;
-            return !kept || (mapped.deleted && !rowRetained)
+              paragraphKind.holdsCut(tr.doc, mapped.pos) ||
+              tableKind.holdsCut(tr.doc, mapped.pos);
+            return !kept ||
+              (mapped.deleted && !retainsContent(tr, cut.at, mapped.pos))
               ? []
               : [{ ...cut, at: mapped.pos }];
           })

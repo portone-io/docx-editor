@@ -14,7 +14,7 @@ import type { EditorView } from "prosemirror-view";
 import { editorAttributes } from "../styles/classNames";
 import type { BreakCandidate, MeasuredBlock } from "./blockKinds";
 import { pageBreaksIn } from "./kinds/paragraphKind";
-import { measureTable } from "./kinds/tableKind";
+import { tableKind } from "./kinds/tableKind";
 
 /**
  * The measurements taken in order to draw the page overlay. Positions are relative to
@@ -89,10 +89,22 @@ export function measureSheet(
     const node = view.state.doc.nodeAt(pos);
     const rect = dom.getBoundingClientRect();
     applied += appliedPush(dom);
-    const top = sheetY(rect.top) - applied;
-    const measuredTable = node
-      ? measureTable(view, node, pos, dom, scale)
-      : null;
+    /** Everything opened up above this block, which its own measurements are read without */
+    const above = applied;
+    const blockY = (viewportY: number) => sheetY(viewportY) - above;
+    const top = blockY(rect.top);
+    const measuredTable =
+      node && tableKind.matches(node)
+        ? tableKind.measure({
+            view,
+            node,
+            pos,
+            dom,
+            sheetY: blockY,
+            top,
+            scale,
+          })
+        : null;
 
     // Each space element is the one the break at the same ordinal was given
     const breaks = node ? pageBreaksIn(node, pos) : [];
@@ -120,7 +132,8 @@ export function measureSheet(
       gap: top - previousBottom,
       height,
       breakBefore: dom.hasAttribute(editorAttributes.pageBreakBefore),
-      breakAfter: breakWithoutSpace(dom, spaces.length),
+      breakAfter:
+        measuredTable?.breakAfter ?? breakWithoutSpace(dom, spaces.length),
       // A space is never opened inside a table, so at most one of the two lists holds anything
       candidates: [...forced, ...(measuredTable?.candidates ?? [])],
       minFirstPiece:
