@@ -19,7 +19,7 @@ function open(xml: string, links?: LinkTargets): PMNode {
   if (!el) throw new Error("no element");
   const node = buildParagraph(
     el,
-    0,
+    null,
     links ? { ...NO_IMPORT_SOURCES, links } : NO_IMPORT_SOURCES
   );
   if (!node) throw new Error("the paragraph could not be modelled");
