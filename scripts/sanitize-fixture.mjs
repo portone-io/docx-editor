@@ -23,6 +23,13 @@ const IDENTITY = {
   initials: "RA",
 };
 
+/**
+ * The one instant every date in a fixture is set to. A revision's `w:date` and the core
+ * properties' timestamps record when somebody was editing, which is authoring metadata just as
+ * the name is, so they are pinned to the same day the zip entries are stamped with.
+ */
+const INSTANT = "2026-01-01T00:00:00Z";
+
 /** Every fixture is packed this way, so its bytes do not depend on when it was built */
 const REPACK = { level: 6, mtime: new Date(2026, 0, 1) };
 
@@ -62,14 +69,15 @@ function withElementText(xml, name, text) {
 }
 
 /**
- * The comment, revision, and person markup that names whoever was editing. `w:author` reaches
- * comments, tracked changes, and the note parts alike, so it is applied to every part rather
- * than to a list of paths that a producer might not have written.
+ * The comment, revision, and person markup that names whoever was editing and when. `w:author`
+ * and `w:date` reach comments, tracked changes, and the note parts alike, so they are applied to
+ * every part rather than to a list of paths that a producer might not have written.
  */
 function withoutReviewerIdentity(xml) {
   const named = withAttribute(xml, "w:author", IDENTITY.reviewer);
   const initialled = withAttribute(named, "w:initials", IDENTITY.initials);
-  return withAttribute(initialled, "w15:author", IDENTITY.reviewer);
+  const dated = withAttribute(initialled, "w:date", INSTANT);
+  return withAttribute(dated, "w15:author", IDENTITY.reviewer);
 }
 
 /**
@@ -82,17 +90,26 @@ function withoutReviewerIdentity(xml) {
  */
 const DOCUMENT_PROPERTIES = {
   "docProps/core.xml": (xml) =>
-    withElementText(
-      withElementText(xml, "dc:creator", IDENTITY.author),
-      "cp:lastModifiedBy",
-      IDENTITY.author
-    ),
+    [
+      ["dc:creator", IDENTITY.author],
+      ["cp:lastModifiedBy", IDENTITY.author],
+      ["dcterms:created", INSTANT],
+      ["dcterms:modified", INSTANT],
+    ].reduce((part, [name, text]) => withElementText(part, name, text), xml),
   "docProps/app.xml": (xml) => withElementText(xml, "Company", ""),
   "docProps/custom.xml": (xml) => withoutChildren(xml, "Properties"),
 };
 
+/** Every OPC package holds this part; a zip without it is not a document to sanitize */
+const CONTENT_TYPES = "[Content_Types].xml";
+
 function sanitizePackage(bytes) {
   const parts = unzipSync(bytes);
+  if (parts[CONTENT_TYPES] === undefined) {
+    throw new Error(
+      `the package holds no ${CONTENT_TYPES}, so it is not a DOCX`
+    );
+  }
   const sanitized = {};
   for (const [path, content] of Object.entries(parts)) {
     if (!path.endsWith(".xml") && !path.endsWith(".rels")) {
@@ -114,5 +131,12 @@ if (input === undefined || output === undefined) {
   console.error("usage: node scripts/sanitize-fixture.mjs in.docx out.docx");
   process.exitCode = 1;
 } else {
-  writeFileSync(output, sanitizePackage(readFileSync(input)));
+  try {
+    writeFileSync(output, sanitizePackage(readFileSync(input)));
+  } catch (error) {
+    console.error(
+      `${input}: ${error instanceof Error ? error.message : error}`
+    );
+    process.exitCode = 1;
+  }
 }

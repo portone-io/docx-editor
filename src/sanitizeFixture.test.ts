@@ -246,6 +246,48 @@ describe("the fixture sanitize script", () => {
     expect(JSON.stringify(parts)).not.toMatch(/Example|Owner|0x0101/);
   });
 
+  it("pins every date a producer stamped to the instant the zip entries carry", () => {
+    const parts = sanitizedParts(
+      packageOf({
+        ...WORD_PROPERTIES,
+        "docProps/core.xml": WORD_PROPERTIES["docProps/core.xml"].replace(
+          "</cp:coreProperties>",
+          '<dcterms:created xsi:type="dcterms:W3CDTF">2026-09-07T04:21:35Z</dcterms:created>' +
+            '<dcterms:modified xsi:type="dcterms:W3CDTF">2026-09-07T05:02:11Z</dcterms:modified>' +
+            "</cp:coreProperties>"
+        ),
+        "word/document.xml":
+          `${XML_DECLARATION}<w:document xmlns:w="${W_NS}"><w:body><w:p>` +
+          '<w:ins w:id="1" w:author="Fixture O\'Example" w:date="2026-09-07T04:21:35Z"><w:r><w:t>added</w:t></w:r></w:ins>' +
+          "<w:r><w:t>Body</w:t></w:r></w:p></w:body></w:document>",
+        "word/comments.xml":
+          `<w:comments xmlns:w="${W_NS}">` +
+          '<w:comment w:id="0" w:author="Fixture O\'Example" w:date="2026-08-22T00:00:00Z"><w:p/></w:comment>' +
+          "</w:comments>",
+      })
+    );
+
+    expect(parts["word/document.xml"]).toContain(
+      '<w:ins w:id="1" w:author="Reviewer A" w:date="2026-01-01T00:00:00Z">'
+    );
+    expect(parts["word/comments.xml"]).toContain(
+      '<w:comment w:id="0" w:author="Reviewer A" w:date="2026-01-01T00:00:00Z">'
+    );
+    expect(parts["docProps/core.xml"]).toContain(
+      '<dcterms:created xsi:type="dcterms:W3CDTF">2026-01-01T00:00:00Z</dcterms:created>' +
+        '<dcterms:modified xsi:type="dcterms:W3CDTF">2026-01-01T00:00:00Z</dcterms:modified>'
+    );
+    expect(JSON.stringify(parts)).not.toMatch(/2026-0[89]/);
+  });
+
+  it("refuses a zip that is not a package rather than writing an empty one", () => {
+    const run = runScript(zipSync({}));
+
+    expect(run.status).toBe(1);
+    expect(run.stderr).toContain("[Content_Types].xml");
+    expect(run.output).toBeNull();
+  });
+
   it.each(producerFixtureNames)(
     "%s: is what the script gives back for itself",
     (name) => {
