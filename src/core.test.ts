@@ -115,6 +115,26 @@ function numberingRefsIn(doc: PMNode): NumberingRef[] {
 }
 
 describe("core entry", () => {
+  it("constructs one global parser for all the XML an import reads", () => {
+    let constructed = 0;
+    class CountingParser extends DOMParser {
+      constructor() {
+        super();
+        constructed += 1;
+      }
+    }
+    vi.stubGlobal("DOMParser", CountingParser);
+
+    try {
+      const { doc } = importDocx(readFixture("demo.docx"));
+
+      expect(doc.textContent).not.toBe("");
+      expect(constructed).toBe(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("reaches nothing but the zip and document-model packages", () => {
     expect(packagesReachedBy(join(srcDir, "core.ts"))).toEqual([
       "fflate",

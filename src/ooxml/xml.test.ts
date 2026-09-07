@@ -115,6 +115,33 @@ describe("the parser a read goes through", () => {
     expect(sources).toEqual([XML]);
   });
 
+  it.each([false, true])(
+    "uses the explicitly named inner parser and restores the outer one (throws: %s)",
+    (throws) => {
+      const outer = recording();
+      const inner = recording();
+      const failure = new Error("inner work gave up");
+      vi.stubGlobal("DOMParser", undefined);
+
+      withXmlParser(outer.parser, () => {
+        parseXml("<before/>");
+        const readInner = () =>
+          withXmlParser(inner.parser, () => {
+            parseXml("<inside/>");
+            if (throws) throw failure;
+          });
+
+        if (throws) expect(readInner).toThrow(failure);
+        else readInner();
+        parseXml("<after/>");
+      });
+
+      expect(outer.sources).toEqual(["<before/>", "<after/>"]);
+      expect(inner.sources).toEqual(["<inside/>"]);
+      expect(importErrorCode(() => parseXml(XML))).toBe("no-xml-parser");
+    }
+  );
+
   it("restores the previous parser after work throws", () => {
     const { parser } = recording();
     vi.stubGlobal("DOMParser", undefined);
