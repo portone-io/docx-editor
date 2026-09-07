@@ -4,12 +4,7 @@
  */
 
 import type { Node as PMNode } from "prosemirror-model";
-import {
-  type CellMargins,
-  type TableFormat,
-  toCellMargins,
-  toInsideBorders,
-} from "../model/format";
+import { toCellMargins, toInsideBorders } from "../model/format";
 import { childValue, wAttr } from "../ooxml/units";
 import {
   attrString,
@@ -31,14 +26,13 @@ import {
 } from "./importParagraph";
 import { readSdtWrapper } from "./sdt";
 import {
-  type CellBorderDefaults,
-  cellBorderDefaults,
+  cellDefaultsFor,
+  type GridRect,
   type GridSize,
-  gridEdgesOf,
-  type InsideBorders,
   layerCellMargins,
   layerInsideBorders,
   NO_CELL_MARGINS,
+  NO_CELL_SOURCES,
   NO_INSIDE_BORDERS,
   readCellFormat,
   readCellMarginsOf,
@@ -47,6 +41,7 @@ import {
   readRowFormat,
   readTableFormat,
   readTableWidth,
+  type TableCellSources,
   tblStyleIdOf,
 } from "./tableFormatting";
 
@@ -289,41 +284,20 @@ function buildCellBlock(el: Element, sources: ImportSources): PMNode {
   });
 }
 
-/**
- * The lines of one table, and the size of the grid they are laid over.
- * A cell reads its own four defaults out of these, according to where in the grid it sits.
- * The cell margins are the same for every cell, so they come along for the ride.
- */
-interface TableLines extends GridSize {
-  outer: TableFormat | null;
-  inside: InsideBorders;
-  margins: CellMargins;
-}
-
-/** The lines the four sides of one cell fall back on, merges included in where its edges lie */
-function cellBorderDefaultsFor(
-  draft: CellDraft,
-  lines: TableLines
-): CellBorderDefaults {
-  return cellBorderDefaults(
-    gridEdgesOf(
-      {
-        top: draft.row,
-        bottom: draft.row + draft.rowspan,
-        left: draft.col,
-        right: draft.col + draft.colspan,
-      },
-      lines
-    ),
-    lines.outer,
-    lines.inside
-  );
+/** The block of the grid one cell covers, merges included */
+function cellRect(draft: CellDraft): GridRect {
+  return {
+    top: draft.row,
+    bottom: draft.row + draft.rowspan,
+    left: draft.col,
+    right: draft.col + draft.colspan,
+  };
 }
 
 /** Builds a cell. null if there is no block inside it at all */
 function buildCell(
   draft: CellDraft,
-  lines: TableLines,
+  table: TableCells,
   sources: ImportSources
 ): PMNode | null {
   const tcPr = childByLocalName(draft.el, "tcPr");
@@ -333,6 +307,7 @@ function buildCell(
     blocks.push(buildCellBlock(child, sources));
   }
   if (blocks.length === 0) return null;
+  const defaults = cellDefaultsFor(cellRect(draft), table.grid, table.sources);
 
   return docxSchema.nodes.tableCell.create(
     {
@@ -342,11 +317,7 @@ function buildCell(
       tcAttrs: attrString(draft.el),
       tcPr: tcPr ? serializeXml(tcPr) : null,
       tcW: readTableWidth(tcPr, "tcW"),
-      format: readCellFormat(
-        tcPr,
-        cellBorderDefaultsFor(draft, lines),
-        lines.margins
-      ),
+      format: readCellFormat(tcPr, defaults),
       sdtPrefix: draft.control?.prefix ?? null,
       sdtContentsLocked: draft.control?.contentsLocked ?? false,
       sdtDeletionLocked: draft.control?.deletionLocked ?? false,
@@ -355,15 +326,21 @@ function buildCell(
   );
 }
 
+/** The size of a table's grid and what it lays down for the cells laid over it */
+interface TableCells {
+  grid: GridSize;
+  sources: TableCellSources;
+}
+
 function buildRow(
   row: RawRow,
   drafts: CellDraft[],
-  lines: TableLines,
+  table: TableCells,
   sources: ImportSources
 ): PMNode | null {
   const cells: PMNode[] = [];
   for (const draft of drafts) {
-    const cell = buildCell(draft, lines, sources);
+    const cell = buildCell(draft, table, sources);
     if (!cell) return null;
     cells.push(cell);
   }
@@ -430,23 +407,25 @@ export function buildTable(
     style?.table ?? {},
     readTableFormat(parts.tblPr)
   );
-  const lines: TableLines = {
-    rows: parts.rows.length,
-    cols: width,
-    outer: tableFormat,
-    inside: layerInsideBorders(
-      style?.tableInside ?? NO_INSIDE_BORDERS,
-      readInsideBorders(parts.tblPr)
-    ),
-    margins: layerCellMargins(
-      style?.tableCellMargins ?? NO_CELL_MARGINS,
-      readCellMarginsOf(parts.tblPr, "tblCellMar")
-    ),
+  const table: TableCells = {
+    grid: { rows: parts.rows.length, cols: width },
+    sources: {
+      ...NO_CELL_SOURCES,
+      outer: tableFormat,
+      inside: layerInsideBorders(
+        style?.tableInside ?? NO_INSIDE_BORDERS,
+        readInsideBorders(parts.tblPr)
+      ),
+      margins: layerCellMargins(
+        style?.tableCellMargins ?? NO_CELL_MARGINS,
+        readCellMarginsOf(parts.tblPr, "tblCellMar")
+      ),
+    },
   };
 
   const rows: PMNode[] = [];
   for (const [index, row] of parts.rows.entries()) {
-    const built = buildRow(row, drafts[index], lines, sources);
+    const built = buildRow(row, drafts[index], table, sources);
     if (!built) return null;
     rows.push(built);
   }

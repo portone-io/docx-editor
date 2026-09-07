@@ -15,10 +15,9 @@ import { orderedElement, parsePropsXml } from "../ooxml/props";
 import { docxSchema } from "../schema";
 import { A4_PORTRAIT, bodyWidth, type PageGeometry } from "./pageGeometry";
 import {
-  type CellBorderDefaults,
-  cellBorderDefaults,
-  gridEdgesOf,
-  NO_CELL_MARGINS,
+  type CellDefaults,
+  cellDefaultsFor,
+  NO_CELL_SOURCES,
   readCellFormat,
   readInsideBorders,
   readTableFormat,
@@ -123,17 +122,14 @@ interface CellTemplate {
  * Which of the table's lines its four sides fall on depends on where in the grid it sits, so the
  * fragment is read back once per cell rather than once per column.
  */
-function cellTemplate(
-  width: number,
-  defaults: CellBorderDefaults
-): CellTemplate {
+function cellTemplate(width: number, defaults: CellDefaults): CellTemplate {
   const tcPr = cellPropsXml(width);
   const el = parsePropsXml(tcPr);
   return {
     tcPr,
     tcW: readTableWidth(el, "tcW"),
     // A new table writes no `tblCellMar`, so its cells take their padding from the stylesheet
-    format: readCellFormat(el, defaults, NO_CELL_MARGINS),
+    format: readCellFormat(el, defaults),
   };
 }
 
@@ -177,19 +173,21 @@ export function createTableNode(
   const gridCols = evenGridCols(cols, total);
   const tblPr = tablePropsXml(total);
   const tblPrEl = parsePropsXml(tblPr);
-  const inside = readInsideBorders(tblPrEl);
   const outer = readTableFormat(tblPrEl);
+  // A new table wears no style, so nothing but its own lines reaches its cells
+  const sources = {
+    ...NO_CELL_SOURCES,
+    outer,
+    inside: readInsideBorders(tblPrEl),
+  };
 
   const cellAt = (row: number, col: number) =>
     cellTemplate(
       gridCols[col],
-      cellBorderDefaults(
-        gridEdgesOf(
-          { top: row, bottom: row + 1, left: col, right: col + 1 },
-          { rows, cols }
-        ),
-        outer,
-        inside
+      cellDefaultsFor(
+        { top: row, bottom: row + 1, left: col, right: col + 1 },
+        { rows, cols },
+        sources
       )
     );
 

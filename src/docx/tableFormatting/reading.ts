@@ -31,7 +31,6 @@ import {
   ALIGN_BY_JC,
   type BorderLine,
   borderLineCss,
-  borderLineOfCss,
   borderSide,
   childValue,
   isOn,
@@ -40,6 +39,7 @@ import {
   wAttr,
 } from "../../ooxml/units";
 import { childByLocalName } from "../../ooxml/xml";
+import type { ParagraphPlacement } from "../formatting/resolve";
 import type { ParagraphFormatLayer } from "../formatting/tabStops";
 
 export type {
@@ -212,7 +212,7 @@ export const NO_BORDER_DEFAULTS: CellBorderDefaults = {
   right: null,
 };
 
-/** Which sides of a cell lie on the edge of the table's grid */
+/** Which sides of a cell lie on the edge of a part of the table */
 export interface GridEdges {
   top: boolean;
   bottom: boolean;
@@ -234,46 +234,26 @@ export interface GridSize {
 }
 
 /**
- * Which sides of the block a cell covers lie on the edge of the grid, merges included.
- * Everything that works out a cell's lines asks this first, whether the cell is being imported,
- * created fresh, or looked up again in a table on screen.
+ * Everything one cell falls back on for what it did not write down itself, worked out from where
+ * it sits in the grid by `cellDefaultsFor`. Everything that reads or edits a cell takes one of
+ * these, so the lines a cell draws and the lines an edit measures against are always the same.
  */
-export function gridEdgesOf(rect: GridRect, grid: GridSize): GridEdges {
-  return {
-    top: rect.top === 0,
-    bottom: rect.bottom === grid.rows,
-    left: rect.left === 0,
-    right: rect.right === grid.cols,
-  };
+export interface CellDefaults {
+  borders: CellBorderDefaults;
+  margins: CellMargins;
+  background: string | null;
+  verticalAlign: CellVerticalAlign | null;
+  /** What the paragraphs inside the cell resolve their formatting against */
+  placement: ParagraphPlacement;
 }
 
-/**
- * The lines the four sides of one cell fall back on.
- *
- * A side on the edge of the grid falls on the table's outer border, and one facing another cell on
- * the table's inside line. An outer side the document wrote as `none` is passed through as it is:
- * the table switched that line off, and nothing is to bring it back.
- */
-export function cellBorderDefaults(
-  edges: GridEdges,
-  outer: TableFormat | null,
-  inside: InsideBorders
-): CellBorderDefaults {
-  return {
-    top: borderLineOfCss(
-      edges.top ? (outer?.borderTop ?? null) : inside.horizontal
-    ),
-    bottom: borderLineOfCss(
-      edges.bottom ? (outer?.borderBottom ?? null) : inside.horizontal
-    ),
-    left: borderLineOfCss(
-      edges.left ? (outer?.borderLeft ?? null) : inside.vertical
-    ),
-    right: borderLineOfCss(
-      edges.right ? (outer?.borderRight ?? null) : inside.vertical
-    ),
-  };
-}
+export const NO_CELL_DEFAULTS: CellDefaults = {
+  borders: NO_BORDER_DEFAULTS,
+  margins: NO_CELL_MARGINS,
+  background: null,
+  verticalAlign: null,
+  placement: { tableStyleId: null, conditions: [] },
+};
 
 export const NO_BAND_SIZES: BandSizes = { row: null, col: null };
 
@@ -480,9 +460,9 @@ function cellVerticalAlignOf(tcPr: Element): CellVerticalAlign | null {
 }
 
 /**
- * The padding of one cell: its own `w:tcMar` where it wrote one, and the table's cell margins on
- * the sides it did not. A side neither of them mentions is left absent, and the fallback on screen
- * is then the stylesheet's.
+ * The padding of one cell: its own `w:tcMar` where it wrote one, and the margins the table and its
+ * style laid down on the sides it did not. A side neither of them mentions is left absent, and the
+ * fallback on screen is then the stylesheet's.
  */
 function readCellPadding(
   tcPr: Element | null,
@@ -500,42 +480,43 @@ function readCellPadding(
 /**
  * Cell formatting.
  * A side for which the cell has not written down its own border uses the line that side falls on,
- * which is the table's outer border or its inside line depending on where the cell sits.
- * The padding works the same way: what the cell wrote down wins, and the table's cell margins lie
- * underneath it. null if there is nothing at all to draw.
+ * which is the table's outer border, its inside line, or the line a conditional format of its
+ * style draws there, depending on where the cell sits.
+ * The fill, the vertical alignment and the padding work the same way: what the cell wrote down
+ * wins, and what it falls back on lies underneath. null if there is nothing at all to draw.
  */
 export function readCellFormat(
   tcPr: Element | null,
-  defaults: CellBorderDefaults,
-  margins: CellMargins = NO_CELL_MARGINS
+  defaults: CellDefaults = NO_CELL_DEFAULTS
 ): CellFormat | null {
   const borders = tcPr ? childByLocalName(tcPr, "tcBorders") : null;
+  const lines = defaults.borders;
   const format: CellFormat = {};
-  const top = borderSide(borders, "top") ?? borderLineCss(defaults.top);
+  const top = borderSide(borders, "top") ?? borderLineCss(lines.top);
   if (top) format.borderTop = top;
-  const bottom =
-    borderSide(borders, "bottom") ?? borderLineCss(defaults.bottom);
+  const bottom = borderSide(borders, "bottom") ?? borderLineCss(lines.bottom);
   if (bottom) format.borderBottom = bottom;
   const left =
     borderSide(borders, "left") ??
     borderSide(borders, "start") ??
-    borderLineCss(defaults.left);
+    borderLineCss(lines.left);
   if (left) format.borderLeft = left;
   const right =
     borderSide(borders, "right") ??
     borderSide(borders, "end") ??
-    borderLineCss(defaults.right);
+    borderLineCss(lines.right);
   if (right) format.borderRight = right;
 
-  if (tcPr) {
-    const background = shadingOf(tcPr);
-    if (background) format.background = background;
-    const verticalAlign =
-      CELL_VERTICAL_ALIGN_BY_VAL[childValue(tcPr, "vAlign") ?? ""];
-    if (verticalAlign) format.verticalAlign = verticalAlign;
-  }
-  // The table's margins reach a cell that wrote no formatting of its own at all
-  const padded: CellFormat = { ...format, ...readCellPadding(tcPr, margins) };
+  const background = (tcPr ? shadingOf(tcPr) : null) ?? defaults.background;
+  if (background) format.background = background;
+  const verticalAlign =
+    (tcPr ? cellVerticalAlignOf(tcPr) : null) ?? defaults.verticalAlign;
+  if (verticalAlign) format.verticalAlign = verticalAlign;
+  // The margins reach a cell that wrote no formatting of its own at all
+  const padded: CellFormat = {
+    ...format,
+    ...readCellPadding(tcPr, defaults.margins),
+  };
   return Object.keys(padded).length > 0 ? padded : null;
 }
 
@@ -557,11 +538,10 @@ export function cellMarginsOf(tblPr: string | null): CellMargins {
  */
 export function readCellProps(
   tcPr: string | null,
-  defaults: CellBorderDefaults,
-  margins: CellMargins = NO_CELL_MARGINS
+  defaults: CellDefaults = NO_CELL_DEFAULTS
 ): CellFormat | null {
   const el = tcPr === null ? null : parsePropsXml(tcPr);
-  return readCellFormat(el, defaults, margins);
+  return readCellFormat(el, defaults);
 }
 
 /** The formatting a cell holds. The original XML and the display values read out of it form a pair */

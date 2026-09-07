@@ -6,7 +6,6 @@
 
 import type {
   CellFormat,
-  CellMargins,
   CellVerticalAlign,
   RowFormat,
 } from "../../model/format";
@@ -33,8 +32,8 @@ import {
 import { type BorderLine, normalizeHex } from "../../ooxml/units";
 import {
   type CellBorderDefaults,
-  NO_BORDER_DEFAULTS,
-  NO_CELL_MARGINS,
+  type CellDefaults,
+  NO_CELL_DEFAULTS,
   readCellProps,
   readRowFormat,
 } from "./reading";
@@ -345,6 +344,10 @@ function editedProps(
 /**
  * The cell formatting XML and display values after one piece of formatting is changed.
  *
+ * What the cell falls back on is what an edit measures against: switching a side off writes `none`
+ * over whatever line was being drawn there, and recoloring writes only where a line is drawn at
+ * all, so the defaults handed in have to be the ones the cell is actually drawn with.
+ *
  * null when there is nothing to do: a fragment whose shape could not be made out, a value that
  * cannot be written into the document, or a cell already in the state the job wants. In every one
  * of those cases the cell keeps its original XML.
@@ -352,19 +355,18 @@ function editedProps(
 export function editCellProps(
   tcPr: string | null,
   edit: CellFormatEdit,
-  defaults: CellBorderDefaults = NO_BORDER_DEFAULTS,
-  margins: CellMargins = NO_CELL_MARGINS
+  defaults: CellDefaults = NO_CELL_DEFAULTS
 ): CellProps | null {
   const props = tcPr === null ? EMPTY_TC_PR : parseProps(tcPr);
   if (!props) return null;
 
-  const edited = editedProps(edit, props, defaults);
+  const edited = editedProps(edit, props, defaults.borders);
   if (!edited) return null;
 
   const rendered = renderProps(edited);
   const next = rendered === "" ? null : rendered;
   if (next === tcPr) return null;
-  return { tcPr: next, format: readCellProps(next, defaults, margins) };
+  return { tcPr: next, format: readCellProps(next, defaults) };
 }
 
 /**

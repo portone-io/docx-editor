@@ -17,24 +17,22 @@
 import type { Node as PMNode } from "prosemirror-model";
 import { TableMap } from "prosemirror-tables";
 import {
-  type CellBorderDefaults,
-  cellBorderDefaults,
+  type CellDefaults,
+  cellDefaultsFor,
   cellMarginsOf,
-  gridEdgesOf,
   insideBordersOf,
   layerCellMargins,
   layerInsideBorders,
-  NO_BORDER_DEFAULTS,
+  NO_CELL_DEFAULTS,
   NO_CELL_MARGINS,
+  NO_CELL_SOURCES,
   NO_INSIDE_BORDERS,
   readCellProps,
+  type TableCellSources,
 } from "../docx/tableFormatting";
 import {
   type CellFormat,
-  type CellMargins,
-  type InsideBorders,
   spanCount,
-  type TableFormat,
   toCellFormat,
   toCellMargins,
   toInsideBorders,
@@ -47,18 +45,16 @@ function text(value: unknown): string | null {
 }
 
 /**
- * What a table lays down for its cells to draw.
+ * What this table lays down for its cells to draw.
  * The values a table style laid down are not in the `tblPr`, so the table carries them separately.
+ * A node never changes once it is built, so what is read out of one is read once.
  */
-export interface TableCellSources {
-  outer: TableFormat | null;
-  inside: InsideBorders;
-  margins: CellMargins;
-}
-
 export function tableCellSources(table: PMNode): TableCellSources {
+  const known = sourcesByTable.get(table);
+  if (known) return known;
   const tblPr = text(table.attrs.tblPr);
-  return {
+  const sources: TableCellSources = {
+    ...NO_CELL_SOURCES,
     outer: toTableFormat(table.attrs.format),
     inside: layerInsideBorders(
       toInsideBorders(table.attrs.styleInside) ?? NO_INSIDE_BORDERS,
@@ -69,18 +65,22 @@ export function tableCellSources(table: PMNode): TableCellSources {
       cellMarginsOf(tblPr)
     ),
   };
+  sourcesByTable.set(table, sources);
+  return sources;
 }
 
-/** The lines the cell at this position falls back on for the sides it draws no border of its own on */
+const sourcesByTable = new WeakMap<PMNode, TableCellSources>();
+
+/** What the cell at this position falls back on for everything it did not write down itself */
 export function cellDefaultsAt(
   map: TableGridMap,
   pos: number,
   sources: TableCellSources
-): CellBorderDefaults {
-  return cellBorderDefaults(
-    gridEdgesOf(map.findCell(pos), { rows: map.height, cols: map.width }),
-    sources.outer,
-    sources.inside
+): CellDefaults {
+  return cellDefaultsFor(
+    map.findCell(pos),
+    { rows: map.height, cols: map.width },
+    sources
   );
 }
 
@@ -188,16 +188,12 @@ export function cellFixes(table: PMNode): CellFix[] {
     const cell = table.nodeAt(pos);
     if (!cell) continue;
     const tcPr = text(cell.attrs.tcPr);
-    const format = readCellProps(
-      tcPr,
-      cellDefaultsAt(map, pos, sources),
-      sources.margins
-    );
+    const format = readCellProps(tcPr, cellDefaultsAt(map, pos, sources));
     cells.set(pos, {
       pos,
       attrs: cell.attrs,
       format: { ...format },
-      direct: readCellProps(tcPr, NO_BORDER_DEFAULTS),
+      direct: readCellProps(tcPr, NO_CELL_DEFAULTS),
     });
   }
   reconcileSharedBorders(map, cells);
