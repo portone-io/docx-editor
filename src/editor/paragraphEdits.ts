@@ -9,7 +9,7 @@
 
 import type { Node as PMNode } from "prosemirror-model";
 import type { EditorState, Transaction } from "prosemirror-state";
-import { resolveParagraph, type StyleTable } from "../docx/formatting";
+import { paragraphAttrsFor, type StyleTable } from "../docx/formatting";
 import type { ParagraphProps } from "../docx/paraProps";
 import { docxSchema } from "../schema";
 import { editShut } from "../schema/guards";
@@ -84,8 +84,7 @@ function writeChanges(
     tr.setNodeMarkup(tr.mapping.map(spot.pos), undefined, {
       ...spot.node.attrs,
       pPr: props.pPr,
-      format: resolveParagraph(props.pPr, formatting).format,
-      styleRun: props.styleRun,
+      ...paragraphAttrsFor(props.pPr, formatting),
     });
   }
   return tr;

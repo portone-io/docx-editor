@@ -6,7 +6,7 @@
 import type { Attrs, Node as PMNode } from "prosemirror-model";
 import { type EditorState, Plugin } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
-import { resolveParagraph } from "../../docx/formatting";
+import { paragraphAttrsFor } from "../../docx/formatting";
 import { docxSchema } from "../../schema";
 import { documentFormatting } from "../documentStyles";
 import { paragraphPPr } from "../paragraphEdits";
@@ -39,11 +39,10 @@ function paragraphSpots(doc: PMNode): ParagraphSpot[] {
 
 /** The attributes the paragraph is to carry, or null where its style lays down nothing to carry */
 function styledAttrs(node: PMNode, state: EditorState): Attrs {
-  const { format, styleRun } = resolveParagraph(
-    paragraphPPr(node),
-    documentFormatting(state)
-  );
-  return { ...node.attrs, format, styleRun };
+  return {
+    ...node.attrs,
+    ...paragraphAttrsFor(paragraphPPr(node), documentFormatting(state)),
+  };
 }
 
 /**

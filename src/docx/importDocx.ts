@@ -5,7 +5,6 @@
  */
 
 import { Fragment, type Node as PMNode } from "prosemirror-model";
-import { type RunFormat, toRunFormat } from "../model/format";
 import { parseNumbering } from "../numbering/parseNumbering";
 import { DocxImportError } from "../ooxml/errors";
 import {
@@ -30,11 +29,12 @@ import { type FidelityNote, fidelityNotesOf } from "./fidelity";
 import {
   type FormattingContext,
   formattingContextOf,
-  layerRunFormat,
   NO_DOCUMENT_DEFAULTS,
+  paragraphAttrsOf,
   readDocumentDefaults,
   readParagraphStyles,
   resolveParagraph,
+  runMarkUnder,
 } from "./formatting";
 import { readHeadersFooters } from "./headersFooters";
 import { readLinkTargets } from "./hyperlink";
@@ -143,18 +143,8 @@ function buildBlock(
   return docxSchema.nodes.docxRaw.create({ srcId, name: el.nodeName });
 }
 
-/** Lays the style values underneath the display values of the run mark attached to a piece of text */
-function styledInline(node: PMNode, style: RunFormat): PMNode {
-  const mark = node.marks.find((entry) => entry.type === docxSchema.marks.run);
-  if (!mark) return node;
-  const format = layerRunFormat(style, toRunFormat(mark.attrs.format));
-  const next = mark.type.create({ ...mark.attrs, format });
-  return node.mark(next.addToSet(node.marks));
-}
-
 /**
- * Lays the values of the style a paragraph wears underneath the display values of the paragraph
- * and of the text inside it.
+ * Lays the hierarchy underneath the display values of the paragraph and of the text inside it.
  *
  * The style's run values are also baked onto the paragraph itself, so that text carrying no run
  * of its own - typed in the editor - is drawn in them (`styleRun` in `schema`).
@@ -165,16 +155,17 @@ function styledParagraph(node: PMNode, context: FormattingContext): PMNode {
     typeof pPr === "string" ? pPr : null,
     context
   );
-  const styleRun = paragraph.styleRun;
-  const inline = styleRun
-    ? node.children.map((child) => styledInline(child, styleRun))
-    : node.children;
+  const inline = node.children.map((child) => {
+    const mark = runMarkUnder(
+      child.marks.find((entry) => entry.type === docxSchema.marks.run) ?? null,
+      child.isText,
+      paragraph,
+      context
+    );
+    return mark ? child.mark(mark.addToSet(child.marks)) : child;
+  });
   return node.type.create(
-    {
-      ...node.attrs,
-      format: paragraph.format,
-      styleRun: paragraph.styleRun,
-    },
+    { ...node.attrs, ...paragraphAttrsOf(paragraph) },
     Fragment.fromArray(inline),
     node.marks
   );

@@ -11,18 +11,21 @@
 
 import type { Mark, Node as PMNode } from "prosemirror-model";
 import type { Command, EditorState, Transaction } from "prosemirror-state";
-import { layerRunFormat, styleIdOf } from "../../docx/formatting";
+import {
+  type FormattingContext,
+  type ParagraphAttrs,
+  paragraphAttrsOf,
+  type ResolvedParagraph,
+  resolveParagraph,
+  runMarkUnder,
+  styleIdOf,
+} from "../../docx/formatting";
 import {
   type ParagraphProps,
   withParagraphAlign,
   withParagraphStyle,
 } from "../../docx/paraProps";
-import { readRunProps } from "../../docx/runProps";
-import {
-  type ParagraphAlign,
-  type RunFormat,
-  toParagraphFormat,
-} from "../../model/format";
+import { type ParagraphAlign, toParagraphFormat } from "../../model/format";
 import { docxSchema } from "../../schema";
 import { lockedMarkOf } from "../../schema/locks";
 import { documentFormatting } from "../documentStyles";
@@ -83,36 +86,11 @@ export function activeParagraphAlign(state: EditorState): ActiveParagraphAlign {
     : { kind: "mixed" };
 }
 
-function text(value: unknown): string | null {
-  return typeof value === "string" ? value : null;
-}
-
 /** One run mark to be swapped in over the text it already covers */
 interface MarkChange {
   from: number;
   to: number;
   mark: Mark;
-}
-
-/**
- * The run mark one inline child wears under the new style, or null when it needs none.
- *
- * A child already carrying a mark keeps the run formatting it wrote down and only has its
- * display values read again, because they were baked with the old style laid underneath.
- * Text typed in the editor carries no mark at all, and gets one holding nothing but the
- * values the style gives, which is the very mark import builds for a bare `w:r`.
- * A style laying down no run formatting leaves nothing to attach.
- */
-function restyledMark(child: PMNode, style: RunFormat): Mark | null {
-  const mark = child.marks.find((entry) => entry.type === docxSchema.marks.run);
-  if (mark) {
-    const format = layerRunFormat(style, readRunProps(text(mark.attrs.rPr)));
-    return mark.type.create({ ...mark.attrs, format });
-  }
-  if (!child.isText) return null;
-  const format = layerRunFormat(style, null);
-  if (format === null) return null;
-  return docxSchema.marks.run.create({ rPr: null, rAttrs: null, format });
 }
 
 /**
@@ -123,18 +101,25 @@ function restyledMark(child: PMNode, style: RunFormat): Mark | null {
  * Reading them again the way import does keeps the screen the same as it would be after saving
  * this file and reopening it. Every piece of text in the paragraph wears the style, the same as
  * Word, so text typed in the editor is marked here too rather than waiting for the next reopen.
- * Such a mark writes no `w:rPr` of its own, so it changes nothing on the way out.
- * An inline that is not text (an image, say) and carries no mark is left as it is.
  *
- * Text inside a locked control is left alone as well. The guard turns down the whole transaction
- * over it, so the other selected paragraphs would go unstyled with it; the paragraph still comes
- * to point at the new style, the same as alignment and indent already do.
+ * Text inside a locked control is left alone. The guard turns down the whole transaction over
+ * it, so the other selected paragraphs would go unstyled with it; the paragraph still comes to
+ * point at the new style, the same as alignment and indent already do.
  */
-function restyledMarks(spot: ParagraphSpot, style: RunFormat): MarkChange[] {
+function restyledMarks(
+  spot: ParagraphSpot,
+  paragraph: ResolvedParagraph,
+  context: FormattingContext
+): MarkChange[] {
   const changes: MarkChange[] = [];
   spot.node.forEach((child, offset) => {
     if (lockedMarkOf(child)) return;
-    const mark = restyledMark(child, style);
+    const mark = runMarkUnder(
+      child.marks.find((entry) => entry.type === docxSchema.marks.run) ?? null,
+      child.isText,
+      paragraph,
+      context
+    );
     if (!mark) return;
     const from = spot.pos + 1 + offset;
     changes.push({ from, to: from + child.nodeSize, mark });
@@ -146,6 +131,7 @@ function restyledMarks(spot: ParagraphSpot, style: RunFormat): MarkChange[] {
 interface StyleChange {
   spot: ParagraphSpot;
   props: ParagraphProps;
+  attrs: ParagraphAttrs;
   marks: MarkChange[];
 }
 
@@ -159,12 +145,11 @@ function writeStyleChanges(
   changed: readonly StyleChange[]
 ): Transaction {
   const tr = state.tr;
-  for (const { spot, props, marks } of changed) {
+  for (const { spot, props, attrs, marks } of changed) {
     tr.setNodeMarkup(tr.mapping.map(spot.pos), undefined, {
       ...spot.node.attrs,
       pPr: props.pPr,
-      format: props.format,
-      styleRun: props.styleRun,
+      ...attrs,
     });
     for (const change of marks) {
       tr.addMark(change.from, change.to, change.mark);
@@ -179,19 +164,29 @@ function writeStyleChanges(
  */
 export function setParagraphStyle(styleId: string | null): Command {
   return (state, dispatch) => {
-    const { styles, defaultParagraphStyleId: defaultStyleId } =
-      documentFormatting(state);
+    const context = documentFormatting(state);
     // This writer is its own, so it leaves the locked paragraphs out itself, exactly as
     // `editParagraphs` does for every other paragraph edit
     const changed = editableParagraphs(state).flatMap((spot) => {
       const pPr = paragraphPPr(spot.node);
       // A paragraph already pointing at that style is left untouched, so its original XML survives
       if (styleIdOf(pPr) === styleId) return [];
-      const props = withParagraphStyle(pPr, styleId, styles, defaultStyleId);
+      const props = withParagraphStyle(
+        pPr,
+        styleId,
+        context.styles,
+        context.defaultParagraphStyleId
+      );
       if (!props) return [];
       // The text takes the values of the style the paragraph now wears, the default one where the name was cleared
+      const paragraph = resolveParagraph(props.pPr, context);
       return [
-        { spot, props, marks: restyledMarks(spot, props.styleRun ?? {}) },
+        {
+          spot,
+          props,
+          attrs: paragraphAttrsOf(paragraph),
+          marks: restyledMarks(spot, paragraph, context),
+        },
       ];
     });
     if (changed.length === 0) return false;

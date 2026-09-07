@@ -1,10 +1,22 @@
 // @vitest-environment jsdom
+import type { Node as PMNode } from "prosemirror-model";
 import { describe, expect, it } from "vitest";
-import { fixtureNames, readFixture } from "../../__testing__/docx";
+import {
+  fixtureNames,
+  makeStyledNumberedDocx,
+  readFixture,
+} from "../../__testing__/docx";
+import { runCommand, select } from "../../__testing__/editing";
+import { toggleNumberedList } from "../../editor/commands/listCommands";
+import { setParagraphStyle } from "../../editor/commands/paragraphCommands";
+import { editorStateForSession } from "../../editor/createEditor";
+import { docxKeymap } from "../../editor/plugins/keymap";
+import { toParagraphFormat } from "../../model/format";
 import type { Numbering } from "../../numbering/parseNumbering";
 import { parseXml } from "../../ooxml/xml";
 import { docxSchema } from "../../schema";
 import { importDocx } from "../importDocx";
+import { paragraphAttrsFor } from "./attrs";
 import {
   type FormattingContext,
   formattingContextOf,
@@ -390,25 +402,66 @@ describe("tab stops", () => {
   });
 });
 
+/** Every paragraph's attrs against what the resolver answers for its own pPr. The count says the walk saw some */
+function expectResolvedAttrs(
+  doc: PMNode,
+  formatting: FormattingContext
+): number {
+  let paragraphs = 0;
+  doc.descendants((node) => {
+    if (node.type !== docxSchema.nodes.paragraph) return true;
+    paragraphs += 1;
+    const pPr: unknown = node.attrs.pPr;
+    const attrs = paragraphAttrsFor(
+      typeof pPr === "string" ? pPr : null,
+      formatting
+    );
+    expect(node.attrs.format).toEqual(attrs.format);
+    expect(node.attrs.styleRun).toEqual(attrs.styleRun);
+    return false;
+  });
+  return paragraphs;
+}
+
 describe("the values an opened document carries", () => {
   it.each(fixtureNames)(
     "every paragraph of %s carries what the resolver answers for its pPr",
     (name) => {
       const { doc, session } = importDocx(readFixture(name));
-      let paragraphs = 0;
-      doc.descendants((node) => {
-        if (node.type !== docxSchema.nodes.paragraph) return true;
-        paragraphs += 1;
-        const pPr: unknown = node.attrs.pPr;
-        const resolved = resolveParagraph(
-          typeof pPr === "string" ? pPr : null,
-          session.formatting
-        );
-        expect(node.attrs.format).toEqual(resolved.format);
-        expect(node.attrs.styleRun).toEqual(resolved.styleRun);
-        return false;
-      });
-      expect(paragraphs).toBeGreaterThan(0);
+      expect(expectResolvedAttrs(doc, session.formatting)).toBeGreaterThan(0);
     }
   );
+
+  it("the same pPr resolves to the same attrs whichever caller asks", () => {
+    const { doc, session } = importDocx(
+      makeStyledNumberedDocx(
+        '<w:p><w:r><w:t xml:space="preserve">Body</w:t></w:r></w:p>',
+        '<w:style w:type="paragraph" w:styleId="Normal" w:default="1">' +
+          '<w:name w:val="Normal"/><w:pPr><w:spacing w:after="160"/></w:pPr>' +
+          "<w:rPr><w:b/></w:rPr></w:style>" +
+          '<w:style w:type="paragraph" w:styleId="Heading1">' +
+          '<w:name w:val="heading 1"/><w:pPr><w:jc w:val="center"/></w:pPr>' +
+          "<w:rPr><w:i/></w:rPr></w:style>"
+      )
+    );
+    const formatting = session.formatting;
+    const opened = editorStateForSession({ doc, session });
+    expect(expectResolvedAttrs(opened.doc, formatting)).toBe(1);
+
+    // The style writer
+    const styled = runCommand(select(opened, 1), setParagraphStyle("Heading1"));
+    expect(expectResolvedAttrs(styled.doc, formatting)).toBe(1);
+
+    // The plugin, over the paragraph Enter opened
+    const split = runCommand(select(styled, 5), docxKeymap.Enter);
+    expect(expectResolvedAttrs(split.doc, formatting)).toBe(2);
+
+    // The paragraph writer every other paragraph edit goes through
+    const listed = runCommand(select(split, 1), toggleNumberedList);
+    expect(expectResolvedAttrs(listed.doc, formatting)).toBe(2);
+    expect(toParagraphFormat(listed.doc.child(0).attrs.format)).toEqual({
+      align: "center",
+      numbering: { numId: 2, ilvl: 0 },
+    });
+  });
 });

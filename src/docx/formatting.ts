@@ -1,3 +1,4 @@
+export * from "./formatting/attrs";
 export * from "./formatting/context";
 export * from "./formatting/direct";
 export * from "./formatting/resolve";
