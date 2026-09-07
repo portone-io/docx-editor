@@ -10,7 +10,7 @@ import type {
   CellVerticalAlign,
   RowFormat,
 } from "../../model/format";
-import { attrValue, elementXml, type XmlAttr } from "../../ooxml/element";
+import { elementXml, wAttrValue, type XmlAttr } from "../../ooxml/element";
 import { wName } from "../../ooxml/names";
 import { setAttr } from "../../ooxml/precedence";
 import {
@@ -84,7 +84,7 @@ const EMPTY_TC_PR: Props = { tag: "w:tcPr", attrs: null, children: [] };
 /** Whether this border side draws a line. A missing side, `nil`, and `none` all draw nothing */
 function drawsLine(side: ChildElement): boolean {
   if (side.tag === null) return false;
-  const val = attrValue(side.attrs, "val");
+  const val = wAttrValue(side.attrs, "val");
   return val !== null && val !== "nil" && val !== "none";
 }
 
@@ -220,7 +220,7 @@ function editedBorders(
 
 /** Whether the shading paints a pattern rather than a plain fill */
 function hasPattern(shd: ChildElement): boolean {
-  const val = attrValue(shd.attrs, "val");
+  const val = wAttrValue(shd.attrs, "val");
   return val !== null && val !== "clear" && val !== "nil";
 }
 
@@ -411,7 +411,7 @@ export function editRowHeight(
   if (!props) return null;
   const current = childElement(props, "trHeight");
   if (!current) return null;
-  const writtenRule = attrValue(current.attrs, "hRule");
+  const writtenRule = wAttrValue(current.attrs, "hRule");
   const attrs = setAttr(current.attrs, "trHeight", "val", `${twips}`);
   const nextAttrs = setAttr(
     attrs,

@@ -235,6 +235,13 @@ describe("font family", () => {
     expect(edit(rPr, font("Georgia"))?.rPr).not.toContain("w:cs=");
   });
 
+  it("a foreign attribute named cs is not a complex-script slot, so none is created for it", () => {
+    const rPr = '<w:rPr><w:rFonts x:cs="Arial" w:ascii="Arial"/></w:rPr>';
+    expect(edit(rPr, font("Georgia"))?.rPr).toBe(
+      '<w:rPr><w:rFonts w:ascii="Georgia" w:hAnsi="Georgia" x:cs="Arial"/></w:rPr>'
+    );
+  });
+
   it("attributes we do not set stay while a theme font is cleared away", () => {
     // A theme left in place would beat the name we wrote
     const rPr =

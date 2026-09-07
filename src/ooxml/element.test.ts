@@ -1,12 +1,13 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import {
-  attrValue,
   elementXml,
   emptyTagXml,
   openTagXml,
+  wAttrValue,
   withAttr,
   withoutAttrs,
+  wLocalName,
   type XmlAttr,
   xmlnsAttr,
 } from "./element";
@@ -48,12 +49,59 @@ describe("writing an element", () => {
     );
   });
 
-  it("matches an attribute by its local part so a foreign prefix survives", () => {
-    const shd: XmlAttr[] = [["x:fill", "FF0000"]];
-    expect(attrValue(shd, "fill")).toBe("FF0000");
-    expect(elementXml("x:shd", withAttr(shd, "fill", "00FF00"))).toBe(
-      '<x:shd x:fill="00FF00"/>'
+  /**
+   * A producer may qualify an attribute of its own with a local name WordprocessingML also uses.
+   * `mc:Ignorable` tells a consumer to skip it, so reading it as the formatting value, or writing
+   * the formatting value into it, would take an attribute nobody reads for the one Word does.
+   */
+  it("reads the WordprocessingML attribute past a foreign one of the same local name", () => {
+    const top: XmlAttr[] = [
+      ["x:val", "none"],
+      ["w:val", "single"],
+    ];
+    expect(wAttrValue(top, "val")).toBe("single");
+    expect(wAttrValue([["x:val", "none"]], "val")).toBeNull();
+    expect(wAttrValue([], "val")).toBeNull();
+  });
+
+  it("reads an unprefixed attribute as the WordprocessingML one when no w: spelling stands", () => {
+    expect(wAttrValue([["val", "single"]], "val")).toBe("single");
+    expect(
+      wAttrValue(
+        [
+          ["val", "none"],
+          ["w:val", "single"],
+        ],
+        "val"
+      )
+    ).toBe("single");
+    expect(wLocalName("w:val")).toBe("val");
+    expect(wLocalName("val")).toBe("val");
+    expect(wLocalName("x:val")).toBeNull();
+    expect(wLocalName("xmlns:w")).toBeNull();
+  });
+
+  it("writes and removes the WordprocessingML attribute and leaves a foreign one standing", () => {
+    const top: XmlAttr[] = [
+      ["x:val", "none"],
+      ["w:val", "single"],
+    ];
+    expect(elementXml(wName("top"), withAttr(top, "val", "none"))).toBe(
+      '<w:top x:val="none" w:val="none"/>'
     );
+    expect(elementXml(wName("top"), withAttr(top, "val", null))).toBe(
+      '<w:top x:val="none"/>'
+    );
+    expect(elementXml(wName("top"), withoutAttrs(top, ["val"]))).toBe(
+      '<w:top x:val="none"/>'
+    );
+    // With no WordprocessingML spelling there yet, the value is added rather than written into the foreign one
+    expect(
+      elementXml(
+        wName("shd"),
+        withAttr([["x:fill", "FF0000"]], "fill", "00FF00")
+      )
+    ).toBe('<w:shd x:fill="FF0000" w:fill="00FF00"/>');
   });
 
   it("removes an attribute when the value is null", () => {

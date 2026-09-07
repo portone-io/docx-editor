@@ -19,7 +19,12 @@ import type {
   RunFormat,
 } from "../model/format";
 import type { LevelIndent } from "../numbering/parseNumbering";
-import { elementXml, withoutAttrs, type XmlAttr } from "../ooxml/element";
+import {
+  elementXml,
+  wAttrValue,
+  withoutAttrs,
+  type XmlAttr,
+} from "../ooxml/element";
 import { wName } from "../ooxml/names";
 import { setAttr } from "../ooxml/precedence";
 import {
@@ -30,7 +35,6 @@ import {
   renderProps,
   setChild,
 } from "../ooxml/props";
-import { localPart } from "../ooxml/xml";
 import {
   layerParagraphFormat,
   layerRunFormat,
@@ -162,18 +166,16 @@ function leftIndAttrs(
   original: readonly XmlAttr[],
   leftTwips: number
 ): XmlAttr[] {
-  const slot = original.find(([name]) =>
-    LEFT_TWIPS_IND_ATTRS.includes(localPart(name))
-  )?.[0];
+  const slot = LEFT_TWIPS_IND_ATTRS.find(
+    (name) => wAttrValue(original, name) !== null
+  );
   const written = leftTwips > 0 ? `${leftTwips}` : null;
   // Every other spelling of the left indent goes, so the one value is recorded in one place
   const kept = withoutAttrs(
     original,
-    LEFT_IND_ATTRS.filter(
-      (name) => slot === undefined || name !== localPart(slot)
-    )
+    LEFT_IND_ATTRS.filter((name) => name !== slot)
   );
-  if (slot !== undefined) return setAttr(kept, "ind", localPart(slot), written);
+  if (slot !== undefined) return setAttr(kept, "ind", slot, written);
   return written === null ? kept : [[wName("left"), written], ...kept];
 }
 
@@ -253,18 +255,10 @@ type AttrEdit = readonly [name: string, value: string];
 function spacingAttrs(
   spacing: readonly XmlAttr[],
   edits: readonly AttrEdit[]
-): XmlAttr[] {
-  // Spacing has always updated every spelling of an edited local name. Updating only the first
-  // would leave the WML value unchanged when an extension attribute with that name comes first.
-  const changed = spacing.map(
-    ([name, value]): XmlAttr => [
-      name,
-      edits.find(([edited]) => edited === localPart(name))?.[1] ?? value,
-    ]
-  );
+): readonly XmlAttr[] {
   return edits.reduce(
     (attrs, [name, value]) => setAttr(attrs, "spacing", name, value),
-    changed
+    spacing
   );
 }
 

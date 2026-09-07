@@ -10,7 +10,7 @@
  */
 
 import { type RunFormat, toRunFormat } from "../model/format";
-import { attrValue, elementXml, type XmlAttr } from "../ooxml/element";
+import { elementXml, wAttrValue, type XmlAttr } from "../ooxml/element";
 import { wName } from "../ooxml/names";
 import { setAttr } from "../ooxml/precedence";
 import {
@@ -145,7 +145,7 @@ function rFontsXml(current: string | null, name: string): string | null {
   const props = current === null ? null : parseProps(current);
   const attrs = props === null ? [] : attrsOf(props);
   if ((current !== null && props === null) || attrs === null) return null;
-  const slots = fontSlots(name, attrValue(attrs, "cs") !== null);
+  const slots = fontSlots(name, wAttrValue(attrs, "cs") !== null);
   const kept = slots.reduce(
     (rest, slot) => setAttr(rest, "rFonts", slot, null),
     attrs
