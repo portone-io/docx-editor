@@ -332,6 +332,8 @@ const IMPORT_REJECTION_REASON: Record<DocxImportErrorCode, string> = {
   "missing-part": "This document is missing the part that holds its body.",
   "missing-body": "This document has no body.",
   "malformed-xml": "The XML inside this document cannot be read.",
+  "unsupported-conformance":
+    "This document is saved in a format this editor cannot open. Save it as a Word document and try again.",
   "unsupported-content":
     "This document holds content that could not be kept as it is.",
 };

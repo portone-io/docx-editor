@@ -42,44 +42,40 @@ function shapes(node: PMNode): string[] {
 }
 
 describe("what the schema draws, the schema reads back", () => {
-  it.each(["wx", ""])(
-    "keeps formatting imported under the %j WordprocessingML prefix",
-    (prefix) => {
-      const parts = unzipSync(
-        makeDocx(
-          '<w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t>formatted</w:t></w:r></w:p>'
-        )
-      );
-      const path = "word/document.xml";
-      const xml = new TextDecoder().decode(parts[path]);
-      // Default namespaces apply to elements only; WordprocessingML attributes retain w:.
-      const declaration = prefix === "" ? "xmlns=" : `xmlns:${prefix}=`;
-      const qualified = prefix === "" ? "" : `${prefix}:`;
-      const renamed = xml
-        .replace("xmlns:w=", declaration)
-        .replaceAll("<w:", `<${qualified}`)
-        .replaceAll("</w:", `</${qualified}`);
-      parts[path] = new TextEncoder().encode(
-        prefix === ""
-          ? renamed.replace("<document ", `<document xmlns:w="${W_NS}" `)
-          : renamed.replaceAll(" w:", ` ${qualified}`)
-      );
-      const bytes = zipSync(parts);
-      const { doc, session } = importDocx(bytes);
-      expect(
-        doc.firstChild?.firstChild?.marks.some(
-          (mark) => mark.attrs.format?.bold
-        )
-      ).toBe(true);
-      const host = document.createElement("div");
-      host.appendChild(serializer.serializeFragment(doc.content));
-      const reparsed = parser.parse(host, { preserveWhitespace: true });
-      expect(reparsed.eq(doc)).toBe(true);
-      expect(
-        bytesEqual(unzipSync(exportDocx(reparsed, session))[path], parts[path])
-      ).toBe(true);
-    }
-  );
+  /**
+   * A root that binds WordprocessingML as its default namespace still has to bind `w` beside it,
+   * since that is the prefix everything written back out is spelled under; one that binds the
+   * namespace to another prefix alone is refused when it is opened (`docx/importDocx`).
+   */
+  it("keeps formatting imported under a default WordprocessingML namespace", () => {
+    const parts = unzipSync(
+      makeDocx(
+        '<w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t>formatted</w:t></w:r></w:p>'
+      )
+    );
+    const path = "word/document.xml";
+    const xml = new TextDecoder().decode(parts[path]);
+    // Default namespaces apply to elements only; WordprocessingML attributes retain w:.
+    const renamed = xml
+      .replace("xmlns:w=", "xmlns=")
+      .replaceAll("<w:", "<")
+      .replaceAll("</w:", "</");
+    parts[path] = new TextEncoder().encode(
+      renamed.replace("<document ", `<document xmlns:w="${W_NS}" `)
+    );
+    const bytes = zipSync(parts);
+    const { doc, session } = importDocx(bytes);
+    expect(
+      doc.firstChild?.firstChild?.marks.some((mark) => mark.attrs.format?.bold)
+    ).toBe(true);
+    const host = document.createElement("div");
+    host.appendChild(serializer.serializeFragment(doc.content));
+    const reparsed = parser.parse(host, { preserveWhitespace: true });
+    expect(reparsed.eq(doc)).toBe(true);
+    expect(
+      bytesEqual(unzipSync(exportDocx(reparsed, session))[path], parts[path])
+    ).toBe(true);
+  });
 
   it("drops a control that rebinds relationships while preserving the link it wrapped", () => {
     const bytes = makeLinkedDocx(
