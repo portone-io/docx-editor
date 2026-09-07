@@ -264,12 +264,14 @@ export function withAttrs(props: Props, attrs: readonly XmlAttr[]): Props {
   return { ...props, attrs: attrs.length === 0 ? null : attrsText(attrs) };
 }
 
-/** One child of a fragment as it was written: the tag, null for a child that is not there, and its attributes */
-export interface ChildElement {
-  /** The name as written, prefix included, so an edited child keeps the spelling the document chose */
-  tag: string | null;
-  attrs: readonly XmlAttr[];
-}
+/**
+ * One child of a fragment as it was written: the tag, prefix included, so an edited child keeps
+ * the spelling the document chose, and its attributes. A child that is not there has neither, so
+ * no tag with attributes hanging off it can be made.
+ */
+export type ChildElement =
+  | { tag: string; attrs: readonly XmlAttr[] }
+  | { tag: null; attrs: readonly [] };
 
 /**
  * The tag and attributes of one child. A child that is not there reads as no tag and no
