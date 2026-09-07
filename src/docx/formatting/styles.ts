@@ -1,11 +1,14 @@
 /** Reads and layers styles.xml values used by the display model. */
 
 import {
+  type BandSizes,
   type CellMargins,
   type InsideBorders,
   type ParagraphFormat,
   type RunFormat,
+  TABLE_STYLE_CONDITIONS,
   type TableFormat,
+  type TableStyleOverrideType,
   toParagraphFormat,
   toRunFormat,
   toTableFormat,
@@ -15,11 +18,17 @@ import { ST_OnOff } from "../../ooxml/simpleTypes";
 import { childValue, isOn, wAttr } from "../../ooxml/units";
 import { childByLocalName, elementChildren } from "../../ooxml/xml";
 import {
+  type ConditionalTableFormat,
+  layerBandSizes,
   layerCellMargins,
+  layerCellStyleFormat,
   layerInsideBorders,
+  NO_BAND_SIZES,
   NO_CELL_MARGINS,
   NO_INSIDE_BORDERS,
+  readBandSizes,
   readCellMarginsOf,
+  readCellStyleFormat,
   readInsideBorders,
   readTableFormat,
 } from "../tableFormatting";
@@ -27,8 +36,17 @@ import { NO_THEME_FONTS, type ThemeFonts } from "../theme";
 import { readParagraphFormat, readRunFormat } from "./direct";
 import { layerParagraphValues, type ParagraphFormatLayer } from "./tabStops";
 
+/** The kind of object a style dresses (`w:style/@w:type`, ST_StyleType) */
+export type StyleType = "paragraph" | "character" | "table" | "numbering";
+
+/** What a table style dresses each part of a table with, by the part it covers */
+export type TableStyleConditionFormats = Readonly<
+  Partial<Record<TableStyleOverrideType, ConditionalTableFormat>>
+>;
+
 /** The display values one style passes down to paragraphs, to text, and to tables */
 export interface StyleFormat {
+  type: StyleType;
   paragraph: ParagraphFormatLayer;
   run: RunFormat;
   table: TableFormat;
@@ -36,6 +54,14 @@ export interface StyleFormat {
   tableInside: InsideBorders;
   /** The cell margins the style laid down. A side it says nothing about is null */
   tableCellMargins: CellMargins;
+  /** How many rows and columns one band of this table style is made of */
+  tableBands: BandSizes;
+  /**
+   * The conditional formats it wrote (`w:tblStylePr`). Each part is layered down the `basedOn`
+   * chain on its own, so a style that redresses the header row alone leaves the parts the styles
+   * it is based on dressed standing.
+   */
+  tableConditions: TableStyleConditionFormats;
 }
 
 /** A table looked up by style name. The `basedOn` chain has already been layered into the values */
@@ -45,10 +71,13 @@ export const NO_STYLES: StyleTable = new Map();
 
 /** One style as styles.xml wrote it down. This is its shape before the chain is layered in */
 interface StyleSource {
+  type: StyleType;
   basedOn: string | null;
   pPr: Element | null;
   rPr: Element | null;
   tblPr: Element | null;
+  /** The conditional formats it wrote, in the order styles.xml lists them */
+  tblStylePr: readonly Element[];
 }
 
 /**
@@ -73,12 +102,54 @@ function styleChain(
 }
 
 const EMPTY_STYLE_FORMAT: StyleFormat = {
+  type: "paragraph",
   paragraph: {},
   run: {},
   table: {},
   tableInside: NO_INSIDE_BORDERS,
   tableCellMargins: NO_CELL_MARGINS,
+  tableBands: NO_BAND_SIZES,
+  tableConditions: {},
 };
+
+/** The part of a table one conditional format covers. A `w:type` naming no part of a table is left unread */
+function conditionOf(el: Element): TableStyleOverrideType | null {
+  const type = wAttr(el, "type");
+  return TABLE_STYLE_CONDITIONS.find((known) => known === type) ?? null;
+}
+
+/** What one conditional format writes for the part it covers */
+function readConditionalFormat(
+  el: Element,
+  themeFonts: ThemeFonts
+): ConditionalTableFormat {
+  const tblPr = childByLocalName(el, "tblPr");
+  return {
+    paragraph: readParagraphFormat(childByLocalName(el, "pPr")) ?? {},
+    run: readRunFormat(childByLocalName(el, "rPr"), themeFonts) ?? {},
+    table: readTableFormat(tblPr) ?? {},
+    cell: readCellStyleFormat(childByLocalName(el, "tcPr"), tblPr),
+  };
+}
+
+/**
+ * The conditional formats one style wrote, by the part each covers.
+ * Two of them naming the same part is markup no producer writes; the last one stands, which is
+ * how the style chain reads two styles dressing the same part.
+ */
+function readConditions(
+  source: StyleSource,
+  themeFonts: ThemeFonts
+): TableStyleConditionFormats {
+  const conditions: Partial<
+    Record<TableStyleOverrideType, ConditionalTableFormat>
+  > = {};
+  for (const el of source.tblStylePr) {
+    const type = conditionOf(el);
+    if (type !== null) conditions[type] = readConditionalFormat(el, themeFonts);
+  }
+  return conditions;
+}
 
 /** The values one style wrote down itself, before the styles it is based on are layered underneath */
 function readStyleFormat(
@@ -86,11 +157,14 @@ function readStyleFormat(
   themeFonts: ThemeFonts
 ): StyleFormat {
   return {
+    type: source.type,
     paragraph: readParagraphFormat(source.pPr) ?? {},
     run: readRunFormat(source.rPr, themeFonts) ?? {},
     table: readTableFormat(source.tblPr) ?? {},
     tableInside: readInsideBorders(source.tblPr),
     tableCellMargins: readCellMarginsOf(source.tblPr, "tblCellMar"),
+    tableBands: readBandSizes(source.tblPr),
+    tableConditions: readConditions(source, themeFonts),
   };
 }
 
@@ -104,6 +178,7 @@ function readStyleFormat(
  */
 function layerStyleFormat(base: StyleFormat, over: StyleFormat): StyleFormat {
   return {
+    type: over.type,
     paragraph: layerParagraphValues(base.paragraph, over.paragraph),
     run: { ...base.run, ...over.run },
     table: { ...base.table, ...over.table },
@@ -112,7 +187,42 @@ function layerStyleFormat(base: StyleFormat, over: StyleFormat): StyleFormat {
       base.tableCellMargins,
       over.tableCellMargins
     ),
+    tableBands: layerBandSizes(base.tableBands, over.tableBands),
+    tableConditions: layerConditions(
+      base.tableConditions,
+      over.tableConditions
+    ),
   };
+}
+
+/** Lays one conditional format over the one a style further up the chain wrote for the same part */
+function layerConditionalFormat(
+  base: ConditionalTableFormat,
+  over: ConditionalTableFormat
+): ConditionalTableFormat {
+  return {
+    paragraph: layerParagraphValues(base.paragraph, over.paragraph),
+    run: { ...base.run, ...over.run },
+    table: { ...base.table, ...over.table },
+    cell: layerCellStyleFormat(base.cell, over.cell),
+  };
+}
+
+function layerConditions(
+  base: TableStyleConditionFormats,
+  over: TableStyleConditionFormats
+): TableStyleConditionFormats {
+  const conditions: Partial<
+    Record<TableStyleOverrideType, ConditionalTableFormat>
+  > = {};
+  for (const type of TABLE_STYLE_CONDITIONS) {
+    const under = base[type];
+    const above = over[type];
+    const format =
+      under && above ? layerConditionalFormat(under, above) : (above ?? under);
+    if (format) conditions[type] = format;
+  }
+  return conditions;
 }
 
 /** The effective values layered down from the root. Further down the chain overrides further up */
@@ -122,11 +232,24 @@ function foldChain(chain: StyleSource[], themeFonts: ThemeFonts): StyleFormat {
     .reduce(layerStyleFormat, EMPTY_STYLE_FORMAT);
 }
 
+const STYLE_TYPES: readonly StyleType[] = [
+  "paragraph",
+  "character",
+  "table",
+  "numbering",
+];
+
+/** The kind of object a style dresses. One naming no kind dresses paragraphs, the way Word reads it */
+function styleTypeOf(el: Element): StyleType {
+  const type = wAttr(el, "type");
+  return STYLE_TYPES.find((known) => known === type) ?? "paragraph";
+}
+
 /**
  * Reads the style chain from styles.xml into effective values for display.
  *
  * A style name is unique across all kinds (paragraph, character, table), so we take them in
- * without telling the kinds apart.
+ * without telling the kinds apart, and each one remembers the kind it is.
  * The names a paragraph points at are only ever paragraph styles, so the other kinds are never looked up.
  */
 export function readStyles(
@@ -139,10 +262,14 @@ export function readStyles(
     const id = wAttr(el, "styleId");
     if (id === null || id.length === 0) continue;
     sources.set(id, {
+      type: styleTypeOf(el),
       basedOn: childValue(el, "basedOn"),
       pPr: childByLocalName(el, "pPr"),
       rPr: childByLocalName(el, "rPr"),
       tblPr: childByLocalName(el, "tblPr"),
+      tblStylePr: elementChildren(el).filter(
+        (child) => child.localName === "tblStylePr"
+      ),
     });
   }
 

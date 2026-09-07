@@ -262,6 +262,67 @@ export interface CellMargins {
 }
 
 /**
+ * The parts of a table a table style formats conditionally (`w:tblStylePr/@w:type`,
+ * ST_TblStyleOverrideType), in the order ECMA-376 Part 1 §17.7.6 applies them: a format standing
+ * later in this list is laid over one standing earlier.
+ */
+export const TABLE_STYLE_CONDITIONS = [
+  "wholeTable",
+  "band1Vert",
+  "band2Vert",
+  "band1Horz",
+  "band2Horz",
+  "firstRow",
+  "lastRow",
+  "firstCol",
+  "lastCol",
+  "nwCell",
+  "neCell",
+  "swCell",
+  "seCell",
+] as const;
+
+export type TableStyleOverrideType = (typeof TABLE_STYLE_CONDITIONS)[number];
+
+/**
+ * How many rows one row band and how many columns one column band are made of
+ * (`w:tblStyleRowBandSize`, `w:tblStyleColBandSize`). A style that says nothing leaves the side
+ * null, and its bands are then one row or one column wide.
+ */
+export interface BandSizes {
+  row: number | null;
+  col: number | null;
+}
+
+/** The lines one conditional format draws around the region it covers. A side it says nothing about is null */
+export interface CellStyleBorders {
+  top: string | null;
+  bottom: string | null;
+  left: string | null;
+  right: string | null;
+}
+
+/**
+ * What one conditional format of a table style lays down for the cells it covers.
+ *
+ * Its lines are those of the region: `borders` is drawn where a cell lies on the edge of the
+ * region and `inside` between the cells within it, the same way a table's own lines are drawn
+ * around and between its cells.
+ */
+export interface CellStyleFormat {
+  background: string | null;
+  borders: CellStyleBorders;
+  inside: InsideBorders;
+  margins: CellMargins;
+  verticalAlign: CellVerticalAlign | null;
+}
+
+/** The conditional formats a table style lays down for its cells, by the part of the table each covers */
+export type TableStyleConditions = Readonly<
+  Partial<Record<TableStyleOverrideType, CellStyleFormat>>
+>;
+
+/**
  * How high a row stands, in points.
  * `atLeast` is a floor the row grows past when its text needs the room, and `exact` pins
  * the height down.

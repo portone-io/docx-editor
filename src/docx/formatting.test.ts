@@ -50,6 +50,7 @@ const styleTable = (styles: string, themeFonts?: ThemeFonts) =>
 
 /** A whole StyleFormat, with everything the style says nothing about left empty */
 const styleFormat = (values: Partial<StyleFormat>): StyleFormat => ({
+  type: "paragraph",
   paragraph: {},
   run: {},
   table: {},
@@ -60,6 +61,8 @@ const styleFormat = (values: Partial<StyleFormat>): StyleFormat => ({
     bottomPt: null,
     leftPt: null,
   },
+  tableBands: { row: null, col: null },
+  tableConditions: {},
   ...values,
 });
 
@@ -561,6 +564,165 @@ describe("the style chain", () => {
 
   it("leaves out a style that has no styleId", () => {
     expect(styleTable("<w:style><w:rPr><w:b/></w:rPr></w:style>").size).toBe(0);
+  });
+
+  it("reads the kind of object each style dresses, one naming none dressing paragraphs", () => {
+    const styles = styleTable(
+      '<w:style w:type="table" w:styleId="Grid"/>' +
+        '<w:style w:type="character" w:styleId="Strong"/>' +
+        '<w:style w:type="numbering" w:styleId="ListDefinition"/>' +
+        '<w:style w:styleId="Plain"/>' +
+        '<w:style w:type="nonsense" w:styleId="Odd"/>'
+    );
+    expect(styles.get("Grid")?.type).toBe("table");
+    expect(styles.get("Strong")?.type).toBe("character");
+    expect(styles.get("ListDefinition")?.type).toBe("numbering");
+    expect(styles.get("Plain")?.type).toBe("paragraph");
+    expect(styles.get("Odd")?.type).toBe("paragraph");
+  });
+
+  it("keeps a style's own kind rather than the kind of the style it is based on", () => {
+    const styles = styleTable(
+      '<w:style w:type="table" w:styleId="TableNormal"/>' +
+        '<w:style w:type="table" w:styleId="Grid">' +
+        '<w:basedOn w:val="TableNormal"/></w:style>' +
+        '<w:style w:type="character" w:styleId="Strong">' +
+        '<w:basedOn w:val="Grid"/></w:style>'
+    );
+    expect(styles.get("Grid")?.type).toBe("table");
+    expect(styles.get("Strong")?.type).toBe("character");
+  });
+});
+
+describe("the conditional formatting a table style writes", () => {
+  const conditional = (type: string, body: string) =>
+    `<w:tblStylePr w:type="${type}">${body}</w:tblStylePr>`;
+
+  const conditionalStyle = (id: string, body: string, basedOn?: string) =>
+    `<w:style w:type="table" w:styleId="${id}">` +
+    (basedOn ? `<w:basedOn w:val="${basedOn}"/>` : "") +
+    body +
+    "</w:style>";
+
+  const shd = (fill: string) => `<w:shd w:val="clear" w:fill="${fill}"/>`;
+
+  const cellBorders = (...sides: string[]) =>
+    `<w:tcBorders>${sides.join("")}</w:tcBorders>`;
+
+  const HEADER =
+    "<w:rPr><w:b/></w:rPr>" +
+    '<w:pPr><w:jc w:val="center"/></w:pPr>' +
+    `<w:tcPr>${shd("D9E2F3")}` +
+    cellBorders(side("bottom", 8), '<w:insideV w:val="nil"/>') +
+    "</w:tcPr>";
+
+  it("reads tblStylePr entries keyed by the part of the table each dresses", () => {
+    const conditions = styleTable(
+      conditionalStyle(
+        "ListTable",
+        conditional("firstRow", HEADER) +
+          conditional("band1Horz", `<w:tcPr>${shd("EDEDED")}</w:tcPr>`)
+      )
+    ).get("ListTable")?.tableConditions;
+
+    expect(conditions?.firstRow?.run).toEqual({ bold: true });
+    expect(conditions?.firstRow?.paragraph).toEqual({ align: "center" });
+    expect(conditions?.firstRow?.cell.background).toBe("#D9E2F3");
+    expect(conditions?.firstRow?.cell.borders.bottom).toBe("1pt solid #000000");
+    // The lines of a conditional format are those of the part it dresses: `insideV` runs between
+    // the cells of the header row, not around each of them
+    expect(conditions?.firstRow?.cell.inside).toEqual({
+      horizontal: null,
+      vertical: "none",
+    });
+    expect(conditions?.band1Horz?.cell.background).toBe("#EDEDED");
+    expect(conditions?.lastRow).toBeUndefined();
+  });
+
+  it("leaves out an entry naming a part no table has", () => {
+    const styles = styleTable(
+      conditionalStyle("Odd", conditional("middleRow", "<w:rPr><w:b/></w:rPr>"))
+    );
+    expect(styles.get("Odd")?.tableConditions).toEqual({});
+  });
+
+  it("layers each part down the basedOn chain on its own", () => {
+    const conditions = styleTable(
+      conditionalStyle(
+        "TableNormal",
+        conditional("firstRow", HEADER) +
+          conditional("firstCol", "<w:rPr><w:i/></w:rPr>")
+      ) +
+        conditionalStyle(
+          "Loud",
+          conditional("firstRow", `<w:tcPr>${shd("FF0000")}</w:tcPr>`),
+          "TableNormal"
+        )
+    ).get("Loud")?.tableConditions;
+
+    // What the style further down writes for the header row wins
+    expect(conditions?.firstRow?.cell.background).toBe("#FF0000");
+    // What it says nothing about there keeps standing
+    expect(conditions?.firstRow?.run).toEqual({ bold: true });
+    expect(conditions?.firstRow?.cell.borders.bottom).toBe("1pt solid #000000");
+    // And a part it does not dress at all keeps the whole format from above
+    expect(conditions?.firstCol?.run).toEqual({ italic: true });
+  });
+
+  it("reads the lines a conditional format writes in its own tblPr under the ones in its tcPr", () => {
+    const conditions = styleTable(
+      conditionalStyle(
+        "Framed",
+        conditional(
+          "firstRow",
+          `<w:tblPr>${tableBorders(side("top", 4), side("bottom", 4), side("insideV", 4))}</w:tblPr>` +
+            `<w:tcPr>${cellBorders(side("bottom", 24, "FF0000"))}</w:tcPr>`
+        )
+      )
+    ).get("Framed")?.tableConditions;
+
+    expect(conditions?.firstRow?.cell.borders.top).toBe("0.5pt solid #000000");
+    expect(conditions?.firstRow?.cell.borders.bottom).toBe("3pt solid #FF0000");
+    expect(conditions?.firstRow?.cell.inside.vertical).toBe(
+      "0.5pt solid #000000"
+    );
+  });
+
+  it("reads how many rows and columns one band of the style is made of", () => {
+    const bands = (body: string) =>
+      styleTable(conditionalStyle("Banded", `<w:tblPr>${body}</w:tblPr>`)).get(
+        "Banded"
+      )?.tableBands;
+
+    expect(
+      bands(
+        '<w:tblStyleRowBandSize w:val="2"/><w:tblStyleColBandSize w:val="3"/>'
+      )
+    ).toEqual({ row: 2, col: 3 });
+    // A style saying nothing leaves the side unsaid, and its bands are one row or column wide
+    expect(bands("")).toEqual({ row: null, col: null });
+    // A count that is no count of rows at all says nothing either
+    expect(
+      bands(
+        '<w:tblStyleRowBandSize w:val="0"/><w:tblStyleColBandSize w:val="x"/>'
+      )
+    ).toEqual({ row: null, col: null });
+  });
+
+  it("layers the band sizes down the basedOn chain one side at a time", () => {
+    const styles = styleTable(
+      conditionalStyle(
+        "TableNormal",
+        '<w:tblPr><w:tblStyleRowBandSize w:val="2"/>' +
+          '<w:tblStyleColBandSize w:val="2"/></w:tblPr>'
+      ) +
+        conditionalStyle(
+          "Wide",
+          '<w:tblPr><w:tblStyleColBandSize w:val="4"/></w:tblPr>',
+          "TableNormal"
+        )
+    );
+    expect(styles.get("Wide")?.tableBands).toEqual({ row: 2, col: 4 });
   });
 });
 
