@@ -79,6 +79,17 @@ describe("parseProps", () => {
 });
 
 describe("setChild", () => {
+  it("uses the enclosing paragraph to place a paragraph-mark revision ahead of run formatting", () => {
+    const props = parseProps("<w:rPr><w:b/></w:rPr>");
+    if (!props) throw new Error("could not read the fragment");
+    expect(renderProps(setChild(props, "ins", "<w:ins/>", "pPr"))).toBe(
+      "<w:rPr><w:ins/><w:b/></w:rPr>"
+    );
+    expect(() => setChild(props, "ins", "<w:ins/>")).toThrow(
+      /ins is not a child/
+    );
+  });
+
   const propsOf = (xml: string) => {
     const props = parseProps(xml);
     if (!props) throw new Error("could not read the fragment");

@@ -33,6 +33,8 @@ import { posOfText } from "../__testing__/editing";
 import {
   addComment,
   documentComments,
+  lockSelection,
+  selectionLock,
   setCommentResolved,
 } from "../editor/commands";
 import { createEditorState } from "../editor/createEditor";
@@ -668,6 +670,37 @@ describe("the markup-compatibility preprocessing", () => {
 });
 
 describe("the exported package after an edit battery", () => {
+  it("validates a lock added to existing content controls with properties following the lock", () => {
+    const declarations = [
+      '<w:date w:fullDate="2026-01-01T00:00:00Z"/>',
+      '<w:comboBox><w:listItem w:value="a"/></w:comboBox>',
+      "<w:text/>",
+      '<w:label w:val="3"/>',
+    ];
+    const parts = new Map<string, string>();
+    for (const [index, declaration] of declarations.entries()) {
+      const { doc, session } = importDocx(
+        makeDocx(
+          '<w:p><w:sdt><w:sdtPr><w:id w:val="7"/>' +
+            declaration +
+            "</w:sdtPr><w:sdtContent><w:r><w:t>control</w:t></w:r></w:sdtContent></w:sdt></w:p>"
+        )
+      );
+      const after = ran(
+        firstTextParagraph(openState(doc, session)),
+        lockSelection
+      );
+      expect(selectionLock(after)).toBe("locked");
+      for (const [path, xml] of wordprocessingParts(
+        exportDocx(after.doc, session)
+      )) {
+        expect(xml).toContain('w:val="sdtContentLocked"');
+        parts.set(`${index}/${path}`, xml);
+      }
+    }
+    expectPartsValidate("locked existing controls", parts);
+  });
+
   it.each(fixtureNames)("%s: every WordprocessingML part validates", (name) => {
     const { doc, session } = importDocx(readFixture(name));
     expectBatteryValidates(name, doc, session);

@@ -1,37 +1,19 @@
 // @vitest-environment jsdom
-/**
- * The registry against the schema it claims to mirror.
- *
- * `wml.xsd` is read as XML rather than validated with it, so this runs on a DOMParser alone and
- * needs no xmllint. What it expands is the part of XSD the WordprocessingML property types use:
- * a sequence, a choice, a `xsd:group ref`, and a `xsd:extension` of another complex type.
- */
-
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { CHILD_ORDER, childOrderOf } from "./childOrder";
 
-const XSD_PATH = join(
-  dirname(fileURLToPath(import.meta.url)),
-  "../../spec/schemas/transitional/wml.xsd"
-);
-
-/**
- * One spot in a type's content model and the names that may stand in it.
- *
- * A sequence of elements gives one name per slot, which is a total order. A choice gives one slot
- * holding every alternative, since the schema says nothing about their order among themselves.
- */
-interface Slot {
-  names: string[];
-  /** Whether the schema lets this slot come round more than once */
-  repeats: boolean;
-}
-
+const XSD_NS = "http://www.w3.org/2001/XMLSchema";
 const schema = new DOMParser().parseFromString(
-  readFileSync(XSD_PATH, "utf8"),
+  readFileSync(
+    join(
+      dirname(fileURLToPath(import.meta.url)),
+      "../../spec/schemas/transitional/wml.xsd"
+    ),
+    "utf8"
+  ),
   "application/xml"
 );
 
@@ -43,178 +25,93 @@ function declaration(tag: string, name: string): Element {
   return found;
 }
 
-function repeats(el: Element): boolean {
-  const max = el.getAttribute("maxOccurs");
-  return max !== null && max !== "1";
-}
-
-/** The local part of an element particle's name, whether it declares one or refers to one */
 function particleName(el: Element): string {
-  const named = el.getAttribute("name");
-  if (named !== null) return named;
-  const ref = el.getAttribute("ref");
-  if (ref === null) throw new Error("an element particle names nothing");
-  return ref.slice(ref.indexOf(":") + 1);
+  const name = el.getAttribute("name") ?? el.getAttribute("ref");
+  if (name === null) throw new Error("an element particle names nothing");
+  return name.slice(name.indexOf(":") + 1);
 }
 
-const PARTICLES = ["sequence", "choice", "group", "element"];
-
-function particleSlots(el: Element, repeating: boolean): Slot[] {
-  const repeated = repeating || repeats(el);
+/**
+ * Expand the content model in schema document order. A repeating choice does not require this
+ * order, but the registry deliberately uses it as its writer convention. Unsupported content
+ * models must fail here instead of silently yielding an incomplete list.
+ */
+function elements(el: Element): Element[] {
   switch (el.localName) {
     case "element":
-      return [{ names: [particleName(el)], repeats: repeated }];
-    case "sequence":
-      return childSlots(el, repeated);
-    case "choice":
+      return [el];
+    case "group": {
+      const ref = el.getAttribute("ref");
+      return ref === null
+        ? Array.from(el.children).flatMap(elements)
+        : elements(declaration("group", ref));
+    }
+    case "extension":
       return [
-        {
-          names: childSlots(el, false).flatMap((slot) => slot.names),
-          repeats: repeated,
-        },
+        ...elements(declaration("complexType", el.getAttribute("base") ?? "")),
+        ...Array.from(el.children).flatMap(elements),
       ];
-    case "group":
-      return childSlots(
-        declaration("group", el.getAttribute("ref") ?? ""),
-        repeated
-      );
+    case "complexType":
+    case "complexContent":
+    case "sequence":
+    case "choice":
+      return Array.from(el.children).flatMap(elements);
+    // These declarations describe attributes or documentation, never child elements.
+    case "attribute":
+    case "attributeGroup":
+    case "anyAttribute":
+    case "annotation":
+      return [];
     default:
-      throw new Error(
-        `wml.xsd holds a particle this test cannot expand: ${el.localName}`
-      );
+      throw new Error(`unsupported XSD content: ${el.localName}`);
   }
 }
 
-function childSlots(el: Element, repeating: boolean): Slot[] {
-  return Array.from(el.children)
-    .filter((child) => PARTICLES.includes(child.localName))
-    .flatMap((child) => particleSlots(child, repeating));
+function typeElements(type: string): Element[] {
+  return elements(declaration("complexType", type));
 }
 
-/** The content model of a complex type, with a base type it extends laid down first */
-function typeSlots(name: string): Slot[] {
-  const type = declaration("complexType", name);
-  const content = Array.from(type.children).find(
-    (child) => child.localName === "complexContent"
-  );
-  if (!content) return childSlots(type, false);
-  const extension = Array.from(content.children).find(
-    (child) => child.localName === "extension"
-  );
-  if (!extension) throw new Error(`${name} restricts rather than extends`);
-  return [
-    ...typeSlots(extension.getAttribute("base") ?? ""),
-    ...childSlots(extension, false),
-  ];
-}
-
-/**
- * The types whose content the schema orders from end to end: every slot holds one name, or holds
- * alternatives that cannot both appear. The entry has to be that order exactly.
- */
-const SEQUENCE_TYPES: Readonly<Record<string, string>> = {
-  pPr: "CT_PPr",
-  tcPr: "CT_TcPr",
-  tblPr: "CT_TblPr",
-  tcBorders: "CT_TcBorders",
-  tblBorders: "CT_TblBorders",
-  pBdr: "CT_PBdr",
-  tcMar: "CT_TcMar",
-  tblCellMar: "CT_TblCellMar",
-  sdt: "CT_SdtBlock",
-  sdtPr: "CT_SdtPr",
-  numPr: "CT_NumPr",
-  lvl: "CT_Lvl",
-  abstractNum: "CT_AbstractNum",
-  num: "CT_Num",
-  numbering: "CT_Numbering",
-  tblStylePr: "CT_TblStylePr",
-  style: "CT_Style",
-  settings: "CT_Settings",
-};
-
-/**
- * The types holding a choice that may come round again, where the order among its alternatives is
- * this package's convention. The entry has to name the same set and to respect every boundary the
- * schema does fix: what stands before the choice, and what stands after it.
- */
-const CHOICE_TYPES: Readonly<Record<string, string>> = {
-  rPr: "CT_RPr",
-  "pPr/rPr": "CT_ParaRPr",
-  trPr: "CT_TrPr",
-  sectPr: "CT_SectPr",
-};
-
-/** Where each name sits in the entry, so a slot's spread can be compared to the next slot's */
-function positions(
-  entry: readonly string[],
-  names: readonly string[]
-): number[] {
-  return names.map((name) => {
-    const at = entry.indexOf(name);
-    if (at === -1) throw new Error(`the entry does not carry ${name}`);
-    return at;
-  });
+function declares(el: Element, name: string, type: string): boolean {
+  return particleName(el) === name && el.getAttribute("type") === type;
 }
 
 describe("the child order registry", () => {
-  it("checks every registered parent against the schema", () => {
-    expect(Object.keys(CHILD_ORDER).toSorted()).toEqual(
-      [...Object.keys(SEQUENCE_TYPES), ...Object.keys(CHOICE_TYPES)].toSorted()
-    );
-  });
-
-  it("every sequence-typed entry equals the element order wml.xsd lays down", () => {
-    for (const [parent, type] of Object.entries(SEQUENCE_TYPES)) {
-      const slots = typeSlots(type);
+  it.each(Object.entries(CHILD_ORDER))(
+    "%s names a declared element and follows its type's schema document order",
+    (key, { type, order }) => {
+      const path = key.split("/");
+      const name = path[path.length - 1];
+      const candidates =
+        path.length === 1
+          ? Array.from(schema.getElementsByTagNameNS(XSD_NS, "element"))
+          : typeElements(CHILD_ORDER[path[0]].type);
       expect(
-        slots.filter((slot) => slot.repeats && slot.names.length > 1),
-        `${type} holds a choice that may repeat, so its order is a convention`
-      ).toEqual([]);
-      expect(CHILD_ORDER[parent], `${parent} does not follow ${type}`).toEqual(
-        slots.flatMap((slot) => slot.names)
-      );
-    }
-  });
-
-  it("every choice-typed entry is a permutation of the schema's choice set", () => {
-    for (const [parent, type] of Object.entries(CHOICE_TYPES)) {
-      const slots = typeSlots(type);
-      const entry = CHILD_ORDER[parent];
-      expect(
-        slots.some((slot) => slot.repeats && slot.names.length > 1),
-        `${type} orders its children from end to end, so its entry can be compared exactly`
+        candidates.some((el) => declares(el, name, type)),
+        `${key}: ${type} is not its declared type`
       ).toBe(true);
-      expect(
-        entry.toSorted(),
-        `${parent} does not name what ${type} holds`
-      ).toEqual(slots.flatMap((slot) => slot.names).toSorted());
-      // Nothing crosses a boundary the schema does fix, whatever the order inside a choice is
-      for (const [index, slot] of slots.slice(1).entries()) {
-        const before = positions(entry, slots[index].names);
-        const after = positions(entry, slot.names);
-        expect(
-          Math.max(...before),
-          `${parent} writes ${slot.names.join("/")} before ${slots[index].names.join("/")}`
-        ).toBeLessThan(Math.min(...after));
-      }
+      expect(order).toEqual(typeElements(type).map(particleName));
+      expect(new Set(order).size).toBe(order.length);
     }
-  });
+  );
 
-  it("names each child of a parent exactly once", () => {
-    for (const [parent, order] of Object.entries(CHILD_ORDER)) {
-      expect(new Set(order).size, `${parent} names a child twice`).toBe(
-        order.length
+  it.each(["any", "all"])(
+    "refuses an unsupported xsd:%s inside a content model",
+    (particle) => {
+      const type = new DOMParser().parseFromString(
+        `<xsd:complexType xmlns:xsd="${XSD_NS}"><xsd:sequence><xsd:${particle}/></xsd:sequence></xsd:complexType>`,
+        "application/xml"
+      ).documentElement;
+      expect(() => elements(type)).toThrow(
+        `unsupported XSD content: ${particle}`
       );
     }
-  });
+  );
 
   it("resolves pPr/rPr ahead of rPr", () => {
-    expect(childOrderOf("rPr", "pPr")).toBe(CHILD_ORDER["pPr/rPr"]);
+    expect(childOrderOf("rPr", "pPr")).toBe(CHILD_ORDER["pPr/rPr"].order);
     expect(childOrderOf("rPr", "pPr").slice(0, 2)).toEqual(["ins", "del"]);
-    expect(childOrderOf("rPr")).toBe(CHILD_ORDER.rPr);
-    // A parent that registers nothing of its own falls back to the element's own entry
-    expect(childOrderOf("rPr", "lvl")).toBe(CHILD_ORDER.rPr);
+    expect(childOrderOf("rPr")).toBe(CHILD_ORDER.rPr.order);
+    expect(childOrderOf("rPr", "lvl")).toBe(CHILD_ORDER.rPr.order);
   });
 
   it("throws for a parent that has no entry", () => {

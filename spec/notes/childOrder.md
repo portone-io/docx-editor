@@ -18,7 +18,7 @@ CT_RPr puts `w:rPrChange` after everything the choice holds, and CT_TrPr puts `w
 
 ## Where a choice leaves the order open, this editor writes the schema's own order
 
-The convention chosen for a repeating choice is the order the schema itself lists its members in, which is also the order Word writes them in.
+The convention chosen for a repeating choice is the order the schema itself lists its members in.
 Alternatives that exclude one another - the twelve kinds a content control may declare, the three markup records a cell may carry - are listed in that same order, since only one of them can ever stand there.
 Nothing about a document depends on this choice; it is picked so that one order serves every writer and so that a reviewer can check a registered order against the schema line by line.
 
