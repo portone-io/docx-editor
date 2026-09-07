@@ -362,9 +362,9 @@ describe("readParagraphFormat", () => {
     expect(paragraphFormat('<w:pPr><w:keepNext w:val="1"/></w:pPr>')).toEqual({
       keepNext: true,
     });
-    expect(paragraphFormat('<w:pPr><w:keepNext w:val="0"/></w:pPr>')).toEqual(
-      {}
-    );
+    expect(paragraphFormat('<w:pPr><w:keepNext w:val="0"/></w:pPr>')).toEqual({
+      keepNext: false,
+    });
   });
 
   it("formatting we do not handle yet does not slip into the display values", () => {

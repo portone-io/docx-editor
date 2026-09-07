@@ -85,6 +85,19 @@ const LIST_PPR =
   "<w:numPr>" + '<w:ilvl w:val="2"/><w:numId w:val="4"/></w:numPr>';
 
 describe("the paragraph hierarchy", () => {
+  it("an explicit keepNext off overrides the paragraph style while absence inherits it", () => {
+    const formatting = context(
+      '<w:style w:type="paragraph" w:styleId="Normal" w:default="1"><w:pPr><w:keepNext/></w:pPr></w:style>'
+    );
+    expect(resolveParagraph(null, formatting).format).toEqual({
+      keepNext: true,
+    });
+    expect(
+      resolveParagraph('<w:pPr><w:keepNext w:val="0"/></w:pPr>', formatting)
+        .format
+    ).toEqual({ keepNext: false });
+  });
+
   /**
    * Every layer speaks for one thing the layer below it also spoke for, so the order they are
    * laid down in is what the outcome reads back: the document defaults and the table style

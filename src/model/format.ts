@@ -158,7 +158,7 @@ export interface ParagraphFormat {
    * Set when the document asks for this paragraph to stand on the same page as the start of the
    * block after it (`w:keepNext`). Read by the page boundary guides
    */
-  keepNext?: true;
+  keepNext?: boolean;
   /** A CSS border in the form `1pt solid #000000` */
   borderTop?: string;
   borderBottom?: string;
@@ -415,7 +415,7 @@ export function toParagraphFormat(value: unknown): ParagraphFormat | null {
   const tabStops = toTabStops(value.tabStops);
   if (tabStops) format.tabStops = tabStops;
   if (value.pageBreakBefore === true) format.pageBreakBefore = true;
-  if (value.keepNext === true) format.keepNext = true;
+  if (typeof value.keepNext === "boolean") format.keepNext = value.keepNext;
   copyBorders(value, format);
   const background = matching(FILL, value.background);
   if (background) format.background = background;

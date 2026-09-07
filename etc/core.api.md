@@ -285,7 +285,7 @@ export interface ParagraphFormat {
     // (undocumented)
     indentRightPt?: number;
     indentStartPt?: number;
-    keepNext?: true;
+    keepNext?: boolean;
     // (undocumented)
     lineSpacing?: LineSpacing;
     // (undocumented)
