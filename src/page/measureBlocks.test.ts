@@ -8,6 +8,7 @@ import { editorAttributes } from "../styles/classNames";
 import { measureSheet } from "./measureBlocks";
 import { setPageBreakSpaces, setPagePushes } from "./pageDecorations";
 import { type MeasuredBlock, pageLayout } from "./pageLayout";
+import { cutsToLegacyMarks } from "./usePageLayout";
 
 const PAGE = 500;
 const STEP = 100;
@@ -180,18 +181,19 @@ describe("measureSheet", () => {
     const live = editor(brokenParagraph());
     draw(live, SHAPES);
 
-    const first = measureSheet(live, live.dom).blocks;
-    const applied = layoutOf(first);
-    expect(applied.spaces).toHaveLength(1);
+    const first = measureSheet(live, live.dom);
+    const applied = layoutOf(first.blocks);
+    expect(applied.cuts).toHaveLength(1);
     expect(applied.pushes).toHaveLength(1);
 
+    const marks = cutsToLegacyMarks(applied.cuts, first.tables, live.state.doc);
     setPagePushes(live, applied.pushes);
-    setPageBreakSpaces(live, applied.spaces);
+    setPageBreakSpaces(live, marks.spaces);
     draw(live, SHAPES);
 
-    const again = measureSheet(live, live.dom).blocks;
-    expect(again).toEqual(first);
-    expect(layoutOf(again)).toEqual(applied);
+    const again = measureSheet(live, live.dom);
+    expect(again.blocks).toEqual(first.blocks);
+    expect(layoutOf(again.blocks)).toEqual(applied);
   });
 
   it("leaves a break inside a table to the block it sits in", () => {
