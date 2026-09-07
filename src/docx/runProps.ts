@@ -10,6 +10,7 @@
  */
 
 import { type RunFormat, toRunFormat } from "../model/format";
+import { CHILD_ORDER } from "../ooxml/childOrder";
 import {
   attrPairs,
   attrValue,
@@ -23,7 +24,6 @@ import {
   parseProps,
   parsePropsXml,
   propsChild,
-  RUN_PR_ORDER,
   renderProps,
   setPropsChild,
 } from "../ooxml/props";
@@ -296,7 +296,7 @@ export function editRunProps(
 
   const rPr = renderProps(
     edits.reduce(
-      (kept, [name, xml]) => setPropsChild(kept, name, xml, RUN_PR_ORDER),
+      (kept, [name, xml]) => setPropsChild(kept, name, xml, CHILD_ORDER.rPr),
       props
     )
   );

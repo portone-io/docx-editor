@@ -19,6 +19,7 @@ import type {
   RunFormat,
 } from "../model/format";
 import type { LevelIndent } from "../numbering/parseNumbering";
+import { CHILD_ORDER } from "../ooxml/childOrder";
 import {
   attrPairs,
   elementXml,
@@ -28,7 +29,6 @@ import {
 import { wName } from "../ooxml/names";
 import { setAttr } from "../ooxml/precedence";
 import {
-  P_PR_ORDER,
   parseProps,
   parsePropsXml,
   renderProps,
@@ -201,7 +201,7 @@ function editParagraphProps(
 
   const rendered = renderProps(
     plan(element).reduce(
-      (kept, [name, xml]) => setPropsChild(kept, name, xml, P_PR_ORDER),
+      (kept, [name, xml]) => setPropsChild(kept, name, xml, CHILD_ORDER.pPr),
       props
     )
   );

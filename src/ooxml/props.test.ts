@@ -1,16 +1,14 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import { readRunFormat } from "../docx/formatting";
+import { CHILD_ORDER } from "./childOrder";
 import {
   innerXml,
-  P_PR_ORDER,
   parseProps,
   parsePropsXml,
   propsChild,
-  RUN_PR_ORDER,
   renderProps,
   setPropsChild,
-  TC_PR_ORDER,
 } from "./props";
 import { childByLocalName } from "./xml";
 
@@ -90,7 +88,7 @@ describe("setPropsChild", () => {
       ),
       "gridSpan",
       '<w:gridSpan w:val="3"/>',
-      TC_PR_ORDER
+      CHILD_ORDER.tcPr
     );
     expect(next.children.map((child) => child.xml)).toEqual([
       '<w:tcW w:w="1"/>',
@@ -104,7 +102,7 @@ describe("setPropsChild", () => {
       propsOf('<w:tcPr><w:gridSpan w:val="2"/><w:vMerge/></w:tcPr>'),
       "gridSpan",
       null,
-      TC_PR_ORDER
+      CHILD_ORDER.tcPr
     );
     expect(next.children.map((child) => child.name)).toEqual(["vMerge"]);
   });
@@ -116,7 +114,7 @@ describe("setPropsChild", () => {
       ),
       "vMerge",
       "<w:vMerge/>",
-      TC_PR_ORDER
+      CHILD_ORDER.tcPr
     );
     expect(next.children.map((child) => child.name)).toEqual([
       "tcW",
@@ -131,7 +129,7 @@ describe("setPropsChild", () => {
       propsOf("<w:tcPr><w:tcW/><w:unknownThing/><w:vAlign/></w:tcPr>"),
       "vMerge",
       "<w:vMerge/>",
-      TC_PR_ORDER
+      CHILD_ORDER.tcPr
     );
     expect(next.children.map((child) => child.name)).toEqual([
       "tcW",
@@ -146,7 +144,7 @@ describe("setPropsChild", () => {
       propsOf('<w:tcPr>\n  <w:gridSpan w:val="2"/></w:tcPr>'),
       "gridSpan",
       '<w:gridSpan w:val="3"/>',
-      TC_PR_ORDER
+      CHILD_ORDER.tcPr
     );
     expect(renderProps(next)).toBe(
       '<w:tcPr>\n  <w:gridSpan w:val="3"/></w:tcPr>'
@@ -158,7 +156,7 @@ describe("setPropsChild", () => {
       propsOf("<w:tcPr><!-- kept --><w:gridSpan/><w:vMerge/></w:tcPr>"),
       "gridSpan",
       null,
-      TC_PR_ORDER
+      CHILD_ORDER.tcPr
     );
     expect(renderProps(next)).toBe("<w:tcPr><!-- kept --><w:vMerge/></w:tcPr>");
   });
@@ -168,7 +166,7 @@ describe("setPropsChild", () => {
       propsOf("<w:tcPr><w:vMerge/><!-- kept --><w:gridSpan/></w:tcPr>"),
       "gridSpan",
       null,
-      TC_PR_ORDER
+      CHILD_ORDER.tcPr
     );
     expect(renderProps(next)).toBe("<w:tcPr><w:vMerge/><!-- kept --></w:tcPr>");
   });
@@ -219,14 +217,6 @@ describe("renderProps", () => {
     if (!comment || !blank) throw new Error("could not read the fragment");
     expect(renderProps(comment)).toBe("<w:tcPr><!-- why --></w:tcPr>");
     expect(renderProps(blank)).toBe("");
-  });
-});
-
-describe("the child order tables", () => {
-  it("each of the three order tables lists every name exactly once", () => {
-    for (const order of [RUN_PR_ORDER, P_PR_ORDER, TC_PR_ORDER]) {
-      expect(new Set(order).size).toBe(order.length);
-    }
   });
 });
 

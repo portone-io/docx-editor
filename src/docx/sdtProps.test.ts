@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import { parseXml, W_NS } from "../ooxml/xml";
-import { readSdtWrapper } from "./sdt";
+import { editSdtPrefix, readSdtWrapper } from "./sdt";
 import { withContentLock } from "./sdtProps";
 
 const ALIAS = '<w:alias w:val="signedOn"/>';
@@ -38,6 +38,17 @@ describe("shutting a control", () => {
     const shut = withContentLock(prefix(ID), true);
     if (shut === null) throw new Error("the control could not be rewritten");
     expect(readSdtWrapper(control(shut))?.contentsLocked).toBe(true);
+  });
+});
+
+describe("a control property the order once had in the wrong spot", () => {
+  /** CT_SdtPr lays `temporary` down ahead of `showingPlcHdr`, where the table once had it last */
+  it("places temporary ahead of showingPlcHdr as CT_SdtPr lays down", () => {
+    expect(
+      editSdtPrefix(prefix(`${ID}<w:showingPlcHdr/>`), [
+        ["temporary", "<w:temporary/>"],
+      ])
+    ).toBe(prefix(`${ID}<w:temporary/><w:showingPlcHdr/>`));
   });
 });
 

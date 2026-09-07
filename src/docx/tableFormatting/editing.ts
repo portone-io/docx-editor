@@ -10,6 +10,7 @@ import type {
   CellVerticalAlign,
   RowFormat,
 } from "../../model/format";
+import { CHILD_ORDER } from "../../ooxml/childOrder";
 import { attrPairs, elementXml, type XmlAttr } from "../../ooxml/element";
 import { wName } from "../../ooxml/names";
 import { setAttr } from "../../ooxml/precedence";
@@ -20,8 +21,6 @@ import {
   propsChild,
   renderProps,
   setPropsChild,
-  TC_PR_ORDER,
-  TR_PR_ORDER,
 } from "../../ooxml/props";
 import { normalizeHex, wAttr } from "../../ooxml/units";
 import { childByLocalName } from "../../ooxml/xml";
@@ -66,23 +65,6 @@ export type CellFormatEdit =
       kind: "padding";
       values: Partial<Record<CellSide, number>>;
     };
-
-/**
- * The order the children are laid out in under `w:tcBorders` (CT_TcBorders).
- * `start` and `end` are the newer spelling of `left` and `right`, so each pair shares one slot.
- */
-const TC_BORDERS_ORDER: readonly string[] = [
-  "top",
-  "start",
-  "left",
-  "bottom",
-  "end",
-  "right",
-  "insideH",
-  "insideV",
-  "tl2br",
-  "tr2bl",
-];
 
 /** The spellings one side can be written under. A side that is not there yet is written as the first */
 const SIDE_NAMES: Record<CellSide, readonly string[]> = {
@@ -219,11 +201,11 @@ function editedBorders(
       kept,
       write,
       elementXml(tag, attrs),
-      TC_BORDERS_ORDER
+      CHILD_ORDER.tcBorders
     );
     return drop === null
       ? written
-      : setPropsChild(written, drop, null, TC_BORDERS_ORDER);
+      : setPropsChild(written, drop, null, CHILD_ORDER.tcBorders);
   }, props);
 
   const xml = renderProps(edited);
@@ -282,15 +264,6 @@ function bordersChange(
   return edited === null ? null : { name: "tcBorders", xml: edited.xml };
 }
 
-const TC_MAR_ORDER: readonly string[] = [
-  "top",
-  "start",
-  "left",
-  "bottom",
-  "end",
-  "right",
-];
-
 const MARGIN_SIDE_NAMES: Readonly<Record<CellSide, readonly string[]>> = {
   top: ["top"],
   right: ["end", "right"],
@@ -338,7 +311,7 @@ function paddingChange(
       edited,
       name,
       elementXml(existing?.nodeName ?? wName(side), attrs),
-      TC_MAR_ORDER
+      CHILD_ORDER.tcMar
     );
     wrote = true;
   }
@@ -413,7 +386,7 @@ export function editCellProps(
   if (!change) return null;
 
   const rendered = renderProps(
-    setPropsChild(props, change.name, change.xml, TC_PR_ORDER)
+    setPropsChild(props, change.name, change.xml, CHILD_ORDER.tcPr)
   );
   const next = rendered === "" ? null : rendered;
   if (next === tcPr) return null;
@@ -470,7 +443,7 @@ export function editRowHeight(
   );
   const child = elementXml(element?.nodeName ?? wName("trHeight"), nextAttrs);
   const rendered = renderProps(
-    setPropsChild(props, "trHeight", child, TR_PR_ORDER)
+    setPropsChild(props, "trHeight", child, CHILD_ORDER.trPr)
   );
   if (rendered === trPr) return null;
   const parsed = parsePropsXml(rendered);

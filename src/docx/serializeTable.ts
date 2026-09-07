@@ -16,6 +16,7 @@ import {
   toTableWidth,
   widthNumber,
 } from "../model/format";
+import { CHILD_ORDER } from "../ooxml/childOrder";
 import { elementXml, openTagXml, type XmlAttr } from "../ooxml/element";
 import { DocxExportError } from "../ooxml/errors";
 import { wName } from "../ooxml/names";
@@ -26,8 +27,6 @@ import {
   propsChild,
   renderProps,
   setPropsChild,
-  TBL_PR_ORDER,
-  TC_PR_ORDER,
 } from "../ooxml/props";
 import { type ExportRefs, NO_EXPORT_REFS } from "./exportRefs";
 import {
@@ -101,7 +100,7 @@ function tablePropsXml(table: PMNode): string {
   const width = toTableWidth(table.attrs.tblW);
   // CT_Tbl requires tblPr even when the table has no properties (ECMA-376 Part 1, Annex A.1).
   return (
-    renderProps(withWidth(props, "tblW", width, TBL_PR_ORDER)) ||
+    renderProps(withWidth(props, "tblW", width, CHILD_ORDER.tblPr)) ||
     elementXml(wName("tblPr"), [])
   );
 }
@@ -153,10 +152,10 @@ function cellPropsXml(cell: PMNode, role: CellRole): string {
           )
         : null;
 
-  const spanned = setPropsChild(props, "gridSpan", gridSpan, TC_PR_ORDER);
-  const merged = setPropsChild(spanned, "vMerge", vMerge, TC_PR_ORDER);
+  const spanned = setPropsChild(props, "gridSpan", gridSpan, CHILD_ORDER.tcPr);
+  const merged = setPropsChild(spanned, "vMerge", vMerge, CHILD_ORDER.tcPr);
   const width = toTableWidth(cell.attrs.tcW);
-  return renderProps(withWidth(merged, "tcW", width, TC_PR_ORDER));
+  return renderProps(withWidth(merged, "tcW", width, CHILD_ORDER.tcPr));
 }
 
 function cellBlockXml(block: PMNode, refs: ExportRefs): string {

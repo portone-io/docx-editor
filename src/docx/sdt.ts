@@ -12,6 +12,7 @@
  * own way, and the wrapper they put back on export is the same string in both cases.
  */
 
+import { CHILD_ORDER } from "../ooxml/childOrder";
 import { elementXml, emptyTagXml, openTagXml } from "../ooxml/element";
 import { wName } from "../ooxml/names";
 import {
@@ -77,22 +78,6 @@ export function readSdtWrapper(el: Element): SdtWrapper | null {
   };
 }
 
-/** The order the children are laid out in under `w:sdt` (CT_SdtBlock) */
-const SDT_ORDER: readonly string[] = ["sdtPr", "sdtEndPr", "sdtContent"];
-
-/** The order the children are laid out in under `w:sdtPr` (CT_SdtPr) */
-const SDT_PR_ORDER: readonly string[] = [
-  "rPr",
-  "alias",
-  "tag",
-  "id",
-  "lock",
-  "placeholder",
-  "showingPlcHdr",
-  "dataBinding",
-  "temporary",
-];
-
 /**
  * The number Word writes on every control. Nothing reads it back and it only has to differ
  * from the other controls in the document, so a draw out of the whole 32 bit range is enough.
@@ -150,7 +135,7 @@ export function editSdtPrefix(
 
   const rendered = renderProps(
     edits.reduce(
-      (kept, [name, xml]) => setPropsChild(kept, name, xml, SDT_PR_ORDER),
+      (kept, [name, xml]) => setPropsChild(kept, name, xml, CHILD_ORDER.sdtPr),
       props
     )
   );
@@ -159,7 +144,7 @@ export function editSdtPrefix(
       sdt,
       "sdtPr",
       rendered === "" ? emptyProps(props) : rendered,
-      SDT_ORDER
+      CHILD_ORDER.sdt
     )
   );
 }
