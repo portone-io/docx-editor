@@ -95,13 +95,58 @@ function declaresDtd(source: string): boolean {
   }
 }
 
+/**
+ * What reading a package part asks of a runtime: an XML string in, a document out.
+ *
+ * A browser's `DOMParser` is one, and so is anything else that answers the same call - a
+ * `DOMParser` from jsdom, or a lighter implementation on a runtime jsdom is too heavy for.
+ * The package ships none of them.
+ */
+export interface XmlParser {
+  parseFromString(source: string, type: "application/xml"): Document;
+}
+
+let scopedParser: XmlParser | undefined;
+
+/**
+ * Runs `work` with every `parseXml` inside it reading through `parser`.
+ *
+ * The public entry points are synchronous, so the scope covers exactly the work one of them does
+ * and nothing that runs after it. `undefined` leaves the enclosing scope as it is rather than
+ * clearing it, which is what lets an entry point opening a file through another one - the verifier
+ * running two imports - hand its own parser down without every inner call having to carry it.
+ */
+export function withXmlParser<T>(
+  parser: XmlParser | undefined,
+  work: () => T
+): T {
+  if (parser === undefined) return work();
+  const enclosing = scopedParser;
+  scopedParser = parser;
+  try {
+    return work();
+  } finally {
+    scopedParser = enclosing;
+  }
+}
+
+/** The parser a read goes through: the one handed to the scope, else the browser's own */
+function currentParser(): XmlParser {
+  if (scopedParser) return scopedParser;
+  if (typeof DOMParser === "function") return new DOMParser();
+  throw new DocxImportError(
+    "no-xml-parser",
+    "no XML parser: pass `xmlParser` or install a DOMParser global"
+  );
+}
+
 export function parseXml(source: string): Document {
-  // ECMA-376 allows no DTD in a package part, and DOMParser expands the entities one
+  // ECMA-376 allows no DTD in a package part, and an XML parser expands the entities one
   // declares, so a part carrying one could show text that the part itself does not hold
   if (declaresDtd(source)) {
     throw new DocxImportError("malformed-xml", "the XML declares a DTD");
   }
-  const doc = new DOMParser().parseFromString(source, "application/xml");
+  const doc = currentParser().parseFromString(source, "application/xml");
   if (doc.getElementsByTagName("parsererror").length > 0) {
     throw new DocxImportError("malformed-xml", "could not parse the XML");
   }

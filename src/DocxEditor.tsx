@@ -325,6 +325,9 @@ function useDocumentBytes(source: DocxSource): DocxBytes | null {
 }
 
 const IMPORT_REJECTION_REASON: Record<DocxImportErrorCode, string> = {
+  // Every browser carries the parser this code names, so a person meets this line only on a
+  // page whose scripts did not all arrive
+  "no-xml-parser": "This page is not ready to open a document yet.",
   "not-a-docx": "This file is not a docx document, or it is damaged.",
   "too-large": "This document is too large to open.",
   "missing-part": "This document is missing the part that holds its body.",

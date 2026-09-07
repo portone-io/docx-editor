@@ -91,7 +91,7 @@ export class DocxImportError extends Error {
 }
 
 // @public
-export type DocxImportErrorCode = "not-a-docx" | "too-large" | "missing-part" | "missing-body" | "malformed-xml" | "unsupported-content";
+export type DocxImportErrorCode = "no-xml-parser" | "not-a-docx" | "too-large" | "missing-part" | "missing-body" | "malformed-xml" | "unsupported-content";
 
 // @public (undocumented)
 export const docxSchema: Schema<"bookmarkBlock" | "commentEnd" | "commentReference" | "commentStart" | "doc" | "docxRaw" | "hardBreak" | "image" | "noteReference" | "paragraph" | "rawBlock" | "rawInline" | "table" | "tableCell" | "tableRow" | "text", "link" | "run" | "sdt" | "tab">;

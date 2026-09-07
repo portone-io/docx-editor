@@ -1,8 +1,15 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { importErrorCode } from "../__testing__/docx";
 import { DocxImportError } from "./errors";
-import { escapeXml, namespaceDecls, parseXml, W_NS } from "./xml";
+import {
+  escapeXml,
+  namespaceDecls,
+  parseXml,
+  W_NS,
+  withXmlParser,
+  type XmlParser,
+} from "./xml";
 
 describe("escapeXml", () => {
   it("turns the characters XML gives meaning to into entity references", () => {
@@ -29,6 +36,71 @@ describe("escapeXml", () => {
   it("yields XML that parses again even when control characters come mixed in", () => {
     const xml = `<w:t xmlns:w="${W_NS}">${escapeXml("cont\u0007ract")}</w:t>`;
     expect(parseXml(xml).documentElement.textContent).toBe("contract");
+  });
+});
+
+/**
+ * The parser is a dependency a caller may name, so that a runtime holding no `DOMParser` is
+ * turned down by this package with a code of its own rather than by a `ReferenceError` thrown
+ * out of the middle of a read.
+ */
+describe("the parser a read goes through", () => {
+  const XML = `<w:t xmlns:w="${W_NS}">fee</w:t>`;
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /** A parser that answers through the real one and keeps what it was asked to read */
+  function recording(): { parser: XmlParser; sources: string[] } {
+    const real = new DOMParser();
+    const sources: string[] = [];
+    return {
+      parser: {
+        parseFromString: (source, type) => {
+          sources.push(source);
+          return real.parseFromString(source, type);
+        },
+      },
+      sources,
+    };
+  }
+
+  it("reads through the parser handed to the scope rather than the global one", () => {
+    const { parser, sources } = recording();
+
+    const read = withXmlParser(parser, () => parseXml(XML));
+
+    expect(read.documentElement.textContent).toBe("fee");
+    expect(sources).toEqual([XML]);
+  });
+
+  it("refuses with no-xml-parser when no parser is in scope and none is global", () => {
+    vi.stubGlobal("DOMParser", undefined);
+
+    expect(importErrorCode(() => parseXml(XML))).toBe("no-xml-parser");
+  });
+
+  it("keeps the outer parser through a nested entry naming none", () => {
+    const { parser, sources } = recording();
+    vi.stubGlobal("DOMParser", undefined);
+
+    withXmlParser(parser, () => withXmlParser(undefined, () => parseXml(XML)));
+
+    expect(sources).toEqual([XML]);
+  });
+
+  it("restores the previous parser after work throws", () => {
+    const { parser } = recording();
+    vi.stubGlobal("DOMParser", undefined);
+
+    expect(() =>
+      withXmlParser(parser, () => {
+        throw new Error("work gave up");
+      })
+    ).toThrow("work gave up");
+
+    expect(importErrorCode(() => parseXml(XML))).toBe("no-xml-parser");
   });
 });
 
