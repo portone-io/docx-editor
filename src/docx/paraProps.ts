@@ -258,9 +258,17 @@ function spacingAttrs(
   spacing: Element | null,
   edits: readonly AttrEdit[]
 ): XmlAttr[] {
+  // Spacing has always updated every spelling of an edited local name. Updating only the first
+  // would leave the WML value unchanged when an extension attribute with that name comes first.
+  const changed = attrPairs(spacing).map(
+    ([name, value]): XmlAttr => [
+      name,
+      edits.find(([edited]) => edited === localPart(name))?.[1] ?? value,
+    ]
+  );
   return edits.reduce(
     (attrs, [name, value]) => setAttr(attrs, "spacing", name, value),
-    attrPairs(spacing)
+    changed
   );
 }
 

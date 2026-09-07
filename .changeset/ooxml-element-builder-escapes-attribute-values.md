@@ -2,4 +2,4 @@
 "@portone/docx-editor": patch
 ---
 
-Formatting XML the editor writes now escapes every attribute value, so a style id holding `&` no longer produces an unreadable file; nothing else changes.
+Formatting XML is now written through shared primitives that consistently escape attribute values while preserving existing formatting behavior.
