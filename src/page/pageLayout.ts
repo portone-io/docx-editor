@@ -167,6 +167,58 @@ function round(value: number): number {
 }
 
 /**
+ * Whether the keep a block asks for can hold between it and the block after it.
+ * A block parted inside itself starts its last piece where the cut put it, so there is nothing a
+ * keep could move; and a page the document starts between the two is one no keep can close.
+ */
+function keepsWithNext(block: MeasuredBlock, next: MeasuredBlock): boolean {
+  return (
+    block.keepWithNext &&
+    block.candidates.length === 0 &&
+    !block.breakAfter &&
+    !next.breakBefore
+  );
+}
+
+/**
+ * What a block kept with the next one brings onto the page it starts on, by block index: itself,
+ * every block kept after it, and the first piece of the block the keeps end at (§17.3.1.14).
+ *
+ * A run of keeps no page can hold is let go as a whole, and none of its blocks is listed. Let go
+ * from its head alone, a run longer than a page would leave a page short wherever its tail first
+ * fit, for a keep that cannot be kept anyway.
+ */
+function keptExtents(
+  blocks: readonly MeasuredBlock[],
+  fitsPage: (extent: number) => boolean
+): Map<number, number> {
+  const extents = new Map<number, number>();
+  /** The run being walked up from its end, the block nearest its head last */
+  let run: { index: number; extent: number }[] = [];
+  const settle = () => {
+    const head = run.at(-1);
+    if (head && fitsPage(head.extent)) {
+      for (const { index, extent } of run) {
+        extents.set(index, extent);
+      }
+    }
+    run = [];
+  };
+  for (let index = blocks.length - 2; index >= 0; index -= 1) {
+    const block = blocks[index];
+    const next = blocks[index + 1];
+    if (block && next && keepsWithNext(block, next)) {
+      const below = run.at(-1)?.extent ?? next.minFirstPiece;
+      run.push({ index, extent: block.height + next.gap + below });
+    } else {
+      settle();
+    }
+  }
+  settle();
+  return extents;
+}
+
+/**
  * Distributes the blocks across pages.
  *
  * A block straddling the end of a page is pushed to the top of the next page, and the
@@ -177,6 +229,8 @@ function round(value: number): number {
  * written into the text - is filled out to the end of the page it falls on, which carries the rest
  * of that block to the top of the next page while the block itself stays whole. An optional one -
  * a row boundary in a table - is taken only where the piece after it would run off the page.
+ * A block kept with the next one is pushed together with what it is kept with: the blocks kept
+ * after it and the first piece of the block the keeps end at.
  */
 export function pageLayout({
   blocks,
@@ -217,18 +271,21 @@ export function pageLayout({
     }
   };
 
+  const fitsPage = (extent: number) => extent <= pageBodyHeight + TOLERANCE_PX;
+  const kept = keptExtents(blocks, fitsPage);
   let breakAfterPrevious = false;
 
-  for (const block of blocks) {
+  for (const [index, block] of blocks.entries()) {
     const pageEnd = pageStart + pageBodyHeight;
     const top = cursor + block.gap;
     const startsPage =
       (block.breakBefore || breakAfterPrevious) &&
       top > pageStart + TOLERANCE_PX;
-    // Only the piece up to the first candidate has to fit on the page the block starts on
-    const first = block.minFirstPiece;
+    // Only the piece up to the first candidate has to fit on the page the block starts on, and
+    // for a block kept with the next one, whatever it is kept with as well
+    const first = kept.get(index) ?? block.minFirstPiece;
     const overflows = top + first > pageEnd + TOLERANCE_PX;
-    const fits = first <= pageBodyHeight + TOLERANCE_PX;
+    const fits = fitsPage(first);
 
     const push =
       startsPage || (overflows && fits)

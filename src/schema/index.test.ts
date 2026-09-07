@@ -311,8 +311,8 @@ describe("parseDOM", () => {
       {
         srcId: "opened:body:0",
         pAttrs: 'w:rsidR="00A"',
-        pPr: '<w:pPr><w:pageBreakBefore/><w:jc w:val="center"/></w:pPr>',
-        format: { align: "center", pageBreakBefore: true },
+        pPr: '<w:pPr><w:keepNext/><w:pageBreakBefore/><w:jc w:val="center"/></w:pPr>',
+        format: { align: "center", keepNext: true, pageBreakBefore: true },
         styleRun: { italic: true, fontSizePt: 16 },
       },
       [

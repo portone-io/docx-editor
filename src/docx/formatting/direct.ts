@@ -141,6 +141,9 @@ export function readParagraphFormat(
     format.direction = isOn(pPr, "bidi") ? "rtl" : "ltr";
   }
   if (isOn(pPr, "pageBreakBefore")) format.pageBreakBefore = true;
+  if (childByLocalName(pPr, "keepNext")) {
+    format.keepNext = isOn(pPr, "keepNext");
+  }
   const background = shadingOf(pPr);
   if (background) format.background = background;
   return format;

@@ -14,7 +14,7 @@ This page is the user-facing support summary. API details live in
 | Area | What you can do |
 | --- | --- |
 | Text formatting | Edit bold, italic, strikethrough, underline, palette or custom HEX colors, highlight, fonts, and font size. Supported document defaults and paragraph or character styles are reflected in the text and formatting controls. |
-| Paragraphs | Apply paragraph styles, alignment, indentation, line spacing, line breaks, and page breaks. |
+| Paragraphs | Apply paragraph styles, alignment, indentation, line spacing, line breaks, and page breaks. A paragraph marked keep with next, by itself or by its style, is shown on the same page as the start of the block after it. |
 | Tabs | Insert, paste, format, navigate, select, and align document tabs using the document's automatic interval and effective paragraph stops. |
 | Lists | Create and edit common bullet and numbered lists, including nested levels. |
 | Tables | Insert and remove rows, columns, and tables; merge, split, resize columns and rows, format, vertically align, and pad cells. Long tables continue at safe row boundaries, repeating leading `tblHeader` rows. |
@@ -65,7 +65,7 @@ binding such as `Mod+K` without replacing the editor.
 
 - Uncommon list formats may be displayed as decimal numbers, and a new list requires an existing numbering part.
 - Tab leader glyphs and bar lines remain preserved in OOXML but are not drawn.
-- Visual page boundaries are approximate and may differ from Word or printed output.
+- Visual page boundaries are approximate and may differ from Word or printed output. Keep lines together and widow control are preserved but not reflected in them.
 - A selection running across the last paragraph of a section cannot be deleted, even when the section break is not what you meant to remove. Move the selection clear of that paragraph's boundary to edit the text around it.
 
 ## Preservation
