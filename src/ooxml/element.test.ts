@@ -104,6 +104,25 @@ describe("writing an element", () => {
     ).toBe('<w:shd x:fill="FF0000" w:fill="00FF00"/>');
   });
 
+  it("removes only the named local names under the prefix and keeps the rest", () => {
+    const paragraph: XmlAttr[] = [
+      ["w14:paraId", "1F2A"],
+      ["w:rsidR", "00A1"],
+      ["w14:textId", "3B4C"],
+    ];
+    // `paraId` is written under `w14`, so the WordprocessingML reading leaves it where it stands
+    expect(elementXml(wName("p"), withoutAttrs(paragraph, ["paraId"]))).toBe(
+      '<w:p w14:paraId="1F2A" w:rsidR="00A1" w14:textId="3B4C"/>'
+    );
+    expect(
+      elementXml(wName("p"), withoutAttrs(paragraph, ["paraId"], "w14"))
+    ).toBe('<w:p w:rsidR="00A1" w14:textId="3B4C"/>');
+    // A name neither vocabulary was asked for keeps every attribute as it was written
+    expect(
+      elementXml(wName("p"), withoutAttrs(paragraph, ["rsidR"], "w14"))
+    ).toBe('<w:p w14:paraId="1F2A" w:rsidR="00A1" w14:textId="3B4C"/>');
+  });
+
   it("removes an attribute when the value is null", () => {
     const spacing: XmlAttr[] = [
       ["w:before", "120"],
