@@ -10,6 +10,7 @@ These notes record reusable OOXML interpretations, interoperability findings, an
 - [Footnotes and endnotes](./footnotesAndEndnotes.md)
 - [Hyperlinks](./hyperlinks.md)
 - [Bookmarks](./bookmarks.md)
+- [Identifiers](./identifiers.md)
 - [Tabs](./tabs.md)
 - [Simple types](./simpleTypes.md)
 
