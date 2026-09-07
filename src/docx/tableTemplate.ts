@@ -11,9 +11,9 @@ import type { Node as PMNode } from "prosemirror-model";
 import type { CellFormat, TableWidth } from "../model/format";
 import { elementXml } from "../ooxml/element";
 import { wName } from "../ooxml/names";
+import { parsePropsXml } from "../ooxml/props";
 import { docxSchema } from "../schema";
 import { A4_PORTRAIT, bodyWidth, type PageGeometry } from "./pageGeometry";
-import { parsePropsXml } from "./propsXml";
 import {
   type CellBorderDefaults,
   cellBorderDefaults,

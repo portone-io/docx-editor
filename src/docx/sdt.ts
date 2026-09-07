@@ -14,15 +14,15 @@
 
 import { elementXml, emptyTagXml, openTagXml } from "../ooxml/element";
 import { wName } from "../ooxml/names";
-import { wAttr } from "../ooxml/units";
-import { attrString, elementChildren, serializeXml } from "../ooxml/xml";
 import {
   type Props,
   parseProps,
   propsChild,
   renderProps,
   setPropsChild,
-} from "./propsXml";
+} from "../ooxml/props";
+import { wAttr } from "../ooxml/units";
+import { attrString, elementChildren, serializeXml } from "../ooxml/xml";
 
 /** The opening of a content control taken apart, and the content it wraps */
 export interface SdtWrapper {

@@ -6,12 +6,7 @@
  * of the children, so the spot to insert a child that was not there is found by that same order.
  */
 
-import {
-  elementChildren,
-  localPart,
-  namespaceDecls,
-  parseXml,
-} from "../ooxml/xml";
+import { elementChildren, localPart, namespaceDecls, parseXml } from "./xml";
 
 export interface PropsChild {
   /** The name with its namespace prefix stripped off (e.g. `gridSpan`) */

@@ -13,8 +13,6 @@ import type {
 import { attrPairs, elementXml, type XmlAttr } from "../../ooxml/element";
 import { wName } from "../../ooxml/names";
 import { setAttr } from "../../ooxml/precedence";
-import { normalizeHex, wAttr } from "../../ooxml/units";
-import { childByLocalName } from "../../ooxml/xml";
 import {
   type Props,
   parseProps,
@@ -24,7 +22,9 @@ import {
   setPropsChild,
   TC_PR_ORDER,
   TR_PR_ORDER,
-} from "../propsXml";
+} from "../../ooxml/props";
+import { normalizeHex, wAttr } from "../../ooxml/units";
+import { childByLocalName } from "../../ooxml/xml";
 import {
   type CellBorderDefaults,
   NO_BORDER_DEFAULTS,

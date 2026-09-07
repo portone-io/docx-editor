@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { childByLocalName } from "../ooxml/xml";
-import { readRunFormat } from "./formatting";
+import { readRunFormat } from "../docx/formatting";
 import {
   innerXml,
   P_PR_ORDER,
@@ -12,7 +11,8 @@ import {
   renderProps,
   setPropsChild,
   TC_PR_ORDER,
-} from "./propsXml";
+} from "./props";
+import { childByLocalName } from "./xml";
 
 /** Pulls out just the child names, to keep the tests easy to read */
 function names(xml: string): string[] {

@@ -19,7 +19,6 @@ import {
 import { elementXml, openTagXml, type XmlAttr } from "../ooxml/element";
 import { DocxExportError } from "../ooxml/errors";
 import { wName } from "../ooxml/names";
-import { type ExportRefs, NO_EXPORT_REFS } from "./exportRefs";
 import {
   innerXml,
   type Props,
@@ -29,7 +28,8 @@ import {
   setPropsChild,
   TBL_PR_ORDER,
   TC_PR_ORDER,
-} from "./propsXml";
+} from "../ooxml/props";
+import { type ExportRefs, NO_EXPORT_REFS } from "./exportRefs";
 import {
   preservedXml,
   rawAttrsOf,

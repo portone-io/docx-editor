@@ -13,6 +13,7 @@ import type {
   TableFormat,
   TableWidth,
 } from "../../model/format";
+import { parsePropsXml } from "../../ooxml/props";
 import {
   ALIGN_BY_JC,
   borderSide,
@@ -24,7 +25,6 @@ import {
   wAttr,
 } from "../../ooxml/units";
 import { childByLocalName } from "../../ooxml/xml";
-import { parsePropsXml } from "../propsXml";
 
 export type { CellMargins, InsideBorders } from "../../model/format";
 

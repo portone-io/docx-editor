@@ -10,9 +10,9 @@ import {
   toRunFormat,
   toTableFormat,
 } from "../../model/format";
+import { parsePropsXml } from "../../ooxml/props";
 import { childValue, isOn, wAttr } from "../../ooxml/units";
 import { childByLocalName, elementChildren } from "../../ooxml/xml";
-import { parsePropsXml } from "../propsXml";
 import {
   layerCellMargins,
   layerInsideBorders,

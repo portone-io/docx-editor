@@ -18,9 +18,6 @@ import {
 } from "../ooxml/element";
 import { wName } from "../ooxml/names";
 import { setAttr } from "../ooxml/precedence";
-import { normalizeHex } from "../ooxml/units";
-import { isEastAsianFontName } from "../styles/fontStack";
-import { fontNamesOf, readRunFormat } from "./formatting";
 import {
   type Props,
   parseProps,
@@ -29,7 +26,10 @@ import {
   RUN_PR_ORDER,
   renderProps,
   setPropsChild,
-} from "./propsXml";
+} from "../ooxml/props";
+import { normalizeHex } from "../ooxml/units";
+import { isEastAsianFontName } from "../styles/fontStack";
+import { fontNamesOf, readRunFormat } from "./formatting";
 
 /** The character formatting that is toggled on and off */
 export type RunToggle = "bold" | "italic" | "underline" | "strike";

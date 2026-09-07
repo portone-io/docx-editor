@@ -27,6 +27,13 @@ import {
 } from "../ooxml/element";
 import { wName } from "../ooxml/names";
 import { setAttr } from "../ooxml/precedence";
+import {
+  P_PR_ORDER,
+  parseProps,
+  parsePropsXml,
+  renderProps,
+  setPropsChild,
+} from "../ooxml/props";
 import { childByLocalName, localPart } from "../ooxml/xml";
 import {
   layerParagraphFormat,
@@ -36,13 +43,6 @@ import {
   readParagraphFormat,
   type StyleTable,
 } from "./formatting";
-import {
-  P_PR_ORDER,
-  parseProps,
-  parsePropsXml,
-  renderProps,
-  setPropsChild,
-} from "./propsXml";
 
 /** What to do with the indents */
 export type IndentChange =
