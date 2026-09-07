@@ -41,6 +41,14 @@ function withAttribute(xml, name, value) {
   );
 }
 
+/** Rewrites an element to hold nothing, keeping its attributes, and leaves an absent one alone */
+function withoutChildren(xml, name) {
+  return xml.replace(
+    new RegExp(`(<${name}(?:\\s[^>]*?)?)>[\\s\\S]*</${name}>`),
+    "$1/>"
+  );
+}
+
 /** Rewrites the text of an element that holds nothing but text, and leaves an absent one alone */
 function withElementText(xml, name, text) {
   return xml.replace(
@@ -64,7 +72,14 @@ function withoutReviewerIdentity(xml) {
   return withAttribute(initialled, "w15:author", IDENTITY.reviewer);
 }
 
-/** The document properties, which not every producer writes at all */
+/**
+ * The document properties, which not every producer writes at all.
+ *
+ * The custom properties are kept as a part and emptied rather than deleted: the package's
+ * relationships and content types name the part, and a fixture whose `_rels/.rels` points at a
+ * part it does not hold would be a package no producer saved. Their names and values alike are
+ * whatever the author's environment put there, so nothing of them is kept.
+ */
 const DOCUMENT_PROPERTIES = {
   "docProps/core.xml": (xml) =>
     withElementText(
@@ -73,15 +88,13 @@ const DOCUMENT_PROPERTIES = {
       IDENTITY.author
     ),
   "docProps/app.xml": (xml) => withElementText(xml, "Company", ""),
+  "docProps/custom.xml": (xml) => withoutChildren(xml, "Properties"),
 };
-
-const DELETED_PARTS = ["docProps/custom.xml"];
 
 function sanitizePackage(bytes) {
   const parts = unzipSync(bytes);
   const sanitized = {};
   for (const [path, content] of Object.entries(parts)) {
-    if (DELETED_PARTS.includes(path)) continue;
     if (!path.endsWith(".xml") && !path.endsWith(".rels")) {
       sanitized[path] = content;
       continue;

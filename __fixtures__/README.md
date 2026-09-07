@@ -66,7 +66,7 @@ Google Docs writes no `docProps/` at all, so this file cannot testify to its own
 node scripts/sanitize-fixture.mjs downloaded.docx __fixtures__/producers/<name>.docx
 ```
 
-The script sets `dc:creator` and `cp:lastModifiedBy` to `Fixture Author`, empties `Company`, deletes `docProps/custom.xml`, and rewrites every `w:author`, `w:initials`, and `w15:author` in every part to `Reviewer A` and `RA`. A part the producer did not write is skipped rather than treated as missing.
+The script sets `dc:creator` and `cp:lastModifiedBy` to `Fixture Author`, empties `Company`, empties `docProps/custom.xml` of its properties while keeping the part that `_rels/.rels` and the content types name, and rewrites every `w:author`, `w:initials`, and `w15:author` in every part to `Reviewer A` and `RA`. A part the producer did not write is skipped rather than treated as missing.
 
 It leaves rsids, `w14:paraId`, and `docProps/app.xml`'s `Application` and `AppVersion` alone: the first two are the markup the lane exists to test, and the last is how a package names the software that wrote it.
 

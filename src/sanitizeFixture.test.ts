@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 /**
  * The script that turns a document a word processor saved into a producer-lane fixture.
  *
@@ -26,6 +27,7 @@ import {
   producerFixtureNames,
   readProducerFixture,
 } from "./__testing__/docx";
+import { parseXml } from "./ooxml/xml";
 
 const SCRIPT = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -82,6 +84,12 @@ const OFFICE_REL =
   "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 const CONTENT_TYPES_NS =
   "http://schemas.openxmlformats.org/package/2006/content-types";
+const PACKAGE_REL =
+  "http://schemas.openxmlformats.org/package/2006/relationships";
+const CUSTOM_PROPERTIES_NS =
+  "http://schemas.openxmlformats.org/officeDocument/2006/custom-properties";
+const VT_NS =
+  "http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes";
 
 const XML_DECLARATION =
   '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
@@ -112,6 +120,84 @@ function packageOf(parts: Readonly<Record<string, string>>): Uint8Array {
   );
 }
 
+/** The part a relationship target names, resolved from the part the relationships belong to */
+function targetPartOf(relsPath: string, target: string): string {
+  const owner = relsPath.replace(/_rels\/([^/]*)\.rels$/, "");
+  const segments: string[] = [];
+  for (const segment of `${owner}${target}`.split("/")) {
+    if (segment === "..") segments.pop();
+    else if (segment !== "" && segment !== ".") segments.push(segment);
+  }
+  return segments.join("/");
+}
+
+/**
+ * Every internal relationship target and every content-type override that names a part the
+ * package does not hold. A producer never writes one, so any found is the sanitizer's doing.
+ */
+function danglingReferences(parts: Readonly<Record<string, string>>): string[] {
+  const dangling: string[] = [];
+  for (const [path, xml] of Object.entries(parts)) {
+    const document = parseXml(xml);
+    if (path.endsWith(".rels")) {
+      for (const relationship of Array.from(
+        document.getElementsByTagNameNS(REL_NS, "Relationship")
+      )) {
+        if (relationship.getAttribute("TargetMode") === "External") continue;
+        const target = targetPartOf(
+          path,
+          relationship.getAttribute("Target") ?? ""
+        );
+        if (!(target in parts)) dangling.push(`${path} -> ${target}`);
+      }
+    }
+    if (path === "[Content_Types].xml") {
+      for (const override of Array.from(
+        document.getElementsByTagNameNS(CONTENT_TYPES_NS, "Override")
+      )) {
+        const part = (override.getAttribute("PartName") ?? "").slice(1);
+        if (!(part in parts)) dangling.push(`${path} -> ${part}`);
+      }
+    }
+  }
+  return dangling;
+}
+
+/** The document properties Word writes, with the custom ones the author's environment added */
+const WORD_PROPERTIES = {
+  "[Content_Types].xml":
+    `${XML_DECLARATION}<Types xmlns="${CONTENT_TYPES_NS}">` +
+    '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+    '<Default Extension="xml" ContentType="application/xml"/>' +
+    '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>' +
+    '<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>' +
+    '<Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>' +
+    '<Override PartName="/docProps/custom.xml" ContentType="application/vnd.openxmlformats-officedocument.custom-properties+xml"/>' +
+    "</Types>",
+  "_rels/.rels":
+    `${XML_DECLARATION}<Relationships xmlns="${REL_NS}">` +
+    `<Relationship Id="rId1" Type="${OFFICE_REL}/officeDocument" Target="word/document.xml"/>` +
+    `<Relationship Id="rId2" Type="${PACKAGE_REL}/metadata/core-properties" Target="docProps/core.xml"/>` +
+    `<Relationship Id="rId3" Type="${OFFICE_REL}/extended-properties" Target="docProps/app.xml"/>` +
+    `<Relationship Id="rId4" Type="${OFFICE_REL}/custom-properties" Target="docProps/custom.xml"/>` +
+    "</Relationships>",
+  "docProps/core.xml":
+    `${XML_DECLARATION}<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties"` +
+    ' xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/"' +
+    ' xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">' +
+    "<dc:creator>Fixture O'Example</dc:creator><cp:lastModifiedBy>Fixture O'Example</cp:lastModifiedBy>" +
+    "</cp:coreProperties>",
+  "docProps/app.xml":
+    `${XML_DECLARATION}<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties">` +
+    "<Application>Microsoft Office Word</Application><Company>Example Ltd</Company><AppVersion>16.0000</AppVersion>" +
+    "</Properties>",
+  "docProps/custom.xml":
+    `${XML_DECLARATION}<Properties xmlns="${CUSTOM_PROPERTIES_NS}" xmlns:vt="${VT_NS}">` +
+    '<property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" pid="2" name="ContentTypeId"><vt:lpwstr>0x0101</vt:lpwstr></property>' +
+    '<property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" pid="3" name="Owner"><vt:lpwstr>Fixture O\'Example</vt:lpwstr></property>' +
+    "</Properties>",
+};
+
 describe("the fixture sanitize script", () => {
   it("rewrites an author whichever quote encloses the name and however the equals sign is spaced", () => {
     const parts = sanitizedParts(
@@ -138,6 +224,26 @@ describe("the fixture sanitize script", () => {
       "<w15:person w15:author = 'Reviewer A'>"
     );
     expect(JSON.stringify(parts)).not.toMatch(/Example|Says|"FO"|'SH'/);
+  });
+
+  it("keeps the custom properties part, emptied, so that nothing in the package points at a part it lacks", () => {
+    const parts = sanitizedParts(packageOf(WORD_PROPERTIES));
+
+    expect(parts["docProps/custom.xml"]).toBe(
+      `${XML_DECLARATION}<Properties xmlns="${CUSTOM_PROPERTIES_NS}" xmlns:vt="${VT_NS}"/>`
+    );
+    expect(parts["_rels/.rels"]).toBe(WORD_PROPERTIES["_rels/.rels"]);
+    expect(parts["[Content_Types].xml"]).toBe(
+      WORD_PROPERTIES["[Content_Types].xml"]
+    );
+    expect(danglingReferences(parts)).toEqual([]);
+    expect(parts["docProps/core.xml"]).toContain(
+      "<dc:creator>Fixture Author</dc:creator><cp:lastModifiedBy>Fixture Author</cp:lastModifiedBy>"
+    );
+    expect(parts["docProps/app.xml"]).toContain(
+      "<Application>Microsoft Office Word</Application><Company></Company><AppVersion>16.0000</AppVersion>"
+    );
+    expect(JSON.stringify(parts)).not.toMatch(/Example|Owner|0x0101/);
   });
 
   it.each(producerFixtureNames)(
