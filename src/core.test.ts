@@ -816,8 +816,8 @@ describe("onlyCommentsChangedBy", () => {
  * than one the runtime happened to have. A `ReferenceError` out of the middle of a read is what
  * this replaces: a caller could not tell it apart from a file that is damaged.
  */
-describe("without a DOM", () => {
-  // Taken while the globals are still there, the way a server takes one off jsdom
+describe("with no DOMParser global", () => {
+  // Taken while the global is still there, the way a server takes one off jsdom
   const xmlParser = new DOMParser();
 
   beforeEach(() => {
@@ -834,17 +834,21 @@ describe("without a DOM", () => {
     );
   });
 
-  it("opens the fixture with an xmlParser option and no globals", () => {
+  it("opens the fixture through the xmlParser option instead", () => {
     const { doc, session } = importDocx(readFixture(FIXTURE), { xmlParser });
 
     expect(doc.textContent).not.toBe("");
     expect(documentPartPath(session)).toBe("word/document.xml");
   });
 
-  // Writing reads the exported body back, and that read is the one wrapped in a refusal about
-  // the document. The runtime's own refusal is settled ahead of it and comes through as it is
+  /**
+   * Writing reads the exported body back, and that read is the one wrapped in a refusal about the
+   * document. The runtime's own refusal is settled as the call comes in, ahead of the wrapper, so
+   * it comes through as itself even for a package that parses nothing until then
+   */
   it("refuses to write a file with no-xml-parser rather than an export code", () => {
-    const { doc, session } = importDocx(readFixture(FIXTURE), { xmlParser });
+    const bare = makeDocx(`<w:p>${LETTER_SECT_PR}</w:p>`);
+    const { doc, session } = importDocx(bare, { xmlParser });
 
     expect(importErrorCode(() => exportDocx(doc, session))).toBe(
       "no-xml-parser"

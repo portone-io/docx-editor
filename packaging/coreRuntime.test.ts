@@ -70,9 +70,33 @@ describe("the core entry in a runtime with no DOM", () => {
       const bytes = await readFile(join(fixturesDir, name));
 
       const { doc, session } = core.importDocx(bytes, { xmlParser });
+      const written = core.exportDocx(doc, session, { xmlParser });
 
       expect(doc.childCount).toBeGreaterThan(0);
-      expect(core.exportDocx(doc, session, { xmlParser })).not.toHaveLength(0);
+      // Read back rather than weighed, so a package that went out unopenable is caught here
+      expect(core.importDocx(written, { xmlParser }).doc.textContent).toBe(
+        doc.textContent
+      );
     }
   );
+
+  /**
+   * The call this runtime exists for: a server takes in the file a commenter returned and asks
+   * whether anything but its comments moved. It opens two packages through `importDocx` itself,
+   * so the parser it is handed has to reach reads no argument of its own names
+   */
+  it("answers for a returned file with the parser it was handed", async () => {
+    const bytes = await readFile(join(fixturesDir, "demo.docx"));
+    const { doc, session } = core.importDocx(bytes, { xmlParser });
+    const returned = core.exportDocx(doc, session, { xmlParser });
+
+    expect(
+      core.onlyCommentsChangedBy(bytes, returned, "commenter", { xmlParser })
+    ).toEqual({ ok: true });
+    expect(
+      refusalCode(() =>
+        core.onlyCommentsChangedBy(bytes, returned, "commenter")
+      )
+    ).toBe("no-xml-parser");
+  });
 });
