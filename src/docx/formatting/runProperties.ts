@@ -299,8 +299,8 @@ function toggle<K extends EditableRunKey>(
 
 /**
  * An underline holds a kind rather than an on/off state, `none` being the kind that is off.
- * One kind is not told from another: the toggle switches an underline on and leaves the kind a
- * run already has.
+ * A setter compares the requested kind exactly; the toggle separately uses isOn to decide
+ * whether any existing underline should be switched off.
  */
 const UNDERLINE: Editable<"underline"> = {
   children: ["u"],
@@ -310,7 +310,7 @@ const UNDERLINE: Editable<"underline"> = {
   },
   isOn: (format) =>
     format.underline !== undefined && format.underline !== "none",
-  matches: (format) => UNDERLINE.isOn(format),
+  matches: (format, kind) => format.underline === kind,
   write: (kind) => [["u", valXml("u", kind)]],
   off: ({ inherited }) => [
     ["u", UNDERLINE.isOn(inherited) ? valXml("u", "none") : null],
