@@ -2,6 +2,7 @@
 import type { MarkType, NodeType } from "prosemirror-model";
 import { describe, expect, it } from "vitest";
 import {
+  type AttrFacts,
   attrRole,
   displayAttrsOf,
   MARK_ATTR_ROLES,
@@ -10,12 +11,12 @@ import {
 import { docxSchema } from "./index";
 
 /** Every type of the schema that carries attrs, beside the table that declares their roles */
-const NODES: readonly [NodeType, Readonly<Record<string, string>>][] =
+const NODES: readonly [NodeType, Readonly<Record<string, AttrFacts>>][] =
   Object.values(docxSchema.nodes)
     .filter((type) => Object.keys(type.spec.attrs ?? {}).length > 0)
     .map((type) => [type, NODE_ATTR_ROLES[type.name] ?? {}]);
 
-const MARKS: readonly [MarkType, Readonly<Record<string, string>>][] =
+const MARKS: readonly [MarkType, Readonly<Record<string, AttrFacts>>][] =
   Object.values(docxSchema.marks)
     .filter((type) => Object.keys(type.spec.attrs ?? {}).length > 0)
     .map((type) => [type, MARK_ATTR_ROLES[type.name] ?? {}]);

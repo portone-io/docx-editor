@@ -282,5 +282,22 @@ or a browser edit, and a fragment that is none of those is turned down there, ta
 mark down one level with it. A paragraph then keeps its text and loses its properties, a run loses
 its formatting, and a content control or a hyperlink loses its wrapper.
 
+## What a plugin may rely on
+
+The supported plugin surface includes the node and mark names of `docxSchema`, `srcId`, the
+`format` attrs and their `to*Format` readers, and the names and types exported by the four entry
+points. Changes to this surface follow the package's public API versioning policy.
+Treat `srcId` as an opaque reference within the session that opened the document; its value is not
+a persistent identifier across imports.
+
+Raw OOXML attrs such as `pPr`, `rPr`, `tcPr`, `xml`, `sdtPrefix`, `linkPrefix`, and `commentXml` are
+internal and may change in any release. Prefer commands and typed format readers to depending on
+their names or writing them directly.
+
+The DOM checks described above run when the editor reads the page back. A programmatic node edit
+can bypass that path. Export checks XML well-formedness and selected document invariants, but does
+not validate every raw attr against its expected shape or the full OOXML schema. Handwritten attrs
+can therefore cause an export error or produce an invalid DOCX file.
+
 See [Features](/docs/features) for behavioral limits and the published TypeScript declarations for
 complete signatures.

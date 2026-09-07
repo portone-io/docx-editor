@@ -15,7 +15,7 @@ import {
   type Node as PMNode,
 } from "prosemirror-model";
 import { describe, expect, it } from "vitest";
-import { type AttrRole, MARK_ATTR_ROLES, NODE_ATTR_ROLES } from "./attrRoles";
+import { type AttrFacts, MARK_ATTR_ROLES, NODE_ATTR_ROLES } from "./attrRoles";
 import { docxSchema } from "./index";
 
 const serializer = DOMSerializer.fromSchema(docxSchema);
@@ -392,9 +392,9 @@ function attrStrings(doc: PMNode): string[] {
   return found;
 }
 
-function sourceAttrs(roles: Readonly<Record<string, AttrRole>>): string[] {
-  return Object.entries(roles)
-    .filter(([, role]) => role === "source")
+function sourceAttrs(facts: Readonly<Record<string, AttrFacts>>): string[] {
+  return Object.entries(facts)
+    .filter(([, fact]) => fact.role === "source")
     .map(([name]) => name)
     .sort();
 }
