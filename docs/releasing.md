@@ -15,11 +15,7 @@ Its Actions runs wait for approval, since the workflow opened the pull request r
 
 ## The version the site's demo runs
 
-`pnpm changeset:version` only prepares the library release. `bumpVersionsWithWorkspaceProtocolOnly` keeps the site and demo's exact npm pins unchanged while Changesets bumps the root package. Without it, Changesets would rewrite those consumers to the not-yet-published version and prevent a frozen installation of the release pull request.
-
-After Changesets successfully publishes, the release workflow passes the published version to **Update site release**. That workflow installs the exact version, builds the current site, and commits the demo pins and lockfile for Vercel's existing Git integration. A site update failure does not undo the npm publication or make the library's offline checks fail.
-
-[The site guide](../site/README.md#automatic-updates-after-publishing) owns the update sequence, retry behavior, and manual recovery after a partial release failure.
+Changesets preserves the published demo pins during release preparation through `bumpVersionsWithWorkspaceProtocolOnly`. After publishing succeeds, a separate workflow updates the site. See [automatic site updates and recovery](../site/README.md#automatic-updates-after-publishing).
 
 ## What the workflow decides
 

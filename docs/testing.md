@@ -18,7 +18,7 @@ Use `pnpm check` for the default local gate. Run the specialized checks when a c
 
 The unit suite requires `xmllint` for OOXML schema validation. `verify:package` also needs network access to install the packed package and its peer dependencies in a temporary project.
 
-`check:demo-library` never reads the registry. `test:site-release` runs `scripts/*.test.mjs` using Node's test runner and temporary files, with registry, installation, and GitHub requests substituted. It also runs the actual Changesets version command in a temporary workspace to ensure release preparation preserves published demo pins. It covers release visibility delays, bounded retries, exact-version selection, installation and build failures, rollback of input files, downgrade prevention, and atomic commits when `main` changes. It neither publishes packages nor pushes commits. [The site guide](../site/README.md#the-version-the-demo-runs) explains the live update path.
+`check:demo-library` is offline. `test:site-release` uses Node's test runner to check release preparation, failures, and safe version commits in temporary workspaces. It runs the actual Changesets version command; registry, installation, and GitHub responses are substituted.
 
 `pnpm spec 17.5.2.23` looks up an OOXML specification section. It is a utility, not a test.
 
