@@ -3,16 +3,22 @@ import { DocxExportError } from "../ooxml/errors";
 import { type ExportRefs, NO_EXPORT_REFS } from "./exportRefs";
 import { preservedXml, serializeParagraph } from "./serializeParagraph";
 import { serializeTable } from "./serializeTable";
-import { originalBlock, type SessionStore } from "./session";
+import { originalBlock, type SessionStore, splitBlockKey } from "./session";
+
+/** Why there is no original to write, which a block that came in from another document answers differently */
+function lostOriginal(node: PMNode, session: SessionStore): string {
+  const srcId: unknown = node.attrs.srcId;
+  const key = typeof srcId === "string" ? splitBlockKey(srcId) : null;
+  return key === null || key.sessionId === session.sessionId
+    ? "a preserved block has lost its original XML"
+    : `a preserved block comes from another document (${key.sessionId})`;
+}
 
 /** For a block whose content we never modelled, there is no way to write it back other than the original fragment */
 function serializeRaw(node: PMNode, session: SessionStore): string {
   const imported = originalBlock(node, session);
   if (!imported) {
-    throw new DocxExportError(
-      "lost-original",
-      "a preserved block has lost its original XML"
-    );
+    throw new DocxExportError("lost-original", lostOriginal(node, session));
   }
   return imported.xml;
 }

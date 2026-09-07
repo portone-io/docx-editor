@@ -47,7 +47,7 @@ import { readNotes } from "./notes";
 import { readBodyGeometry } from "./pageGeometry";
 import { resolveTarget } from "./relationships";
 import { type BodyScan, scanBody } from "./scan";
-import { SessionStore } from "./session";
+import { newSessionId, SessionStore } from "./session";
 import { NO_THEME_FONTS, readThemeFonts } from "./theme";
 
 const OFFICE_DOCUMENT_REL = `${R_NS}/officeDocument`;
@@ -358,6 +358,7 @@ function readDocx(input: DocxBytes): {
     notes,
     noteLabel,
   };
+  const sessionId = newSessionId();
   const blockNodes = blockElements.map((el, i) =>
     withStyleFormats(
       buildBlock(el, i, sources, styles, defaultTableStyleId),
@@ -369,6 +370,7 @@ function readDocx(input: DocxBytes): {
     doc,
     notes: fidelityNotesOf(doc, mainPartPath),
     session: new SessionStore({
+      sessionId,
       parts,
       mainPartPath,
       documentPrefix: scan.prefix,
