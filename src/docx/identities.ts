@@ -9,10 +9,15 @@
  *
  * A document nobody broke apart comes back node for node as it was, which is what keeps an
  * unedited block going out as its original XML.
+ *
+ * The one walk answers two callers: `withUniqueIdentities` hands the writer the settled document
+ * and throws over a block that cannot yield, and `identityProblems` runs the same walk for
+ * `docx/invariants` and lists those blocks instead, so what the query reports and what the write
+ * refuses cannot come apart.
  */
 
 import { Fragment, type Mark, type Node as PMNode } from "prosemirror-model";
-import { DocxExportError } from "../ooxml/errors";
+import { DocxExportError, type DocxExportErrorCode } from "../ooxml/errors";
 import { qualify } from "../ooxml/names";
 import { parseAttrs } from "../ooxml/tagScan";
 import { docxSchema } from "../schema";
@@ -188,49 +193,99 @@ export const IDENTITY_RULES: readonly IdentityRule[] = [
   controlRule,
 ];
 
-/** The block with every rule applied in turn, each reading what the one before it made of it */
-function visitBlock(
-  block: PMNode,
-  rules: readonly IdentityRule[],
-  written: readonly Set<string>[]
-): PMNode {
-  return rules.reduce((current, rule, index) => {
-    const next = rule.visit(current, written[index]);
+/** A block that cannot yield: what the export refuses it with, and where it stands in the document */
+export interface IdentityProblem {
+  readonly code: DocxExportErrorCode;
+  readonly message: string;
+  readonly pos: number;
+}
+
+function refusalOf(block: PMNode, pos: number): IdentityProblem {
+  return {
+    code: "unsupported-content",
+    message: `a preserved block stands in two places (${block.type.name})`,
+    pos,
+  };
+}
+
+/** One pass over the blocks: the rules, the names each has written so far, and what to do with a block that cannot yield */
+interface Walk {
+  readonly rules: readonly IdentityRule[];
+  readonly written: readonly Set<string>[];
+  readonly refuse: (problem: IdentityProblem) => void;
+}
+
+/**
+ * The block with every rule applied in turn, each reading what the one before it made of it. A
+ * block that cannot yield is handed to `refuse` and stands as it is for the rules after that one.
+ */
+function visitBlock(block: PMNode, pos: number, walk: Walk): PMNode {
+  let current = block;
+  for (const [index, rule] of walk.rules.entries()) {
+    const next = rule.visit(current, walk.written[index]);
     if (next === null) {
-      throw new DocxExportError(
-        "unsupported-content",
-        `a preserved block stands in two places (${block.type.name})`
-      );
+      walk.refuse(refusalOf(block, pos));
+      return current;
     }
-    return next;
-  }, block);
+    current = next;
+  }
+  return current;
 }
 
-function rewriteBlock(
-  block: PMNode,
-  rules: readonly IdentityRule[],
-  written: readonly Set<string>[]
-): PMNode {
-  const visited = visitBlock(block, rules, written);
+function rewriteBlock(block: PMNode, pos: number, walk: Walk): PMNode {
+  const visited = visitBlock(block, pos, walk);
   if (visited.inlineContent || visited.childCount === 0) return visited;
-  const children = visited.children.map((child) =>
-    rewriteBlock(child, rules, written)
-  );
-  return children.every((child, index) => child === visited.child(index))
-    ? visited
-    : visited.copy(Fragment.fromArray(children));
+  const children: PMNode[] = [];
+  let changed = false;
+  visited.forEach((child, offset) => {
+    const next = rewriteBlock(child, pos + 1 + offset, walk);
+    changed ||= next !== child;
+    children.push(next);
+  });
+  return changed ? visited.copy(Fragment.fromArray(children)) : visited;
 }
 
-/** The document with every later claimant of a name released, in document order, one `written` set per rule */
+/** The blocks in document order, one `written` set per rule, and the document itself where nothing changed */
+function walkBlocks(
+  doc: PMNode,
+  rules: readonly IdentityRule[],
+  refuse: Walk["refuse"]
+): PMNode {
+  const walk: Walk = {
+    rules,
+    written: rules.map(() => new Set<string>()),
+    refuse,
+  };
+  const blocks: PMNode[] = [];
+  let changed = false;
+  doc.forEach((block, offset) => {
+    const next = rewriteBlock(block, offset, walk);
+    changed ||= next !== block;
+    blocks.push(next);
+  });
+  return changed ? doc.copy(Fragment.fromArray(blocks)) : doc;
+}
+
+/** The document with every later claimant of a name released, in document order */
 export function withUniqueIdentities(
   doc: PMNode,
   rules: readonly IdentityRule[] = IDENTITY_RULES
 ): PMNode {
-  const written = rules.map(() => new Set<string>());
-  const blocks = doc.children.map((block) =>
-    rewriteBlock(block, rules, written)
-  );
-  return blocks.every((block, index) => block === doc.child(index))
-    ? doc
-    : doc.copy(Fragment.fromArray(blocks));
+  return walkBlocks(doc, rules, (problem) => {
+    throw new DocxExportError(problem.code, problem.message);
+  });
+}
+
+/**
+ * Every block `withUniqueIdentities` would refuse over, in document order, each where it stands;
+ * empty when the pass would go through. The pass is run as the export runs it and its settled
+ * document is dropped, so a caller asking ahead of the write reads the same refusal it would throw.
+ */
+export function identityProblems(
+  doc: PMNode,
+  rules: readonly IdentityRule[] = IDENTITY_RULES
+): readonly IdentityProblem[] {
+  const problems: IdentityProblem[] = [];
+  walkBlocks(doc, rules, (problem) => problems.push(problem));
+  return problems;
 }

@@ -271,6 +271,7 @@ package or of the session carries none.
 | `malformed-xml` | A bookmark marker whose partner is gone, or a comment part with no root element to rewrite around once a comment has changed. |
 | `invalid-table` | A vertical merge reaching past the last row of its table. |
 | `lost-original` | A preserved block that has lost its original XML, or a placeholder pasted in from another open document: a placeholder is written from the file it was read out of, so one from another file cannot be. |
+| `unsupported-content` | A preserved block, such as a body-level bookmark marker or an element the editor does not model, copied so that it stands in two places: there is one original to write and nothing to rebuild the second from. Reported where the second one stands. |
 | `missing-numbering-part` | A new list in a document that has no numbering part to define it in. The built-in list controls report that they do not apply for exactly this reason. |
 | `missing-content-types` | A new image or comment-related part, in a package that has no content types part to declare the new part in. |
 
