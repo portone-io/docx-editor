@@ -6,15 +6,18 @@ Use `pnpm check` for the default local gate. Run the specialized checks when a c
 
 | Command | Scope |
 | --- | --- |
-| `pnpm check` | Lint, typecheck, and unit and integration tests |
+| `pnpm check` | Lint, typecheck, unit and integration tests, and the version the site's demo runs |
 | `pnpm test` | Vitest tests under `src/` |
 | `pnpm typecheck` | TypeScript checks for the package and E2E project |
 | `pnpm lint` | Biome checks |
 | `pnpm test:package` | Published tarball contents, leaf-import size, declaration reports, and the core entry in a Node runtime with no DOM |
 | `pnpm verify:package` | Fresh installation, declarations, entries, bundle, and stylesheet |
 | `pnpm test:e2e` | Playwright tests against a locally installed Chrome |
+| `pnpm check:demo-library` | The site and the demo run the same released version of the library, and it is the newest one |
 
 The unit suite requires `xmllint` for OOXML schema validation. `verify:package` also needs network access to install the packed package and its peer dependencies in a temporary project.
+
+`check:demo-library` reads the registry only when the pin and the repository's own version disagree, which is the window while a release is being prepared. [The site guide](../site/README.md#the-version-the-demo-runs) explains what it protects.
 
 `pnpm spec 17.5.2.23` looks up an OOXML specification section. It is a utility, not a test.
 

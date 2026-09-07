@@ -13,6 +13,15 @@ Merging that pull request publishes, and everything on `main` ships with it: a f
 Its Actions runs wait for approval, since the workflow opened the pull request rather than a person.
 **Approve workflows to run**, in the merge box, starts them; every rewrite re-arms it.
 
+## The version the site's demo runs
+
+`pnpm changeset:version` writes the version bump and then runs `pnpm pin:demo-library`, which moves the site and the demo onto the newest release of the library.
+
+It cannot move them onto the version the pull request is proposing.
+That version reaches npm only when the release publishes, and a workspace that depends on a version npm does not have cannot be installed at all, so it would block the very publish it is waiting for.
+The pin therefore moves after a publish, not with it: `pnpm check:demo-library` fails from the moment a release lands until `pnpm pin:demo-library` is run and committed, and the next release picks it up on its own if nobody does.
+[The site guide](../site/README.md#the-version-the-demo-runs) explains why the demo is pinned at all.
+
 ## What the workflow decides
 
 Every push to `main` runs the workflow, which first works out which of three things this push is.

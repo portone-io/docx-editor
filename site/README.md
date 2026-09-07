@@ -19,7 +19,36 @@ The landing page needs the same `demo.docx` the editor is developed against, and
 
 The demo arrives through a client-only dynamic import. The editor builds a ProseMirror view against the DOM, so it cannot render on the server.
 
-`next.config.mjs` lists `@portone/docx-editor` and `@portone/docx-editor-demo` in `transpilePackages`: both resolve to TypeScript sources through the workspace link rather than to built output.
+`next.config.mjs` lists `@portone/docx-editor-demo` in `transpilePackages`, because that package is a workspace link resolving to TypeScript sources.
+The library it imports is deliberately not listed: the site installs it from npm, and the published package ships built JavaScript.
+
+## The version the demo runs
+
+`site/package.json` and `demo/package.json` pin `@portone/docx-editor` to an exact released version rather than to `workspace:*`, and the `v{version}` badge beside the demo reads that same pin.
+A visitor who tries the demo and then installs the version the badge names gets the behavior they just used.
+
+Both packages have to name the same version, and the demo cannot be left on `workspace:*`: the site depends on the demo, so the library would arrive twice in one build, once from npm and once from the working tree.
+
+`pnpm check:demo-library` holds that together, and `pnpm check` runs it.
+It fails when the two pins disagree, when either is a range rather than a release, when the lockfile has not caught up with a changed pin, when the dependency resolves to this repository's own package, and when a release has arrived that the demo is not running yet.
+`pnpm pin:demo-library` moves both pins to the newest release and installs it.
+
+`pnpm changeset:version` runs that same command, so preparing a release also picks up a pin that the previous release left behind.
+It cannot pin the version being prepared, because that version reaches the registry only when the release publishes, and a dependency on a version npm does not have yet leaves the whole workspace uninstallable.
+So the pin moves after a publish rather than with it, and `pnpm check:demo-library` is what reports the gap in between.
+
+`pnpm-workspace.yaml` excludes the library from pnpm's release-maturity delay.
+That delay is there to let a compromised third-party release be yanked before anything depends on it, and applying it to this repository's own package would hold the demo a day behind every release of the library it demonstrates.
+
+### Working on the library itself
+
+`pnpm dev:site` serves the released library, so an unreleased change under `src/` does not show up in the site's demo.
+Library work belongs in `pnpm dev`, which serves the same demo component through Vite: `demo/vite.config.ts` aliases every `@portone/docx-editor` entry point to the sources it is built from, so edits under `src/` reload there.
+Docs pages under `content/docs` are site files and still hot-reload under `pnpm dev:site`.
+
+To make the site itself read the working tree for a one-off check, put `workspace:*` back in `site/package.json` and `demo/package.json`, add `@portone/docx-editor` to `transpilePackages`, and run `pnpm install`.
+Revert all three before committing; `pnpm check` fails while they are in place.
+A pnpm `overrides` entry does not do this, because it does not displace a direct dependency that already resolves.
 
 ## Markdown for AI agents
 
