@@ -1,0 +1,18 @@
+[
+  {
+    "severity": "hidden",
+    "code": "range-marker",
+    "part": "word/document.xml",
+    "block": 21,
+    "pos": 1797,
+    "element": "w:bookmarkStart"
+  },
+  {
+    "severity": "hidden",
+    "code": "range-marker",
+    "part": "word/document.xml",
+    "block": 21,
+    "pos": 1812,
+    "element": "w:bookmarkEnd"
+  }
+]

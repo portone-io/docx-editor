@@ -231,6 +231,9 @@ interface DocumentDefaults {
 export function documentDefaults(state: EditorState): DocumentDefaults;
 
 // @public
+export function documentFidelity(state: EditorState): readonly FidelityNote[];
+
+// @public
 export function documentFontNames(doc: Node_2, defaults: DocumentDefaults): string[];
 
 // @public
@@ -269,6 +272,30 @@ export function editingProtection(state: EditorState): EditingProtection;
 
 // @public (undocumented)
 export type EditorCommand = Command;
+
+// @public (undocumented)
+export type FidelityCode = "preserved-run-content" | "preserved-inline" | "preserved-block" | "range-marker" | "paragraph-demoted" | "table-demoted";
+
+// @public (undocumented)
+export interface FidelityNote {
+    block: number | null;
+    // (undocumented)
+    code: FidelityCode;
+    element: string;
+    part: string | null;
+    pos: number | null;
+    // (undocumented)
+    severity: FidelitySeverity;
+}
+
+// @public (undocumented)
+export type FidelitySeverity =
+/** Carried through whole, with nothing of it on screen */
+"hidden"
+/** Carried through whole behind a placeholder that stands in its place and cannot be edited */
+| "placeholder"
+/** Written back as something near what arrived rather than as what arrived */
+| "approximated";
 
 // @public
 interface FileCarrier {

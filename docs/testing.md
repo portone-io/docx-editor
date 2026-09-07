@@ -26,6 +26,8 @@ Shared helpers belong under `src/__testing__/` or a feature's `__testing__/` dir
 
 The suite uses a 30-second timeout because schema validation and tests that exercise compressed-size limits can legitimately take several seconds. [The fixture guide](../__fixtures__/README.md) owns the requirements for committed DOCX files.
 
+`src/docx/fidelity.test.ts` records what each fixture loses on the way in as a file snapshot under `src/docx/__snapshots__/fidelity/<fixture>.json`, written through `toMatchFileSnapshot`. Update them with `pnpm exec vitest run -u src/docx/fidelity.test.ts`. A diff there is a change in what a document keeps, not test noise: read it in the PR and approve it deliberately, the way any behavior change is approved. A snapshot that grows says the editor started hiding something it used to model; one that shrinks says it learned to keep something it used to lose.
+
 ## Tests that guard package rules
 
 | Test | Rule it protects |

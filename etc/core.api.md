@@ -112,9 +112,39 @@ export function emuToPx(emu: number): number;
 export function exportDocx(doc: Node_2, session: DocxSession, options?: ExportOptions): Uint8Array;
 
 // @public
+export function exportDocxReport(doc: Node_2, session: DocxSession, options?: ExportOptions): {
+    bytes: Uint8Array;
+    notes: FidelityNote[];
+};
+
+// @public
 export interface ExportOptions {
     xmlParser?: XmlParser;
 }
+
+// @public (undocumented)
+export type FidelityCode = "preserved-run-content" | "preserved-inline" | "preserved-block" | "range-marker" | "paragraph-demoted" | "table-demoted";
+
+// @public (undocumented)
+export interface FidelityNote {
+    block: number | null;
+    // (undocumented)
+    code: FidelityCode;
+    element: string;
+    part: string | null;
+    pos: number | null;
+    // (undocumented)
+    severity: FidelitySeverity;
+}
+
+// @public (undocumented)
+export type FidelitySeverity =
+/** Carried through whole, with nothing of it on screen */
+"hidden"
+/** Carried through whole behind a placeholder that stands in its place and cannot be edited */
+| "placeholder"
+/** Written back as something near what arrived rather than as what arrived */
+| "approximated";
 
 // Warning: (ae-forgotten-export) The symbol "HIGHLIGHTS" needs to be exported by the entry point core.d.ts
 //
@@ -136,6 +166,7 @@ export interface ImageExtent {
 export function importDocx(input: DocxBytes, options?: ImportOptions): {
     doc: Node_2;
     session: DocxSession;
+    notes: FidelityNote[];
 };
 
 // @public

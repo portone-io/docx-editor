@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { makeDocx } from "../__testing__/docx";
+import { fixtureNames, makeDocx, readFixture } from "../__testing__/docx";
 import { documentFidelity } from "../editor/commands/fidelityQueries";
 import { createEditorState } from "../editor/createEditor";
 import { fidelityNotesOf } from "./fidelity";
@@ -162,4 +162,23 @@ describe("documentFidelity", () => {
 
     expect(documentFidelity(edited).map((note) => note.pos)).toEqual([5, 6]);
   });
+});
+
+/**
+ * What each fixture loses on the way in, held as a file a reviewer reads.
+ *
+ * A diff here is a change in what a document keeps, so it is approved deliberately rather than
+ * accepted along with whatever else a PR touched. `docs/testing.md` says how to update them.
+ */
+describe("the fixture corpus", () => {
+  it.each(fixtureNames)(
+    "%s: opens with the recorded fidelity notes",
+    async (name) => {
+      const { notes } = importDocx(readFixture(name));
+
+      await expect(`${JSON.stringify(notes, null, 2)}\n`).toMatchFileSnapshot(
+        `./__snapshots__/fidelity/${name.replace(/\.docx$/, "")}.json`
+      );
+    }
+  );
 });
