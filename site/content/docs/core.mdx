@@ -26,6 +26,55 @@ The session belongs to the imported document and must not be constructed or modi
 Use `documentNumbering(session)` and `documentPartPath(session)` for the package information
 exposed by the public API.
 
+## What a document loses
+
+A DOCX holds more than this editor draws.
+Markup it cannot model is carried through the round trip untouched, but some of it is invisible on
+the page and some of it stands behind a placeholder nobody can edit.
+`notes` says what, one entry per piece:
+
+```ts
+const { doc, session, notes } = importDocx(source);
+
+for (const note of notes) {
+  console.log(note.severity, note.code, note.element, note.block);
+}
+```
+
+Each note carries how much of the original survived (`severity`), what kind of content it was
+(`code`), the package path of the part it came from (`part`), the body block it falls in (`block`),
+its position in the document (`pos`, which a reader can select), and the original element name
+(`element`, such as `w:bookmarkStart`).
+
+| `severity` | What it means |
+| --- | --- |
+| `hidden` | Carried through whole, with nothing of it on screen. A bookmark marker, for instance. |
+| `placeholder` | Carried through whole behind a placeholder that stands in its place and cannot be edited. |
+| `approximated` | Written back as something near what arrived rather than as what arrived. |
+
+`code` names the content: `range-marker` for one end of a bookmark or a similar range,
+`preserved-inline` and `preserved-block` for markup kept where it stood, `preserved-run-content`
+for a piece of a run, and `paragraph-demoted` or `table-demoted` for a paragraph or table this
+editor could not model at all.
+
+Currently, notes cover preserved block and inline nodes, including hidden bookmarks and
+placeholders. `preserved-run-content` and `approximated` are reserved for future reporting;
+neither is emitted yet. An empty list does not guarantee a lossless round trip: the writer's
+known losses described below are not included in these notes.
+
+`exportDocxReport` writes the file and returns the notes for the document it wrote, so a server
+can report its preserved content without opening the file again:
+
+```ts
+import { exportDocxReport } from "@portone/docx-editor/core";
+
+const { bytes, notes } = exportDocxReport(doc, session);
+```
+
+`exportDocx(doc, session)` is those bytes and nothing else, and both take the same options.
+Inside an editor, [`documentFidelity`](/docs/custom-controls#images-links-and-annotations) answers
+the question about the document as it currently stands.
+
 ## Server environments
 
 Reading a DOCX means reading the XML inside it, and that needs a parser. Browsers have one.
@@ -134,16 +183,15 @@ type CommentOnlyVerdict =
 Two files can say the same thing in different words, so the story is compared as this editor
 writes it back rather than as the two files worded it.
 Two blocks this editor would write alike read alike here: the attribute order inside a `w:tcW` or
-a `w:tblW`, for instance, a percentage width written as `100%` or as `5000`, runs a producer split
-that say the same text, or a table's `w:tblGridChange`, which this editor drops whenever it
-rebuilds a table.
+a `w:tblW`, for instance, a percentage width written as `100%` or as `5000`, or runs a producer
+split that say the same text.
 A submission that changed only such a difference is accepted.
 
 Content this editor carries through is compared, down to a comment a producer left between two
 properties.
-What it builds afresh is not, and there are three of those: a table's `w:tblGrid` is written from
-the column widths alone, a drawing's extent from the size the model holds, and a table property the
-model no longer needs is dropped along with anything inside it.
+What it builds afresh is not, and there are three of those: a table's `w:gridCol` list is written
+from the column widths alone, a drawing's extent from the size the model holds, and a table
+property the model no longer needs is dropped along with anything inside it.
 A difference confined to one of those three is not seen.
 Where a file's integrity has to be checked to the byte, compare the parts themselves rather than
 asking this question of them.

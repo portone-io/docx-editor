@@ -170,13 +170,36 @@ function readRow(el: Element): RawRow | null {
 interface TableParts {
   tblPr: Element | null;
   tblGrid: Element | null;
+  /** The `w:tblGridChange` the grid closed with, as it stood */
+  gridChange: string | null;
   rows: RawRow[];
+}
+
+/** Keeps the revision's namespace context when its parent grid is rebuilt. */
+function gridRevisionXml(grid: Element): string | null {
+  const revision = childByLocalName(grid, "tblGridChange");
+  if (revision === null) return null;
+  // The rebuilt grid no longer supplies these bindings. Keep all of them, including prefixes
+  // used only in QName-valued attributes, without overriding declarations inside the revision.
+  const declarations = Array.from(grid.attributes).filter(
+    (attr) =>
+      attr.namespaceURI === "http://www.w3.org/2000/xmlns/" &&
+      !revision.hasAttribute(attr.name)
+  );
+  if (declarations.length === 0) return serializeXml(revision);
+
+  const preserved = revision.ownerDocument.importNode(revision, true);
+  for (const attr of declarations) {
+    preserved.setAttributeNS(attr.namespaceURI, attr.name, attr.value);
+  }
+  return serializeXml(preserved);
 }
 
 /** Splits a table into the three pieces it is made of. null if a child we do not know is mixed in */
 function readTableParts(el: Element): TableParts | null {
   let tblPr: Element | null = null;
   let tblGrid: Element | null = null;
+  let gridChange: string | null = null;
   const rows: RawRow[] = [];
   for (const child of elementChildren(el)) {
     if (child.localName === "tblPr") {
@@ -185,6 +208,7 @@ function readTableParts(el: Element): TableParts | null {
     }
     if (child.localName === "tblGrid") {
       tblGrid = child;
+      gridChange = gridRevisionXml(child);
       continue;
     }
     if (child.localName !== "tr") return null;
@@ -192,7 +216,7 @@ function readTableParts(el: Element): TableParts | null {
     if (!row) return null;
     rows.push(row);
   }
-  return rows.length > 0 ? { tblPr, tblGrid, rows } : null;
+  return rows.length > 0 ? { tblPr, tblGrid, gridChange, rows } : null;
 }
 
 /**
@@ -434,6 +458,7 @@ export function buildTable(
       tblPr: parts.tblPr ? serializeXml(parts.tblPr) : null,
       tblW: readTableWidth(parts.tblPr, "tblW"),
       gridCols,
+      gridChange: parts.gridChange,
       format: tableFormat,
       // The cells need these again whenever an edit derives their display values afresh
       styleInside: toInsideBorders(style?.tableInside),

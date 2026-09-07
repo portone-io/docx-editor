@@ -121,6 +121,15 @@ protection](#modes-and-protection) explains the rule behind it.
 `documentNotes` returns the distinct footnotes and endnotes referenced by the main document,
 including their display labels and plain-text bodies.
 
+`documentFidelity` returns what the open document holds that the editor cannot model: markup that
+is preserved but invisible, and the placeholders standing in for content it could not open for
+editing.
+Each note carries a `pos`, so a panel listing them can move the selection to the one a reader picks.
+The list is read off the document as it stands, so a note goes as soon as an edit takes away what
+it was about.
+[Core API](/docs/core#what-a-document-loses) describes the note fields, and returns the same list
+from `importDocx` and `exportDocxReport`.
+
 ## Document zoom
 
 The editor fits the page to its available width by default. Its toolbar offers Fit, 50%, 75%,

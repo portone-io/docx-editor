@@ -143,23 +143,9 @@ describe("two spellings of the same thing", () => {
  * gone, so the comparison cannot report a difference it can no longer see. That makes this list
  * the one to watch: it stands for what the editor loses when it rebuilds a block, it shrinks as
  * the writer learns to carry more, and a case joining it is a preservation defect rather than a
- * comparison detail. `site/content/docs/core.mdx` names the same three to a reader.
+ * comparison detail. `site/content/docs/core.mdx` names the same losses to a reader.
  */
 describe("content this editor does not keep", () => {
-  it("does not tell a table whose tblGridChange was dropped from the original", () => {
-    const revised = storyOf(
-      TABLE(
-        WIDTH,
-        CELL_WIDTH,
-        '<w:tblGrid><w:gridCol w:w="6500"/>' +
-          '<w:tblGridChange w:id="0"><w:tblGrid><w:gridCol w:w="4000"/>' +
-          "</w:tblGrid></w:tblGridChange></w:tblGrid>"
-      )
-    );
-    expect(revised.join("")).not.toContain("tblGridChange");
-    expect(revised).toEqual(storyOf(TABLE(WIDTH, CELL_WIDTH, GRID)));
-  });
-
   it("reads a cell property the writer rebuilds from the model as the model says it", () => {
     // A vMerge on a cell nothing continues, and a gridSpan of one, say nothing the model records
     expect(storyOf(TABLE(WIDTH, CELL_WIDTH, GRID))).toEqual(

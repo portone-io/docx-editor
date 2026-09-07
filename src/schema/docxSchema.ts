@@ -274,6 +274,13 @@ export const docxSchema = new Schema({
         tblW: { default: null },
         /** The `w:gridCol` widths (dxa) in order */
         gridCols: { default: [] },
+        /**
+         * The whole `<w:tblGridChange>...</w:tblGridChange>` XML, the record of the grid this
+         * table had before it was last revised. Carried as it arrived because the grid around it
+         * is rebuilt from `gridCols`, and CT_TblGrid takes it after the columns however wide
+         * those turn out to be (ECMA-376 Part 1 17.4.48)
+         */
+        gridChange: { default: null },
         format: { default: null },
         /** The lines between cells the table style laid down, so an edit can derive them again */
         styleInside: { default: null },
@@ -293,6 +300,7 @@ export const docxSchema = new Schema({
           "data-tblpr": text(node.attrs.tblPr),
           "data-tblw": formatJson(width),
           "data-cols": numberListText(gridCols),
+          "data-gridchange": text(node.attrs.gridChange),
           "data-fmt": formatJson(format),
           "data-style-inside": formatJson(
             toInsideBorders(node.attrs.styleInside)
@@ -317,13 +325,21 @@ export const docxSchema = new Schema({
           getAttrs: (dom) => {
             const tblAttrs = rawXml(dom, "data-tblattrs", ATTRIBUTES);
             const tblPr = rawXml(dom, "data-tblpr", ELEMENT("tblPr"));
-            if (tblAttrs === false || tblPr === false) return false;
+            const gridChange = rawXml(
+              dom,
+              "data-gridchange",
+              ELEMENT("tblGridChange")
+            );
+            if (tblAttrs === false || tblPr === false || gridChange === false) {
+              return false;
+            }
             return {
               srcId: srcIdOf(dom),
               tblAttrs,
               tblPr,
               tblW: toTableWidth(parseJson(dom.getAttribute("data-tblw"))),
               gridCols: parseNumberList(dom.getAttribute("data-cols")),
+              gridChange,
               format: toTableFormat(parseJson(dom.getAttribute("data-fmt"))),
               styleInside: toInsideBorders(
                 parseJson(dom.getAttribute("data-style-inside"))

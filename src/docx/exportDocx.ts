@@ -28,6 +28,11 @@ import { sameSource } from "../schema/sourceEquality";
 import { planCommentParts } from "./comments";
 import { repackParts } from "./container";
 import type { ExportRefs } from "./exportRefs";
+import {
+  type FidelityCollector,
+  type FidelityNote,
+  fidelityNotesOf,
+} from "./fidelity";
 import { hyperlinkRefs } from "./hyperlink";
 import { NO_IMAGE_REFS, planImageMedia } from "./media";
 import {
@@ -49,7 +54,7 @@ import { withUniqueControls } from "./uniqueControls";
  *
  * Unchanged is judged by `sameSource` rather than by `Node.eq`, because opening a file works the
  * display attrs out again (`schema/attrRoles`) and a block rebuilt over that would lose the markup
- * the writer does not model, `w:tblGridChange` among it.
+ * the writer does not model, the properties of a cell continuing a vertical merge among it.
  */
 function blockXml(
   node: PMNode,
@@ -216,11 +221,39 @@ export function exportDocx(
   session: DocxSession,
   options?: ExportOptions
 ): Uint8Array {
-  return withXmlParser(options?.xmlParser, () => writeDocx(doc, session));
+  return exportDocxReport(doc, session, options).bytes;
 }
 
-function writeDocx(doc: PMNode, session: DocxSession): Uint8Array {
-  const store = sessionOf(session);
+/**
+ * The file to write, and what writing it could not carry across as it stood.
+ *
+ * The notes are the ones `documentFidelity` reads off the same document, followed by whatever the
+ * writer had to approximate on the way out. A host that hands a file to somebody else can say what
+ * that file no longer holds without opening it again.
+ */
+export function exportDocxReport(
+  doc: PMNode,
+  session: DocxSession,
+  options?: ExportOptions
+): { bytes: Uint8Array; notes: FidelityNote[] } {
+  return withXmlParser(options?.xmlParser, () => {
+    const store = sessionOf(session);
+    const approximated: FidelityNote[] = [];
+    const bytes = writeDocx(doc, store, {
+      add: (note) => approximated.push(note),
+    });
+    return {
+      bytes,
+      notes: [...fidelityNotesOf(doc, store.mainPartPath), ...approximated],
+    };
+  });
+}
+
+function writeDocx(
+  doc: PMNode,
+  store: SessionStore,
+  notes: FidelityCollector
+): Uint8Array {
   const relsPath = relsPathOf(store.mainPartPath);
   const relationships = relationshipWriter(
     readRelationships(store.parts, relsPath)
@@ -237,6 +270,7 @@ function writeDocx(doc: PMNode, session: DocxSession): Uint8Array {
   const documentXml = buildDocumentXml(doc, store, {
     images: media?.refs ?? NO_IMAGE_REFS,
     links: hyperlinkRefs(relationships),
+    notes,
   });
   assertBookmarkPairs(documentXml);
 

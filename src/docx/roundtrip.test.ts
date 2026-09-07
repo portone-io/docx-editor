@@ -16,6 +16,7 @@ import {
   makeLinkedDocx,
   readFixture,
 } from "../__testing__/docx";
+import { posOfText } from "../__testing__/editing";
 import { createEditorState } from "../editor/createEditor";
 import { parseXml } from "../ooxml/xml";
 import { docxSchema } from "../schema";
@@ -101,6 +102,29 @@ describe("round trip through the editor state", () => {
     expect(
       decode(unzipSync(exportDocx(opened, session))["word/document.xml"])
     ).toContain("tblGridChange");
+  });
+
+  it("a table rebuilt by an edit writes its tblGridChange after the columns", () => {
+    const body =
+      "<w:tbl>" +
+      '<w:tblGrid><w:gridCol w:w="1000"/><w:gridCol w:w="1000"/>' +
+      '<w:tblGridChange w:id="0"><w:tblGrid><w:gridCol w:w="900"/>' +
+      '<w:gridCol w:w="1100"/></w:tblGrid></w:tblGridChange></w:tblGrid>' +
+      "<w:tr><w:tc><w:p><w:r><w:t>a</w:t></w:r></w:p></w:tc>" +
+      "<w:tc><w:p><w:r><w:t>b</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:p/>";
+    const { doc, session } = importDocx(makeDocx(body));
+    const state = createEditorState(doc);
+    const edited = state.apply(
+      state.tr.insertText("edited", posOfText(state.doc, "a"))
+    );
+
+    const out = documentXmlOf(edited.doc, session);
+    expect(out).toContain("edited");
+    expect(out).toContain(
+      '<w:tblGrid><w:gridCol w:w="1000"/><w:gridCol w:w="1000"/>' +
+        '<w:tblGridChange w:id="0"><w:tblGrid><w:gridCol w:w="900"/>' +
+        '<w:gridCol w:w="1100"/></w:tblGrid></w:tblGridChange></w:tblGrid>'
+    );
   });
 });
 

@@ -90,6 +90,12 @@ export {
   updateCommentReply,
 } from "./commentCommands";
 export type {
+  FidelityCode,
+  FidelityNote,
+  FidelitySeverity,
+} from "./fidelityQueries";
+export { documentFidelity } from "./fidelityQueries";
+export type {
   ActiveFontFamily,
   ActiveFontSize,
 } from "./formattingCommands";

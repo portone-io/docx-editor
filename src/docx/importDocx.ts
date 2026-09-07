@@ -22,6 +22,7 @@ import { docxSchema } from "../schema";
 import { commentReferencesIn, readComments } from "./comments";
 import { openParts } from "./container";
 import { DEFAULT_TAB_STOP_PT, readDefaultTabStop } from "./documentSettings";
+import { type FidelityNote, fidelityNotesOf } from "./fidelity";
 import {
   defaultParagraphStyleIdOf,
   defaultTableStyleIdOf,
@@ -262,6 +263,7 @@ export function importDocx(
 ): {
   doc: PMNode;
   session: SessionStore;
+  notes: FidelityNote[];
 } {
   return withXmlParser(options?.xmlParser, () => readDocx(input));
 }
@@ -269,6 +271,7 @@ export function importDocx(
 function readDocx(input: DocxBytes): {
   doc: PMNode;
   session: SessionStore;
+  notes: FidelityNote[];
 } {
   const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
   const parts = openParts(bytes);
@@ -361,8 +364,10 @@ function readDocx(input: DocxBytes): {
       paragraphFormatting
     )
   );
+  const doc = docxSchema.nodes.doc.create(null, blockNodes);
   return {
-    doc: docxSchema.nodes.doc.create(null, blockNodes),
+    doc,
+    notes: fidelityNotesOf(doc, mainPartPath),
     session: new SessionStore({
       parts,
       mainPartPath,
@@ -382,11 +387,7 @@ function readDocx(input: DocxBytes): {
       numberingXml,
       numberingPartPath,
       comments,
-      commentReferenceIds: new Set(
-        commentReferencesIn(
-          docxSchema.nodes.doc.create(null, blockNodes)
-        ).keys()
-      ),
+      commentReferenceIds: new Set(commentReferencesIn(doc).keys()),
       headersFooters,
     }),
   };

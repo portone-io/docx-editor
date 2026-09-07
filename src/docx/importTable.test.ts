@@ -461,6 +461,28 @@ describe("table width and grid", () => {
     );
     expect(node.attrs.gridCols).toEqual([1000]);
   });
+
+  it("keeps the grid revision markup verbatim", () => {
+    const node = requireTable(
+      "<w:tbl>" +
+        '<w:tblGrid><w:gridCol w:w="1000"/>' +
+        '<w:tblGridChange w:id="0"><w:tblGrid><w:gridCol w:w="900"/>' +
+        "</w:tblGrid></w:tblGridChange></w:tblGrid>" +
+        row(cell("", "a")) +
+        "</w:tbl>"
+    );
+    expect(node.attrs.gridChange).toBe(
+      '<w:tblGridChange w:id="0"><w:tblGrid><w:gridCol w:w="900"/>' +
+        "</w:tblGrid></w:tblGridChange>"
+    );
+  });
+
+  it("a table with no revision markup carries none", () => {
+    const node = requireTable(
+      "<w:tbl>" + grid(1000) + row(cell("", "a")) + "</w:tbl>"
+    );
+    expect(node.attrs.gridChange).toBeNull();
+  });
 });
 
 describe("table formatting", () => {
