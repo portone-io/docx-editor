@@ -2,6 +2,7 @@
 
 These notes record reusable OOXML interpretations, interoperability findings, and project decisions that affect how a document is read, written, or preserved. They are not a feature matrix or an implementation diary.
 
+- [Child order](./childOrder.md)
 - [Comments](./comments.md)
 - [Content controls](./contentControls.md)
 - [Table cell layout](./tableCellLayout.md)

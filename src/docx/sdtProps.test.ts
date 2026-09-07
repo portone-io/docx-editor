@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import { parseXml, W_NS } from "../ooxml/xml";
-import { readSdtWrapper } from "./sdt";
+import { editSdtPrefix, readSdtWrapper } from "./sdt";
 import { withContentLock } from "./sdtProps";
 
 const ALIAS = '<w:alias w:val="signedOn"/>';
@@ -41,6 +41,32 @@ describe("shutting a control", () => {
   });
 });
 
+describe("a control property the order once had in the wrong spot", () => {
+  /** CT_SdtPr lays `temporary` down ahead of `showingPlcHdr`, where the table once had it last */
+  it("places temporary ahead of showingPlcHdr as CT_SdtPr lays down", () => {
+    expect(
+      editSdtPrefix(prefix(`${ID}<w:showingPlcHdr/>`), [
+        ["temporary", "<w:temporary/>"],
+      ])
+    ).toBe(prefix(`${ID}<w:temporary/><w:showingPlcHdr/>`));
+  });
+
+  /**
+   * The type a control declares stands last in CT_SdtPr, after the lock. An order table that did
+   * not know these names at all left the lock behind whichever of them the control carried.
+   */
+  it.each([
+    '<w:date w:fullDate="2026-01-01T00:00:00Z"/>',
+    '<w:comboBox><w:listItem w:value="a"/></w:comboBox>',
+    "<w:text/>",
+    '<w:label w:val="3"/>',
+  ])("writes the lock ahead of %s", (declared) => {
+    expect(withContentLock(prefix(ID + declared), true)).toBe(
+      prefix(ID + LOCK + declared)
+    );
+  });
+});
+
 describe("lifting a control's lock", () => {
   it("leaves everything else the control carries exactly as it was", () => {
     const locked =
@@ -52,6 +78,14 @@ describe("lifting a control's lock", () => {
         `<w:sdtPr>${ALIAS}${TAG}${ID}${BINDING}</w:sdtPr>` +
         "<w:sdtEndPr><w:rPr/></w:sdtEndPr>"
     );
+  });
+
+  it("collapses a pretty-printed properties element left holding nothing but whitespace", () => {
+    const opened = withContentLock(
+      `<w:sdt>\n  <w:sdtPr>\n    ${LOCK}\n  </w:sdtPr>`,
+      false
+    );
+    expect(opened).toBe("<w:sdt>\n  <w:sdtPr/>");
   });
 
   /** A control with no `w:sdtPr` at all is one we no longer read back, so an emptied one stays written */

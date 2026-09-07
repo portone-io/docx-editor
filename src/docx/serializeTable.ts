@@ -19,17 +19,15 @@ import {
 import { elementXml, openTagXml, type XmlAttr } from "../ooxml/element";
 import { DocxExportError } from "../ooxml/errors";
 import { wName } from "../ooxml/names";
-import { type ExportRefs, NO_EXPORT_REFS } from "./exportRefs";
 import {
   innerXml,
   type Props,
   parseProps,
   propsChild,
   renderProps,
-  setPropsChild,
-  TBL_PR_ORDER,
-  TC_PR_ORDER,
-} from "./propsXml";
+  setChild,
+} from "../ooxml/props";
+import { type ExportRefs, NO_EXPORT_REFS } from "./exportRefs";
 import {
   preservedXml,
   rawAttrsOf,
@@ -88,12 +86,11 @@ function widthXml(
 function withWidth(
   props: Props,
   name: "tblW" | "tcW",
-  width: TableWidth | null,
-  order: readonly string[]
+  width: TableWidth | null
 ): Props {
   if (!width) return props;
   const replacing = propsChild(props.children, name)?.xml;
-  return setPropsChild(props, name, widthXml(name, width, replacing), order);
+  return setChild(props, name, widthXml(name, width, replacing));
 }
 
 function tablePropsXml(table: PMNode): string {
@@ -101,7 +98,7 @@ function tablePropsXml(table: PMNode): string {
   const width = toTableWidth(table.attrs.tblW);
   // CT_Tbl requires tblPr even when the table has no properties (ECMA-376 Part 1, Annex A.1).
   return (
-    renderProps(withWidth(props, "tblW", width, TBL_PR_ORDER)) ||
+    renderProps(withWidth(props, "tblW", width)) ||
     elementXml(wName("tblPr"), [])
   );
 }
@@ -153,10 +150,10 @@ function cellPropsXml(cell: PMNode, role: CellRole): string {
           )
         : null;
 
-  const spanned = setPropsChild(props, "gridSpan", gridSpan, TC_PR_ORDER);
-  const merged = setPropsChild(spanned, "vMerge", vMerge, TC_PR_ORDER);
+  const spanned = setChild(props, "gridSpan", gridSpan);
+  const merged = setChild(spanned, "vMerge", vMerge);
   const width = toTableWidth(cell.attrs.tcW);
-  return renderProps(withWidth(merged, "tcW", width, TC_PR_ORDER));
+  return renderProps(withWidth(merged, "tcW", width));
 }
 
 function cellBlockXml(block: PMNode, refs: ExportRefs): string {

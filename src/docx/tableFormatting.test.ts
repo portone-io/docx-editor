@@ -161,6 +161,17 @@ describe("changing a row height", () => {
     });
   });
 
+  it("reads the height rule off its WordprocessingML value, not a foreign attribute of the same name", () => {
+    expect(
+      editRowHeight(
+        '<w:trPr><w:trHeight x:hRule="auto" w:val="400" w:hRule="exact"/></w:trPr>',
+        30
+      )?.trPr
+    ).toBe(
+      '<w:trPr><w:trHeight x:hRule="auto" w:val="600" w:hRule="exact"/></w:trPr>'
+    );
+  });
+
   it("inserts a new height in row-property order", () => {
     expect(
       editRowHeight("<w:trPr><w:cantSplit/><w:tblHeader/></w:trPr>", 24)?.trPr
@@ -427,6 +438,32 @@ describe("coloring the borders of a cell", () => {
     ).toBe(true);
   });
 
+  /**
+   * `importDocx` opens a cell carrying an extension attribute of the same local name as a side's
+   * own, with no refusal and no fidelity note, so the side has to be read by the attribute Word
+   * reads and not by whichever one comes first.
+   */
+  it("reads a side's line off its WordprocessingML value, not a foreign attribute of the same name", () => {
+    const current = tcPr(
+      borders('<w:top x:val="none" w:val="single" w:sz="4" w:color="000000"/>')
+    );
+    expect(drawsOwnCellBorder(current)).toBe(true);
+    expect(edited(current, RED)).toBe(
+      tcPr(
+        borders(
+          '<w:top x:val="none" w:val="single" w:sz="4" w:color="FF0000"/>'
+        )
+      )
+    );
+  });
+
+  it("switches a side off in its WordprocessingML value and leaves the foreign attribute as it was", () => {
+    const current = tcPr(borders('<w:top x:val="none" w:val="single"/>'));
+    expect(
+      edited(current, { kind: "borders", line: "none", sides: ["top"] })
+    ).toBe(tcPr(borders('<w:top x:val="none" w:val="none"/>')));
+  });
+
   it("leaves an inherited border untouched when it already has the requested color", () => {
     expect(
       editCellProps(null, RED, {
@@ -479,6 +516,17 @@ describe("filling a cell", () => {
     );
     expect(edited(current, { kind: "background", hex: null })).toBe(
       tcPr('<w:shd w:val="pct25" w:color="0000FF" w:fill="auto"/>')
+    );
+  });
+
+  it("reads the pattern off its WordprocessingML value, not a foreign attribute of the same name", () => {
+    const current = tcPr(
+      '<w:shd x:val="clear" w:val="pct20" w:color="0000FF" w:fill="FFFF00"/>'
+    );
+    expect(edited(current, { kind: "background", hex: null })).toBe(
+      tcPr(
+        '<w:shd x:val="clear" w:val="pct20" w:color="0000FF" w:fill="auto"/>'
+      )
     );
   });
 

@@ -12,17 +12,17 @@
  * own way, and the wrapper they put back on export is the same string in both cases.
  */
 
-import { elementXml, emptyTagXml, openTagXml } from "../ooxml/element";
+import { elementXml, openTagXml } from "../ooxml/element";
 import { wName } from "../ooxml/names";
-import { wAttr } from "../ooxml/units";
-import { attrString, elementChildren, serializeXml } from "../ooxml/xml";
 import {
   type Props,
   parseProps,
   propsChild,
-  renderProps,
-  setPropsChild,
-} from "./propsXml";
+  renderElement,
+  setChild,
+} from "../ooxml/props";
+import { wAttr } from "../ooxml/units";
+import { attrString, elementChildren, serializeXml } from "../ooxml/xml";
 
 /** The opening of a content control taken apart, and the content it wraps */
 export interface SdtWrapper {
@@ -77,22 +77,6 @@ export function readSdtWrapper(el: Element): SdtWrapper | null {
   };
 }
 
-/** The order the children are laid out in under `w:sdt` (CT_SdtBlock) */
-const SDT_ORDER: readonly string[] = ["sdtPr", "sdtEndPr", "sdtContent"];
-
-/** The order the children are laid out in under `w:sdtPr` (CT_SdtPr) */
-const SDT_PR_ORDER: readonly string[] = [
-  "rPr",
-  "alias",
-  "tag",
-  "id",
-  "lock",
-  "placeholder",
-  "showingPlcHdr",
-  "dataBinding",
-  "temporary",
-];
-
 /**
  * The number Word writes on every control. Nothing reads it back and it only has to differ
  * from the other controls in the document, so a draw out of the whole 32 bit range is enough.
@@ -129,11 +113,6 @@ export function namesNothing(prefix: string): boolean {
   return props.children.every((child) => NAMES_NOTHING.includes(child.name));
 }
 
-/** A `w:sdtPr` left with nothing inside it is still written, because a control without one is not one we read back */
-function emptyProps(props: Props): string {
-  return emptyTagXml(props.tag, props.attrs);
-}
-
 /**
  * The opening of a control with a few children of its `w:sdtPr` swapped out and everything else
  * it carries left exactly as it came.
@@ -148,20 +127,12 @@ export function editSdtPrefix(
   const props = sdtPr ? parseProps(sdtPr.xml) : null;
   if (!sdt || !props) return null;
 
-  const rendered = renderProps(
-    edits.reduce(
-      (kept, [name, xml]) => setPropsChild(kept, name, xml, SDT_PR_ORDER),
-      props
-    )
+  // A `w:sdtPr` left with nothing inside it is still written, because a control without one is
+  // not one we read back
+  const rendered = renderElement(
+    edits.reduce((kept, [name, xml]) => setChild(kept, name, xml), props)
   );
-  return renderPrefix(
-    setPropsChild(
-      sdt,
-      "sdtPr",
-      rendered === "" ? emptyProps(props) : rendered,
-      SDT_ORDER
-    )
-  );
+  return renderPrefix(setChild(sdt, "sdtPr", rendered));
 }
 
 /**

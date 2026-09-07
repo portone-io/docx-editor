@@ -194,6 +194,13 @@ describe("moving the left indent", () => {
     );
   });
 
+  it("takes the slot from the WordprocessingML attribute, not a foreign one of the same name", () => {
+    const pPr = '<w:pPr><w:ind x:start="1" w:left="720"/></w:pPr>';
+    expect(indentedPPr(pPr, 1440)).toBe(
+      '<w:pPr><w:ind x:start="1" w:left="1440"/></w:pPr>'
+    );
+  });
+
   it("keeps the slot the document used for the value", () => {
     const pPr = '<w:pPr><w:ind w:start="720"/></w:pPr>';
     expect(indentedPPr(pPr, 1440)).toBe(
@@ -266,6 +273,14 @@ describe("setting the line spacing", () => {
     expect(spacedPPr(pPr, DOUBLE)).toBe(
       '<w:pPr><w:spacing w:before="120" w:after="240" ' +
         'w:line="480" w:lineRule="auto"/></w:pPr>'
+    );
+  });
+
+  it("writes into the WordprocessingML attribute when a foreign one of the same name comes first", () => {
+    const pPr =
+      '<w:pPr><w:spacing x:line="1" w:line="240" w:lineRule="auto"/></w:pPr>';
+    expect(spacedPPr(pPr, DOUBLE)).toBe(
+      '<w:pPr><w:spacing x:line="1" w:line="480" w:lineRule="auto"/></w:pPr>'
     );
   });
 
