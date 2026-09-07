@@ -312,7 +312,7 @@ function withThreadMarkupCompatibility(openTag: string): string {
   );
 }
 
-function currentCommentBodies(
+export function currentCommentBodies(
   references: ReadonlyMap<string, CommentReferenceData>
 ): ReadonlyMap<string, CommentReferenceData | CommentReplyData> {
   const comments = new Map<string, CommentReferenceData | CommentReplyData>();

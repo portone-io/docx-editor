@@ -1,19 +1,24 @@
 /**
- * Every reason an export would be refused, asked of the document before anything is written.
+ * Known export refusals, asked of the document before anything is written.
  *
  * Each invariant reads what the writer would refuse over and reports it with the code the writer
  * would throw, so a screen can ask at edit time what `exportDocx` would say. The list is walked in
  * order and `exportDocx` throws its first entry, which is what keeps the two from disagreeing.
  *
- * The invariants read nothing but node attrs and the original XML the session holds, as strings:
- * no part is parsed and nothing is assembled. `assertBookmarkPairs` in `./exportDocx` stays as the
- * last line of defence over the body as it was actually written.
+ * The checks inspect model attrs and preserved XML without running the writers. Bookmark
+ * fragments and list definitions use the export parser. `assertBookmarkPairs` in `./exportDocx`
+ * remains the final check over the body as actually written.
  */
 
 import type { Node as PMNode } from "prosemirror-model";
 import { spanCount } from "../model/format";
 import type { DocxExportErrorCode } from "../ooxml/errors";
-import { withXmlParser } from "../ooxml/xml";
+import {
+  attributeByLocalName,
+  parseXml,
+  W_NS,
+  withXmlParser,
+} from "../ooxml/xml";
 import {
   commentReferencesIn,
   commentsChanged,
@@ -22,7 +27,13 @@ import {
   extensionsRootProblem,
 } from "./comments";
 import { CONTENT_TYPES_PATH } from "./comments/constants";
-import { commentsPart } from "./comments/parts";
+import {
+  commentsExtendedPart,
+  commentsPart,
+  peoplePart,
+} from "./comments/parts";
+import { unrecordedAuthors } from "./comments/people";
+import { currentCommentBodies } from "./comments/writing";
 import type { ExportOptions } from "./exportDocx";
 import { insertedImageSrcs } from "./media";
 import { newNumIds, numberingPartOf } from "./newLists";
@@ -46,9 +57,6 @@ interface ExportInvariant {
   readonly name: string;
   check(doc: PMNode, session: SessionStore): readonly ExportProblem[];
 }
-
-const BOOKMARK_MARKER = /<(?:[\w.-]+:)?bookmark(Start|End)\b([^>]*)>/g;
-const ID_ATTRIBUTE = /\s(?:[\w.-]+:)?id\s*=\s*(?:"([^"]*)"|'([^']*)')/;
 
 /**
  * The XML a node's bookmark markers stand in, or null for a node that holds none.
@@ -78,11 +86,32 @@ const bookmarkPairs: ExportInvariant = {
     doc.descendants((node, pos) => {
       const source = markerSourceOf(node, session);
       if (source === null) return true;
-      for (const marker of source.matchAll(BOOKMARK_MARKER)) {
-        const kind = marker[1];
-        const id = ID_ATTRIBUTE.exec(marker[2] ?? "");
-        const value = id?.[1] ?? id?.[2];
-        if (value === undefined) {
+      // Use the document's namespace scope, and let the parser distinguish elements from
+      // comments/CDATA and decode attribute references just as the final writer check does.
+      if (!source.includes("bookmark")) return true;
+      let root: Element;
+      try {
+        root = parseXml(
+          session.documentPrefix + source + session.documentSuffix
+        ).documentElement;
+      } catch {
+        problems.push({
+          code: "malformed-xml",
+          message: "preserved bookmark XML could not be parsed",
+          pos,
+        });
+        return true;
+      }
+      for (const marker of Array.from(root.getElementsByTagName("*"))) {
+        if (
+          marker.namespaceURI !== W_NS ||
+          (marker.localName !== "bookmarkStart" &&
+            marker.localName !== "bookmarkEnd")
+        )
+          continue;
+        const kind = marker.localName.slice("bookmark".length);
+        const value = attributeByLocalName(marker, "id");
+        if (value === null || value === "") {
           problems.push({
             code: "malformed-xml",
             message: `a bookmark${kind} has no id`,
@@ -205,11 +234,29 @@ const numberingPart: ExportInvariant = {
   },
 };
 
-/** Whether the export would write a Comments part the package has yet to declare */
+/** Whether a changed comment needs a part the package has yet to declare. */
 function addsCommentsPart(doc: PMNode, session: SessionStore): boolean {
+  const bodyChanged = commentsChanged(doc, session);
+  const threadChanged = extensionsChanged(doc, session);
+  if (!bodyChanged && !threadChanged) return false;
+  if (commentsPart.pathIn(session) === null || session.comments.xml === null)
+    return true;
+  const references = commentReferencesIn(doc);
+  if (
+    threadChanged &&
+    (references.size > 0 || session.comments.extendedPartPath !== null) &&
+    (commentsExtendedPart.pathIn(session) === null ||
+      session.comments.extendedXml === null)
+  )
+    return true;
   return (
-    (commentsChanged(doc, session) || extensionsChanged(doc, session)) &&
-    (commentsPart.pathIn(session) === null || session.comments.xml === null)
+    bodyChanged &&
+    (peoplePart.pathIn(session) === null ||
+      session.comments.people.xml === null) &&
+    unrecordedAuthors(
+      currentCommentBodies(references).values(),
+      session.comments.people
+    ).size > 0
   );
 }
 
@@ -301,8 +348,8 @@ export function problemsOf(
 }
 
 /**
- * Every reason writing this document back would be refused, in the order `exportDocx` would
- * raise them; empty when it would go through. Each entry carries the code and message the
+ * Known reasons writing this document back would be refused, in the order `exportDocx` would
+ * raise them. An empty list does not rule out failures while writing. Each entry carries the code and message the
  * `DocxExportError` would carry, and the position in the document where there is one.
  *
  * The list definitions are read to tell a new list from one the document already had, so this

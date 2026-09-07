@@ -248,7 +248,7 @@ and `too-large` are usually the person's to fix, while the others describe the f
 
 ### Checking before export
 
-`exportProblems(doc, session)` reports every reason `exportDocx` would refuse the document, before
+`exportProblems(doc, session)` reports known reasons `exportDocx` would refuse the document, before
 anything is written and in the order the writer would raise them:
 
 ```ts
@@ -272,11 +272,11 @@ package or of the session carries none.
 | `invalid-table` | A vertical merge reaching past the last row of its table. |
 | `lost-original` | A preserved block that has lost its original XML, or a placeholder pasted in from another open document: a placeholder is written from the file it was read out of, so one from another file cannot be. |
 | `missing-numbering-part` | A new list in a document that has no numbering part to define it in. The built-in list controls report that they do not apply for exactly this reason. |
-| `missing-content-types` | A new image, or a first comment, in a package that has no content types part to declare the new part in. |
+| `missing-content-types` | A new image or comment-related part, in a package that has no content types part to declare the new part in. |
 
-Every code here is reported by `exportProblems` before it is thrown, and `exportDocx` throws the
-first entry of the same list with its code and message, so a screen that asks first cannot be
-answered differently by the write.
+The checks report these codes for the conditions they cover, and `exportDocx` throws the
+first entry of the same list with its code and message. An empty list does not guarantee that
+writing will succeed.
 Inside an editor, [`canExport`](/docs/custom-controls#commands-and-queries) asks the same question
 of the state.
 A refusal the list does not foresee is still thrown: `unsupported-content` for a node or an image

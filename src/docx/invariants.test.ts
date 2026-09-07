@@ -13,7 +13,10 @@ import {
   TINY_PNG_DATA_URL,
 } from "../__testing__/docx";
 import { rangeOfText, select } from "../__testing__/editing";
-import { addComment } from "../editor/commands/commentCommands";
+import {
+  addComment,
+  setCommentResolved,
+} from "../editor/commands/commentCommands";
 import { toggleNumberedList } from "../editor/commands/listCommands";
 import {
   createEditorState,
@@ -21,6 +24,7 @@ import {
 } from "../editor/createEditor";
 import type { DocxExportError } from "../ooxml/errors";
 import { docxSchema } from "../schema";
+import { commentReferencesIn } from "./comments";
 import { exportDocx } from "./exportDocx";
 import { importDocx } from "./importDocx";
 import { exportProblems } from "./invariants";
@@ -107,6 +111,18 @@ function withComment(state: EditorState): EditorState {
 }
 
 describe("bookmark pairs", () => {
+  it.each([
+    '<w:customXml><!-- <w:bookmarkStart w:id="7"/> --><w:p/></w:customXml>',
+    '<w:customXml><![CDATA[<w:bookmarkStart w:id="7"/>]]><w:p/></w:customXml>',
+    '<w:customXml><x:bookmarkStart xmlns:x="urn:foreign" x:id="7"/><w:p/></w:customXml>',
+    '<w:bookmarkStart w:name="a>b" w:id="7"/><w:p/><w:bookmarkEnd w:id="7"/>',
+    '<w:bookmarkStart w:id="&#55;" w:name="Name"/><w:p/><w:bookmarkEnd w:id="7"/>',
+  ])("agrees with the writer about actual bookmark elements: %s", (body) => {
+    const opened = importDocx(makeDocx(body));
+    expect(exportProblems(opened.doc, opened.session)).toEqual([]);
+    expect(() => exportDocx(opened.doc, opened.session)).not.toThrow();
+  });
+
   it("an unpaired bookmark start is a malformed-xml problem at its position", () => {
     const opened = importDocx(
       makeDocx(
@@ -275,6 +291,31 @@ describe("content types", () => {
         code: "missing-content-types",
         message:
           "cannot add an image to a package that has no [Content_Types].xml",
+      },
+    ]);
+  });
+
+  it("reports missing content types when an existing comment gains its first thread part", () => {
+    const parts = unzipSync(rootlessCommentsDocx(paragraph("Body")));
+    parts["word/comments.xml"] = new TextEncoder().encode(
+      `<w:comments xmlns:w="${W_NS}"/>`
+    );
+    const opened = importDocx(zipSync(parts));
+    const commented = withComment(editorStateForSession(opened));
+    const saved = unzipSync(exportDocx(commented.doc, opened.session));
+    delete saved["[Content_Types].xml"];
+    const reopened = importDocx(zipSync(saved));
+    const id = commentReferencesIn(reopened.doc).keys().next().value;
+    expect(id).toBeDefined();
+    const resolved = apply(
+      editorStateForSession(reopened),
+      setCommentResolved(id ?? "", true)
+    );
+    expect(exportProblems(resolved.doc, reopened.session)).toEqual([
+      {
+        code: "missing-content-types",
+        message:
+          "cannot add a part to a package that has no [Content_Types].xml",
       },
     ]);
   });

@@ -114,7 +114,7 @@ export function commentAuthorId(
  * The authors the part records no person for at all, each under the name they write as. A name it
  * already records is left as it stands, whichever provider recorded it and whatever it resolves to.
  */
-function unrecordedAuthors(
+export function unrecordedAuthors(
   bodies: Iterable<CommentReferenceData | CommentReplyData>,
   people: ImportedPeople
 ): Map<string, string> {
