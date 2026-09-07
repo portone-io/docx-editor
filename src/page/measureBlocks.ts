@@ -13,7 +13,7 @@
 import type { EditorView } from "prosemirror-view";
 import { editorAttributes } from "../styles/classNames";
 import type { BreakCandidate, MeasuredBlock } from "./blockKinds";
-import { pageBreaksIn } from "./pageDecorations";
+import { pageBreaksIn } from "./kinds/paragraphKind";
 import { measureTable } from "./tableMeasurements";
 
 /**

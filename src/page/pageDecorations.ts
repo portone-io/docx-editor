@@ -9,9 +9,9 @@
 import type { Node as PMNode } from "prosemirror-model";
 import { Plugin, PluginKey } from "prosemirror-state";
 import { Decoration, DecorationSet, type EditorView } from "prosemirror-view";
-import { docxSchema, isPageBreak } from "../schema";
 import { editorAttributes } from "../styles/classNames";
 import type { PageCut } from "./blockKinds";
+import { paragraphKind } from "./kinds/paragraphKind";
 import type { BlockPush } from "./pageLayout";
 import { columnCount, headerRowsOf } from "./tableMeasurements";
 
@@ -45,49 +45,8 @@ function pushStyle(marginTop: number): string {
   return `margin-block-start:${marginTop}px`;
 }
 
-/**
- * A block box around the `br`, so what follows the break is laid out below it and a height moves
- * it down by exactly that much. An empty one redraws the paragraph as it stood, except one holding
- * nothing but the break, which loses the line the `br` alone occupied.
- */
-function spaceStyle(height: number): string {
-  return `display:block;height:${height}px`;
-}
-
-function isPageBreakNode(node: PMNode | null | undefined): boolean {
-  return (
-    node?.type === docxSchema.nodes.hardBreak && isPageBreak(node.attrs.brAttrs)
-  );
-}
-
 function isRow(node: PMNode | null | undefined): boolean {
   return node?.type.spec.tableRole === "row";
-}
-
-/** One page break inside a block, where it stands and how much room the `br` itself takes */
-interface BreakAt {
-  at: number;
-  size: number;
-}
-
-/**
- * Every page break inside this block, in document order.
- * A space is put on the breaks of a top-level paragraph alone: inside a table cell it would grow
- * the cell rather than the page, so a break there is left to the whole-block rule in
- * `page/measureBlocks`, and none is found here.
- *
- * The measurement reads the same list to pair each space element it finds with the break it
- * belongs to (`page/measureBlocks`).
- */
-export function pageBreaksIn(block: PMNode, blockPos: number): BreakAt[] {
-  const found: BreakAt[] = [];
-  if (block.type !== docxSchema.nodes.paragraph) return found;
-  block.forEach((child, offset) => {
-    if (isPageBreakNode(child)) {
-      found.push({ at: blockPos + 1 + offset, size: child.nodeSize });
-    }
-  });
-  return found;
 }
 
 /** The cuts of each top-level block, keyed by the position that block starts at */
@@ -105,25 +64,6 @@ function cutsByBlock(
     else byBlock.set(blockPos, [cut]);
   }
   return byBlock;
-}
-
-function breakSpaces(
-  block: PMNode,
-  blockPos: number,
-  cuts: readonly PageCut[],
-  into: Decoration[]
-): void {
-  const heights = new Map(cuts.map((cut) => [cut.at, cut.height]));
-  for (const { at, size } of pageBreaksIn(block, blockPos)) {
-    const height = heights.get(at) ?? 0;
-    into.push(
-      Decoration.inline(at, at + size, {
-        nodeName: "span",
-        style: spaceStyle(height),
-        [editorAttributes.pageBreakSpace]: `${height}`,
-      })
-    );
-  }
 }
 
 function tableSpace(height: number, columns: number): HTMLElement {
@@ -215,7 +155,7 @@ function decorationsFor(
       );
     }
     const blockCuts = byBlock.get(offset) ?? [];
-    breakSpaces(node, offset, blockCuts, decorations);
+    paragraphKind.decorate(offset, node, blockCuts, decorations);
     tableContinuations(node, offset, blockCuts, decorations);
   });
   return DecorationSet.create(doc, decorations);
@@ -275,7 +215,8 @@ export function pageDecorations(): Plugin<PageMarks> {
           value.cuts.flatMap((cut) => {
             const mapped = tr.mapping.mapResult(cut.at, 1);
             const node = tr.doc.nodeAt(mapped.pos);
-            const kept = isPageBreakNode(node) || isRow(node);
+            const kept =
+              paragraphKind.holdsCut(tr.doc, mapped.pos) || isRow(node);
             // setNodeMarkup replaces a row's opening token while retaining its content.
             // Unlike a deleted row, its content boundary still maps just inside that row.
             const content = isRow(tr.before.nodeAt(cut.at))
