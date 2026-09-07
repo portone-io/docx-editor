@@ -44,7 +44,12 @@ function needsThreadKey(
   );
 }
 
-function commentsChanged(doc: PMNode, session: SessionStore): boolean {
+/**
+ * Whether the Comments part has to be rewritten: a comment or reply came, went, or changed, or an
+ * entry has to gain the key its thread state hangs off. The export invariants ask this as well, so
+ * a part the writer would leave alone is one they do not read.
+ */
+export function commentsChanged(doc: PMNode, session: SessionStore): boolean {
   const current = commentReferencesIn(doc);
   if (current.size !== session.commentReferenceIds.size) return true;
   const currentBodies = currentCommentBodies(current);
@@ -107,47 +112,109 @@ function extensionsXml(
       `<w15:commentsEx ${xmlnsDecl("w15")}>${pieces.join("")}</w15:commentsEx>`
     );
   }
-  const open = /<(?:[^\s<>/:="']+:)?commentsEx\b[^>]*>/.exec(
-    comments.extendedXml
-  );
-  if (!open) {
-    throw new DocxExportError(
-      "malformed-xml",
-      "the Comments Extended part has no commentsEx root element"
-    );
-  }
-  const name = /^<([^\s>]+)/.exec(open[0])?.[1];
-  if (name === undefined) {
-    throw new DocxExportError(
-      "malformed-xml",
-      "the Comments Extended part has no commentsEx root element"
-    );
-  }
-  const bodyAt = open.index + open[0].length;
-  // A part that arrived holding nothing is written as an empty element, which has to be opened
-  // before an entry can go inside it
-  if (open[0].endsWith("/>")) {
-    return (
-      comments.extendedXml.slice(0, open.index) +
-      `${open[0].slice(0, -2)}>${pieces.join("")}</${name}>` +
-      comments.extendedXml.slice(bodyAt)
-    );
-  }
-  const close = comments.extendedXml.lastIndexOf(`</${name}>`);
-  if (close === -1) {
-    throw new DocxExportError(
-      "malformed-xml",
-      "the Comments Extended part has no closing commentsEx tag"
-    );
-  }
-  return (
-    comments.extendedXml.slice(0, bodyAt) +
-    pieces.join("") +
-    comments.extendedXml.slice(close)
+  const root = partRoot(comments.extendedXml, EXTENSIONS_ROOT);
+  return withinRoot(
+    comments.extendedXml,
+    root,
+    openedTag(root),
+    pieces.join("")
   );
 }
 
-function extensionsChanged(doc: PMNode, session: SessionStore): boolean {
+/** The root element a comment part is written around, and what the part is called when it has none */
+interface PartRootName {
+  localName: string;
+  partName: string;
+}
+
+const COMMENTS_ROOT: PartRootName = {
+  localName: "comments",
+  partName: "Comments",
+};
+
+const EXTENSIONS_ROOT: PartRootName = {
+  localName: "commentsEx",
+  partName: "Comments Extended",
+};
+
+/** Where the root element of a part stands: its opening tag as written, and where its closing tag begins */
+interface PartRoot {
+  openAt: number;
+  openTag: string;
+  name: string;
+  /** null for an empty element, which has no closing tag until it is opened */
+  closeAt: number | null;
+}
+
+/**
+ * Reads the root of a comment part, or says why the part cannot be rewritten around it.
+ *
+ * The same question stands in the export invariant list, so a refusal here is one a caller could
+ * have read there first.
+ */
+function readPartRoot(
+  xml: string,
+  { localName, partName }: PartRootName
+): { root: PartRoot } | { problem: string } {
+  const open = new RegExp(`<(?:[^\\s<>/:="']+:)?${localName}\\b[^>]*>`).exec(
+    xml
+  );
+  const name = open === null ? undefined : /^<([^\s>/]+)/.exec(open[0])?.[1];
+  if (open === null || name === undefined) {
+    return { problem: `the ${partName} part has no ${localName} root element` };
+  }
+  if (open[0].endsWith("/>")) {
+    return {
+      root: { openAt: open.index, openTag: open[0], name, closeAt: null },
+    };
+  }
+  const closeAt = xml.lastIndexOf(`</${name}>`);
+  if (closeAt === -1) {
+    return { problem: `the ${partName} part has no closing ${localName} tag` };
+  }
+  return { root: { openAt: open.index, openTag: open[0], name, closeAt } };
+}
+
+function partRoot(xml: string, rootName: PartRootName): PartRoot {
+  const reading = readPartRoot(xml, rootName);
+  if ("problem" in reading) {
+    throw new DocxExportError("malformed-xml", reading.problem);
+  }
+  return reading.root;
+}
+
+/** Why the Comments part cannot be rewritten around its root, or null when it can */
+export function commentsRootProblem(xml: string): string | null {
+  const reading = readPartRoot(xml, COMMENTS_ROOT);
+  return "problem" in reading ? reading.problem : null;
+}
+
+/** Why the extended part cannot be rewritten around its root, or null when it can */
+export function extensionsRootProblem(xml: string): string | null {
+  const reading = readPartRoot(xml, EXTENSIONS_ROOT);
+  return "problem" in reading ? reading.problem : null;
+}
+
+/** The opening tag with something to stand inside it: an empty element is opened before an entry can go in */
+function openedTag(root: PartRoot): string {
+  return root.closeAt === null ? `${root.openTag.slice(0, -2)}>` : root.openTag;
+}
+
+/** The part with the entries written inside its root and everything around the root standing as it came */
+function withinRoot(
+  xml: string,
+  root: PartRoot,
+  openTag: string,
+  entries: string
+): string {
+  const head = xml.slice(0, root.openAt) + openTag + entries;
+  return root.closeAt === null
+    ? `${head}</${root.name}>${xml.slice(root.openAt + root.openTag.length)}`
+    : head + xml.slice(root.closeAt);
+}
+
+/** Whether the extended part has to be rewritten: thread state arrived, changed, or went with a deleted comment */
+export function extensionsChanged(doc: PMNode, session: SessionStore): boolean {
   const current = commentReferencesIn(doc);
   for (const [id, comment] of current) {
     if (!comment.threadImported) return true;
@@ -322,30 +389,11 @@ function commentsXml(
     );
   }
 
-  const open = /<(?:[^\s<>/:="']+:)?comments\b[^>]*>/.exec(comments.xml);
-  if (!open) {
-    throw new DocxExportError(
-      "malformed-xml",
-      "the Comments part has no comments root element"
-    );
-  }
-  const name = /^<([^\s>]+)/.exec(open[0])?.[1];
-  const close = name ? comments.xml.lastIndexOf(`</${name}>`) : -1;
-  if (close === -1) {
-    throw new DocxExportError(
-      "malformed-xml",
-      "the Comments part has no closing comments tag"
-    );
-  }
+  const root = partRoot(comments.xml, COMMENTS_ROOT);
   const openTag = hasThreadMetadata
-    ? withThreadMarkupCompatibility(open[0])
-    : open[0];
-  return (
-    comments.xml.slice(0, open.index) +
-    openTag +
-    pieces.join("") +
-    comments.xml.slice(close)
-  );
+    ? withThreadMarkupCompatibility(openedTag(root))
+    : openedTag(root);
+  return withinRoot(comments.xml, root, openTag, pieces.join(""));
 }
 
 export interface CommentPartChanges {

@@ -12,8 +12,6 @@
  */
 
 import type { Node as PMNode } from "prosemirror-model";
-import { toParagraphFormat } from "../model/format";
-import { parseNumbering } from "../numbering/parseNumbering";
 import { addListDefinitions } from "../numbering/writeNumbering";
 import { DocxExportError } from "../ooxml/errors";
 import {
@@ -34,7 +32,9 @@ import {
   fidelityNotesOf,
 } from "./fidelity";
 import { hyperlinkRefs } from "./hyperlink";
+import { problemsOf } from "./invariants";
 import { NO_IMAGE_REFS, planImageMedia } from "./media";
+import { newNumIds, numberingPartOf } from "./newLists";
 import {
   readRelationships,
   relationshipWriter,
@@ -140,43 +140,6 @@ function assertBookmarkPairs(documentXml: string): void {
   }
 }
 
-/** Collects the numbering ids used by this block and by the paragraphs inside it (down into table cells) */
-function collectNumIds(node: PMNode, into: Set<number>): void {
-  const visit = (candidate: PMNode): boolean => {
-    if (candidate.type.name !== "paragraph") return true;
-    const numId = toParagraphFormat(candidate.attrs.format)?.numbering?.numId;
-    if (numId !== undefined) into.add(numId);
-    return false;
-  };
-  if (visit(node)) node.descendants(visit);
-}
-
-function numIdsIn(node: PMNode): Set<number> {
-  const used = new Set<number>();
-  collectNumIds(node, used);
-  return used;
-}
-
-function numIdsAtOpen(session: SessionStore): Set<number> {
-  const used = new Set<number>();
-  for (const block of session.blocks) collectNumIds(block.node, used);
-  return used;
-}
-
-/**
- * The numbering ids that appeared during editing and have no definition.
- *
- * An id that was already in use without a definition when the document was opened is left alone,
- * because exporting such a document without editing it must not disturb numbering.xml.
- */
-function newNumIds(doc: PMNode, session: SessionStore): number[] {
-  const defined = parseNumbering(session.numberingXml).lists;
-  const atOpen = numIdsAtOpen(session);
-  return Array.from(numIdsIn(doc))
-    .filter((numId) => !defined.has(numId) && !atOpen.has(numId))
-    .sort((a, b) => a - b);
-}
-
 /**
  * A rewritten numbering.xml, produced only when a new list appeared.
  * The original text is left as is and only the new definitions are spliced in. null if there is no new list.
@@ -186,22 +149,14 @@ function newNumberingPart(
   session: SessionStore
 ): { path: string; bytes: Uint8Array } | null {
   const added = newNumIds(doc, session);
-  if (added.length === 0) return null;
+  const original = numberingPartOf(session);
+  // A new list in a document with no numbering.xml is refused by the invariant list before
+  // anything is written, so a missing part here has nothing to hold
+  if (added.length === 0 || original === null) return null;
 
-  const path = session.numberingPartPath;
-  const original = path === null ? undefined : session.parts.get(path);
-  if (path === null || original === undefined) {
-    // Creating numbering.xml from scratch would also mean adding a new part and touching up [Content_Types].
-    // We stop here instead of quietly handing back a half-finished file.
-    throw new DocxExportError(
-      "missing-numbering-part",
-      "cannot add a new list to a document that has no numbering.xml"
-    );
-  }
-
-  const { text, hadBom } = decodeUtf8(original);
+  const { text, hadBom } = decodeUtf8(original.bytes);
   return {
-    path,
+    path: original.path,
     bytes: encodeUtf8(addListDefinitions(text, added), hadBom),
   };
 }
@@ -230,6 +185,10 @@ export function exportDocx(
  * The notes are the ones `documentFidelity` reads off the same document, followed by whatever the
  * writer had to approximate on the way out. A host that hands a file to somebody else can say what
  * that file no longer holds without opening it again.
+ *
+ * The first problem `exportProblems` reports is thrown before anything is written, so a refusal a
+ * caller could have asked about ahead of time arrives with the same code and message it would
+ * have read there.
  */
 export function exportDocxReport(
   doc: PMNode,
@@ -238,6 +197,8 @@ export function exportDocxReport(
 ): { bytes: Uint8Array; notes: FidelityNote[] } {
   return withXmlParser(options?.xmlParser, () => {
     const store = sessionOf(session);
+    const problem = problemsOf(doc, store)[0];
+    if (problem) throw new DocxExportError(problem.code, problem.message);
     const approximated: FidelityNote[] = [];
     const bytes = writeDocx(doc, store, {
       add: (note) => approximated.push(note),
