@@ -24,9 +24,9 @@ Place a test beside the source it covers, such as `src/docx/importDocx.test.ts` 
 
 Shared helpers belong under `src/__testing__/` or a feature's `__testing__/` directory. The declaration build excludes those directories, and the package test ensures they are not published.
 
-The suite uses a 30-second timeout because schema validation and tests that exercise compressed-size limits can legitimately take several seconds. [The fixture guide](../__fixtures__/README.md) owns the requirements for committed DOCX files.
+The suite uses a 30-second timeout because schema validation and tests that exercise compressed-size limits can legitimately take several seconds. [The fixture guide](../__fixtures__/README.md) owns the requirements for committed DOCX files, in two lanes: the conformance fixtures this project builds from controlled XML, and the [producer lane](../__fixtures__/README.md#producer-lane) under `__fixtures__/producers/` that a word processor saved, which suites reach through `producerFixtureNames` rather than `fixtureNames`.
 
-`src/docx/fidelity.test.ts` records what each fixture loses on the way in as a file snapshot under `src/docx/__snapshots__/fidelity/<fixture>.json`, written through `toMatchFileSnapshot`. Update them with `pnpm exec vitest run -u src/docx/fidelity.test.ts`. A diff there is a change in what a document keeps, not test noise: read it in the PR and approve it deliberately, the way any behavior change is approved. A snapshot that grows says the editor started hiding something it used to model; one that shrinks says it learned to keep something it used to lose.
+`src/docx/fidelity.test.ts` records what each fixture loses on the way in as a file snapshot under `src/docx/__snapshots__/fidelity/<fixture>.json`, and a producer file's under `src/docx/__snapshots__/fidelity/producers/`, written through `toMatchFileSnapshot`. Update them with `pnpm exec vitest run -u src/docx/fidelity.test.ts`. A diff there is a change in what a document keeps, not test noise: read it in the PR and approve it deliberately, the way any behavior change is approved. A snapshot that grows says the editor started hiding something it used to model; one that shrinks says it learned to keep something it used to lose.
 
 ## Tests that guard package rules
 
@@ -35,7 +35,7 @@ The suite uses a 30-second timeout because schema validation and tests that exer
 | `src/publicApi.test.ts` | Runtime exports for every JavaScript entry match `api-manifest.json`. |
 | `src/folderBoundaries.test.ts` | Folder ranks are respected, every production file is reachable from an entry point, every production folder is ranked, and no two modules read each other at runtime. |
 | `src/lockHonesty.test.ts` | A command's applicability result agrees with what it dispatches around locked content, across the bookmark and note markers a document is preserved with, and under every editing protection. Each place also states which guards refuse there, and the stated guards are held against the ones that answer. |
-| `src/docx/exportSchemaValidation.test.ts` | Every fixture and representative edited export validates against the ECMA-376 Transitional schemas. |
+| `src/docx/exportSchemaValidation.test.ts` | Every fixture and representative edited export validates against the ECMA-376 Transitional schemas, and a producer file's export carries exactly the violations its producer wrote in. |
 | `src/docx/writerProbes.test.ts` | Every export of `./commands` and `./table` either runs before a validated export as a writer probe or states why it reaches no writer. |
 | `src/schema/domRoundtrip.test.ts` | Every fixture survives being drawn to the DOM and read back, which is the path an IME composition takes. |
 | `src/schema/rawAttrs.test.ts` | Every attr the writer writes from says whether it carries raw XML, and each one that does is drawn holding its shape and not holding it. |
@@ -49,6 +49,8 @@ Each writer probe has a required `check(before, after)` for its immediate effect
 The schema test requires `xmllint`, rejects a missing validator or an empty fixture set, and includes negative controls so a broken validation path cannot pass silently. Its MCE profile follows ECMA-376 Part 3 sections 7 and 9 for `Ignorable`, `ProcessContent`, `MustUnderstand`, and alternate content. The understood namespaces come from the imports of the committed WML schema and the supplied XML namespace schema. Known namespaces remain subject to validation even if declared ignorable. For unknown ignorable elements, `ProcessContent` preserves their children for validation; otherwise the subtree is removed. `AlternateContent` selects the first Choice whose required namespaces are understood, or its Fallback if no Choice matches. Declarations are resolved in their original scope before wrappers are removed.
 
 This is a validation profile, not a complete MCE consumer: preservation hints and application-defined extension-element configurations are unsupported. Unsupported directives, unbound prefixes, and malformed alternate-content branch structure fail explicitly. Hand-built fixtures must not use `AlternateContent` to hide the markup they are meant to exercise; [the fixture guide](../__fixtures__/README.md) records that rule.
+
+A real word processor writes markup the schemas reject, and the export hands those bytes back rather than correcting them, so the producer lane is held to an approved list of violations instead of to a clean validation. `PRODUCER_VIOLATIONS` in the schema test is that list, one entry per kind of violation, and [Known gaps](../__fixtures__/README.md#known-gaps) explains each entry and says whose fix would close it. A diff there is approved the way a fidelity snapshot is.
 
 Parts with no committed validation schema, including relationships, content types, people, and commentsExtended, are checked for well-formedness only. Parsing does not verify their vocabulary or cross-part references.
 
