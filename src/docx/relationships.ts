@@ -11,7 +11,7 @@
  */
 
 import { elementXml, type XmlAttr } from "../ooxml/element";
-import { DocxExportError } from "../ooxml/errors";
+import { rootPrefixOf, splicePart } from "../ooxml/partSplice";
 import {
   decodeUtf8,
   elementChildren,
@@ -57,7 +57,7 @@ export interface Relationship {
 }
 
 export function readRelationships(
-  parts: Map<string, Uint8Array>,
+  parts: ReadonlyMap<string, Uint8Array>,
   relsPath: string
 ): Relationship[] {
   const bytes = parts.get(relsPath);
@@ -107,9 +107,10 @@ function takeRelId(taken: Set<string>): string {
   }
 }
 
-function relationshipXml(added: AddedRelationship): string {
+/** The entry spelled the way the root is, so it stands in the root's namespace whichever prefix that took */
+function relationshipXml(added: AddedRelationship, prefix: string): string {
   const mode: XmlAttr[] = added.external ? [["TargetMode", "External"]] : [];
-  return elementXml("Relationship", [
+  return elementXml(`${prefix}Relationship`, [
     ["Id", added.id],
     ["Type", added.type],
     ["Target", added.target],
@@ -122,8 +123,8 @@ function relationshipsPart(
   original: Uint8Array | undefined,
   added: readonly AddedRelationship[]
 ): Uint8Array {
-  const entries = added.map(relationshipXml).join("");
   if (!original) {
+    const entries = added.map((entry) => relationshipXml(entry, "")).join("");
     return encodeUtf8(
       '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
         `<Relationships xmlns="${RELATIONSHIPS_NS}">${entries}</Relationships>`,
@@ -131,15 +132,10 @@ function relationshipsPart(
     );
   }
   const { text, hadBom } = decodeUtf8(original);
-  const closing = text.lastIndexOf("</Relationships>");
-  if (closing === -1) {
-    throw new DocxExportError(
-      "malformed-xml",
-      "the relationships part has no closing tag"
-    );
-  }
+  const prefix = rootPrefixOf(text);
+  const entries = added.map((entry) => relationshipXml(entry, prefix)).join("");
   return encodeUtf8(
-    text.slice(0, closing) + entries + text.slice(closing),
+    splicePart(text, { root: "Relationships", append: entries }),
     hadBom
   );
 }
