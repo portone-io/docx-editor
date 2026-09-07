@@ -34,13 +34,16 @@ The suite uses a 30-second timeout because schema validation and tests that exer
 | `src/folderBoundaries.test.ts` | Folder ranks are respected, every production file is reachable from an entry point, every production folder is ranked, and no two modules read each other at runtime. |
 | `src/lockHonesty.test.ts` | A command's applicability result agrees with what it dispatches around locked content, across the bookmark and note markers a document is preserved with, and under every editing protection. Each place also states which guards refuse there, and the stated guards are held against the ones that answer. |
 | `src/docx/exportSchemaValidation.test.ts` | Every fixture and representative edited export validates against the ECMA-376 Transitional schemas. |
+| `src/docx/writerProbes.test.ts` | Every export of `./commands` and `./table` either runs before a validated export as a writer probe or states why it reaches no writer. |
 | `src/schema/domRoundtrip.test.ts` | Every fixture survives being drawn to the DOM and read back, which is the path an IME composition takes. |
 | `src/schema/rawAttrs.test.ts` | Every attr the writer writes from says whether it carries raw XML, and each one that does is drawn holding its shape and not holding it. |
 | `packaging/apiReport.test.ts` | The committed `etc/*.api.md` reports match the declarations built from each published entry point. |
 
-Update `api-manifest.json` only when a public runtime API change is intentional. `pnpm api:update` does the same for the declaration reports, which record types and signatures rather than names. The lock test lists command factories explicitly so every new command must state how it behaves around locks and markers and under every editing protection.
+Update `api-manifest.json` only when a public runtime API change is intentional. `pnpm api:update` does the same for the declaration reports, which record types and signatures rather than names. The lock test lists command factories explicitly so every new command must state how it behaves around locks and markers and under every editing protection. The probe test reads the same manifest, so a new command must also say what it writes into an exported package.
 
-The schema test requires `xmllint`, rejects a missing validator or an empty fixture set, and includes a negative control so a broken validation path cannot pass silently. It removes `mc:Ignorable` before validation as required by the markup-compatibility preprocessing model and supplies the standard XML namespace imported by the schemas.
+The schema test requires `xmllint`, rejects a missing validator or an empty fixture set, and includes a negative control so a broken validation path cannot pass silently. It supplies the standard XML namespace imported by the schemas, and it preprocesses each part as ECMA-376 Part 3 requires before reading it: attributes and elements held by a namespace the part declares ignorable are removed, and `mc:AlternateContent` is replaced by the content of its `mc:Fallback`. Both steps are what a conforming consumer does, and the Part 1 schemas describe neither, so a document Word writes fails validation without them. Hand-built fixtures must therefore not carry `mc:AlternateContent` themselves, as [the fixture guide](../__fixtures__/README.md) records, since the preprocessing would replace it and the fixture would prove nothing.
+
+Each part of an exported package that no committed schema describes - the relationships, the content types, and the parts written beside `word/comments.xml` - is read back instead, so a package no reader gets past fails even where nothing can validate it.
 
 ## Package checks
 
