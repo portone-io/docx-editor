@@ -11,6 +11,7 @@ These notes record reusable OOXML interpretations, interoperability findings, an
 - [Hyperlinks](./hyperlinks.md)
 - [Bookmarks](./bookmarks.md)
 - [Tabs](./tabs.md)
+- [Simple types](./simpleTypes.md)
 
 Do not add a note merely because an implementation touches OOXML. Keep local behavior in code and tests, user-visible support in `site/content/docs/features.mdx`, and API contracts in the API documentation. Add one file per OOXML area only when a standards interpretation or interoperability decision is reusable across features and would be difficult to recover from those sources. Update an existing note when possible so this directory does not become another implementation index.
 

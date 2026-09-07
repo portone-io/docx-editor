@@ -67,6 +67,19 @@ export const LETTER_SECT_PR =
   '<w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/>' +
   "</w:sectPr>";
 
+/**
+ * The same paper, written the other way ST_TwipsMeasure admits it: as universal measures.
+ *
+ * A word processor writes a section like this, and every value in it says exactly what
+ * `LETTER_SECT_PR` says, so a reader that reads only the leading digits shows a different paper
+ * for the same document.
+ */
+export const LETTER_SECT_PR_UNIVERSAL =
+  "<w:sectPr>" +
+  '<w:pgSz w:w="8.5in" w:h="11in"/>' +
+  '<w:pgMar w:top="1in" w:right="2.54cm" w:bottom="72pt" w:left="6pc" w:header="0.5in" w:footer="0.5in" w:gutter="0"/>' +
+  "</w:sectPr>";
+
 export function decode(bytes: Uint8Array): string {
   return new TextDecoder("utf-8").decode(bytes);
 }

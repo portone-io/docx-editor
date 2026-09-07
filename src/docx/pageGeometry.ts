@@ -11,7 +11,13 @@
  * views of the one number rather than letting each caller convert for itself.
  */
 
-import { toNumber, wAttr } from "../ooxml/units";
+import {
+  ST_SignedTwipsMeasure,
+  ST_TwipsMeasure,
+  TWIPS_PER_INCH,
+  TWIPS_PER_PT,
+} from "../ooxml/simpleTypes";
+import { wAttr } from "../ooxml/units";
 import { childByLocalName } from "../ooxml/xml";
 
 /** The paper and the margins a section lays down, in twips */
@@ -26,10 +32,12 @@ export interface PageGeometry {
   marginBottomTwips: number;
 }
 
-const TWIPS_PER_CM = 1440 / 2.54;
+const TWIPS_PER_CM = TWIPS_PER_INCH / 2.54;
 
-/** A twip is 1/1440 inch, and CSS calls an inch 96 pixels */
-const PX_PER_TWIP = 96 / 1440;
+/** CSS calls an inch 96 pixels, and a point is a 72nd of one */
+export const PX_PER_PT = 96 / 72;
+
+const PX_PER_TWIP = PX_PER_PT / TWIPS_PER_PT;
 
 function cm(value: number): number {
   return Math.round(value * TWIPS_PER_CM);
@@ -92,15 +100,21 @@ export function readPageGeometry(sectPr: Element | null): PageGeometry {
   const pgSz = childByLocalName(sectPr, "pgSz");
   const pgMar = childByLocalName(sectPr, "pgMar");
 
-  const width = pgSz ? readSize(toNumber(wAttr(pgSz, "w"))) : null;
-  const height = pgSz ? readSize(toNumber(wAttr(pgSz, "h"))) : null;
+  const width = pgSz ? readSize(ST_TwipsMeasure.parse(wAttr(pgSz, "w"))) : null;
+  const height = pgSz
+    ? readSize(ST_TwipsMeasure.parse(wAttr(pgSz, "h")))
+    : null;
   // A size only half readable is not a paper. Both come from the document or neither does
   const readable = width !== null && height !== null;
 
-  const marginLeft = pgMar ? toNumber(wAttr(pgMar, "left")) : null;
-  const marginRight = pgMar ? toNumber(wAttr(pgMar, "right")) : null;
-  const marginTop = pgMar ? toNumber(wAttr(pgMar, "top")) : null;
-  const marginBottom = pgMar ? toNumber(wAttr(pgMar, "bottom")) : null;
+  // Every side is read as signed, `w:left` and `w:right` included: the schema counts those two
+  // unsigned, but Word writes a negative one for a gutter, and `readMargin` has a reading for it
+  const margin = (side: string) =>
+    pgMar ? ST_SignedTwipsMeasure.parse(wAttr(pgMar, side)) : null;
+  const marginLeft = margin("left");
+  const marginRight = margin("right");
+  const marginTop = margin("top");
+  const marginBottom = margin("bottom");
 
   const geometry: PageGeometry = {
     widthTwips: readable ? width : A4_PORTRAIT.widthTwips,

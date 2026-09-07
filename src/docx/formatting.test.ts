@@ -739,6 +739,14 @@ describe("defaultParagraphStyleIdOf", () => {
     ).toBe("Normal");
   });
 
+  it('takes w:default="on" as the default style', () => {
+    // `on` says what `1` says (§17.17.4), and reading only `1` and `true` missed the style
+    expect(defaultOf(paragraphStyle("Normal", ' w:default="on"'))).toBe(
+      "Normal"
+    );
+    expect(defaultOf(paragraphStyle("Normal", ' w:default="off"'))).toBeNull();
+  });
+
   it("is null when no paragraph style is the default", () => {
     expect(defaultOf(paragraphStyle("Normal"))).toBeNull();
     // A default of another kind is not a default paragraph style

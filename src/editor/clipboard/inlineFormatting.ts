@@ -1,6 +1,7 @@
 import type { Mark, Node as PMNode } from "prosemirror-model";
 import { editRunProps, type RunEdit } from "../../docx/runProps";
 import type { RunFormat } from "../../model/format";
+import { HALF_POINTS_PER_PT, ST_HpsMeasure } from "../../ooxml/simpleTypes";
 import { docxSchema } from "../../schema";
 import { editorClassNames } from "../../styles/classNames";
 
@@ -115,8 +116,9 @@ function fontSizePt(value: string): number | null {
   const amount = Number.parseFloat(match[1] ?? "");
   if (!Number.isFinite(amount) || amount <= 0) return null;
   const points = match[2]?.toLowerCase() === "px" ? amount * 0.75 : amount;
-  const rounded = Math.round(points * 2) / 2;
-  return rounded > 0 && rounded <= 819 ? rounded : null;
+  // A pasted size lands on the half-point step `w:sz` counts in, or it is no size we can keep
+  const half = Math.round(points * HALF_POINTS_PER_PT);
+  return ST_HpsMeasure.format(half) === null ? null : half / HALF_POINTS_PER_PT;
 }
 
 function legacyFontSize(value: string | null): number | null {

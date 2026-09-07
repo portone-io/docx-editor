@@ -36,6 +36,12 @@ import {
   setChild,
 } from "../ooxml/props";
 import {
+  ST_DecimalNumber,
+  ST_SignedTwipsMeasure,
+  TWIPS_PER_PT,
+} from "../ooxml/simpleTypes";
+import {
+  LINE_UNITS_PER_LINE,
   layerParagraphFormat,
   layerRunFormat,
   NO_STYLES,
@@ -274,13 +280,14 @@ export function withLineSpacing(
 ): ParagraphProps | null {
   const line =
     spacing.rule === "auto"
-      ? Math.round(spacing.lines * 240)
-      : Math.round(spacing.pt * 20);
+      ? ST_DecimalNumber.format(Math.round(spacing.lines * LINE_UNITS_PER_LINE))
+      : ST_SignedTwipsMeasure.format(Math.round(spacing.pt * TWIPS_PER_PT));
+  if (line === null) return null;
   return editParagraphProps(pPr, styles, defaultStyleId, (props) => {
     const current = childElement(props, "spacing");
     if (!current) return null;
     const attrs = spacingAttrs(current.attrs, [
-      ["line", `${line}`],
+      ["line", line],
       ["lineRule", spacing.rule],
     ]);
     return [["spacing", elementXml(wName("spacing"), attrs)]];

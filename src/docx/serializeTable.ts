@@ -27,6 +27,7 @@ import {
   renderProps,
   setChild,
 } from "../ooxml/props";
+import { ST_MeasurementOrPercent, ST_TwipsMeasure } from "../ooxml/simpleTypes";
 import { type ExportRefs, NO_EXPORT_REFS } from "./exportRefs";
 import {
   preservedXml,
@@ -61,7 +62,24 @@ function modelled(
   return elementXml(wName(name), attrs, inner === "" ? [] : [inner]);
 }
 
-/** A width that carries no number goes out with the 0 Word writes in its place */
+/**
+ * The number a width goes out as.
+ *
+ * A width that carries no number, and one no whole count can record, both go out with the 0 Word
+ * writes in its place. Word counts a `dxa` width in whole twips and a `pct` one in whole fiftieths,
+ * so a number that arrived with a fraction is rounded rather than written down as it stands.
+ */
+function widthText(width: TableWidth): string {
+  const value = widthNumber(width);
+  if (value === null || !Number.isFinite(value)) return "0";
+  return (
+    ST_MeasurementOrPercent.format({
+      kind: "number",
+      value: Math.round(value),
+    }) ?? "0"
+  );
+}
+
 function widthXml(
   name: string,
   width: TableWidth,
@@ -70,7 +88,7 @@ function widthXml(
   return modelled(
     name,
     [
-      [wName("w"), `${widthNumber(width) ?? 0}`],
+      [wName("w"), widthText(width)],
       [wName("type"), width.type],
     ],
     replacing
@@ -117,7 +135,17 @@ function tableGridXml(table: PMNode): string {
     typeof table.attrs.gridChange === "string" ? table.attrs.gridChange : "";
   if (gridCols.length === 0 && gridChange === "") return "";
   const cols = gridCols
-    .map((w) => elementXml(wName("gridCol"), [[wName("w"), `${w}`]]))
+    .map((w) => {
+      // Unit conversion can produce fractional twips, but the count written here must be whole.
+      const width = ST_TwipsMeasure.format(Math.round(w));
+      if (width === null) {
+        throw new DocxExportError(
+          "invalid-table",
+          "a grid column has no writable width"
+        );
+      }
+      return elementXml(wName("gridCol"), [[wName("w"), width]]);
+    })
     .join("");
   return elementXml(wName("tblGrid"), [], [cols + gridChange]);
 }

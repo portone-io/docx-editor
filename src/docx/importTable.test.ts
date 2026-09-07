@@ -391,6 +391,23 @@ describe("a block inside a cell that cannot be modelled", () => {
 });
 
 describe("table width and grid", () => {
+  it.each(["dxa", "pct", "auto", "nil"])(
+    "lets an explicit percentage override %s on table and cell widths",
+    (type) => {
+      const node = requireTable(
+        `<w:tbl><w:tblPr><w:tblW w:type="${type}" w:w="50%"/></w:tblPr>` +
+          grid(1000) +
+          row(cell(`<w:tcW w:type="${type}" w:w="50%"/>`, "a")) +
+          "</w:tbl>"
+      );
+      expect(node.attrs.tblW).toEqual({ type: "pct", fiftieths: 2500 });
+      expect(node.child(0).child(0).attrs.tcW).toEqual({
+        type: "pct",
+        fiftieths: 2500,
+      });
+    }
+  );
+
   it("reads tblW and tcW as a structure", () => {
     const node = requireTable(
       "<w:tbl>" +

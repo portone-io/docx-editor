@@ -94,6 +94,30 @@ describe("header and footer stories", () => {
     expect(stories.evenAndOdd).toBe(true);
   });
 
+  it('reads w:val="off" on evenAndOddHeaders as off', () => {
+    const parts = unzipSync(makeHeadersFootersDocx());
+    parts["word/settings.xml"] = encoder.encode(
+      `<w:settings xmlns:w="${W_NS}"><w:evenAndOddHeaders w:val="off"/></w:settings>`
+    );
+
+    const stories = importDocx(zipSync(parts)).session.headersFooters;
+    expect(stories.evenAndOdd).toBe(false);
+    // Every other spelling of off says the same, and the element on its own still says on
+    for (const [written, expected] of [
+      ['<w:evenAndOddHeaders w:val="0"/>', false],
+      ['<w:evenAndOddHeaders w:val="false"/>', false],
+      ['<w:evenAndOddHeaders w:val="on"/>', true],
+      ["<w:evenAndOddHeaders/>", true],
+    ] as const) {
+      parts["word/settings.xml"] = encoder.encode(
+        `<w:settings xmlns:w="${W_NS}">${written}</w:settings>`
+      );
+      expect(importDocx(zipSync(parts)).session.headersFooters.evenAndOdd).toBe(
+        expected
+      );
+    }
+  });
+
   it("shows only top-level paragraph text from a story", () => {
     const parts = unzipSync(makeHeadersFootersDocx());
     parts["word/header1.xml"] = encoder.encode(

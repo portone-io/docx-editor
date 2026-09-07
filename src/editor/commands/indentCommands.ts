@@ -11,6 +11,7 @@ import type { Node as PMNode } from "prosemirror-model";
 import type { Command, EditorState } from "prosemirror-state";
 import { withLeftIndent, withListNumbering } from "../../docx/paraProps";
 import { toParagraphFormat } from "../../model/format";
+import { TWIPS_PER_PT } from "../../ooxml/simpleTypes";
 import { editParagraphs, paragraphPPr } from "../paragraphEdits";
 import { documentNumbering } from "../plugins/numberingDecorations";
 import { listLevelChange, listRefOf } from "./listCommands";
@@ -22,7 +23,7 @@ const STEP_TWIPS = 720;
 function leftIndentTwips(node: PMNode): number {
   const format = toParagraphFormat(node.attrs.format);
   const pt = format?.indentStartPt ?? format?.indentLeftPt ?? 0;
-  return Math.round(pt * 20);
+  return Math.round(pt * TWIPS_PER_PT);
 }
 
 /** Where one step puts the paragraph's left indent. Null when it is already as far left as it goes */

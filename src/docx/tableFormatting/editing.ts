@@ -25,7 +25,12 @@ import {
   setChild,
   withAttrs,
 } from "../../ooxml/props";
-import { normalizeHex } from "../../ooxml/units";
+import {
+  ST_EighthPointMeasure,
+  ST_TwipsMeasure,
+  TWIPS_PER_PT,
+} from "../../ooxml/simpleTypes";
+import { type BorderLine, normalizeHex } from "../../ooxml/units";
 import {
   type CellBorderDefaults,
   NO_BORDER_DEFAULTS,
@@ -99,11 +104,17 @@ function sideAttrs(
   name: string,
   current: ChildElement,
   edit: BordersEdit,
-  fallback: string | null = null
+  fallback: BorderLine | null = null
 ): readonly XmlAttr[] | null {
   if (edit.kind === "color") {
     if (!drawsLine(current)) {
-      if (current.tag !== null || !fallback || fallback === "none") return null;
+      if (
+        current.tag !== null ||
+        fallback === null ||
+        fallback.val === "none"
+      ) {
+        return null;
+      }
       return inheritedBorderAttrs(fallback, edit.hex);
     }
     return setAttr(current.attrs, name, "color", edit.hex ?? "auto");
@@ -131,29 +142,20 @@ function sideAttrs(
   );
 }
 
-const BORDER_VAL_BY_CSS_STYLE: Readonly<Record<string, string>> = {
-  solid: "single",
-  double: "double",
-  dashed: "dashed",
-  dotted: "dotted",
-};
-
 /** Materializes one visible inherited line as a direct cell border with a new color. */
 function inheritedBorderAttrs(
-  border: string,
+  line: BorderLine,
   hex: string | null
 ): readonly XmlAttr[] | null {
-  const matched = border.match(
-    /^(\d+(?:\.\d+)?)pt (solid|double|dashed|dotted) (#[0-9a-f]{6})$/i
-  );
-  if (!matched) return null;
-  const [, widthText, style, currentColor] = matched;
-  if (hex !== null && normalizeHex(currentColor) === hex) return null;
-  const eighths = Math.round(Number.parseFloat(widthText) * 8);
-  if (!Number.isSafeInteger(eighths) || eighths <= 0) return null;
+  const current =
+    line.color.kind === "rgb" ? normalizeHex(line.color.hex) : null;
+  // A line already drawn in the color asked for is one this cell has nothing to say about
+  if (hex !== null && current === hex) return null;
+  const thickness = ST_EighthPointMeasure.format(line.eighths);
+  if (thickness === null) return null;
   return [
-    [wName("val"), BORDER_VAL_BY_CSS_STYLE[style.toLowerCase()]],
-    [wName("sz"), `${eighths}`],
+    [wName("val"), line.val],
+    [wName("sz"), thickness],
     [wName("space"), "0"],
     [wName("color"), hex ?? "auto"],
   ];
@@ -273,14 +275,9 @@ function editedPadding(
   for (const side of ALL_CELL_SIDES) {
     const points = values[side];
     if (points === undefined) continue;
-    const twips = Math.round(points * 20);
-    if (
-      !Number.isFinite(points) ||
-      points < 0 ||
-      !Number.isSafeInteger(twips)
-    ) {
-      return null;
-    }
+    if (points < 0) return null;
+    const twips = ST_TwipsMeasure.format(Math.round(points * TWIPS_PER_PT));
+    if (twips === null) return null;
     // The spelling the document already used for this side, else the side's own name, which is
     // the older `left`/`right` spelling
     const name =
@@ -290,7 +287,7 @@ function editedPadding(
     const existing = childElement(margins, name);
     if (existing === null || edited === null) return null;
     const attrs = setAttr(
-      setAttr(existing.attrs, name, "w", `${twips}`),
+      setAttr(existing.attrs, name, "w", twips),
       name,
       "type",
       "dxa"
@@ -397,14 +394,12 @@ export function editRowHeight(
   trPr: string | null,
   heightPt: number
 ): RowProps | null {
-  const twips = Math.round(heightPt * 20);
-  if (
-    !Number.isFinite(heightPt) ||
-    heightPt <= 0 ||
-    !Number.isSafeInteger(twips)
-  ) {
-    return null;
-  }
+  // A row of no height at all is not a height to write down
+  const twips =
+    heightPt > 0
+      ? ST_TwipsMeasure.format(Math.round(heightPt * TWIPS_PER_PT))
+      : null;
+  if (twips === null) return null;
   const props =
     trPr === null
       ? { tag: wName("trPr"), attrs: null, children: [] }
@@ -413,7 +408,7 @@ export function editRowHeight(
   const current = childElement(props, "trHeight");
   if (!current) return null;
   const writtenRule = wAttrValue(current.attrs, "hRule");
-  const attrs = setAttr(current.attrs, "trHeight", "val", `${twips}`);
+  const attrs = setAttr(current.attrs, "trHeight", "val", twips);
   const nextAttrs = setAttr(
     attrs,
     "trHeight",

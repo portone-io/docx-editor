@@ -8,6 +8,7 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { borderLineOfCss } from "../ooxml/units";
 import {
   ALL_CELL_SIDES,
   type CellFormatEdit,
@@ -243,6 +244,9 @@ describe("cell layout formatting", () => {
     expect(
       editCellProps(null, { kind: "padding", values: { left: -1 } })
     ).toBeNull();
+    expect(
+      editCellProps(null, { kind: "padding", values: { left: -0.01 } })
+    ).toBeNull();
   });
 });
 
@@ -321,10 +325,10 @@ describe("the lines a cell falls back on", () => {
         INSIDE
       )
     ).toEqual({
-      top: "1pt solid #000000",
-      bottom: "0.5pt solid #999999",
-      left: "1pt solid #000000",
-      right: "0.5pt solid #999999",
+      top: borderLineOfCss("1pt solid #000000"),
+      bottom: borderLineOfCss("0.5pt solid #999999"),
+      left: borderLineOfCss("1pt solid #000000"),
+      right: borderLineOfCss("0.5pt solid #999999"),
     });
   });
 
@@ -344,7 +348,7 @@ describe("the lines a cell falls back on", () => {
         { top: true, bottom: false, left: false, right: false },
         { borderTop: "none" },
         INSIDE
-      ).top
+      ).top?.val
     ).toBe("none");
   });
 });
@@ -409,10 +413,10 @@ describe("coloring the borders of a cell", () => {
   it("materializes visible inherited sides without changing their width or style", () => {
     expect(
       edited(null, RED, {
-        top: "1.5pt double #A6B7C8",
-        bottom: "none",
+        top: borderLineOfCss("1.5pt double #A6B7C8"),
+        bottom: borderLineOfCss("none"),
         left: null,
-        right: "0.5pt dotted #A6B7C8",
+        right: borderLineOfCss("0.5pt dotted #A6B7C8"),
       })
     ).toBe(
       tcPr(
@@ -467,7 +471,7 @@ describe("coloring the borders of a cell", () => {
   it("leaves an inherited border untouched when it already has the requested color", () => {
     expect(
       editCellProps(null, RED, {
-        top: "0.5pt solid #FF0000",
+        top: borderLineOfCss("0.5pt solid #FF0000"),
         bottom: null,
         left: null,
         right: null,

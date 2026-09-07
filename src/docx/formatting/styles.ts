@@ -11,6 +11,7 @@ import {
   toTableFormat,
 } from "../../model/format";
 import { parsePropsXml } from "../../ooxml/props";
+import { ST_OnOff } from "../../ooxml/simpleTypes";
 import { childValue, isOn, wAttr } from "../../ooxml/units";
 import { childByLocalName, elementChildren } from "../../ooxml/xml";
 import {
@@ -154,8 +155,7 @@ export function readStyles(
 
 /** Whether the style is the one OOXML applies to every object of its kind that points at no style */
 function isDefaultStyle(el: Element): boolean {
-  const value = wAttr(el, "default");
-  return value === "1" || value === "true";
+  return ST_OnOff.parse(wAttr(el, "default")) === true;
 }
 
 /**

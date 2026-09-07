@@ -88,6 +88,7 @@ import {
   type ParagraphAlign,
   toParagraphFormat,
 } from "../../model/format";
+import { ST_OnOff } from "../../ooxml/simpleTypes";
 import { wAttr } from "../../ooxml/units";
 import {
   childByLocalName,
@@ -636,11 +637,12 @@ function toggleProperty(
               `<x ${namespaceDecls(xml)}>${xml}</x>`
             ).getElementsByTagNameNS(W_NS, tag)[0]
           : undefined;
+      const written = el?.getAttributeNS(W_NS, "val") ?? null;
+      // `w:u w:val="none"` is an underline of no kind, which this probe counts as off as well
       values.push(
         el !== undefined &&
-          !["0", "false", "off", "none"].includes(
-            el.getAttributeNS(W_NS, "val") ?? ""
-          )
+          written !== "none" &&
+          (ST_OnOff.parse(written) ?? true)
       );
     });
     expect(values.length).toBeGreaterThan(0);

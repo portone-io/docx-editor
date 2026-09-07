@@ -2,6 +2,7 @@ import type { Node as PMNode } from "prosemirror-model";
 import { Plugin } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 import { DEFAULT_TAB_STOP_PT } from "../../docx/documentSettings";
+import { PX_PER_PT } from "../../docx/pageGeometry";
 import { type ParagraphFormat, toParagraphFormat } from "../../model/format";
 import type { TabAlignment, TabStop } from "../../model/tabStops";
 import { docxSchema } from "../../schema";
@@ -9,7 +10,6 @@ import { editorClassNames, editorCssVariables } from "../../styles/classNames";
 import { documentDefaultTabStopPt } from "../documentStyles";
 import { setTabWidths, tabWidths } from "./tabDecorations";
 
-const PX_PER_PT = 96 / 72;
 const POSITION_EPSILON_PT = 0.01;
 const WIDTH_EPSILON_PX = 0.1;
 const NATURAL_WIDTH_PX = 100_000;

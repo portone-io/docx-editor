@@ -3,6 +3,7 @@ import {
   layerTabStopDirectives,
   type TabStopDirective,
 } from "../../model/tabStops";
+import { ST_TabJc, ST_TabTlc } from "../../ooxml/simpleTypes";
 
 export type ParagraphFormatLayer = Omit<
   ParagraphFormat,
@@ -16,50 +17,26 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-const ALIGNMENTS = new Set([
-  "start",
-  "center",
-  "end",
-  "decimal",
-  "num",
-  "bar",
-  "clear",
-]);
-
-const LEADERS = new Set([
-  "none",
-  "dot",
-  "hyphen",
-  "underscore",
-  "heavy",
-  "middleDot",
-]);
-
 function toTabStopDirective(value: unknown): TabStopDirective | null {
   if (
     !isRecord(value) ||
     typeof value.positionPt !== "number" ||
-    !Number.isFinite(value.positionPt) ||
-    typeof value.align !== "string" ||
-    !ALIGNMENTS.has(value.align)
+    !Number.isFinite(value.positionPt)
   ) {
     return null;
   }
-  if (value.align === "clear") {
+  const align =
+    typeof value.align === "string" ? ST_TabJc.parse(value.align) : null;
+  if (align === null) return null;
+  if (align === "clear") {
     return { positionPt: value.positionPt, align: "clear" };
   }
-  const align = value.align as Exclude<TabStopDirective["align"], "clear">;
   const leader =
-    typeof value.leader === "string" && LEADERS.has(value.leader)
-      ? (value.leader as Exclude<
-          TabStopDirective,
-          { align: "clear" }
-        >["leader"])
-      : undefined;
+    typeof value.leader === "string" ? ST_TabTlc.parse(value.leader) : null;
   return {
     positionPt: value.positionPt,
     align,
-    ...(leader === undefined ? {} : { leader }),
+    ...(leader === null ? {} : { leader }),
   };
 }
 
