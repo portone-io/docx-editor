@@ -108,11 +108,27 @@ export interface XmlParser {
 
 let scopedParser: XmlParser | undefined;
 
+/** The parser named here, else the one the enclosing scope settled on, else the browser's own */
+function resolveParser(parser: XmlParser | undefined): XmlParser {
+  const named = parser ?? scopedParser;
+  if (named) return named;
+  if (typeof DOMParser === "function") return new DOMParser();
+  throw new DocxImportError(
+    "no-xml-parser",
+    "no XML parser: pass `xmlParser` or install a DOMParser global"
+  );
+}
+
 /**
- * Runs `work` with every `parseXml` inside it reading through `parser`.
+ * Runs `work` with every `parseXml` inside it reading through the one parser settled on here.
+ *
+ * Settling it at the boundary rather than at each read is what lets an entry point turn a runtime
+ * holding no parser down before it has read anything, instead of wherever the first part happens
+ * to be parsed; it also means one parser serves the whole call rather than a fresh `DOMParser`
+ * being built for every part.
  *
  * The public entry points are synchronous, so the scope covers exactly the work one of them does
- * and nothing that runs after it. `undefined` leaves the enclosing scope as it is rather than
+ * and nothing that runs after it. `undefined` keeps the enclosing scope's parser rather than
  * clearing it, which is what lets an entry point opening a file through another one - the verifier
  * running two imports - hand its own parser down without every inner call having to carry it.
  */
@@ -120,24 +136,13 @@ export function withXmlParser<T>(
   parser: XmlParser | undefined,
   work: () => T
 ): T {
-  if (parser === undefined) return work();
   const enclosing = scopedParser;
-  scopedParser = parser;
+  scopedParser = resolveParser(parser);
   try {
     return work();
   } finally {
     scopedParser = enclosing;
   }
-}
-
-/** The parser a read goes through: the one handed to the scope, else the browser's own */
-function currentParser(): XmlParser {
-  if (scopedParser) return scopedParser;
-  if (typeof DOMParser === "function") return new DOMParser();
-  throw new DocxImportError(
-    "no-xml-parser",
-    "no XML parser: pass `xmlParser` or install a DOMParser global"
-  );
 }
 
 export function parseXml(source: string): Document {
@@ -146,7 +151,10 @@ export function parseXml(source: string): Document {
   if (declaresDtd(source)) {
     throw new DocxImportError("malformed-xml", "the XML declares a DTD");
   }
-  const doc = currentParser().parseFromString(source, "application/xml");
+  const doc = resolveParser(undefined).parseFromString(
+    source,
+    "application/xml"
+  );
   if (doc.getElementsByTagName("parsererror").length > 0) {
     throw new DocxImportError("malformed-xml", "could not parse the XML");
   }

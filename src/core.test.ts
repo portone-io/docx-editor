@@ -838,18 +838,29 @@ describe("without a DOM", () => {
     expect(documentPartPath(session)).toBe("word/document.xml");
   });
 
-  /**
-   * A package carrying no relationships part parses nothing until the exported body is read
-   * back, and that read is the one wrapped in a refusal about the document. The runtime's own
-   * refusal has to come through it as it is
-   */
-  it("refuses to write a package holding no relationships with the same code", () => {
-    const bare = makeDocx(`<w:p>${LETTER_SECT_PR}</w:p>`);
-    const { doc, session } = importDocx(bare, { xmlParser });
+  // Writing reads the exported body back, and that read is the one wrapped in a refusal about
+  // the document. The runtime's own refusal is settled ahead of it and comes through as it is
+  it("refuses to write a file with no-xml-parser rather than an export code", () => {
+    const { doc, session } = importDocx(readFixture(FIXTURE), { xmlParser });
 
     expect(importErrorCode(() => exportDocx(doc, session))).toBe(
       "no-xml-parser"
     );
+  });
+
+  /**
+   * The parser is settled before the bytes are looked at, so a runtime that cannot read any file
+   * says so rather than passing judgement on the one it was handed
+   */
+  it("refuses bytes that are no docx for the parser rather than for the bytes", () => {
+    expect(importErrorCode(() => importDocx(new Uint8Array([1, 2, 3])))).toBe(
+      "no-xml-parser"
+    );
+    expect(
+      importErrorCode(() =>
+        importDocx(new Uint8Array([1, 2, 3]), { xmlParser })
+      )
+    ).toBe("not-a-docx");
   });
 
   it("writes the file back out with the same option", () => {

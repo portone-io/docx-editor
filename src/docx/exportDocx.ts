@@ -15,7 +15,7 @@ import type { Node as PMNode } from "prosemirror-model";
 import { toParagraphFormat } from "../model/format";
 import { parseNumbering } from "../numbering/parseNumbering";
 import { addListDefinitions } from "../numbering/writeNumbering";
-import { DocxExportError, DocxImportError } from "../ooxml/errors";
+import { DocxExportError } from "../ooxml/errors";
 import {
   decodeUtf8,
   encodeUtf8,
@@ -87,11 +87,6 @@ function assertBookmarkPairs(documentXml: string): void {
   try {
     root = parseXml(documentXml).documentElement;
   } catch (cause) {
-    // A runtime with no parser was never handed a document to find fault with, and a package
-    // holding no relationships to read reaches this before anything else has parsed
-    if (cause instanceof DocxImportError && cause.code === "no-xml-parser") {
-      throw cause;
-    }
     throw new DocxExportError(
       "malformed-xml",
       "the exported main document XML could not be parsed",
