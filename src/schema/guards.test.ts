@@ -1,11 +1,16 @@
 // @vitest-environment jsdom
 import { Node as PMNode } from "prosemirror-model";
-import type { EditorState } from "prosemirror-state";
+import type { EditorState, Transaction } from "prosemirror-state";
 import { describe, expect, it, vi } from "vitest";
 import { makeDocx } from "../__testing__/docx";
 import { importDocx } from "../docx/importDocx";
 import { createEditorState } from "../editor/createEditor";
-import { editShut, transactionAllowed } from "./guards";
+import {
+  editShut,
+  guardedCommand,
+  openStretches,
+  transactionAllowed,
+} from "./guards";
 import { historyReplay, unlockAllowed } from "./locks";
 import type { EditingProtection } from "./protection";
 
@@ -167,7 +172,7 @@ describe("editShut", () => {
   /**
    * A block rewritten around its content - given an alignment or an indent - is the one intent the
    * lock answers by the cell alone: a paragraph merely holding a locked control keeps both, and
-   * only what a locked cell holds is shut. Nothing builds this intent yet, so it is put here.
+   * only what a locked cell holds is shut (`editor/paragraphEdits`).
    */
   it("shuts a block intent inside a locked cell and leaves the cell beside it open", () => {
     const state = opened(LOCKED_CELL_TABLE);
@@ -176,5 +181,51 @@ describe("editShut", () => {
 
     expect(editShut(state, { kind: "block", at: shut.from })).toBe(true);
     expect(editShut(state, { kind: "block", at: open.from })).toBe(false);
+  });
+});
+
+describe("guardedCommand", () => {
+  /**
+   * The command is both what a control is drawn from and what the click runs, so the two have to be
+   * the same reading. One reporting yes to the button and then being refused at dispatch would draw
+   * a live control that swallows the click.
+   */
+  it("answers the same with and without dispatch", () => {
+    const state = opened(LOCKED_P);
+    const stretches = [
+      { text: "bc", allowed: false },
+      { text: "a", allowed: true },
+    ];
+
+    for (const { text, allowed } of stretches) {
+      const { from, to } = textRange(state.doc, text);
+      const command = guardedCommand((current) => current.tr.delete(from, to));
+      const dispatched: Transaction[] = [];
+
+      expect(command(state), `asked about "${text}"`).toBe(allowed);
+      expect(
+        command(state, (tr) => dispatched.push(tr)),
+        `run over "${text}"`
+      ).toBe(allowed);
+      expect(dispatched).toHaveLength(allowed ? 1 : 0);
+    }
+  });
+});
+
+describe("openStretches", () => {
+  it("leaves the locked stretch out and keeps the rest", () => {
+    const state = opened(LOCKED_P);
+    const stretches = ["a", "bc", "d"].map((text) => ({
+      text,
+      ...textRange(state.doc, text),
+    }));
+
+    expect(
+      openStretches(state, stretches, "mark").map((of) => of.text)
+    ).toEqual(["a", "d"]);
+    // The whole list is asked of each stretch, so a protection shutting the body leaves none open
+    expect(
+      openStretches(opened(LOCKED_P, "readOnly"), stretches, "mark")
+    ).toEqual([]);
   });
 });

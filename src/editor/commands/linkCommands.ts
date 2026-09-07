@@ -6,8 +6,7 @@
 import type { Mark, Node as PMNode } from "prosemirror-model";
 import type { Command, EditorState } from "prosemirror-state";
 import { docxSchema } from "../../schema";
-import { rangeTouchesLocked } from "../../schema/locks";
-import { editsShut } from "../../schema/protectionState";
+import { openStretches } from "../../schema/guards";
 
 const linkType = docxSchema.marks.link;
 
@@ -166,15 +165,13 @@ function linkSpansTouching(doc: PMNode, from: number, to: number): LinkSpan[] {
  * A whole link is one piece here rather than one per inline, which is what makes a lock over any
  * part of it drop the link entire: editing a link up to a lock would leave the text in three, link,
  * plain and link, which is the split an edit to a link must never make.
- * A protection that shuts the body leaves nothing open (`schema/protection`).
+ * A protection that shuts the body leaves nothing open (`schema/guards`).
  */
 function openPieces(state: EditorState): LinkPiece[] {
-  if (editsShut(state)) return [];
-  const found = state.selection.empty
-    ? caretPieces(state)
-    : selectionPieces(state);
-  return found.filter(
-    (piece) => !rangeTouchesLocked(state.doc, piece.from, piece.to)
+  return openStretches(
+    state,
+    state.selection.empty ? caretPieces(state) : selectionPieces(state),
+    "mark"
   );
 }
 

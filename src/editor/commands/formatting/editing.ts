@@ -10,11 +10,7 @@ import {
   type RunToggle,
 } from "../../../docx/runProps";
 import { docxSchema } from "../../../schema";
-import {
-  insertionInsideLocked,
-  rangeTouchesLocked,
-} from "../../../schema/locks";
-import { editsShut } from "../../../schema/protectionState";
+import { editShut, openStretches } from "../../../schema/guards";
 import {
   activePieces,
   caretPiece,
@@ -62,13 +58,11 @@ function applyToSelection(
   dispatch: ((tr: Transaction) => void) | undefined,
   edit: RunEdit
 ): boolean {
-  const pieces = textPieces(state).filter(
-    (target) =>
-      // Text already in the desired state is left untouched, so its original XML survives
-      !matchesRunEdit(target.format, edit) &&
-      // A locked stretch is left out rather than refused: the guard turns down the whole
-      // transaction, so asking for it would leave the rest of the selection unformatted too
-      !rangeTouchesLocked(state.doc, target.from, target.to)
+  const pieces = openStretches(
+    state,
+    // Text already in the desired state is left untouched, so its original XML survives
+    textPieces(state).filter((target) => !matchesRunEdit(target.format, edit)),
+    "mark"
   );
   const changes = pieces.length > 0 ? planChanges(pieces, edit) : null;
   if (!changes) return false;
@@ -82,12 +76,18 @@ function applyToSelection(
   return true;
 }
 
-/** With a collapsed caret, the formatting is only staged for the text typed next */
+/**
+ * With a collapsed caret, the formatting is only staged for the text typed next, so what settles it
+ * is whether that text could go in at all.
+ */
 function applyToCaret(
   state: EditorState,
   dispatch: ((tr: Transaction) => void) | undefined,
   edit: RunEdit
 ): boolean {
+  if (editShut(state, { kind: "insert", at: state.selection.from })) {
+    return false;
+  }
   const target = caretPiece(state);
   if (matchesRunEdit(target.format, edit)) return false;
   const mark = editedMark(target, edit);
@@ -100,12 +100,10 @@ function applyToCaret(
 }
 
 function runEditCommand(edit: RunEdit): Command {
-  return (state, dispatch) => {
-    if (editsShut(state)) return false;
-    return state.selection.empty
+  return (state, dispatch) =>
+    state.selection.empty
       ? applyToCaret(state, dispatch, edit)
       : applyToSelection(state, dispatch, edit);
-  };
 }
 
 /**
@@ -118,13 +116,10 @@ function runEditCommand(edit: RunEdit): Command {
  * settles it is whether that text could go in at all.
  */
 export function canFormatText(state: EditorState): boolean {
-  if (editsShut(state)) return false;
   if (state.selection.empty) {
-    return !insertionInsideLocked(state.doc, state.selection.from);
+    return !editShut(state, { kind: "insert", at: state.selection.from });
   }
-  return textPieces(state).some(
-    (target) => !rangeTouchesLocked(state.doc, target.from, target.to)
-  );
+  return openStretches(state, textPieces(state), "mark").length > 0;
 }
 
 /** Whether a toggled format is on at the current position. It counts as on only when it is on everywhere */
@@ -142,10 +137,15 @@ function isToggleActive(state: EditorState, toggle: RunToggle): boolean {
  */
 function toggleCommand(toggle: RunToggle): Command {
   return (state, dispatch) => {
+    const pieces = openStretches(
+      state,
+      state.selection.empty ? [caretPiece(state)] : textPieces(state),
+      "mark"
+    );
     const edit: RunEdit = {
       kind: "toggle",
       toggle,
-      on: !isToggleActive(state, toggle),
+      on: !pieces.every((target) => isRunToggleOn(target.format, toggle)),
     };
     return runEditCommand(edit)(state, dispatch);
   };

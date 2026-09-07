@@ -12,8 +12,7 @@ import type { EditorState, Transaction } from "prosemirror-state";
 import { effectiveParagraphFormat, type StyleTable } from "../docx/formatting";
 import type { ParagraphProps } from "../docx/paraProps";
 import { docxSchema } from "../schema";
-import { insideLockedCell } from "../schema/locks";
-import { editsShut } from "../schema/protectionState";
+import { editShut } from "../schema/guards";
 import {
   defaultParagraphStyleId,
   documentParagraphFormatting,
@@ -39,24 +38,21 @@ export function selectedParagraphs(state: EditorState): ParagraphSpot[] {
 }
 
 /**
- * The selected paragraphs a lock leaves editable, which is what every paragraph edit works on.
+ * The selected paragraphs the guards leave editable, which is what every paragraph edit works on.
  *
- * A locked stretch is left out rather than the whole edit refused, the policy character formatting
- * already follows (`commands/formattingCommands`): the guard turns down a whole transaction, so
- * asking for it would leave the rest of the selection unedited too. A selection the lock leaves
- * nothing of edits nothing, and the command reports that of its own accord, which is the disabled
- * state of the control that runs it.
+ * A shut paragraph is left out rather than the whole edit refused, the policy character formatting
+ * already follows (`schema/guards`): the guard turns down a whole transaction, so asking for it
+ * would leave the rest of the selection unedited too. A selection the guards leave nothing of edits
+ * nothing, and the command reports that of its own accord, which is the disabled state of the
+ * control that runs it.
  *
- * Only the paragraphs of a locked cell are shut. A paragraph merely holding a locked control keeps
- * its own alignment, indent and style, which is what `insideLockedCell` says and
- * `rangeTouchesLocked` would not (`schema/locks`).
- *
- * A protection that shuts the body leaves no paragraph editable (`schema/protection`).
+ * A paragraph is rewritten around its content, which is the block intent: only the paragraphs of a
+ * locked cell are shut, and a paragraph merely holding a locked control keeps its own alignment,
+ * indent and style. A protection that shuts the body shuts every one of them.
  */
 export function editableParagraphs(state: EditorState): ParagraphSpot[] {
-  if (editsShut(state)) return [];
   return selectedParagraphs(state).filter(
-    (spot) => !insideLockedCell(state.doc, spot.pos)
+    (spot) => !editShut(state, { kind: "block", at: spot.pos })
   );
 }
 

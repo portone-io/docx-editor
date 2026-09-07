@@ -1,9 +1,10 @@
 /**
- * Evaluates OOXML content and deletion locks for inline controls and whole table cells. Commands
- * query these predicates before editing; `editor/plugins/lockedContent` enforces them at runtime.
+ * Evaluates OOXML content and deletion locks for inline controls and whole table cells.
  *
- * `lockGuard` is what `./guards` registers all of this as, so that a caller asking the one guard
- * list asks the locks along with every other rule an edit is judged by.
+ * `lockGuard` is what `./guards` registers all of this as, and it is the only way in: a caller
+ * asking about a lock asks the one guard list, which asks the locks along with every other rule an
+ * edit is judged by. What a lock says about a whole document or a whole selection - a question
+ * about the document rather than about an edit - is exported beside it.
  */
 
 import type {
@@ -159,11 +160,11 @@ function lockedCellContent($pos: ResolvedPos): StepRange | null {
 /**
  * Whether what stands at this position sits inside a cell a control shuts.
  *
- * This is the question a paragraph edit leaves its locked paragraphs out by
- * (`editor/paragraphEdits`), and it is deliberately not `rangeTouchesLocked` over the paragraph:
- * a paragraph merely holding a locked control keeps its own alignment and indent.
+ * This is what the block intent is answered by, which is how a paragraph edit leaves its locked
+ * paragraphs out (`editor/paragraphEdits`), and it is deliberately not `rangeTouchesLocked` over
+ * the paragraph: a paragraph merely holding a locked control keeps its own alignment and indent.
  */
-export function insideLockedCell(doc: PMNode, pos: number): boolean {
+function insideLockedCell(doc: PMNode, pos: number): boolean {
   return lockedCellContent(doc.resolve(pos)) !== null;
 }
 
@@ -256,14 +257,10 @@ function rangeShut(doc: PMNode, range: EditedRange): boolean {
  * contents, or what a locked cell holds, the cell itself included.
  *
  * This is the question about editing what stands there rather than about taking it away, so every
- * control the stretch meets answers with its contents clause. The lock commands and the formatting
- * commands ask it of the stretch they are about to mark, so it is exported.
+ * control the stretch meets answers with its contents clause. It is what the mark intent is
+ * answered by, which is the stretch a character, link or lock edit is about to mark.
  */
-export function rangeTouchesLocked(
-  doc: PMNode,
-  from: number,
-  to: number
-): boolean {
+function rangeTouchesLocked(doc: PMNode, from: number, to: number): boolean {
   return rangeShut(doc, { from, to, takesAway: false });
 }
 
@@ -274,7 +271,7 @@ export function rangeTouchesLocked(
  * side belongs to a different control or to none, and since the mark is not inclusive what goes
  * in there falls outside the control.
  */
-export function insertionInsideLocked(doc: PMNode, pos: number): boolean {
+function insertionInsideLocked(doc: PMNode, pos: number): boolean {
   const $pos = doc.resolve(pos);
   if (lockedCellContent($pos)) return true;
   const before = lockedMarkOf($pos.nodeBefore);
@@ -297,33 +294,19 @@ function replaceShut(doc: PMNode, from: number, to: number): boolean {
 }
 
 /**
- * Whether the guard shuts editing where this selection stands.
+ * Whether a lock shuts editing where this selection stands, which is what a menu that would lift a
+ * lock is built on (`editor/commands/lockCommands`).
  *
- * This is the question a command that rewrites whatever is selected has to ask before it reports
- * that it applies (`editor/insertImage`), and the one a menu offering to lift a lock is built on
- * (`editor/commands/lockCommands`). A caret is shut by standing inside a control rather than
- * against its edge, which is the same rule an insertion follows.
+ * This is a reading of the selection rather than of an edit - the lock guard answers an edit
+ * (`./guards`) - and it names the locks alone, which is what the menu says. A caret is shut by
+ * standing inside a control rather than against its edge, which is the same rule an insertion
+ * follows.
  * A control locked against deletion alone shuts nothing here: its contents stand open, so editing
  * where it stands goes through, and only taking the control away is refused.
  */
 export function selectionShut(selection: Selection, doc: PMNode): boolean {
   return selection.ranges.some((range) =>
     markShut(doc, range.$from.pos, range.$to.pos)
-  );
-}
-
-/**
- * Whether the guard would refuse putting something in place of what this selection covers, which
- * is what an image insertion does (`editor/insertImage`).
- *
- * A different question from `selectionShut`: what the selection covers whole goes away rather than
- * being edited, so the deletion clause answers for it. A control that may be taken away whole may
- * therefore be replaced, and one locked against deletion alone may not, even though editing inside
- * it would have gone through.
- */
-export function replacementShut(selection: Selection, doc: PMNode): boolean {
-  return selection.ranges.some((range) =>
-    replaceShut(doc, range.$from.pos, range.$to.pos)
   );
 }
 
