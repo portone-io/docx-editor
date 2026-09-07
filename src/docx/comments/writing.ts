@@ -9,13 +9,7 @@ import { wName, xmlnsDecl } from "../../ooxml/names";
 import { encodeUtf8 } from "../../ooxml/xml";
 import { directoryOf, type RelationshipWriter } from "../relationships";
 import type { SessionStore } from "../session";
-import {
-  COMMENTS_CONTENT_TYPE,
-  COMMENTS_EXTENDED_CONTENT_TYPE,
-  COMMENTS_EXTENDED_REL_TYPE,
-  COMMENTS_REL_TYPE,
-  CONTENT_TYPES_PATH,
-} from "./constants";
+import { CONTENT_TYPES_PATH } from "./constants";
 import { withContentType } from "./contentTypes";
 import {
   arrivedEntries,
@@ -28,6 +22,7 @@ import {
   type CommentReplyData,
   commentReferencesIn,
 } from "./model";
+import { commentsExtendedPart, commentsPart, peoplePart } from "./parts";
 import { planPeoplePart } from "./people";
 import type { ImportedComments } from "./reading";
 
@@ -353,27 +348,6 @@ function commentsXml(
   );
 }
 
-function availableCommentsPath(session: SessionStore): string {
-  const directory = directoryOf(session.mainPartPath);
-  for (let suffix = 0; ; suffix += 1) {
-    const name = suffix === 0 ? "comments.xml" : `comments${suffix + 1}.xml`;
-    const path = directory + name;
-    if (!session.parts.has(path)) return path;
-  }
-}
-
-function availableCommentsExtendedPath(session: SessionStore): string {
-  const directory = directoryOf(session.mainPartPath);
-  for (let suffix = 0; ; suffix += 1) {
-    const name =
-      suffix === 0
-        ? "commentsExtended.xml"
-        : `commentsExtended${suffix + 1}.xml`;
-    const path = directory + name;
-    if (!session.parts.has(path)) return path;
-  }
-}
-
 export interface CommentPartChanges {
   parts: ReadonlyMap<string, Uint8Array>;
 }
@@ -393,13 +367,13 @@ export function planCommentParts(
   if (!bodyChanged && !threadChanged) return null;
 
   const references = commentReferencesIn(doc);
-  const addingPart = session.comments.partPath === null;
-  const partPath = session.comments.partPath ?? availableCommentsPath(session);
+  const addingPart = commentsPart.pathIn(session) === null;
+  const partPath = commentsPart.writePathIn(session);
   const parts = new Map<string, Uint8Array>();
 
   if (addingPart) {
     const target = partPath.slice(directoryOf(session.mainPartPath).length);
-    relationships.add({ type: COMMENTS_REL_TYPE, target });
+    relationships.add({ type: commentsPart.relType, target });
   }
 
   if (bodyChanged) {
@@ -416,7 +390,7 @@ export function planCommentParts(
     const contentTypes = withContentType(
       session.parts,
       partPath,
-      COMMENTS_CONTENT_TYPE,
+      commentsPart.contentType,
       currentContentTypes
     );
     if (contentTypes) parts.set(CONTENT_TYPES_PATH, contentTypes);
@@ -426,15 +400,13 @@ export function planCommentParts(
     threadChanged &&
     (references.size > 0 || session.comments.extendedPartPath !== null)
   ) {
-    const addingExtendedPart = session.comments.extendedPartPath === null;
-    const extendedPartPath =
-      session.comments.extendedPartPath ??
-      availableCommentsExtendedPath(session);
+    const addingExtendedPart = commentsExtendedPart.pathIn(session) === null;
+    const extendedPartPath = commentsExtendedPart.writePathIn(session);
     if (addingExtendedPart) {
       const target = extendedPartPath.slice(
         directoryOf(session.mainPartPath).length
       );
-      relationships.add({ type: COMMENTS_EXTENDED_REL_TYPE, target });
+      relationships.add({ type: commentsExtendedPart.relType, target });
     }
     parts.set(
       extendedPartPath,
@@ -451,7 +423,7 @@ export function planCommentParts(
       const contentTypes = withContentType(
         session.parts,
         extendedPartPath,
-        COMMENTS_EXTENDED_CONTENT_TYPE,
+        commentsExtendedPart.contentType,
         parts.get(CONTENT_TYPES_PATH) ?? currentContentTypes
       );
       if (contentTypes) parts.set(CONTENT_TYPES_PATH, contentTypes);
@@ -459,6 +431,7 @@ export function planCommentParts(
   }
   if (bodyChanged) {
     const people = planPeoplePart(
+      peoplePart,
       currentCommentBodies(references).values(),
       session,
       relationships,

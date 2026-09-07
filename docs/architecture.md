@@ -17,6 +17,9 @@ Each node and mark attr declares a role in `schema/attrRoles.ts`: `source` is wh
 Export compares two nodes with `sameSource`, which reads the source and session attrs and ignores the display ones.
 The distinction matters because opening a document works its display values out again - a table's shared cell borders among them - and a block judged changed is a block rebuilt, which costs it the markup the writer does not model.
 
+A protection level is a policy object in `docx/protectionPolicy`: the package parts it lets a change rewrite, the grammar their entries are written in, and how the document story is compared once its own markup is taken out.
+The part planners and the server verifier read the same object, so a part the writer starts adding is a part the verifier already excuses from the byte comparison and judges entry by entry.
+
 Import or export fails with a stable error code when the editor cannot guarantee that content will survive the round trip.
 
 ## Folder layering
