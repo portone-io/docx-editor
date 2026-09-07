@@ -27,6 +27,12 @@ export type {
 } from "./docx/fidelity";
 export type { ParagraphStyleOption } from "./docx/formatting";
 export type { DocxBytes, ImportOptions } from "./docx/importDocx";
+/**
+ * What the writer would refuse the document over, asked ahead of the write. The first entry is
+ * what `exportDocx` throws, so the two cannot disagree.
+ */
+export type { ExportProblem } from "./docx/invariants";
+export { exportProblems } from "./docx/invariants";
 export type { DocxSession } from "./docx/session";
 export { documentNumbering, documentPartPath } from "./docx/session";
 export type {

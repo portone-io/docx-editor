@@ -175,7 +175,7 @@ export interface MediaAdditions {
 }
 
 /** The srcs of the images that were not in the document when it was opened, in document order */
-function insertedImageSrcs(doc: PMNode): string[] {
+export function insertedImageSrcs(doc: PMNode): string[] {
   const srcs: string[] = [];
   doc.descendants((node) => {
     // An imported image holds its original XML and needs nothing added to the package

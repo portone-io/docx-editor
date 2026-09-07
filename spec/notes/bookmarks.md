@@ -14,6 +14,8 @@ Bookmarks are cross-structure annotations and can span paragraphs. Markers insid
 
 Markers inside an unsupported container remain with that container's preserved XML. They are not exposed as independent model nodes.
 
+A placeholder carries the identity of the session it was read from, and an export refuses one from another session as `lost-original`.
+
 The editor does not create, delete, rename, or navigate to bookmarks. It keeps existing markers at their document-model positions while surrounding supported paragraphs are edited.
 
 Table bookmarks can use the paired `w:colFirst` and `w:colLast` attributes on the start marker. These and `w:displacedByCustomXml` are retained in original XML rather than interpreted.

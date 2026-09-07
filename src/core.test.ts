@@ -723,6 +723,43 @@ describe("onlyCommentsChangedBy", () => {
         ).toEqual(allowed);
       });
 
+      /**
+       * A comments part that arrived holding nothing is an empty element, which is opened for
+       * the first entry rather than turned down for lacking a closing tag
+       */
+      it("holds for a first comment in a file whose comments part arrived as an empty element", () => {
+        const COMMENTS_PART = "word/comments.xml";
+        const plain = original();
+        const related = repacked(plain, {
+          [DOCUMENT_RELS_PART]: partText(plain, DOCUMENT_RELS_PART).replace(
+            "</Relationships>",
+            `<Relationship Id="rId7" Type="${COMMENTS_REL}"` +
+              ' Target="comments.xml"/></Relationships>'
+          ),
+          [COMMENTS_PART]:
+            '<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"/>',
+        });
+        const { doc, session } = importDocx(related);
+        let state = createEditorState(doc);
+        const { from, to } = rangeOfText(state.doc, "beta");
+        state = state.apply(
+          state.tr.setSelection(TextSelection.create(state.doc, from, to))
+        );
+        addComment({ text: "note", author: "Someone", authorId: "me" })(
+          state,
+          (tr) => (state = state.apply(tr))
+        );
+        const submitted = exportDocx(state.doc, session);
+
+        const comments = partText(submitted, COMMENTS_PART);
+        expect(comments).toMatch(
+          /^<w:comments xmlns:w="[^"]+"><w:comment [^>]*>.*note.*<\/w:comment><\/w:comments>$/
+        );
+        expect(onlyCommentsChangedBy(related, submitted, "me")).toEqual(
+          allowed
+        );
+      });
+
       it("does not hold for a comment relationship the submission points outside the package", () => {
         const { bytes, commented } = commentedBy("me");
         const outward = repacked(commented, {

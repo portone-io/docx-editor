@@ -112,6 +112,9 @@ export function Editor({ file }: { file: File }) {
   const download = () => {
     const result = downloadDocx(editorRef.current, { fileName: file.name });
     if (result.status === "exported") console.log(result.byteLength);
+    if (result.status === "blocked") {
+      console.warn(result.problems.map((problem) => problem.code));
+    }
   };
 
   return (
@@ -129,9 +132,11 @@ export function Editor({ file }: { file: File }) {
 }
 ```
 
-`downloadDocx` throws `DocxExportError` when the document cannot be written back safely, so wrap
-the call when the surrounding screen should show the reason.
-For the bytes without a browser download, call `editorRef.current.exportBytes()`.
+`downloadDocx` returns `blocked` with the problems when the document cannot be written back
+safely, each under the code a `DocxExportError` would carry, so the surrounding screen can show
+the reason; anything the check did not foresee is still thrown as `DocxExportError`.
+For the bytes without a browser download, call `editorRef.current.exportBytes()`, and for the
+same problems ahead of it, `editorRef.current.exportProblems()`.
 
 </Step>
 

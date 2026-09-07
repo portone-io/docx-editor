@@ -7,6 +7,7 @@
 
 import type { Node as PMNode } from "prosemirror-model";
 import type { DocxEditorHandle } from "./DocxEditor";
+import type { ExportProblem } from "./docx/invariants";
 
 export const DOCX_MIME_TYPE =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -29,7 +30,8 @@ export interface DownloadDocxOptions {
 export type DownloadDocxResult =
   | { status: "exported"; fileName: string; byteLength: number }
   | { status: "unavailable" }
-  | { status: "empty" };
+  | { status: "empty" }
+  | { status: "blocked"; problems: readonly ExportProblem[] };
 
 /** Settles the end of the name on exactly one `.docx` */
 export function withDocxExtension(fileName: string): string {
@@ -84,11 +86,10 @@ export function hasExportableContent(doc: PMNode): boolean {
  * Downloads the edited document as a docx file.
  *
  * `unavailable` when the editor is not mounted yet or the document could not be
- * opened, `empty` when there is nothing to export, and `exported` once a file has
- * gone out.
- * If writing the document back is blocked (a new list in a document without
- * numbering.xml, and the like), it is not passed over silently: `DocxExportError`
- * is rethrown as is.
+ * opened, `empty` when there is nothing to export, `blocked` with every reason
+ * when the document cannot be written back (a new list in a document without
+ * numbering.xml, and the like), and `exported` once a file has gone out.
+ * A refusal the check did not foresee is still thrown as `DocxExportError`.
  */
 export function downloadDocx(
   editor: DocxEditorHandle | null | undefined,
@@ -96,6 +97,8 @@ export function downloadDocx(
 ): DownloadDocxResult {
   if (!editor) return { status: "unavailable" };
   if (!hasExportableContent(editor.view.state.doc)) return { status: "empty" };
+  const problems = editor.exportProblems();
+  if (problems.length > 0) return { status: "blocked", problems };
 
   const bytes = editor.exportBytes();
   const fileName = withDocxExtension(options.fileName);

@@ -6,7 +6,7 @@ import { serializeTable } from "./serializeTable";
 import { originalBlock, type SessionStore, splitBlockKey } from "./session";
 
 /** Why there is no original to write, which a block that came in from another document answers differently */
-function lostOriginal(node: PMNode, session: SessionStore): string {
+export function lostOriginal(node: PMNode, session: SessionStore): string {
   const srcId: unknown = node.attrs.srcId;
   const key = typeof srcId === "string" ? splitBlockKey(srcId) : null;
   return key === null || key.sessionId === session.sessionId

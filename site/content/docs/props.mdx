@@ -97,13 +97,15 @@ in place and keeps the view, its history, and the host's plugins.
 interface DocxEditorHandle {
   view: EditorView;
   exportBytes: () => Uint8Array;
+  exportProblems: () => readonly ExportProblem[];
 }
 ```
 
 The ref holds `null` until a document has been opened, and holds `null` again for a document that
 was refused, so a control that exports should read it at click time rather than caching it.
 `exportBytes` writes the state currently on screen and throws `DocxExportError` when it cannot do
-so safely.
+so safely; `exportProblems` reports every reason it would, ahead of the write, under the same
+codes ([Checking before export](/docs/core#checking-before-export) lists them).
 [Getting started](/docs/getting-started#export-the-edited-document) covers `downloadDocx`, which
 wraps the handle for the ordinary browser download.
 

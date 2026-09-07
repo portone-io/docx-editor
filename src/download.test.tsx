@@ -203,6 +203,33 @@ describe("downloadDocx", () => {
     unmount();
   });
 
+  it("reports blocked with the problems when the document cannot be written", () => {
+    const { handle, unmount } = mount(PARAGRAPH);
+    const { view } = handle;
+    // The built-in list command refuses where the document has no numbering part, so the
+    // paragraph is put in a list the way a plugin of the consumer's own would put it there
+    const first = view.state.doc.child(0);
+    view.dispatch(
+      view.state.tr.setNodeMarkup(0, undefined, {
+        ...first.attrs,
+        format: { numbering: { numId: 1, ilvl: 0 } },
+      })
+    );
+
+    expect(downloadDocx(handle, { fileName: "contract" })).toEqual({
+      status: "blocked",
+      problems: [
+        {
+          code: "missing-numbering-part",
+          message:
+            "cannot add a new list to a document that has no numbering.xml",
+        },
+      ],
+    });
+    expect(created).toEqual([]);
+    unmount();
+  });
+
   it("returns the exported file name and byte count", () => {
     const { handle, unmount } = mount(PARAGRAPH);
     const result = downloadDocx(handle, { fileName: "standard-contract" });

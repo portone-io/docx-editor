@@ -117,6 +117,7 @@ export const DocxEditor: ForwardRefExoticComponent<DocxEditorProps & RefAttribut
 // @public (undocumented)
 export interface DocxEditorHandle {
     exportBytes: () => Uint8Array;
+    exportProblems: () => readonly ExportProblem[];
     // (undocumented)
     view: EditorView;
 }
@@ -218,6 +219,9 @@ export type DownloadDocxResult = {
     status: "unavailable";
 } | {
     status: "empty";
+} | {
+    status: "blocked";
+    problems: readonly ExportProblem[];
 };
 
 // @public
@@ -226,6 +230,15 @@ export type EditableComments = "own" | "all";
 export { EditorState }
 
 export { EditorView }
+
+// @public
+export interface ExportProblem {
+    // (undocumented)
+    readonly code: DocxExportErrorCode;
+    // (undocumented)
+    readonly message: string;
+    readonly pos?: number;
+}
 
 // @public
 export interface FontFallbackGroup {
