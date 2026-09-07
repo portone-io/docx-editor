@@ -13,7 +13,10 @@ import {
   TINY_PNG_DATA_URL,
 } from "../__testing__/docx";
 import { rangeOfText } from "../__testing__/editing";
-import { addComment } from "../editor/commands/commentCommands";
+import {
+  addComment,
+  setCommentResolved,
+} from "../editor/commands/commentCommands";
 import { createEditorState } from "../editor/createEditor";
 import { insertImage } from "../editor/insertImage";
 import { decodeUtf8, encodeUtf8, R_NS } from "../ooxml/xml";
@@ -33,6 +36,10 @@ const DOCUMENT_OVERRIDE =
   '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>';
 const COMMENTS_TYPE =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml";
+const COMMENTS_EXTENDED_TYPE =
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.commentsExtended+xml";
+const PEOPLE_TYPE =
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.people+xml";
 const encoder = new TextEncoder();
 
 function rels(entries: string): Uint8Array {
@@ -200,6 +207,41 @@ describe("contentTypeWriter", () => {
       `<Types xmlns="${TYPES_NS}">` +
         '<Default Extension="png" ContentType="image/png"/>' +
         `<Override PartName="/word/comments.xml" ContentType="${COMMENTS_TYPE}"/>` +
+        `${DOCUMENT_OVERRIDE}</Types>`
+    );
+  });
+
+  /**
+   * A comment settled by an author the file has yet to record adds three parts, and each writer
+   * used to prepend its own declaration, so the three came out in the reverse order of writing.
+   */
+  it("writes several overrides in the order their parts were added", () => {
+    const parts = unzipSync(
+      makeDocx(
+        '<w:p><w:r><w:t xml:space="preserve">Alpha beta</w:t></w:r></w:p>'
+      )
+    );
+    parts[CONTENT_TYPES_PATH] = encoder.encode(
+      `<Types xmlns="${TYPES_NS}">${DOCUMENT_OVERRIDE}</Types>`
+    );
+    const opened = importDocx(zipSync(parts));
+    let state = createEditorState(opened.doc);
+    const { from, to } = rangeOfText(state.doc, "beta");
+    state = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, from, to))
+    );
+    state = applied(
+      state,
+      addComment({ text: "Note", author: "Grace", authorId: "u_grace" })
+    );
+    state = applied(state, setCommentResolved("0", true));
+
+    const output = unzipSync(exportDocx(state.doc, opened.session));
+    expect(decode(output[CONTENT_TYPES_PATH])).toBe(
+      `<Types xmlns="${TYPES_NS}">` +
+        `<Override PartName="/word/comments.xml" ContentType="${COMMENTS_TYPE}"/>` +
+        `<Override PartName="/word/commentsExtended.xml" ContentType="${COMMENTS_EXTENDED_TYPE}"/>` +
+        `<Override PartName="/word/people.xml" ContentType="${PEOPLE_TYPE}"/>` +
         `${DOCUMENT_OVERRIDE}</Types>`
     );
   });

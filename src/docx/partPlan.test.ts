@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
+import { unzipSync } from "fflate";
 import { describe, expect, it } from "vitest";
 import { exportErrorCode, makeDocx, TINY_PNG } from "../__testing__/docx";
 import { encodeUtf8 } from "../ooxml/xml";
+import { exportThroughPlanners } from "./exportDocx";
 import { importDocx } from "./importDocx";
 import { CONTENT_TYPES_PATH, contentTypeWriter } from "./packageParts";
 import {
@@ -115,6 +117,33 @@ describe("runPartPlanners", () => {
         )
       ).toThrow(/rogue planner wrote/);
     }
+  });
+});
+
+describe("the export over its planners", () => {
+  it("refuses with malformed-xml naming the part a planner wrote that does not read back", () => {
+    const { doc, session } = opened();
+    const rogue: PartPlanner = {
+      name: "rogue",
+      plan: () =>
+        new Map([["word/rogue.xml", encodeUtf8("<rogue><entry/>", false)]]),
+    };
+    expect(
+      exportErrorCode(() => exportThroughPlanners([rogue], doc, session))
+    ).toBe("malformed-xml");
+    expect(() => exportThroughPlanners([rogue], doc, session)).toThrow(
+      "word/rogue.xml as written could not be parsed"
+    );
+  });
+
+  it("repacks a part a planner wrote that reads back", () => {
+    const { doc, session } = opened();
+    const fine: PartPlanner = {
+      name: "fine",
+      plan: () => new Map([["word/fine.xml", encodeUtf8("<fine/>", false)]]),
+    };
+    const parts = unzipSync(exportThroughPlanners([fine], doc, session));
+    expect(new TextDecoder().decode(parts["word/fine.xml"])).toBe("<fine/>");
   });
 });
 

@@ -186,14 +186,41 @@ export function exportDocxReport(
   session: DocxSession,
   options?: ExportOptions
 ): { bytes: Uint8Array; notes: FidelityNote[] } {
+  return reportThrough(PART_PLANNERS, doc, session, options);
+}
+
+/**
+ * The same export, folding a planner list of the caller's choosing in place of `PART_PLANNERS`.
+ *
+ * On no entry point. No document can make a correct planner write a part that does not read back,
+ * so this is how a test hands the fold such a planner and watches the export refuse it.
+ */
+export function exportThroughPlanners(
+  planners: readonly PartPlanner[],
+  doc: PMNode,
+  session: DocxSession,
+  options?: ExportOptions
+): Uint8Array {
+  return reportThrough(planners, doc, session, options).bytes;
+}
+
+function reportThrough(
+  planners: readonly PartPlanner[],
+  doc: PMNode,
+  session: DocxSession,
+  options: ExportOptions | undefined
+): { bytes: Uint8Array; notes: FidelityNote[] } {
   return withXmlParser(options?.xmlParser, () => {
     const store = sessionOf(session);
     const problem = problemsOf(doc, store)[0];
     if (problem) throw new DocxExportError(problem.code, problem.message);
     const approximated: FidelityNote[] = [];
-    const bytes = writeDocx(doc, store, {
-      add: (note) => approximated.push(note),
-    });
+    const bytes = writeDocx(
+      doc,
+      store,
+      { add: (note) => approximated.push(note) },
+      planners
+    );
     return {
       bytes,
       notes: [...fidelityNotesOf(doc, store.mainPartPath), ...approximated],
@@ -204,7 +231,8 @@ export function exportDocxReport(
 function writeDocx(
   doc: PMNode,
   store: SessionStore,
-  notes: FidelityCollector
+  notes: FidelityCollector,
+  planners: readonly PartPlanner[]
 ): Uint8Array {
   const relsPath = relsPathOf(store.mainPartPath);
   const context: PartPlanContext = {
@@ -222,12 +250,7 @@ function writeDocx(
   assertBookmarkPairs(documentXml);
 
   const parts = new Map(media?.parts ?? []);
-  for (const [path, bytes] of runPartPlanners(
-    PART_PLANNERS,
-    doc,
-    store,
-    context
-  )) {
+  for (const [path, bytes] of runPartPlanners(planners, doc, store, context)) {
     parts.set(path, bytes);
   }
   const rels = context.relationships.part(store.parts.get(relsPath));
