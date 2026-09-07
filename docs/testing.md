@@ -34,13 +34,20 @@ The suite uses a 30-second timeout because schema validation and tests that exer
 | `src/folderBoundaries.test.ts` | Folder ranks are respected, every production file is reachable from an entry point, every production folder is ranked, and no two modules read each other at runtime. |
 | `src/lockHonesty.test.ts` | A command's applicability result agrees with what it dispatches around locked content, across the bookmark and note markers a document is preserved with, and under every editing protection. Each place also states which guards refuse there, and the stated guards are held against the ones that answer. |
 | `src/docx/exportSchemaValidation.test.ts` | Every fixture and representative edited export validates against the ECMA-376 Transitional schemas. |
+| `src/docx/writerProbes.test.ts` | Every export of `./commands` and `./table` either runs before a validated export as a writer probe or states why it reaches no writer. |
 | `src/schema/domRoundtrip.test.ts` | Every fixture survives being drawn to the DOM and read back, which is the path an IME composition takes. |
 | `src/schema/rawAttrs.test.ts` | Every attr the writer writes from says whether it carries raw XML, and each one that does is drawn holding its shape and not holding it. |
 | `packaging/apiReport.test.ts` | The committed `etc/*.api.md` reports match the declarations built from each published entry point. |
 
-Update `api-manifest.json` only when a public runtime API change is intentional. `pnpm api:update` does the same for the declaration reports, which record types and signatures rather than names. The lock test lists command factories explicitly so every new command must state how it behaves around locks and markers and under every editing protection.
+Update `api-manifest.json` only when a public runtime API change is intentional. `pnpm api:update` does the same for the declaration reports, which record types and signatures rather than names. The lock test lists command factories explicitly so every new command must state how it behaves around locks and markers and under every editing protection. The probe test reads the same manifest, so a new command must also say what it writes into an exported package.
 
-The schema test requires `xmllint`, rejects a missing validator or an empty fixture set, and includes a negative control so a broken validation path cannot pass silently. It removes `mc:Ignorable` before validation as required by the markup-compatibility preprocessing model and supplies the standard XML namespace imported by the schemas.
+Each writer probe has a required `check(before, after)` for its immediate effect. The battery rejects display-only changes and exports every intermediate result before the next command can overwrite it. Every result must change an exported part, every XML part is parsed, and all distinct WordprocessingML outputs are validated in one batch. Optional package-wide assertions run on the final result as well. A setup step belongs in `prepare`, so the probe is measured against the state immediately before its own command.
+
+The schema test requires `xmllint`, rejects a missing validator or an empty fixture set, and includes negative controls so a broken validation path cannot pass silently. Its MCE profile follows ECMA-376 Part 3 sections 7 and 9 for `Ignorable`, `ProcessContent`, `MustUnderstand`, and alternate content. The understood namespaces come from the imports of the committed WML schema and the supplied XML namespace schema. Known namespaces remain subject to validation even if declared ignorable. For unknown ignorable elements, `ProcessContent` preserves their children for validation; otherwise the subtree is removed. `AlternateContent` selects the first Choice whose required namespaces are understood, or its Fallback if no Choice matches. Declarations are resolved in their original scope before wrappers are removed.
+
+This is a validation profile, not a complete MCE consumer: preservation hints and application-defined extension-element configurations are unsupported. Unsupported directives, unbound prefixes, and malformed alternate-content branch structure fail explicitly. Hand-built fixtures must not use `AlternateContent` to hide the markup they are meant to exercise; [the fixture guide](../__fixtures__/README.md) records that rule.
+
+Parts with no committed validation schema, including relationships, content types, people, and commentsExtended, are checked for well-formedness only. Parsing does not verify their vocabulary or cross-part references.
 
 ## Package checks
 
