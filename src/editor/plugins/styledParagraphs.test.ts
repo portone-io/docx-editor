@@ -14,7 +14,7 @@ import type { SessionStore } from "../../docx/session";
 import { toParagraphFormat, toRunFormat } from "../../model/format";
 import { docxSchema } from "../../schema";
 import { addRowAfter } from "../../table";
-import { createEditorState } from "../createEditor";
+import { editorStateForSession } from "../createEditor";
 import { insertTable } from "../insertTable";
 
 /** A default paragraph style that lays down both paragraph and character formatting */
@@ -37,15 +37,7 @@ function opened(styles = NORMAL_STYLE): {
   session: SessionStore;
 } {
   const { doc, session } = importDocx(makeStyledDocx(BODY, styles));
-  return {
-    state: createEditorState(doc, {
-      styles: session.styles,
-      defaults: session.defaults,
-      paragraphDefaults: session.paragraphDefaults,
-      paragraphStyles: session.paragraphStyles,
-    }),
-    session,
-  };
+  return { state: editorStateForSession({ doc, session }), session };
 }
 
 function ran(state: EditorState, command: Command): EditorState {

@@ -10,15 +10,7 @@ import type { Node as PMNode } from "prosemirror-model";
 import { EditorState, type Plugin } from "prosemirror-state";
 import { tableEditing } from "prosemirror-tables";
 import { EditorView } from "prosemirror-view";
-import type {
-  ParagraphFormatLayer,
-  ParagraphStyleOption,
-  StyleTable,
-} from "../docx/formatting";
-import type { PageGeometry } from "../docx/pageGeometry";
 import type { SessionStore } from "../docx/session";
-import type { DocumentDefaults } from "../model/format";
-import type { Numbering } from "../numbering/parseNumbering";
 import { pageDecorations } from "../page/pageDecorations";
 import { pageGeometryStyle, pagePixels } from "../page/pageLayout";
 import type { EditableComments, EditingProtection } from "../schema/protection";
@@ -62,38 +54,18 @@ import { runMarkView } from "./views/runMarkView";
 
 export interface EditorStateOptions {
   /**
-   * What the opened document laid down. A state built without one reads `NO_DOCUMENT`, which
-   * answers as nothing being written down.
+   * What the opened document laid down: its styles, its list definitions, the paper it is
+   * written on. A state built without one reads `NO_DOCUMENT`, which answers as nothing having
+   * been written down. `editorStateForSession` is what fills it in for an opened document.
    */
   document?: EditorDocument;
-  numbering?: Numbering;
-  styles?: StyleTable;
-  defaults?: DocumentDefaults;
-  /** Paragraph properties from styles.xml docDefaults. */
-  paragraphDefaults?: ParagraphFormatLayer;
-  /**
-   * Whether the document has a place (numbering.xml) to write the definition of a new list.
-   * Callers that build a state without opening a document assume that place exists and behave
-   * as they do today.
-   */
-  canStartNewList?: boolean;
   /** The plugins handed in from outside the package */
   consumerPlugins?: readonly Plugin[];
-  /** The styles the document defines for the style picker to offer */
-  paragraphStyles?: ParagraphStyleOption[];
   /**
    * Whether the right click is the editor's own. Turned off, the browser's own menu is never
    * taken away, which is what a consumer drawing menus of its own needs.
    */
   contextMenus?: boolean;
-  /** The paper the document names. A4 where a document names none */
-  geometry?: PageGeometry;
-  /** The interval between automatic tab stops, in points. */
-  defaultTabStopPt?: number;
-  /** Every id already present in the opened Comments part, including unreferenced entries. */
-  reservedCommentIds?: Iterable<string>;
-  /** Every paragraph id present in the opened comment parts, including orphan extension entries. */
-  reservedCommentParaIds?: Iterable<string>;
   /**
    * What the document as a whole may receive (`schema/protection`): everything, comments alone,
    * or nothing. Everything when none is given, which is what every state was before.
@@ -106,38 +78,6 @@ export interface EditorStateOptions {
 }
 
 /**
- * The snapshot the old option bag adds up to, for the callers that still type the document-level
- * values out one field at a time. Goes away once they all hand a document in.
- */
-function documentOption(options: EditorStateOptions): EditorDocument {
-  const document = options.document ?? NO_DOCUMENT;
-  const paragraphStyles = options.paragraphStyles ?? document.paragraphStyles;
-  return {
-    ...document,
-    numbering: options.numbering ?? document.numbering,
-    styles: options.styles ?? document.styles,
-    defaults: options.defaults ?? document.defaults,
-    paragraphDefaults: options.paragraphDefaults ?? document.paragraphDefaults,
-    paragraphStyles,
-    defaultParagraphStyleId:
-      options.paragraphStyles === undefined
-        ? document.defaultParagraphStyleId
-        : (paragraphStyles.find((style) => style.isDefault)?.id ?? null),
-    canStartNewList: options.canStartNewList ?? document.canStartNewList,
-    geometry: options.geometry ?? document.geometry,
-    defaultTabStopPt: options.defaultTabStopPt ?? document.defaultTabStopPt,
-    reservedCommentIds:
-      options.reservedCommentIds === undefined
-        ? document.reservedCommentIds
-        : new Set(options.reservedCommentIds),
-    reservedCommentParaIds:
-      options.reservedCommentParaIds === undefined
-        ? document.reservedCommentParaIds
-        : new Set(options.reservedCommentParaIds),
-  };
-}
-
-/**
  * Creates a single editing state.
  * The list definitions, the style table, and the document defaults are what the document
  * wrote down, and commands and the toolbar read them off the snapshot the state holds.
@@ -147,13 +87,13 @@ export function createEditorState(
   options: EditorStateOptions = {}
 ): EditorState {
   const {
+    document = NO_DOCUMENT,
     consumerPlugins = [],
     contextMenus = true,
     protection = "none",
     author = null,
     editableComments = "own",
   } = options;
-  const document = documentOption(options);
   return EditorState.create({
     doc: withDerivedGridBorders(doc),
     plugins: [

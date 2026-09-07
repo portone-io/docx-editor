@@ -82,7 +82,7 @@ import {
   updateComment,
   updateCommentReply,
 } from "../../editor/commands";
-import { createEditorState } from "../../editor/createEditor";
+import { editorStateForSession } from "../../editor/createEditor";
 import {
   type LineSpacing,
   type ParagraphAlign,
@@ -115,7 +115,7 @@ import {
   splitCell,
 } from "../../table";
 import { exportDocx } from "../exportDocx";
-import { documentNumbering, type SessionStore } from "../session";
+import type { SessionStore } from "../session";
 
 /**
  * The editing state a screen would hold for this document, opened as the author the comment
@@ -123,18 +123,16 @@ import { documentNumbering, type SessionStore } from "../session";
  * (`schema/protection`), and the probes that reply to, rewrite and resolve one need that.
  */
 export function openState(doc: PMNode, session: SessionStore): EditorState {
-  return createEditorState(doc, {
-    numbering: documentNumbering(session),
-    styles: session.styles,
-    defaults: session.defaults,
-    canStartNewList: session.numberingPartPath !== null,
-    paragraphStyles: session.paragraphStyles,
-    author: {
-      id: AUTHOR.authorId,
-      name: AUTHOR.author,
-      initials: AUTHOR.initials,
-    },
-  });
+  return editorStateForSession(
+    { doc, session },
+    {
+      author: {
+        id: AUTHOR.authorId,
+        name: AUTHOR.author,
+        initials: AUTHOR.initials,
+      },
+    }
+  );
 }
 
 /**

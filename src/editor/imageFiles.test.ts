@@ -13,7 +13,7 @@ import { importDocx } from "../docx/importDocx";
 import { A4_BODY_WIDTH } from "../docx/pageGeometry";
 import type { SessionStore } from "../docx/session";
 import { emuToPx, pxToEmu, toImageExtent } from "../ooxml/image";
-import { createEditorState, createEditorView } from "./createEditor";
+import { createEditorView, editorStateForSession } from "./createEditor";
 import {
   boundedImageSrc,
   fittedExtent,
@@ -174,7 +174,7 @@ function mountEditor(opened: {
   document.body.appendChild(mount);
   const view = createEditorView({
     mount,
-    state: createEditorState(opened.doc, { geometry: opened.session.geometry }),
+    state: editorStateForSession(opened),
     onStateChange: () => undefined,
   });
   mounted.push(() => {

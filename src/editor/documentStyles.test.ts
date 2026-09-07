@@ -3,19 +3,20 @@ import { describe, expect, it } from "vitest";
 import { LETTER_GEOMETRY, LETTER_SECT_PR, makeDocx } from "../__testing__/docx";
 import { importDocx } from "../docx/importDocx";
 import { A4_BODY_WIDTH, A4_PORTRAIT } from "../docx/pageGeometry";
-import { createEditorState } from "./createEditor";
+import { createEditorState, editorStateForSession } from "./createEditor";
 import {
   documentBodyWidthPx,
   documentDefaultTabStopPt,
   documentGeometry,
 } from "./documentStyles";
+import { type EditorDocument, NO_DOCUMENT } from "./editorDocument";
 
 const BODY = '<w:p><w:r><w:t xml:space="preserve">Body</w:t></w:r></w:p>';
 
 /** A state built the way the editor builds one for this document */
 function opened(sectPr: string) {
   const { doc, session } = importDocx(makeDocx(BODY + sectPr));
-  return createEditorState(doc, { geometry: session.geometry });
+  return editorStateForSession({ doc, session });
 }
 
 describe("the paper the state carries", () => {
@@ -41,9 +42,10 @@ describe("the paper the state carries", () => {
 
   it("retains the document's automatic tab interval", () => {
     const { doc } = importDocx(makeDocx(BODY));
+    const widerTabs: EditorDocument = { ...NO_DOCUMENT, defaultTabStopPt: 48 };
     expect(documentDefaultTabStopPt(createEditorState(doc))).toBe(36);
     expect(
-      documentDefaultTabStopPt(createEditorState(doc, { defaultTabStopPt: 48 }))
+      documentDefaultTabStopPt(createEditorState(doc, { document: widerTabs }))
     ).toBe(48);
   });
 });

@@ -14,7 +14,7 @@ import { serializeParagraph } from "../../docx/serializeParagraph";
 import { serializeTable } from "../../docx/serializeTable";
 import { parseXml, W_NS } from "../../ooxml/xml";
 import { addRowAfter } from "../../table";
-import { createEditorState } from "../createEditor";
+import { createEditorState, editorStateForSession } from "../createEditor";
 import { insertTable } from "../insertTable";
 import { canRunCommand } from "./canRunCommand";
 // The history commands as a consumer reaches them, since a raw prosemirror-history one would meet
@@ -649,11 +649,7 @@ const NORMAL_STYLE =
 /** The state `DocxEditor` builds, styles and all, so the plugins that append a transaction have work */
 function openedStyled(body: string): EditorState {
   const { doc, session } = importDocx(makeStyledDocx(body, NORMAL_STYLE));
-  return createEditorState(doc, {
-    styles: session.styles,
-    defaults: session.defaults,
-    paragraphStyles: session.paragraphStyles,
-  });
+  return editorStateForSession({ doc, session });
 }
 
 /**

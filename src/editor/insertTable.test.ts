@@ -18,7 +18,7 @@ import { A4_BODY_WIDTH } from "../docx/pageGeometry";
 import type { SessionStore } from "../docx/session";
 import { createTableNode } from "../docx/tableTemplate";
 import { type TableWidth, toGridCols, toTableWidth } from "../model/format";
-import { createEditorState } from "./createEditor";
+import { createEditorState, editorStateForSession } from "./createEditor";
 import { canInsertTable, insertTable } from "./insertTable";
 
 const BODY = '<w:p><w:r><w:t xml:space="preserve">body</w:t></w:r></w:p>';
@@ -171,7 +171,7 @@ describe("the insert table command", () => {
 
   it("fits the table to the paper the document names, not to A4", () => {
     const { doc, session } = importDocx(makeDocx(BODY + LETTER_SECT_PR));
-    const opened = createEditorState(doc, { geometry: session.geometry });
+    const opened = editorStateForSession({ doc, session });
     const state = opened.apply(
       opened.tr.setSelection(TextSelection.create(doc, posOfText(doc, "body")))
     );
@@ -197,7 +197,7 @@ describe("the insert table command", () => {
   it("gives a Letter document and an A4 document tables of different widths", () => {
     const widthIn = (name: string): TableWidth | null => {
       const { doc, session } = importDocx(readFixture(name));
-      const opened = createEditorState(doc, { geometry: session.geometry });
+      const opened = editorStateForSession({ doc, session });
       const state = opened.apply(
         opened.tr.setSelection(TextSelection.near(opened.doc.resolve(1)))
       );

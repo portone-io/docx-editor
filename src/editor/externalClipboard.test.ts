@@ -16,12 +16,15 @@ import { styleIdOf } from "../docx/formatting";
 import { importDocx } from "../docx/importDocx";
 import type { SessionStore } from "../docx/session";
 import { toRunFormat } from "../model/format";
-import { parseNumbering } from "../numbering/parseNumbering";
 import { emuToPx } from "../ooxml/image";
 import { docxSchema } from "../schema";
 import { editorClassNames } from "../styles/classNames";
 import { listRefOf } from "./commands/listCommands";
-import { createEditorState, createEditorView } from "./createEditor";
+import {
+  createEditorState,
+  createEditorView,
+  editorStateForSession,
+} from "./createEditor";
 
 function openEditor(canStartNewList = true): {
   view: EditorView;
@@ -33,10 +36,7 @@ function openEditor(canStartNewList = true): {
   );
   const view = createEditorView({
     mount: document.createElement("div"),
-    state: createEditorState(doc, {
-      numbering: parseNumbering(session.numberingXml),
-      canStartNewList,
-    }),
+    state: editorStateForSession({ doc, session }),
     onStateChange: () => {},
   });
   view.dispatch(
@@ -56,12 +56,7 @@ function openStyledEditor(): { view: EditorView; session: SessionStore } {
   const { doc, session } = importDocx(makeStyledDocx(body, styles));
   const view = createEditorView({
     mount: document.createElement("div"),
-    state: createEditorState(doc, {
-      styles: session.styles,
-      defaults: session.defaults,
-      paragraphStyles: session.paragraphStyles,
-      canStartNewList: false,
-    }),
+    state: editorStateForSession({ doc, session }),
     onStateChange: () => {},
   });
   view.dispatch(

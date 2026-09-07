@@ -17,7 +17,10 @@ import {
   toggleBulletList,
   toggleNumberedList,
 } from "../editor/commands/listCommands";
-import { createEditorState } from "../editor/createEditor";
+import {
+  createEditorState,
+  editorStateForSession,
+} from "../editor/createEditor";
 import { paragraphMarkers } from "../editor/plugins/numberingDecorations";
 import { toParagraphFormat } from "../model/format";
 import { parseNumbering } from "../numbering/parseNumbering";
@@ -49,8 +52,12 @@ function withCaretAt(state: EditorState, at: number): EditorState {
 function open(name: string) {
   const bytes = readFixture(name);
   const { doc, session } = importDocx(bytes);
-  const numbering = parseNumbering(session.numberingXml);
-  return { bytes, doc, session, state: createEditorState(doc, { numbering }) };
+  return {
+    bytes,
+    doc,
+    session,
+    state: editorStateForSession({ doc, session }),
+  };
 }
 
 function partsOf(bytes: Uint8Array): Record<string, Uint8Array> {
@@ -196,9 +203,7 @@ describe("a list that had no definition from the moment it was opened", () => {
       ONE_LIST_NUMBERING
     );
     const { doc, session } = importDocx(withPlain);
-    const state = createEditorState(doc, {
-      numbering: parseNumbering(session.numberingXml),
-    });
+    const state = editorStateForSession({ doc, session });
     const at = withCaretAt(state, plainParagraph(doc).pos);
     let listed = at;
     expect(
@@ -225,8 +230,7 @@ describe("starting two lists in one document", () => {
       ONE_LIST_NUMBERING
     );
     const { doc, session } = importDocx(bytes);
-    const numbering = parseNumbering(session.numberingXml);
-    const state = createEditorState(doc, { numbering });
+    const state = editorStateForSession({ doc, session });
 
     const first = withCaretAt(state, 1);
     let numbered = first;

@@ -28,7 +28,7 @@ import {
   setParagraphAlign,
 } from "./commands/paragraphCommands";
 import { setLineSpacing } from "./commands/spacingCommands";
-import { createEditorState } from "./createEditor";
+import { editorStateForSession } from "./createEditor";
 import { docxKeymap } from "./plugins/keymap";
 
 const DOUBLE: LineSpacing = { rule: "auto", lines: 2 };
@@ -161,7 +161,7 @@ describe.each(LOCAL_EDITS)("%s", (_move, move) => {
     "%s: rebuilds only the block it was aimed at",
     (name) => {
       const { doc, session } = importDocx(readFixture(name));
-      const state = createEditorState(doc, { styles: session.styles });
+      const state = editorStateForSession({ doc, session });
       const edited = move.edit(doc, state);
 
       const documentXml = documentXmlOf(edited.doc, session);
@@ -179,7 +179,7 @@ describe("the parts outside the body", () => {
   it.each(fixtureNames)("%s: are left exactly as they were", (name) => {
     const bytes = readFixture(name);
     const { doc, session } = importDocx(bytes);
-    const state = createEditorState(doc, { styles: session.styles });
+    const state = editorStateForSession({ doc, session });
     const edited = state.apply(
       state.tr.insertText("inserted", firstTextSpot(doc).from)
     );

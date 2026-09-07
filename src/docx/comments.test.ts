@@ -14,7 +14,11 @@ import {
   updateComment,
   updateCommentReply,
 } from "../editor/commands/commentCommands";
-import { createEditorState } from "../editor/createEditor";
+import {
+  createEditorState,
+  editorStateForSession,
+} from "../editor/createEditor";
+import { type EditorDocument, NO_DOCUMENT } from "../editor/editorDocument";
 import { commentParaId } from "./comments";
 import { exportDocx } from "./exportDocx";
 import { importDocx } from "./importDocx";
@@ -313,9 +317,7 @@ describe("WordprocessingML comments", () => {
       )
     );
     const range = firstTextRange(opened.doc);
-    let state = createEditorState(opened.doc, {
-      reservedCommentIds: opened.session.comments.byId.keys(),
-    });
+    let state = editorStateForSession(opened);
     state = state.apply(
       state.tr.setSelection(
         TextSelection.create(state.doc, range.from, range.from + 5)
@@ -338,8 +340,12 @@ describe("WordprocessingML comments", () => {
       )
     );
     const range = firstTextRange(opened.doc);
+    const reservedBeyondSafeInteger: EditorDocument = {
+      ...NO_DOCUMENT,
+      reservedCommentIds: new Set(["9007199254740992"]),
+    };
     let state = createEditorState(opened.doc, {
-      reservedCommentIds: ["9007199254740992"],
+      document: reservedBeyondSafeInteger,
     });
     state = state.apply(
       state.tr.setSelection(
@@ -405,9 +411,7 @@ describe("WordprocessingML comments", () => {
 
     const reopened = importDocx(output);
     state = apply(
-      createEditorState(reopened.doc, {
-        reservedCommentIds: reopened.session.comments.byId.keys(),
-      }),
+      editorStateForSession(reopened),
       setCommentResolved("4", true)
     );
     output = exportDocx(state.doc, reopened.session);
@@ -418,9 +422,7 @@ describe("WordprocessingML comments", () => {
 
   it("adds, edits and removes a reply while preserving the root comment", () => {
     const opened = importDocx(makeCommentedDocx());
-    let state = createEditorState(opened.doc, {
-      reservedCommentIds: opened.session.comments.byId.keys(),
-    });
+    let state = editorStateForSession(opened);
     state = apply(
       state,
       addCommentReply("4", {
@@ -504,9 +506,7 @@ describe("WordprocessingML comments", () => {
   it("reopens a resolved thread when a reply is added", () => {
     const opened = importDocx(threadedCommentDocument());
     const state = apply(
-      createEditorState(opened.doc, {
-        reservedCommentIds: opened.session.comments.byId.keys(),
-      }),
+      editorStateForSession(opened),
       addCommentReply("4", {
         text: "Reopened",
         author: "Grace",
