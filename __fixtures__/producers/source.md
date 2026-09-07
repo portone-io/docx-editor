@@ -33,7 +33,7 @@ The bytes before it and the bytes after it are still the producer's own, and a t
 
 ### 3. What this file is known to lose
 
-Three constructs in the body arrive as placeholders rather than as nodes: the suggested edit above, and the pair of markers around the named range further down.
+Three constructs in the body arrive as placeholders rather than as nodes: the suggested edit above, and the two markers that make up the bookmark further down.
 A snapshot beside the tests records all three, so a change in what this document keeps is approved rather than noticed later.
 
 Everything else in the body is modelled: headings, paragraph properties, run formatting, two list definitions, two tables, a link, a comment, a pair of notes and an inline picture.
@@ -133,7 +133,7 @@ A saved document carrying either is wanted in this lane, and until one arrives n
 This paragraph holds a `commented range` tied to a thread in the comments part.
 The producer wrote the reviewer's name into that thread, and the sanitize step replaced it.
 
-A bookmark is an invisible named range. This sentence sits inside one, under a name the producer generated rather than one an author chose.
+A bookmark is an invisible named range, and the one in this paragraph was set around its second sentence. A producer may save that range as it was or collapse it to a point between the two sentences, and the notes kept with this fixture say which this file did; either way the name is one the producer generated rather than one an author chose.
 
 This sentence carries a footnote and this one carries a second footnote.
 Both bodies are in the notes part, and the producer left no endnote part at all.
@@ -141,7 +141,7 @@ Both bodies are in the notes part, and the producer left no endnote part at all.
 The header above and the footer below are parts of their own.
 The page number in the footer is a field, and the producer wrote the whole of it inside a single run.
 
-*The commented range is the marked stretch, and the comment on it reads: "This thread came out of the producer with a real name on it, which the sanitize step replaced." The bookmark covers the second sentence of the paragraph after it.*
+*The commented range is the marked stretch, and the comment on it reads: "This thread came out of the producer with a real name on it, which the sanitize step replaced." In the paragraph after it, set the bookmark around the second sentence, and record in the README what the producer saved of it: a producer that collapses the range to a point, as Google Docs did, is recorded rather than approximated.*
 
 ### 14. Cell alignment
 

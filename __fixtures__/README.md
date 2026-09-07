@@ -84,7 +84,7 @@ Because it repacks with the settings every fixture uses, running it over its own
 
 [`source.md`](./producers/source.md) holds the body every file in the lane carries, so that the same document saved out of different software differs in markup and not in prose.
 
-`google-docs-export.docx` was made by uploading `demo.docx` to Google Docs, leaving a suggestion on it, and downloading the result, so its body arrived reading like the live demo. Text that reads like `demo.docx` makes a failing test hard to place, so the body was replaced with `source.md` afterwards, by substituting the contents of `w:t` and the comment body in the saved package. Every element, attribute, rsid, and style reference is still the one Google Docs wrote. A file saved from a producer that this project can drive directly should have `source.md` typed into it instead.
+`google-docs-export.docx` was made by uploading `demo.docx` to Google Docs, leaving a suggestion on it, and downloading the result, so its body arrived reading like the live demo. Google Docs also dropped the demo's content control, turned its endnote into a second footnote, and collapsed its range bookmark to a point, which the list above records. Text that reads like `demo.docx` makes a failing test hard to place, so the body was replaced with `source.md` afterwards, by substituting the contents of `w:t` and the comment body in the saved package. Every element, attribute, rsid, and style reference is still the one Google Docs wrote. A file saved from a producer that this project can drive directly should have `source.md` typed into it instead.
 
 ### `producers/google-docs-export.docx`
 
@@ -92,7 +92,7 @@ This fixture must retain:
 
 - `w:rsid*` attributes on runs and paragraphs, and `w14:paraId` on every paragraph of `word/document.xml`, `header1.xml`, `footer1.xml`, `footnotes.xml`, and `comments.xml`.
 - One `w:ins` that splits a run mid-word, so revision markup is met inside a paragraph rather than around one.
-- A bookmark pair whose name the producer generated, carrying `w:colFirst` and `w:colLast` on a body paragraph that stands in no table.
+- A bookmark whose start and end markers stand side by side, so that it is a point and not a range, under a name the producer generated and carrying `w:colFirst` and `w:colLast` on a body paragraph that stands in no table.
 - A three-column table with two vertical merges, one `w:gridSpan`, `w:shd` on both cells of each merge, and a `w:tblGridChange` beside its columns; then a second table carrying the three `w:vAlign` values.
 - A `w:hyperlink` resolved through an external relationship, an inline `w:drawing` with its media part, two numbering definitions used at two levels each, and a `w:tblStyle` reference on each table.
 - Two footnotes, one comment with its range markers, and a complex field written wholly inside one run in `word/footer1.xml`.
@@ -101,6 +101,7 @@ This fixture must retain:
 What it does not carry, and what a further producer file is wanted for:
 
 - No deletion suggestion. `w:del` and `w:delText` appear nowhere in the package, so no saved document covers them; the Word file planned for this lane is where they come from.
+- No bookmark with anything inside it. `demo.docx` carried a range named `FeatureExamples` around a sentence, and Google Docs collapsed it to a point between two sentences and renamed it, so no saved document covers a range marker with content between its ends.
 - No content control. Google Docs has none, so the locked `w:sdt` `demo.docx` carries was dropped on the way through.
 - No `w:tooltip` on the hyperlink, which Google Docs does not write.
 - No endnote part: Google Docs turned the demo's endnote into a second footnote.
