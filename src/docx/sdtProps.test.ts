@@ -80,6 +80,14 @@ describe("lifting a control's lock", () => {
     );
   });
 
+  it("collapses a pretty-printed properties element left holding nothing but whitespace", () => {
+    const opened = withContentLock(
+      `<w:sdt>\n  <w:sdtPr>\n    ${LOCK}\n  </w:sdtPr>`,
+      false
+    );
+    expect(opened).toBe("<w:sdt>\n  <w:sdtPr/>");
+  });
+
   /** A control with no `w:sdtPr` at all is one we no longer read back, so an emptied one stays written */
   it("keeps the properties element of a control that carried nothing but the lock", () => {
     const opened = withContentLock(prefix(LOCK), false);

@@ -7,7 +7,7 @@
  */
 
 import { childOrderOf } from "./childOrder";
-import { attrsText, emptyTagXml, openTagXml, type XmlAttr } from "./element";
+import { attrsText, emptyTagXml, type XmlAttr } from "./element";
 import { wName } from "./names";
 import { parseAttrs, readTag, type Tag } from "./tagScan";
 import { elementChildren, localPart, namespaceDecls, parseXml } from "./xml";
@@ -284,13 +284,13 @@ export function childElement(props: Props, name: string): ChildElement | null {
   return parsed === null || attrs === null ? null : { tag: parsed.tag, attrs };
 }
 
-/** Always writes the element, closing it on its own when it holds nothing */
+/**
+ * Always writes the element, closing it on its own when it holds nothing. Whitespace alone counts
+ * as nothing, the same as `renderProps` reads it, so a pretty-printed fragment emptied of its
+ * children collapses rather than keeping the line breaks that stood between them.
+ */
 export function renderElement(props: Props): string {
-  const inner =
-    props.children.map((child) => (child.before ?? "") + child.xml).join("") +
-    (props.tail ?? "");
-  if (inner === "") return emptyTagXml(props.tag, props.attrs);
-  return openTagXml(props.tag, props.attrs) + inner + `</${props.tag}>`;
+  return renderProps(props) || emptyTagXml(props.tag, props.attrs);
 }
 
 /**
