@@ -1,10 +1,11 @@
 /**
  * Turns the edited document back into docx bytes.
  *
- * The body (document.xml) is always rebuilt from preserved and edited blocks. numbering.xml is
- * rewritten only when a list was newly started, media parts only when an image was inserted, and
- * the Comments part only when comments changed. Content types and relationships change only when
- * one of those additions needs them.
+ * The body (document.xml) is always rebuilt from preserved and edited blocks. Every other part is
+ * written by a planner (`./partPlan`) that answers only when the document gives it something to
+ * write: numbering.xml when a list was newly started, the comment parts when comments changed,
+ * media parts when an image was inserted. Content types and relationships change only when one
+ * of those additions declares itself through the context every planner shares.
  *
  * The body is written before that relationships part, because a link asks for its relationship as
  * it is written (`docx/hyperlink`), and both writers hand out ids through the one writer so that
@@ -12,10 +13,8 @@
  */
 
 import type { Node as PMNode } from "prosemirror-model";
-import { addListDefinitions } from "../numbering/writeNumbering";
 import { DocxExportError } from "../ooxml/errors";
 import {
-  decodeUtf8,
   encodeUtf8,
   parseXml,
   W_NS,
@@ -23,7 +22,7 @@ import {
   type XmlParser,
 } from "../ooxml/xml";
 import { sameSource } from "../schema/sourceEquality";
-import { planCommentParts } from "./comments";
+import { commentsPlanner } from "./comments";
 import { repackParts } from "./container";
 import type { ExportRefs } from "./exportRefs";
 import {
@@ -35,7 +34,14 @@ import { hyperlinkRefs } from "./hyperlink";
 import { withUniqueIdentities } from "./identities";
 import { problemsOf } from "./invariants";
 import { NO_IMAGE_REFS, planImageMedia } from "./media";
-import { newNumIds, numberingPartOf } from "./newLists";
+import { numberingPlanner } from "./numberingPlanner";
+import { CONTENT_TYPES_PATH, contentTypeWriter } from "./packageParts";
+import {
+  assertPartsParse,
+  type PartPlanContext,
+  type PartPlanner,
+  runPartPlanners,
+} from "./partPlan";
 import {
   readRelationships,
   relationshipWriter,
@@ -140,26 +146,11 @@ function assertBookmarkPairs(documentXml: string): void {
   }
 }
 
-/**
- * A rewritten numbering.xml, produced only when a new list appeared.
- * The original text is left as is and only the new definitions are spliced in. null if there is no new list.
- */
-function newNumberingPart(
-  doc: PMNode,
-  session: SessionStore
-): { path: string; bytes: Uint8Array } | null {
-  const added = newNumIds(doc, session);
-  const original = numberingPartOf(session);
-  // A new list in a document with no numbering.xml is refused by the invariant list before
-  // anything is written, so a missing part here has nothing to hold
-  if (added.length === 0 || original === null) return null;
-
-  const { text, hadBom } = decodeUtf8(original.bytes);
-  return {
-    path: original.path,
-    bytes: encodeUtf8(addListDefinitions(text, added), hadBom),
-  };
-}
+/** The parts written beside the body, in the order their parts go into the package */
+const PART_PLANNERS: readonly PartPlanner[] = [
+  numberingPlanner,
+  commentsPlanner,
+];
 
 /** What a caller may say about a write beyond handing over the document and its session */
 export interface ExportOptions {
@@ -195,14 +186,41 @@ export function exportDocxReport(
   session: DocxSession,
   options?: ExportOptions
 ): { bytes: Uint8Array; notes: FidelityNote[] } {
+  return reportThrough(PART_PLANNERS, doc, session, options);
+}
+
+/**
+ * The same export, folding a planner list of the caller's choosing in place of `PART_PLANNERS`.
+ *
+ * On no entry point. No document can make a correct planner write a part that does not read back,
+ * so this is how a test hands the fold such a planner and watches the export refuse it.
+ */
+export function exportThroughPlanners(
+  planners: readonly PartPlanner[],
+  doc: PMNode,
+  session: DocxSession,
+  options?: ExportOptions
+): Uint8Array {
+  return reportThrough(planners, doc, session, options).bytes;
+}
+
+function reportThrough(
+  planners: readonly PartPlanner[],
+  doc: PMNode,
+  session: DocxSession,
+  options: ExportOptions | undefined
+): { bytes: Uint8Array; notes: FidelityNote[] } {
   return withXmlParser(options?.xmlParser, () => {
     const store = sessionOf(session);
     const problem = problemsOf(doc, store)[0];
     if (problem) throw new DocxExportError(problem.code, problem.message);
     const approximated: FidelityNote[] = [];
-    const bytes = writeDocx(doc, store, {
-      add: (note) => approximated.push(note),
-    });
+    const bytes = writeDocx(
+      doc,
+      store,
+      { add: (note) => approximated.push(note) },
+      planners
+    );
     return {
       bytes,
       notes: [...fidelityNotesOf(doc, store.mainPartPath), ...approximated],
@@ -213,40 +231,37 @@ export function exportDocxReport(
 function writeDocx(
   doc: PMNode,
   store: SessionStore,
-  notes: FidelityCollector
+  notes: FidelityCollector,
+  planners: readonly PartPlanner[]
 ): Uint8Array {
   const relsPath = relsPathOf(store.mainPartPath);
-  const relationships = relationshipWriter(
-    readRelationships(store.parts, relsPath)
-  );
+  const context: PartPlanContext = {
+    relationships: relationshipWriter(readRelationships(store.parts, relsPath)),
+    contentTypes: contentTypeWriter(store.parts),
+  };
   // The body has to know which relationship a newly inserted image ends up on, so the
   // media is planned before the body is written
-  const media = planImageMedia(doc, store, relationships);
-  const comments = planCommentParts(
-    doc,
-    store,
-    relationships,
-    media?.parts.get("[Content_Types].xml")
-  );
+  const media = planImageMedia(doc, store, context);
   const documentXml = buildDocumentXml(doc, store, {
     images: media?.refs ?? NO_IMAGE_REFS,
-    links: hyperlinkRefs(relationships),
+    links: hyperlinkRefs(context.relationships),
     notes,
   });
   assertBookmarkPairs(documentXml);
 
-  const replacements = new Map<string, Uint8Array>([
-    [store.mainPartPath, encodeUtf8(documentXml, store.documentHadBom)],
-  ]);
-  const numbering = newNumberingPart(doc, store);
-  if (numbering) replacements.set(numbering.path, numbering.bytes);
-  for (const [path, bytes] of media?.parts ?? []) {
-    replacements.set(path, bytes);
-  }
-  for (const [path, bytes] of comments?.parts ?? []) {
-    replacements.set(path, bytes);
-  }
-  const rels = relationships.part(store.parts.get(relsPath));
-  if (rels) replacements.set(relsPath, rels);
-  return repackParts(store.parts, replacements);
+  const parts = runPartPlanners(planners, doc, store, context, media?.parts);
+  const rels = context.relationships.part(store.parts.get(relsPath));
+  if (rels) parts.set(relsPath, rels);
+  const contentTypes = context.contentTypes.part();
+  if (contentTypes) parts.set(CONTENT_TYPES_PATH, contentTypes);
+  // The body was read back by assertBookmarkPairs; every other rewritten part is read back here
+  assertPartsParse(parts, contentTypes ?? store.parts.get(CONTENT_TYPES_PATH));
+
+  return repackParts(
+    store.parts,
+    new Map([
+      [store.mainPartPath, encodeUtf8(documentXml, store.documentHadBom)],
+      ...parts,
+    ])
+  );
 }

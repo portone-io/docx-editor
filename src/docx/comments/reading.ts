@@ -10,7 +10,7 @@ import {
   serializeXml,
   W_NS,
 } from "../../ooxml/xml";
-import { readRelationships, relsPathOf, resolveTarget } from "../relationships";
+import { relatedPartPath } from "../packageParts";
 import { COMMENTS_EXTENDED_REL_TYPE, COMMENTS_REL_TYPE } from "./constants";
 import { lastBodyParagraph } from "./grammar";
 import {
@@ -103,10 +103,12 @@ function readCommentExtensions(
   byParaId: ReadonlyMap<string, ImportedCommentExtension>;
   ordered: readonly ImportedCommentExtension[];
 } {
-  const relationship = readRelationships(parts, relsPathOf(mainPartPath)).find(
-    (entry) => entry.type === COMMENTS_EXTENDED_REL_TYPE && !entry.external
+  const partPath = relatedPartPath(
+    parts,
+    mainPartPath,
+    COMMENTS_EXTENDED_REL_TYPE
   );
-  if (!relationship) {
+  if (partPath === null) {
     return {
       partPath: null,
       xml: null,
@@ -115,7 +117,6 @@ function readCommentExtensions(
       ordered: [],
     };
   }
-  const partPath = resolveTarget(mainPartPath, relationship.target);
   const bytes = parts.get(partPath);
   if (!bytes) {
     return {
@@ -168,12 +169,9 @@ export function readComments(
     extendedHadBom: extensions.hadBom,
     extendedOrdered: extensions.ordered,
   };
-  const relationship = readRelationships(parts, relsPathOf(mainPartPath)).find(
-    (entry) => entry.type === COMMENTS_REL_TYPE && !entry.external
-  );
-  if (!relationship) return { ...NO_COMMENTS, ...aside };
+  const partPath = relatedPartPath(parts, mainPartPath, COMMENTS_REL_TYPE);
+  if (partPath === null) return { ...NO_COMMENTS, ...aside };
 
-  const partPath = resolveTarget(mainPartPath, relationship.target);
   const bytes = parts.get(partPath);
   if (!bytes) return { ...NO_COMMENTS, partPath, ...aside };
 

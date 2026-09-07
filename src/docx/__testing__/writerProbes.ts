@@ -115,6 +115,7 @@ import {
   splitCell,
 } from "../../table";
 import { exportDocx } from "../exportDocx";
+import { CONTENT_TYPES_PATH } from "../packageParts";
 import type { SessionStore } from "../session";
 
 /**
@@ -411,8 +412,6 @@ const LINK_ADDRESS = "https://example.com/battery?a=1&b=2";
 
 /** The address of the link a probe puts on and the one after it takes off again */
 const REMOVED_ADDRESS = "https://example.com/battery/taken-off";
-
-const CONTENT_TYPES_PATH = "[Content_Types].xml";
 
 const A_PICTURE: ImageToInsert = {
   src: TINY_PNG_DATA_URL,

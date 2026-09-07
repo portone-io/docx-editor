@@ -19,8 +19,8 @@ import {
   type XmlParser,
 } from "../ooxml/xml";
 import type { EditableComments, EditingProtection } from "../schema/protection";
-import { CONTENT_TYPES_PATH } from "./comments/constants";
 import { type DocxBytes, importDocx } from "./importDocx";
+import { CONTENT_TYPES_PATH } from "./packageParts";
 import {
   type Relationship,
   readRelationships,

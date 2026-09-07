@@ -281,9 +281,11 @@ writing will succeed.
 Inside an editor, [`canExport`](/docs/custom-controls#commands-and-queries) asks the same question
 of the state.
 A refusal the list does not foresee is still thrown: `unsupported-content` for a node or an image
-of a kind the writer cannot put out, and `lost-original` or `malformed-xml` for a node a plugin
-stripped of an attribute the writer needs or a raw fragment it wrote that does not hold its shape.
-None of those three is reached by typing; each names a plugin's doing or a bug in the editor.
+of a kind the writer cannot put out, `lost-original` or `malformed-xml` for a node a plugin
+stripped of an attribute the writer needs or a raw fragment it wrote that does not hold its shape,
+and `malformed-xml` naming the part for any rewritten part of the package that does not read back
+as XML, since every part the writer produces is parsed before the file is repacked.
+None of those is reached by typing; each names a plugin's doing or a bug in the editor.
 
 Writing reads the document it produced back, so `exportDocx` needs an XML parser as much as
 `importDocx` does, and `exportProblems` reads the list definitions to tell a new list from one the

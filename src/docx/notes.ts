@@ -8,7 +8,7 @@ import {
   R_NS,
   W_NS,
 } from "../ooxml/xml";
-import { readRelationships, relsPathOf, resolveTarget } from "./relationships";
+import { relatedPartPath } from "./packageParts";
 
 export type NoteKind = "footnote" | "endnote";
 
@@ -62,13 +62,9 @@ function notePart(
   mainPartPath: string,
   kind: NoteKind
 ): ImportedNotePart {
-  const relationshipType = `${R_NS}/${kind}s`;
-  const relationship = readRelationships(parts, relsPathOf(mainPartPath)).find(
-    (entry) => entry.type === relationshipType && !entry.external
-  );
-  if (!relationship) return EMPTY_PART;
+  const partPath = relatedPartPath(parts, mainPartPath, `${R_NS}/${kind}s`);
+  if (partPath === null) return EMPTY_PART;
 
-  const partPath = resolveTarget(mainPartPath, relationship.target);
   const bytes = parts.get(partPath);
   if (!bytes) return { ...EMPTY_PART, partPath };
 

@@ -10,6 +10,7 @@ import {
   R_NS,
   W_NS,
 } from "../ooxml/xml";
+import { relatedPartPath } from "./packageParts";
 import { readRelationships, relsPathOf, resolveTarget } from "./relationships";
 
 export type HeaderFooterVariant = "default" | "first" | "even";
@@ -196,11 +197,8 @@ function settingsEvenAndOdd(
   parts: Map<string, Uint8Array>,
   mainPartPath: string
 ): boolean {
-  const relationship = readRelationships(parts, relsPathOf(mainPartPath)).find(
-    (entry) => entry.type === `${R_NS}/settings` && !entry.external
-  );
-  if (!relationship) return false;
-  const bytes = parts.get(resolveTarget(mainPartPath, relationship.target));
+  const path = relatedPartPath(parts, mainPartPath, `${R_NS}/settings`);
+  const bytes = path === null ? undefined : parts.get(path);
   if (!bytes) return false;
   const root = parseXml(decodeUtf8(bytes).text).documentElement;
   const setting = root

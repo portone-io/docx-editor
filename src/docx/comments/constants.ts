@@ -8,7 +8,6 @@ export const COMMENTS_CONTENT_TYPE =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml";
 export const COMMENTS_EXTENDED_CONTENT_TYPE =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.commentsExtended+xml";
-export const CONTENT_TYPES_PATH = "[Content_Types].xml";
 export const W14_NS = NAMESPACES.w14;
 export const W15_NS = NAMESPACES.w15;
 export const MC_NS = NAMESPACES.mc;

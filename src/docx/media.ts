@@ -11,11 +11,11 @@ import {
   imageMimeOf,
   toImageSrc,
 } from "../ooxml/image";
-import { decodeUtf8, encodeUtf8, R_NS } from "../ooxml/xml";
+import { R_NS } from "../ooxml/xml";
+import type { PartPlanContext } from "./partPlan";
 import {
   directoryOf,
   type Relationship,
-  type RelationshipWriter,
   readRelationships,
   relsPathOf,
   resolveTarget,
@@ -23,8 +23,6 @@ import {
 import type { SessionStore } from "./session";
 
 const IMAGE_REL_TYPE = `${R_NS}/image`;
-
-const CONTENT_TYPES_PATH = "[Content_Types].xml";
 
 /** The extension a media part gets, per kind we can write */
 const EXTENSION_BY_MIME: Record<ImageMime, string> = {
@@ -191,6 +189,7 @@ export function insertedImageSrcs(doc: PMNode): string[] {
 
 interface InsertedImage {
   bytes: Uint8Array;
+  mime: ImageMime;
   extension: string;
   key: string;
 }
@@ -207,6 +206,7 @@ function decodeImage(src: string): InsertedImage {
     const bytes = fromBase64(imageBase64Of(src));
     return {
       bytes,
+      mime,
       extension: EXTENSION_BY_MIME[mime],
       key: contentKey(bytes),
     };
@@ -250,57 +250,10 @@ function maxDocPrId(session: SessionStore): number {
   return max;
 }
 
-const TYPES_OPEN_TAG = /<(?:[\w.-]+:)?Types\b[^>]*>/;
-
-/**
- * The content types part with a `Default` added for every extension it does not declare
- * yet. null when it already declares them all.
- *
- * Only the defaults are looked at: an `Override` naming one single part is how a producer
- * pins down a part we are not adding, so it cannot cover a media part that is not there
- * yet.
- */
-function withImageContentTypes(
-  parts: Map<string, Uint8Array>,
-  extensions: ReadonlySet<string>
-): Uint8Array | null {
-  const original = parts.get(CONTENT_TYPES_PATH);
-  if (!original) {
-    // Writing this part from scratch would mean guessing the type of every other part in
-    // the package. We stop instead of handing back a file Word refuses to open.
-    throw new DocxExportError(
-      "missing-content-types",
-      `cannot add an image to a package that has no ${CONTENT_TYPES_PATH}`
-    );
-  }
-  const { text, hadBom } = decodeUtf8(original);
-  const missing = Array.from(extensions).filter(
-    (extension) =>
-      !new RegExp(`<Default[^>]+Extension="${extension}"`, "i").test(text)
-  );
-  if (missing.length === 0) return null;
-
-  const open = TYPES_OPEN_TAG.exec(text);
-  if (!open) {
-    throw new DocxExportError(
-      "malformed-xml",
-      `${CONTENT_TYPES_PATH} has no Types element`
-    );
-  }
-  const declarations = missing
-    .map((extension) => {
-      const mime = MIME_BY_EXTENSION.get(extension);
-      return `<Default Extension="${extension}" ContentType="${mime}"/>`;
-    })
-    .join("");
-  const at = open.index + open[0].length;
-  return encodeUtf8(text.slice(0, at) + declarations + text.slice(at), hadBom);
-}
-
 /**
  * What the package needs for the images that were inserted during editing: the media parts,
- * the relationships pointing at them, and the content types declaring them.
- * null when every image in the document came out of the document itself.
+ * with the relationships pointing at them and the content types declaring them asked of the
+ * context. null when every image in the document came out of the document itself.
  *
  * The relationships go through the writer the export shares between its writers
  * (`docx/relationships`), so the part is written once with everything in it.
@@ -311,17 +264,17 @@ function withImageContentTypes(
 export function planImageMedia(
   doc: PMNode,
   session: SessionStore,
-  relationships: RelationshipWriter
+  context: PartPlanContext
 ): MediaAdditions | null {
   const srcs = insertedImageSrcs(doc);
   if (srcs.length === 0) return null;
 
+  const { relationships, contentTypes } = context;
   const relIdByContent = imageRelIdsByContent(session, relationships.opened);
   const directory = directoryOf(session.mainPartPath);
 
   const relIdBySrc = new Map<string, string>();
   const parts = new Map<string, Uint8Array>();
-  const extensions = new Set<string>();
 
   for (const src of srcs) {
     const image = decodeImage(src);
@@ -334,14 +287,9 @@ export function planImageMedia(
     const target = `media/image-${image.key}.${image.extension}`;
     const relId = relationships.add({ type: IMAGE_REL_TYPE, target });
     parts.set(directory + target, image.bytes);
-    extensions.add(image.extension);
+    contentTypes.addDefault(image.extension, image.mime);
     relIdByContent.set(image.key, relId);
     relIdBySrc.set(src, relId);
-  }
-
-  if (extensions.size > 0) {
-    const contentTypes = withImageContentTypes(session.parts, extensions);
-    if (contentTypes) parts.set(CONTENT_TYPES_PATH, contentTypes);
   }
   return { refs: imageRefs(relIdBySrc, maxDocPrId(session) + 1), parts };
 }
