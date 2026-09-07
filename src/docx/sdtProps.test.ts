@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import { parseXml, W_NS } from "../ooxml/xml";
-import { editSdtPrefix, readSdtWrapper } from "./sdt";
-import { withContentLock } from "./sdtProps";
+import { editSdtPrefix, namesNothing, readSdtWrapper } from "./sdt";
+import { lockedControlPrefix, withContentLock } from "./sdtProps";
 
 const ALIAS = '<w:alias w:val="signedOn"/>';
 const TAG = '<w:tag w:val="date"/>';
@@ -20,6 +20,23 @@ function control(sdtPrefix: string): Element {
   if (!el) throw new Error("no element");
   return el;
 }
+
+describe("a control locked from the start", () => {
+  it("opens with its id and both clauses of the lock, and nothing else", () => {
+    expect(lockedControlPrefix(7)).toBe(prefix(ID + LOCK));
+    expect(namesNothing(lockedControlPrefix(7))).toBe(true);
+  });
+
+  it("reads back as shut on both clauses", () => {
+    const wrapper = readSdtWrapper(control(lockedControlPrefix(7)));
+    expect(wrapper?.contentsLocked).toBe(true);
+    expect(wrapper?.deletionLocked).toBe(true);
+  });
+
+  it("is the same control shutting an open one with that id writes", () => {
+    expect(lockedControlPrefix(7)).toBe(withContentLock(prefix(ID), true));
+  });
+});
 
 describe("shutting a control", () => {
   it("writes the lock into the spot the order calls for", () => {
