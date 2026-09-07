@@ -15,6 +15,7 @@ Tests using `fixtureNames` from [`src/__testing__/docx.ts`](../src/__testing__/d
 | `size-fallback.docx` | Export-style package | Font-size fallbacks, indented lists, narrow and oversized tables, and multiple pages |
 | `east-asian.docx` | Word-style package | Per-script fonts, theme fonts, language metadata, and CJK line-breaking properties |
 | `letter-page.docx` | Export-style package | US Letter geometry and margins |
+| `sections-and-revisions.docx` | Export-style package | Two sections with a mid-body section break, a table carrying a grid revision, an inline content control, and a body-level bookmark pair |
 | `producers/google-docs-export.docx` | Producer package | Markup Google Docs saved: revision identifiers on every run, a tracked insertion, a generated bookmark name, and measurements the schemas turn down |
 
 A Word-style package includes document properties and named styles, and some also include note parts. An export-style package omits document properties, leaves the default `Normal` style without run properties, and stores list indentation on paragraphs. Keeping both shapes exercises conventions produced by different DOCX writers. A producer package is whatever its producer wrote, which is neither of those shapes on purpose.
@@ -176,6 +177,15 @@ This fixture must retain:
 ### `letter-page.docx`
 
 This is `size-fallback.docx` with only `w:pgSz` and `w:pgMar` changed. Keep it as a committed US Letter document so geometry tests do not validate a reader against values produced by the same code under test.
+
+### `sections-and-revisions.docx`
+
+This is `letter-page.docx` with `word/document.xml` replaced. It holds the markup whose identifiers an edit can copy and the export must keep unique. It must retain:
+
+- Two sections on A4: a mid-body paragraph whose `w:pPr` carries a `w:sectPr`, and the body's closing `w:sectPr`, the two differing in every side of `w:pgMar`.
+- A 2x2 table whose `w:tblGrid` closes with a `w:tblGridChange`.
+- One inline `w:sdt` carrying a `w:id`, and one bookmark pair standing directly under `w:body`, around the table.
+- No `w14:paraId`. A copied paragraph's identifier is exercised by unit tests that build a body with `makeDocx`, and a saved document's identifiers are met in the producer lane.
 
 ## Live editor
 

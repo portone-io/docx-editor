@@ -32,6 +32,7 @@ import {
   fidelityNotesOf,
 } from "./fidelity";
 import { hyperlinkRefs } from "./hyperlink";
+import { withUniqueIdentities } from "./identities";
 import { problemsOf } from "./invariants";
 import { NO_IMAGE_REFS, planImageMedia } from "./media";
 import { newNumIds, numberingPartOf } from "./newLists";
@@ -47,7 +48,6 @@ import {
   type SessionStore,
   sessionOf,
 } from "./session";
-import { withUniqueControls } from "./uniqueControls";
 
 /**
  * An unchanged block is exported with its original XML as is; only a changed block is rebuilt.
@@ -72,7 +72,7 @@ function buildDocumentXml(
   refs: ExportRefs
 ): string {
   const pieces: string[] = [session.documentPrefix];
-  withUniqueControls(doc).forEach((child) => {
+  withUniqueIdentities(doc).forEach((child) => {
     pieces.push(blockXml(child, session, refs));
   });
   pieces.push(session.documentSuffix);

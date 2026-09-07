@@ -35,6 +35,7 @@ import {
 import { unrecordedAuthors } from "./comments/people";
 import { currentCommentBodies } from "./comments/writing";
 import type { ExportOptions } from "./exportDocx";
+import { identityProblems } from "./identities";
 import { insertedImageSrcs } from "./media";
 import { newNumIds, numberingPartOf } from "./newLists";
 import { lostOriginal } from "./serializeBlock";
@@ -215,6 +216,19 @@ const preservedOriginals: ExportInvariant = {
 };
 
 /**
+ * A name held by one node only is settled by `withUniqueIdentities` just before the body is
+ * written: a later claimant is rebuilt from its own attrs, and a block preserved as nothing but its
+ * original XML has nothing to be rebuilt from, so the pass refuses it. The pass is asked here rather
+ * than read again, so the block it names is the one the write would refuse over.
+ */
+const uniqueIdentities: ExportInvariant = {
+  name: "uniqueIdentities",
+  check(doc) {
+    return identityProblems(doc);
+  },
+};
+
+/**
  * A new list is defined by splicing into numbering.xml. Creating that part from scratch would
  * also mean adding a part and touching up [Content_Types].xml, so a document without one cannot
  * take a new list, and this says so rather than the export handing back a half-finished file.
@@ -318,6 +332,7 @@ const EXPORT_INVARIANTS: readonly ExportInvariant[] = [
   bookmarkPairs,
   tableGrids,
   preservedOriginals,
+  uniqueIdentities,
   numberingPart,
   mediaContentTypes,
   commentPartRoots,

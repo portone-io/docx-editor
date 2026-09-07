@@ -178,7 +178,7 @@ describe("the paper the fixtures are written on", () => {
     expect(bodyWidth(fixtureGeometry(LETTER_FIXTURE)).twips).toBe(9360);
   });
 
-  it("reads A4 with an inch of margin off the other three", () => {
+  it("reads A4 with an inch of margin at either side off every other one", () => {
     for (const name of fixtureNames.filter((one) => one !== LETTER_FIXTURE)) {
       const geometry = fixtureGeometry(name);
       expect(geometry.widthTwips).toBe(11906);

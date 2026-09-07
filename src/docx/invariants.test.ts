@@ -157,10 +157,17 @@ describe("bookmark pairs", () => {
     if (!start || !inside || !end) throw new Error("three blocks expected");
     const doubled = opened.doc.copy(Fragment.from([start, inside, start, end]));
 
+    // The doubled marker is the one preserved block standing in two places as well, which the
+    // identity pass reports at the same place after the pairing
     expect(exportProblems(doubled, opened.session)).toEqual([
       {
         code: "malformed-xml",
         message: "bookmark 8 has more than one start marker",
+        pos: start.nodeSize + inside.nodeSize,
+      },
+      {
+        code: "unsupported-content",
+        message: "a preserved block stands in two places (bookmarkBlock)",
         pos: start.nodeSize + inside.nodeSize,
       },
     ]);
@@ -253,6 +260,36 @@ describe("preserved originals", () => {
         pos: beta.doc.child(0).nodeSize,
       },
     ]);
+  });
+});
+
+describe("unique identities", () => {
+  it("a preserved block standing twice is an unsupported-content problem where the second one stands", () => {
+    const opened = importDocx(
+      makeDocx(
+        paragraph("Body") +
+          '<w:customXml w:uri="urn:placeholder" w:element="kept"/>'
+      )
+    );
+    const placeholder = opened.doc.child(1);
+    const twice = opened.doc.copy(
+      Fragment.from([opened.doc.child(0), placeholder, placeholder])
+    );
+
+    const problems = exportProblems(twice, opened.session);
+    expect(problems).toEqual([
+      {
+        code: "unsupported-content",
+        message: "a preserved block stands in two places (docxRaw)",
+        pos: opened.doc.child(0).nodeSize + placeholder.nodeSize,
+      },
+    ]);
+    expect(() => exportDocx(twice, opened.session)).toThrowError(
+      expect.objectContaining<Partial<DocxExportError>>({
+        code: problems[0]?.code,
+        message: problems[0]?.message,
+      })
+    );
   });
 });
 
