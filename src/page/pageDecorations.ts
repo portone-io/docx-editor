@@ -72,8 +72,11 @@ interface BreakAt {
  * A space is put on the breaks of a top-level paragraph alone: inside a table cell it would grow
  * the cell rather than the page, so a break there is left to the whole-block rule in
  * `page/measureBlocks`, and none is found here.
+ *
+ * The measurement reads the same list to pair each space element it finds with the break it
+ * belongs to (`page/measureBlocks`).
  */
-function pageBreaksIn(block: PMNode, blockPos: number): BreakAt[] {
+export function pageBreaksIn(block: PMNode, blockPos: number): BreakAt[] {
   const found: BreakAt[] = [];
   if (block.type !== docxSchema.nodes.paragraph) return found;
   block.forEach((child, offset) => {

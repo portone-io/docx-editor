@@ -82,20 +82,17 @@ describe("measureTable", () => {
     drawNaturalRows(live, table, rowPositions);
 
     expect(measureTable(live, live.state.doc.child(0), 0, table)).toEqual({
-      table: {
-        boundaries: [
-          { pos: rowPositions[1], offset: 40 },
-          { pos: rowPositions[3], offset: 240 },
-        ],
-        firstPageMinimum: 240,
-        repeatHeaderHeight: 40,
-        headerRows: [rowPositions[0]],
-        headerSignature: JSON.stringify([
-          live.state.doc.child(0).child(0).toJSON(),
-        ]),
-        columns: 2,
-      },
+      candidates: [
+        { at: rowPositions[1], offset: 40, forced: false, repeatHeight: 40 },
+        { at: rowPositions[3], offset: 240, forced: false, repeatHeight: 40 },
+      ],
+      minFirstPiece: 240,
       appliedHeight: 0,
+      headerRows: [rowPositions[0]],
+      headerSignature: JSON.stringify([
+        live.state.doc.child(0).child(0).toJSON(),
+      ]),
+      columns: 2,
     });
   });
 
@@ -104,20 +101,17 @@ describe("measureTable", () => {
     drawNaturalRows(live, table, rowPositions, 0.6);
 
     expect(measureTable(live, live.state.doc.child(0), 0, table, 0.6)).toEqual({
-      table: {
-        boundaries: [
-          { pos: rowPositions[1], offset: 40 },
-          { pos: rowPositions[3], offset: 240 },
-        ],
-        firstPageMinimum: 240,
-        repeatHeaderHeight: 40,
-        headerRows: [rowPositions[0]],
-        headerSignature: JSON.stringify([
-          live.state.doc.child(0).child(0).toJSON(),
-        ]),
-        columns: 2,
-      },
+      candidates: [
+        { at: rowPositions[1], offset: 40, forced: false, repeatHeight: 40 },
+        { at: rowPositions[3], offset: 240, forced: false, repeatHeight: 40 },
+      ],
+      minFirstPiece: 240,
       appliedHeight: 0,
+      headerRows: [rowPositions[0]],
+      headerSignature: JSON.stringify([
+        live.state.doc.child(0).child(0).toJSON(),
+      ]),
+      columns: 2,
     });
   });
 
@@ -152,10 +146,10 @@ describe("measureTable", () => {
 
     const measured = measureTable(live, live.state.doc.child(0), 0, table);
     expect(measured?.appliedHeight).toBe(240);
-    expect(measured?.table.boundaries).toEqual([
-      { pos: rowPositions[1], offset: 40 },
-      { pos: rowPositions[3], offset: 240 },
+    expect(measured?.candidates).toEqual([
+      { at: rowPositions[1], offset: 40, forced: false, repeatHeight: 40 },
+      { at: rowPositions[3], offset: 240, forced: false, repeatHeight: 40 },
     ]);
-    expect(measured?.table.firstPageMinimum).toBe(240);
+    expect(measured?.minFirstPiece).toBe(240);
   });
 });

@@ -4,7 +4,7 @@ import type { Node as PMNode } from "prosemirror-model";
 import type { EditorView } from "prosemirror-view";
 import { toRowFormat } from "../model/format";
 import { editorAttributes } from "../styles/classNames";
-import type { MeasuredTable, TableBoundary } from "./pageLayout";
+import type { BreakCandidate } from "./blockKinds";
 
 interface RowEntry {
   node: PMNode;
@@ -14,9 +14,17 @@ interface RowEntry {
 }
 
 export interface TableMeasure {
-  table: MeasuredTable;
+  /** Every row that may start the continued part of the table */
+  candidates: readonly BreakCandidate[];
+  /** The smallest useful first piece: headers followed by one body row group */
+  minFirstPiece: number;
   /** Height already added by the previous pagination pass */
   appliedHeight: number;
+  /** Document positions of the contiguous header rows at the start of the table */
+  headerRows: readonly number[];
+  /** Changes when any projected header content or formatting changes */
+  headerSignature: string;
+  columns: number;
 }
 
 function span(value: unknown): number {
@@ -129,7 +137,15 @@ export function measureTable(
 
   const headers = headerCount(rows);
   const unsafe = unsafeBoundaries(rows);
-  const boundaries: TableBoundary[] = [];
+  const headerRows = rows.slice(0, headers);
+  const repeatHeaderHeight = headerRows.reduce(
+    (total, row) => total + row.height,
+    0
+  );
+
+  // A row a page may start on carries the repeated headers onto that page ahead of itself, and
+  // is never a cut of its own: it is taken only where the rows after it would run off the page
+  const candidates: BreakCandidate[] = [];
   for (
     let rowIndex = Math.max(1, headers);
     rowIndex < rows.length;
@@ -137,15 +153,17 @@ export function measureTable(
   ) {
     const row = rows[rowIndex];
     if (row && !unsafe.has(rowIndex)) {
-      boundaries.push({ pos: row.pos, offset: row.top });
+      candidates.push({
+        at: row.pos,
+        offset: row.top,
+        forced: false,
+        repeatHeight: repeatHeaderHeight,
+      });
     }
   }
 
-  const repeatHeaderHeight = rows
-    .slice(0, headers)
-    .reduce((total, row) => total + row.height, 0);
-  const firstBodyBoundary = boundaries.find(
-    (boundary) => boundary.offset > repeatHeaderHeight + 0.5
+  const firstBodyBoundary = candidates.find(
+    (candidate) => candidate.offset > repeatHeaderHeight + 0.5
   );
   const appliedHeight = appliedRows.reduce(
     (total, row) => total + row.getBoundingClientRect().height / scale,
@@ -153,18 +171,13 @@ export function measureTable(
   );
 
   return {
-    table: {
-      boundaries,
-      firstPageMinimum:
-        firstBodyBoundary?.offset ??
-        tableDom.getBoundingClientRect().height / scale - appliedHeight,
-      repeatHeaderHeight,
-      headerRows: rows.slice(0, headers).map((row) => row.pos),
-      headerSignature: JSON.stringify(
-        rows.slice(0, headers).map((row) => row.node.toJSON())
-      ),
-      columns: columnCount(tableNode),
-    },
+    candidates,
+    minFirstPiece:
+      firstBodyBoundary?.offset ??
+      tableDom.getBoundingClientRect().height / scale - appliedHeight,
     appliedHeight,
+    headerRows: headerRows.map((row) => row.pos),
+    headerSignature: JSON.stringify(headerRows.map((row) => row.node.toJSON())),
+    columns: columnCount(tableNode),
   };
 }
