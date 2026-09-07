@@ -5,7 +5,7 @@
  * same numbering definitions always yield the same numbers.
  */
 
-import type { NumberingRef } from "../model/format";
+import type { NumberingRef, RunFormat } from "../model/format";
 import { listFor } from "./listTemplate";
 import {
   type LevelAlign,
@@ -34,6 +34,8 @@ export interface ListMarker {
   /** Whether the number sits in a width of its own, which is what a tab suffix asks for */
   suffix: LevelSuffix;
   align: LevelAlign;
+  /** The formatting the level puts on the number, which dresses the number and nothing else */
+  run: RunFormat | null;
 }
 
 /**
@@ -155,6 +157,7 @@ export function computeMarkers(
       indent: levelIndentPt(level.indent),
       suffix: level.suffix,
       align: level.align,
+      run: level.run,
     };
   });
 }

@@ -364,6 +364,7 @@ describe("hanging indent", () => {
       indent: { startPt: 36, endPt: null, textIndentPt: -18 },
       suffix: "tab",
       align: "left",
+      run: null,
     });
   });
 
@@ -374,6 +375,7 @@ describe("hanging indent", () => {
       indent: { startPt: null, endPt: null, textIndentPt: null },
       suffix: "tab",
       align: "left",
+      run: null,
     });
   });
 });
@@ -417,6 +419,7 @@ describe("a list number the document does not know", () => {
       indent: { startPt: 144, endPt: null, textIndentPt: -18 },
       suffix: "tab",
       align: "left",
+      run: null,
     });
   });
 });

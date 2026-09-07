@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { makeDocx } from "../__testing__/docx";
+import { makeDocx, makeStyledNumberedDocx } from "../__testing__/docx";
 import { DocxExportError } from "../ooxml/errors";
 import { docxSchema } from "../schema";
 import { exportDocx } from "./exportDocx";
@@ -8,6 +8,7 @@ import { importDocx } from "./importDocx";
 import {
   BODY_STORY_KEY,
   blockKey,
+  documentNumbering,
   originalBlock,
   type SessionIdentity,
   splitBlockKey,
@@ -114,5 +115,42 @@ describe("opening a document twice", () => {
     expect(importDocx(bytes).session.sessionId).not.toBe(
       importDocx(bytes).session.sessionId
     );
+  });
+});
+
+/**
+ * A consumer asks an open document for its lists through a reader of its own, which has to read
+ * the numbering part the way opening the document read it: the numbering styles of styles.xml
+ * resolved, and the formatting each level puts on its number read in.
+ */
+describe("the lists an open document hands back", () => {
+  const NUMBERING_STYLE =
+    '<w:style w:type="numbering" w:styleId="Clauses">' +
+    '<w:pPr><w:numPr><w:numId w:val="6"/></w:numPr></w:pPr></w:style>';
+
+  const W_NS =
+    'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+
+  const LINKED_NUMBERING =
+    `<w:numbering ${W_NS}>` +
+    '<w:abstractNum w:abstractNumId="0"><w:numStyleLink w:val="Clauses"/></w:abstractNum>' +
+    '<w:abstractNum w:abstractNumId="1"><w:lvl w:ilvl="0">' +
+    '<w:numFmt w:val="upperRoman"/><w:lvlText w:val="%1."/>' +
+    "<w:rPr><w:b/></w:rPr></w:lvl></w:abstractNum>" +
+    '<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>' +
+    '<w:num w:numId="6"><w:abstractNumId w:val="1"/></w:num></w:numbering>';
+
+  it("follows the numbering styles and reads what each level dresses its number in", () => {
+    const { session } = importDocx(
+      makeStyledNumberedDocx(
+        "<w:p><w:r><w:t>text</w:t></w:r></w:p>",
+        NUMBERING_STYLE,
+        LINKED_NUMBERING
+      )
+    );
+
+    const level = documentNumbering(session).lists.get(1)?.levels.get(0);
+    expect(level?.format).toBe("upperRoman");
+    expect(level?.run).toEqual({ bold: true });
   });
 });

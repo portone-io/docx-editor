@@ -67,6 +67,7 @@ function templateLevel(kind: ListKind, ilvl: number): NumberingLevel {
     legal: false,
     suffix: "tab",
     align: "left",
+    run: null,
   };
 }
 

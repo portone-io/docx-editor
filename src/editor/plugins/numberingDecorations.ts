@@ -7,7 +7,11 @@
 import type { Node as PMNode } from "prosemirror-model";
 import { type EditorState, Plugin, PluginKey } from "prosemirror-state";
 import { Decoration, DecorationSet } from "prosemirror-view";
-import { type ParagraphFormat, toParagraphFormat } from "../../model/format";
+import {
+  type ParagraphFormat,
+  type RunFormat,
+  toParagraphFormat,
+} from "../../model/format";
 import { computeMarkers } from "../../numbering/markers";
 import type {
   LevelAlign,
@@ -57,6 +61,8 @@ export interface PlacedMarker {
   suffix: LevelSuffix;
   /** Where the number sits inside the width kept for it (`w:lvlJc`) */
   align: LevelAlign;
+  /** The formatting the level puts on the number alone (`lvl/rPr`) */
+  run: RunFormat | null;
 }
 
 /**
@@ -112,6 +118,7 @@ export function paragraphMarkers(
         text: marker.text,
         suffix: marker.suffix,
         align: marker.align,
+        run: marker.run,
         ...markerPlacement(spot.format, marker.indent),
       },
     ];
@@ -136,12 +143,44 @@ function markerSpacing(marker: PlacedMarker): string[] {
 }
 
 /**
+ * The character formatting the level puts on its number (§17.9.24).
+ *
+ * It dresses the number and nothing else, so it goes out as variables the rule drawing the number
+ * reads rather than as CSS the paragraph itself wears. An underline, a strikethrough or a
+ * highlight would run across the text the number stands in front of, so they are left undrawn.
+ */
+function markerFormat(run: RunFormat | null): string[] {
+  if (!run) return [];
+  const css: string[] = [];
+  if (run.bold !== undefined) {
+    css.push(
+      `${editorCssVariables.markerFontWeight}:${run.bold ? "bold" : "normal"}`
+    );
+  }
+  if (run.italic !== undefined) {
+    css.push(
+      `${editorCssVariables.markerFontStyle}:${run.italic ? "italic" : "normal"}`
+    );
+  }
+  if (run.color !== undefined) {
+    css.push(`${editorCssVariables.markerColor}:${run.color}`);
+  }
+  if (run.fontSizePt !== undefined) {
+    css.push(`${editorCssVariables.markerFontSize}:${run.fontSizePt}pt`);
+  }
+  if (run.fontFamily !== undefined) {
+    css.push(`${editorCssVariables.markerFontFamily}:${run.fontFamily}`);
+  }
+  return css;
+}
+
+/**
  * The CSS to overlay on a numbered paragraph.
  * A decoration's style is appended after the style the paragraph already carries, so what is
  * written here wins. That is why indentation the paragraph specified itself is not put in here.
  */
 function markerStyle(marker: PlacedMarker): string {
-  const css = markerSpacing(marker);
+  const css = [...markerSpacing(marker), ...markerFormat(marker.run)];
   if (marker.align !== "left") {
     css.push(`${editorCssVariables.markerAlign}:${marker.align}`);
   }

@@ -95,6 +95,7 @@ describe("reading the spliced-in definitions back", () => {
       legal: false,
       suffix: "tab",
       align: "left",
+      run: null,
     });
     expect(levels?.get(1)?.format).toBe("lowerLetter");
     expect(levels?.get(2)?.format).toBe("lowerRoman");

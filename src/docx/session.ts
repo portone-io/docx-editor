@@ -136,7 +136,10 @@ export function documentNumbering(
 ): Numbering {
   const store = sessionOf(session);
   return parseNumbering(store.numberingXml, {
-    ...numberingOptionsFor(store.formatting.styles),
+    ...numberingOptionsFor(
+      store.formatting.styles,
+      store.formatting.themeFonts
+    ),
     ...options,
   });
 }

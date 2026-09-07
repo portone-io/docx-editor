@@ -68,6 +68,7 @@ function level(values: Partial<NumberingLevel>): NumberingLevel {
     legal: false,
     suffix: "tab",
     align: "left",
+    run: null,
     ...values,
   };
 }

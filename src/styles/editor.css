@@ -724,6 +724,11 @@ button.docx-editor-comment-body {
  * A level that asks for a space or for nothing after its number (w:suff) keeps no
  * space at all, so both variables are set to zero and the body starts right after
  * the number. Where the number sits inside the space is the level's w:lvlJc.
+ *
+ * The level dresses its number and nothing else (lvl/rPr), so its character
+ * formatting arrives as variables read here rather than as anything the paragraph
+ * wears. Where the level writes none, the number is drawn like the text it stands
+ * in front of.
  */
 .docx-editor-p[data-marker]::before {
   content: attr(data-marker);
@@ -732,6 +737,11 @@ button.docx-editor-comment-body {
   min-width: var(--docx-editor-marker-width, 18pt);
   padding-right: var(--docx-editor-marker-gap, 4pt);
   text-align: var(--docx-editor-marker-align, left);
+  font-weight: var(--docx-editor-marker-font-weight, inherit);
+  font-style: var(--docx-editor-marker-font-style, inherit);
+  font-size: var(--docx-editor-marker-font-size, inherit);
+  font-family: var(--docx-editor-marker-font-family, inherit);
+  color: var(--docx-editor-marker-color, inherit);
   /* Keeps the paragraph's hanging indent (text-indent) from being inherited and shifting the number again inside its own box */
   text-indent: 0;
   user-select: none;

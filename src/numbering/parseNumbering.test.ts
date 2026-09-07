@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import { fixtureNames, readFixture } from "../__testing__/docx";
+import { readRunFormat } from "../docx/formatting";
 import { importDocx } from "../docx/importDocx";
-import { parseNumbering } from "./parseNumbering";
+import { type Numbering, parseNumbering } from "./parseNumbering";
 
 const W_NS =
   'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
@@ -52,6 +53,7 @@ describe("parseNumbering", () => {
       legal: false,
       suffix: "tab",
       align: "left",
+      run: null,
     });
   });
 
@@ -85,6 +87,7 @@ describe("parseNumbering", () => {
       legal: false,
       suffix: "tab",
       align: "left",
+      run: null,
     });
   });
 
@@ -107,6 +110,7 @@ describe("parseNumbering", () => {
       legal: false,
       suffix: "tab",
       align: "left",
+      run: null,
     });
   });
 
@@ -226,6 +230,7 @@ describe("parseNumbering", () => {
       legal: false,
       suffix: "tab",
       align: "left",
+      run: null,
     });
   });
 
@@ -262,7 +267,37 @@ describe("parseNumbering", () => {
     expect(numbering.lists.get(1)?.levels.get(0)).toMatchObject({
       suffix: "tab",
       align: "left",
+      run: null,
     });
+  });
+
+  it("a level's rPr is read through readRun and is null without it", () => {
+    const xml = numberingXml(
+      '<w:abstractNum w:abstractNumId="0"><w:lvl w:ilvl="0">' +
+        '<w:numFmt w:val="decimal"/><w:lvlText w:val="%1."/>' +
+        '<w:rPr><w:b/><w:color w:val="FF0000"/></w:rPr>' +
+        "</w:lvl></w:abstractNum>" +
+        '<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>'
+    );
+    const levelOf = (numbering: Numbering) =>
+      numbering.lists.get(1)?.levels.get(0)?.run;
+
+    expect(
+      levelOf(parseNumbering(xml, { readRun: (rPr) => readRunFormat(rPr) }))
+    ).toEqual({ bold: true, color: "#FF0000" });
+    expect(levelOf(parseNumbering(xml))).toBeNull();
+  });
+
+  it("a level that writes no rPr carries none even with a reader at hand", () => {
+    const numbering = parseNumbering(
+      numberingXml(
+        `<w:abstractNum w:abstractNumId="0">${DECIMAL_LEVEL}</w:abstractNum>` +
+          '<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num>'
+      ),
+      { readRun: (rPr) => readRunFormat(rPr) }
+    );
+
+    expect(numbering.lists.get(1)?.levels.get(0)?.run).toBeNull();
   });
 
   it("reads tab directives from numbering-level paragraph properties", () => {

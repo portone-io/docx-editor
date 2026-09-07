@@ -5,11 +5,16 @@ import { fileURLToPath } from "node:url";
 import { unzipSync } from "fflate";
 import type { Node as PMNode } from "prosemirror-model";
 import { afterEach, describe, expect, it } from "vitest";
-import { bytesEqual, readFixture } from "../../__testing__/docx";
+import {
+  bytesEqual,
+  makeNumberedDocx,
+  readFixture,
+} from "../../__testing__/docx";
 import { exportDocx } from "../../docx/exportDocx";
-import { NO_FORMATTING } from "../../docx/formatting";
+import { NO_FORMATTING, readRunFormat } from "../../docx/formatting";
 import { importDocx } from "../../docx/importDocx";
-import { toParagraphFormat } from "../../model/format";
+import type { SessionStore } from "../../docx/session";
+import { toParagraphFormat, toRunFormat } from "../../model/format";
 import { type Numbering, parseNumbering } from "../../numbering/parseNumbering";
 import { docxSchema } from "../../schema";
 import { editorAttributes, editorCssVariables } from "../../styles/classNames";
@@ -174,14 +179,18 @@ describe("where list numbers sit (Word geometry)", () => {
 const W_NS =
   'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
 
-/** A list of one level, holding whatever properties the test writes into it */
+/**
+ * A list of one level, holding whatever properties the test writes into it, read the way an
+ * opened document reads its own numbering part
+ */
 function oneLevel(properties: string): Numbering {
   return parseNumbering(
     `<w:numbering ${W_NS}><w:abstractNum w:abstractNumId="0">` +
       '<w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="decimal"/>' +
       `${properties}<w:lvlText w:val="%1."/>` +
       "</w:lvl></w:abstractNum>" +
-      '<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num></w:numbering>'
+      '<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num></w:numbering>',
+    { readRun: (rPr) => readRunFormat(rPr) }
   );
 }
 
@@ -336,6 +345,85 @@ describe("what the level asks for around its number", () => {
 });
 
 /**
+ * A level dresses its own number and nothing else (§17.9.24), so what it writes has to reach the
+ * marker without reaching the text of the paragraph the marker stands in front of.
+ */
+describe("the character formatting a level puts on its number", () => {
+  /** A list of one level that draws its number bold, red, and larger than the text */
+  const DRESSED_LEVEL =
+    `<w:numbering ${W_NS}><w:abstractNum w:abstractNumId="0">` +
+    '<w:lvl w:ilvl="0"><w:numFmt w:val="decimal"/><w:lvlText w:val="%1."/>' +
+    '<w:rPr><w:b/><w:color w:val="FF0000"/><w:sz w:val="32"/></w:rPr>' +
+    "</w:lvl></w:abstractNum>" +
+    '<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num></w:numbering>';
+
+  const LIST_BODY = `<w:p>${NUMBERED_PPR}<w:r><w:t>Item</w:t></w:r></w:p>`;
+
+  const opened = () => importDocx(makeNumberedDocx(LIST_BODY, DRESSED_LEVEL));
+
+  /** The paragraph as the editor draws it, opened from a package rather than built by hand */
+  function drawn(doc: PMNode, session: SessionStore): HTMLElement {
+    const mount = document.createElement("div");
+    document.body.appendChild(mount);
+    mounted.view = createEditorView({
+      mount,
+      state: editorStateForSession({ doc, session }),
+      onStateChange: () => {},
+    });
+    const paragraph = mount.querySelector("p.docx-editor-p[data-marker]");
+    if (!(paragraph instanceof HTMLElement)) throw new Error("no paragraph");
+    return paragraph;
+  }
+
+  it("the marker wears the level's rPr", () => {
+    const { doc, session } = opened();
+    const style = drawn(doc, session).style;
+
+    expect(style.getPropertyValue(editorCssVariables.markerFontWeight)).toBe(
+      "bold"
+    );
+    expect(style.getPropertyValue(editorCssVariables.markerColor)).toBe(
+      "#FF0000"
+    );
+    expect(style.getPropertyValue(editorCssVariables.markerFontSize)).toBe(
+      "16pt"
+    );
+  });
+
+  it("the text of the paragraph the marker stands in front of does not", () => {
+    const { doc } = opened();
+    const mark = doc.child(0).child(0).marks[0];
+
+    expect(toRunFormat(mark?.attrs.format)).toBeNull();
+    expect(toParagraphFormat(doc.child(0).attrs.format)).toEqual({
+      numbering: { numId: 1, ilvl: 0 },
+    });
+  });
+
+  it("a level that dresses nothing leaves the number drawn like the text", () => {
+    const style = drawnParagraph(oneLevel("")).style;
+
+    expect(style.getPropertyValue(editorCssVariables.markerFontWeight)).toBe(
+      ""
+    );
+    expect(style.getPropertyValue(editorCssVariables.markerColor)).toBe("");
+  });
+
+  it("a level switching a property off draws the number with it off", () => {
+    const style = drawnParagraph(
+      oneLevel('<w:rPr><w:b w:val="0"/><w:i w:val="0"/></w:rPr>')
+    ).style;
+
+    expect(style.getPropertyValue(editorCssVariables.markerFontWeight)).toBe(
+      "normal"
+    );
+    expect(style.getPropertyValue(editorCssVariables.markerFontStyle)).toBe(
+      "normal"
+    );
+  });
+});
+
+/**
  * The variables the decoration writes are read by the pseudo-element that draws the number, which
  * is the only thing that puts them on screen. A rule that stops reading one of them would leave
  * the decoration writing a value nothing draws.
@@ -355,6 +443,11 @@ describe("the marker rule in editor.css", () => {
     editorCssVariables.markerWidth,
     editorCssVariables.markerGap,
     editorCssVariables.markerAlign,
+    editorCssVariables.markerFontWeight,
+    editorCssVariables.markerFontStyle,
+    editorCssVariables.markerColor,
+    editorCssVariables.markerFontSize,
+    editorCssVariables.markerFontFamily,
   ])("reads %s", (name) => {
     expect(rule).toContain(`var(${name}`);
   });

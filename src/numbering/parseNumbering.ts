@@ -6,6 +6,7 @@
  * disturbs the file.
  */
 
+import type { RunFormat } from "../model/format";
 import type { TabStopDirective } from "../model/tabStops";
 import {
   ST_DecimalNumber,
@@ -70,7 +71,20 @@ export interface NumberingLevel {
   legal: boolean;
   suffix: LevelSuffix;
   align: LevelAlign;
+  /**
+   * The formatting of the number itself (`w:rPr`, §17.9.24). It dresses the number alone and
+   * never the text of the paragraph the number stands in front of.
+   * Null where the level writes none, and where the caller handed in no reader for it.
+   */
+  run: RunFormat | null;
 }
+
+/**
+ * How a level's `w:rPr` is read into display values.
+ * The vocabulary of run properties belongs with the reader that holds styles.xml and the theme
+ * fonts, which this folder cannot reach, so it is handed in.
+ */
+export type ReadLevelRun = (rPr: Element) => RunFormat | null;
 
 export interface NumberingList {
   /** The shape for each level (ilvl) */
@@ -175,10 +189,14 @@ function restartAfterLevelOf(lvl: Element): number | null {
   return restart === null ? null : restart - 1;
 }
 
-function readLevel(lvl: Element): NumberingLevel {
+function readLevel(
+  lvl: Element,
+  readRun: ReadLevelRun | undefined
+): NumberingLevel {
   const format = childValue(lvl, "numFmt");
   const pPr = childByLocalName(lvl, "pPr");
   const tabStops = readTabStopDirectives(pPr);
+  const rPr = childByLocalName(lvl, "rPr");
   return {
     format: isNumberFormat(format) ? format : "decimal",
     text: childValue(lvl, "lvlText") ?? "",
@@ -189,16 +207,20 @@ function readLevel(lvl: Element): NumberingLevel {
     legal: isOn(lvl, "isLgl"),
     suffix: suffixOf(lvl),
     align: alignOf(lvl),
+    run: rPr && readRun ? readRun(rPr) : null,
   };
 }
 
 /** Collects each `<w:lvl w:ilvl="0">` bundle, keyed by its level number */
-function readLevels(parent: Element): Map<number, NumberingLevel> {
+function readLevels(
+  parent: Element,
+  readRun: ReadLevelRun | undefined
+): Map<number, NumberingLevel> {
   const levels = new Map<number, NumberingLevel>();
   for (const child of elementChildren(parent)) {
     if (child.localName !== "lvl") continue;
     const ilvl = ST_DecimalNumber.parse(wAttr(child, "ilvl"));
-    if (ilvl !== null) levels.set(ilvl, readLevel(child));
+    if (ilvl !== null) levels.set(ilvl, readLevel(child, readRun));
   }
   return levels;
 }
@@ -210,7 +232,8 @@ function readLevels(parent: Element): Map<number, NumberingLevel> {
  */
 function readList(
   num: Element,
-  abstractLevels: Map<number, Map<number, NumberingLevel>>
+  abstractLevels: Map<number, Map<number, NumberingLevel>>,
+  readRun: ReadLevelRun | undefined
 ): NumberingList | null {
   const abstractNumId = ST_DecimalNumber.parse(
     childValue(num, "abstractNumId")
@@ -223,7 +246,9 @@ function readList(
     const ilvl = ST_DecimalNumber.parse(wAttr(child, "ilvl"));
     if (ilvl === null) continue;
     const replacement = childByLocalName(child, "lvl");
-    const base = replacement ? readLevel(replacement) : levels.get(ilvl);
+    const base = replacement
+      ? readLevel(replacement, readRun)
+      : levels.get(ilvl);
     if (!base) continue;
     const startOverride = ST_DecimalNumber.parse(
       childValue(child, "startOverride")
@@ -257,6 +282,8 @@ export interface NumberingOptions {
    * numbering style is read through the definition that declares it stands behind that style.
    */
   links?: NumberingStyleLinks;
+  /** How the formatting a level puts on its number is read. Left out, no level carries any */
+  readRun?: ReadLevelRun;
 }
 
 const NO_STYLE_LINKS: NumberingStyleLinks = new Map();
@@ -270,6 +297,7 @@ interface Definitions {
   /** The definition that declares itself the one behind a numbering style (`w:styleLink`) */
   ofStyle: ReadonlyMap<string, number>;
   links: NumberingStyleLinks;
+  readRun: ReadLevelRun | undefined;
 }
 
 /**
@@ -288,7 +316,7 @@ function levelsOf(
 ): Map<number, NumberingLevel> {
   const el = definitions.byId.get(id);
   if (!el) return new Map();
-  const own = readLevels(el);
+  const own = readLevels(el, definitions.readRun);
   const styleId = childValue(el, "numStyleLink");
   if (own.size > 0 || styleId === null) return own;
 
@@ -337,6 +365,7 @@ function readNumbering(xml: string, options?: NumberingOptions): Numbering {
     ofList,
     ofStyle,
     links: options?.links ?? NO_STYLE_LINKS,
+    readRun: options?.readRun,
   };
 
   const abstractLevels = new Map<number, Map<number, NumberingLevel>>();
@@ -348,7 +377,8 @@ function readNumbering(xml: string, options?: NumberingOptions): Numbering {
   for (const child of elementChildren(root)) {
     if (child.localName !== "num") continue;
     const numId = ST_DecimalNumber.parse(wAttr(child, "numId"));
-    const list = numId === null ? null : readList(child, abstractLevels);
+    const list =
+      numId === null ? null : readList(child, abstractLevels, options?.readRun);
     if (numId !== null && list) lists.set(numId, list);
   }
   return { lists };

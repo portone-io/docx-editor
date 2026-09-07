@@ -7,7 +7,11 @@ import {
 } from "../../numbering/parseNumbering";
 import { type CompatSettings, NO_COMPAT } from "../documentSettings";
 import { NO_THEME_FONTS, type ThemeFonts } from "../theme";
-import { readDefaultParagraphFormat, readRunDefaults } from "./direct";
+import {
+  readDefaultParagraphFormat,
+  readRunDefaults,
+  readRunFormat,
+} from "./direct";
 import {
   defaultParagraphStyleIdOf,
   defaultTableStyleIdOf,
@@ -59,8 +63,14 @@ export const NO_FORMATTING: FormattingContext = {
  * from here, and the two callers that read a numbering part - opening a document and asking an
  * open one for its lists - resolve the same links.
  */
-export function numberingOptionsFor(styles: StyleTable): NumberingOptions {
-  return { links: numberingStyleLinks(styles) };
+export function numberingOptionsFor(
+  styles: StyleTable,
+  themeFonts: ThemeFonts
+): NumberingOptions {
+  return {
+    links: numberingStyleLinks(styles),
+    readRun: (rPr) => readRunFormat(rPr, themeFonts),
+  };
 }
 
 /** The context an opened document resolves against. A document without a styles part lays down nothing */
@@ -71,7 +81,10 @@ export function formattingContextOf(
   compat: CompatSettings = NO_COMPAT
 ): FormattingContext {
   const table = styles === null ? NO_STYLES : readStyles(styles, themeFonts);
-  const numbering = parseNumbering(numberingXml, numberingOptionsFor(table));
+  const numbering = parseNumbering(
+    numberingXml,
+    numberingOptionsFor(table, themeFonts)
+  );
   if (styles === null) {
     return { ...NO_FORMATTING, numbering, themeFonts, compat };
   }
