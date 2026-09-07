@@ -137,10 +137,15 @@ function isToggleActive(state: EditorState, toggle: RunToggle): boolean {
  */
 function toggleCommand(toggle: RunToggle): Command {
   return (state, dispatch) => {
+    const pieces = openStretches(
+      state,
+      state.selection.empty ? [caretPiece(state)] : textPieces(state),
+      "mark"
+    );
     const edit: RunEdit = {
       kind: "toggle",
       toggle,
-      on: !isToggleActive(state, toggle),
+      on: !pieces.every((target) => isRunToggleOn(target.format, toggle)),
     };
     return runEditCommand(edit)(state, dispatch);
   };

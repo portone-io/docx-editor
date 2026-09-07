@@ -25,6 +25,7 @@ import {
   type Textblock,
   unlockAllowed,
 } from "../../schema/locks";
+import { editsShut } from "../../schema/protectionState";
 
 /**
  * The mark a newly locked stretch wears, which is also the XML it goes back out as.
@@ -269,7 +270,8 @@ function selectionLockDetail(state: EditorState): SelectionLockDetail {
 
 /** What locking and unlocking would do where the selection stands */
 export function selectionLock(state: EditorState): SelectionLock {
-  return selectionLockDetail(state).kind;
+  // This query describes the lock actions a control can offer, including document protection.
+  return editsShut(state) ? "none" : selectionLockDetail(state).kind;
 }
 
 /** The stretches locking would shut. Empty where the selection offers nothing to lock */
