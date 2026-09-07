@@ -27,12 +27,14 @@
 import {
   type Attrs,
   Mark,
+  type MarkType,
   type NodeType,
   type Node as PMNode,
   type Schema,
 } from "prosemirror-model";
 import { PluginKey } from "prosemirror-state";
 import {
+  AddMarkStep,
   AttrStep,
   ReplaceAroundStep,
   type Step,
@@ -49,6 +51,8 @@ export type NodeName =
 export interface DisplayAttrs {
   readonly pos: number;
   readonly attrs: Attrs;
+  /** Omitted for node attrs. Otherwise updates an existing mark on this inline node. */
+  readonly mark?: { readonly type: MarkType; readonly to: number };
 }
 
 /**
@@ -101,7 +105,7 @@ function ownersByType<Context>(
 }
 
 /** The display attrs among what a deriver handed back, laid over the attrs the node standing there carries */
-function displayLaidOver(standing: PMNode, derived: Attrs): Attrs {
+function displayLaidOver(standing: PMNode | Mark, derived: Attrs): Attrs {
   const attrs: Record<string, unknown> = { ...standing.attrs };
   for (const [name, value] of Object.entries(derived)) {
     if (attrRole(standing.type, name) === "display") attrs[name] = value;
@@ -147,8 +151,26 @@ export function deriveDisplay<Context>(
         context,
         previousOf(node, spot.pos)
       );
-      for (const { pos, attrs } of derived) {
+      for (const { pos, attrs, mark: target } of derived) {
         const standing = nodeStanding(transform.doc, pos);
+        if (target !== undefined) {
+          const mark = target.type.isInSet(standing.marks);
+          if (!standing.isInline || mark === undefined) continue;
+          const end =
+            pos + standing.nodeSize - transform.doc.resolve(pos).textOffset;
+          if (target.to <= pos || target.to > end) {
+            throw new Error(
+              "a display mark update must stay within its inline node"
+            );
+          }
+          const next = target.type.create(displayLaidOver(mark, attrs));
+          if (!mark.eq(next)) {
+            // AddMarkStep replaces this type atomically. Transform.addMark would first remove
+            // the source-bearing mark, which is correctly refused by the display-only gate.
+            transform.step(new AddMarkStep(pos, target.to, next));
+          }
+          continue;
+        }
         const next = displayLaidOver(standing, attrs);
         if (!standing.hasMarkup(standing.type, next, standing.marks)) {
           transform.setNodeMarkup(pos, null, next);
@@ -171,7 +193,11 @@ export const displayOnly = new PluginKey<boolean>("docxEditorDisplayOnly");
  * attrs and changes none of them, and a value rebuilt to read the same is reported as a change
  * rather than hidden, which is what the rest of the guard list is for.
  */
-function sameOutsideDisplay(type: NodeType, was: Attrs, now: Attrs): boolean {
+function sameOutsideDisplay(
+  type: NodeType | MarkType,
+  was: Attrs,
+  now: Attrs
+): boolean {
   const names = new Set([...Object.keys(was), ...Object.keys(now)]);
   for (const name of names) {
     if (attrRole(type, name) === "display") continue;
@@ -211,11 +237,27 @@ function rewrittenNode(
 /**
  * Whether the step changes display attrs and nothing else, judged off the role table alone.
  *
- * Two shapes qualify: an attr step naming a display attr, and a node rewritten where it stands
- * (`setNodeMarkup`) as the same type wearing the same marks, differing in display attrs only. A
- * step of any other shape puts content somewhere or takes it away, and is an edit.
+ * Node attrs and existing mark attrs may change only their display fields. Adding a mark where
+ * that type was absent, changing source attrs, and all other step shapes remain edits.
  */
 export function changesOnlyDisplayAttrs(step: Step, doc: PMNode): boolean {
+  if (step instanceof AddMarkStep) {
+    let touched = false;
+    let allowed = true;
+    doc.nodesBetween(step.from, step.to, (node, _pos, parent) => {
+      if (!node.isInline) return true;
+      if (!parent?.type.allowsMarkType(step.mark.type)) return false;
+      touched = true;
+      const previous = step.mark.type.isInSet(node.marks);
+      if (
+        !previous ||
+        !sameOutsideDisplay(step.mark.type, previous.attrs, step.mark.attrs)
+      )
+        allowed = false;
+      return false;
+    });
+    return touched && allowed;
+  }
   if (step instanceof AttrStep) {
     const node = doc.nodeAt(step.pos);
     return node !== null && attrRole(node.type, step.attr) === "display";

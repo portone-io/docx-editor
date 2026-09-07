@@ -368,6 +368,13 @@ describe("what the state is built over", () => {
     });
     const body = under.doc.child(0);
     expect(toRunFormat(body.attrs.styleRun)).toBeNull();
+    expect(
+      toRunFormat(
+        body.child(0).marks.find((mark) => mark.type === docxSchema.marks.run)
+          ?.attrs.format
+      )
+    ).toBeNull();
+    expect(rendered(body)).not.toContain("font-weight: bold");
     expect(toParagraphFormat(body.attrs.format)).toBeNull();
     expect(body.attrs.pPr).toBe(doc.child(0).attrs.pPr);
     expect(body.attrs.srcId).toBe(doc.child(0).attrs.srcId);
@@ -419,6 +426,14 @@ describe("the snapshot being replaced under the document", () => {
     expect(held).toHaveLength(3);
     held.forEach((paragraph, at) => {
       expect(toRunFormat(paragraph.attrs.styleRun)).toEqual(NORMAL_RUN);
+      expect(
+        toRunFormat(
+          paragraph
+            .child(0)
+            .marks.find((mark) => mark.type === docxSchema.marks.run)?.attrs
+            .format
+        )
+      ).toEqual(NORMAL_RUN);
       expect(toParagraphFormat(paragraph.attrs.format)).toEqual({
         align: "center",
       });

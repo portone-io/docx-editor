@@ -1,6 +1,11 @@
 // @vitest-environment jsdom
 import type { Node as PMNode } from "prosemirror-model";
-import { DocAttrStep, type Step, Transform } from "prosemirror-transform";
+import {
+  AddMarkStep,
+  DocAttrStep,
+  type Step,
+  Transform,
+} from "prosemirror-transform";
 import { describe, expect, it } from "vitest";
 import {
   changesOnlyDisplayAttrs,
@@ -58,6 +63,40 @@ describe("a step that changes only display attrs", () => {
   const doc = docxSchema.nodes.doc.create(null, [
     paragraph({ pPr: "<w:pPr/>", format: null, styleRun: null }),
   ]);
+
+  it("accepts display-only replacement of an existing run mark across its whole range", () => {
+    const mark = docxSchema.marks.run.create({
+      rPr: "<w:rPr/>",
+      format: { bold: true },
+    });
+    const marked = docxSchema.nodes.doc.create(null, [
+      docxSchema.nodes.paragraph.create(null, docxSchema.text("text", [mark])),
+    ]);
+    const update = new AddMarkStep(
+      1,
+      5,
+      mark.type.create({ ...mark.attrs, format: { bold: false } })
+    );
+    expect(changesOnlyDisplayAttrs(update, marked)).toBe(true);
+    expect(changesOnlyDisplayAttrs(update, doc)).toBe(false);
+    const source = new AddMarkStep(
+      1,
+      5,
+      mark.type.create({
+        ...mark.attrs,
+        rPr: "<w:rPr><w:b/></w:rPr>",
+        format: { bold: false },
+      })
+    );
+    expect(changesOnlyDisplayAttrs(source, marked)).toBe(false);
+    const mixed = docxSchema.nodes.doc.create(null, [
+      docxSchema.nodes.paragraph.create(null, [
+        docxSchema.text("te", [mark]),
+        docxSchema.text("xt"),
+      ]),
+    ]);
+    expect(changesOnlyDisplayAttrs(update, mixed)).toBe(false);
+  });
 
   it("is a node rewritten where it stands with every source attr the same", () => {
     const { step } = rewriting(doc, 0, {
@@ -165,6 +204,40 @@ describe("the walk that writes what the derivers hand back", () => {
       paragraph({ pPr: "<w:pPr/>" }, "first"),
       paragraph({}, "second"),
     ]);
+
+  it("writes only display attrs of an existing mark and keeps its original range after merging text", () => {
+    const type = docxSchema.marks.run;
+    const mark = type.create({ rPr: "<w:rPr/>", format: { bold: true } });
+    const plain = type.create({ ...mark.attrs, format: null });
+    const original = docxSchema.nodes.doc.create(null, [
+      docxSchema.nodes.paragraph.create(null, [
+        docxSchema.text("a", [mark]),
+        docxSchema.text("b", [plain]),
+      ]),
+    ]);
+    const result = derived(original, [
+      deriverFor(["paragraph"], () => [
+        {
+          pos: 1,
+          mark: { type, to: 2 },
+          attrs: { rPr: "changed", format: null },
+        },
+        { pos: 2, mark: { type, to: 3 }, attrs: { format: { italic: true } } },
+      ]),
+    ]);
+    expect(result.doc.textContent).toBe("ab");
+    expect(result.doc.child(0).child(0).marks[0].attrs).toMatchObject({
+      rPr: "<w:rPr/>",
+      format: null,
+    });
+    expect(result.doc.child(0).child(1).marks[0].attrs).toMatchObject({
+      rPr: "<w:rPr/>",
+      format: { italic: true },
+    });
+    result.steps.forEach((step, index) => {
+      expect(changesOnlyDisplayAttrs(step, result.docs[index])).toBe(true);
+    });
+  });
 
   it("writes no step for a deriver that hands back the node's own attrs", () => {
     const doc = twoParagraphs();

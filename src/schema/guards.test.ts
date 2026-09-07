@@ -1,16 +1,20 @@
 // @vitest-environment jsdom
+
 import { Node as PMNode } from "prosemirror-model";
 import type { EditorState, Transaction } from "prosemirror-state";
+import { AddMarkStep } from "prosemirror-transform";
 import { describe, expect, it, vi } from "vitest";
 import { makeDocx } from "../__testing__/docx";
 import { importDocx } from "../docx/importDocx";
 import { createEditorState } from "../editor/createEditor";
+import { displayOnly } from "./displayDerivation";
 import {
   editShut,
   guardedCommand,
   openStretches,
   transactionAllowed,
 } from "./guards";
+import { docxSchema } from "./index";
 import { historyReplay, unlockAllowed } from "./locks";
 import type { EditingProtection } from "./protection";
 
@@ -228,4 +232,44 @@ describe("openStretches", () => {
       openStretches(opened(LOCKED_P, "readOnly"), stretches, "mark")
     ).toEqual([]);
   });
+});
+
+describe("display mark updates under protection", () => {
+  it.each(["readOnly", "comments"] as const)(
+    "allows derived values but refuses source changes under %s",
+    (protection) => {
+      const state = opened(LOCKED_P, protection);
+      const { from, to } = textRange(state.doc, "bc");
+      const mark = docxSchema.marks.run.isInSet(
+        state.doc.nodeAt(from)?.marks ?? []
+      );
+      if (!mark) throw new Error("expected imported run mark");
+      const derived = state.tr
+        .step(
+          new AddMarkStep(
+            from,
+            to,
+            mark.type.create({ ...mark.attrs, format: { bold: true } })
+          )
+        )
+        .setMeta(displayOnly, true);
+      expect(transactionAllowed(derived, state)).toBe(true);
+      expect(state.applyTransaction(derived).transactions[0]).toBe(derived);
+      const source = state.tr
+        .step(
+          new AddMarkStep(
+            from,
+            to,
+            mark.type.create({
+              ...mark.attrs,
+              rPr: "<w:rPr><w:b/></w:rPr>",
+              format: { bold: true },
+            })
+          )
+        )
+        .setMeta(displayOnly, true);
+      expect(transactionAllowed(source, state)).toBe(false);
+      expect(state.apply(source).doc).toBe(state.doc);
+    }
+  );
 });

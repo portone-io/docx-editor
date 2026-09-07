@@ -102,9 +102,8 @@ interface MarkChange {
  * this file and reopening it. Every piece of text in the paragraph wears the style, the same as
  * Word, so text typed in the editor is marked here too rather than waiting for the next reopen.
  *
- * Text inside a locked control is left alone. The guard turns down the whole transaction over
- * it, so the other selected paragraphs would go unstyled with it; the paragraph still comes to
- * point at the new style, the same as alignment and indent already do.
+ * This edit leaves marks inside locked controls alone. The display deriver subsequently refreshes
+ * their existing run marks under its source-preserving pass, so no content edit needs a lock bypass.
  */
 function restyledMarks(
   spot: ParagraphSpot,

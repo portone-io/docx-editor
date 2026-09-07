@@ -5,7 +5,13 @@
  */
 
 import type { Node as PMNode } from "prosemirror-model";
-import { paragraphAttrsFor } from "../../docx/formatting";
+import {
+  paragraphAttrsOf,
+  resolveParagraph,
+  resolveRun,
+} from "../../docx/formatting";
+import { docxSchema } from "../../schema";
+import type { DisplayAttrs } from "../../schema/displayDerivation";
 import { paragraphPPr } from "../paragraphEdits";
 import type { DocumentDeriver } from "./displayDerivation";
 
@@ -48,14 +54,27 @@ export const paragraphDisplay: DocumentDeriver = {
     ) {
       return [];
     }
-    return [
-      {
-        pos,
-        attrs: paragraphAttrsFor(
-          paragraphPPr(node),
-          context.document.formatting
-        ),
-      },
+    const formatting = context.document.formatting;
+    const paragraph = resolveParagraph(paragraphPPr(node), formatting);
+    const derived: DisplayAttrs[] = [
+      { pos, attrs: paragraphAttrsOf(paragraph) },
     ];
+    node.forEach((child, offset) => {
+      const mark = docxSchema.marks.run.isInSet(child.marks);
+      if (!mark) return;
+      const rPr: unknown = mark.attrs.rPr;
+      derived.push({
+        pos: pos + 1 + offset,
+        mark: { type: mark.type, to: pos + 1 + offset + child.nodeSize },
+        attrs: {
+          format: resolveRun(
+            typeof rPr === "string" ? rPr : null,
+            paragraph,
+            formatting
+          ),
+        },
+      });
+    });
+    return derived;
   },
 };
