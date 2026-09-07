@@ -26,7 +26,7 @@ A Word-style package includes document properties and named styles, and some als
 - Do not include real organizations, people, places, addresses, contact details, account numbers, registration numbers, tickets, or authoring metadata. The package name and attributed public-domain text are the only exceptions. In the producer lane `scripts/sanitize-fixture.mjs` is what enforces this, since the producer put a real name in the package.
 - Keep one language per file unless multilingual behavior is the purpose of the fixture.
 - Use ASCII file names so the live editor can fetch them without additional URL encoding.
-- Do not put `mc:AlternateContent` in a fixture. The [validation profile](../docs/testing.md#tests-that-guard-package-rules) selects only one branch, so other branches would not be tested. Write the markup under test directly instead. `mc:Ignorable` on a part root is expected; only markup in unknown ignorable namespaces is removed, subject to `mc:ProcessContent`.
+- Do not put `mc:AlternateContent` in a conformance-lane fixture. The [validation profile](../docs/testing.md#tests-that-guard-package-rules) selects only one branch, so the others would go untested; write the markup under test directly instead. A producer-lane file keeps whatever its producer wrote, `mc:AlternateContent` included, and there the branch the profile selects is the one under test. `mc:Ignorable` on a part root is expected in either lane; only markup in unknown ignorable namespaces is removed, subject to `mc:ProcessContent`.
 
 Prefer original text. If a fixture uses redistributable text from elsewhere, record its source and status here:
 
@@ -46,7 +46,7 @@ Add the file to the fixture map, document any properties that direct tests depen
 
 `producers/` holds documents a word processor saved. Their markup is the one thing this repository cannot invent: a producer stamps `w:rsid*` identifiers on every run, `w14:paraId` on every paragraph, writes its own defaults over properties no author ever set, and puts values in the package that the published schemas turn down. Writing that by hand would be committing a guess about what real software does.
 
-Three suites read the lane, through `producerFixtureNames` and `readProducerFixture` in [`src/__testing__/docx.ts`](../src/__testing__/docx.ts):
+Three suites read the lane, through `producerFixtureNames` and `readProducerFixture` in [`src/__testing__/docx.ts`](../src/__testing__/docx.ts), and a fourth, `src/sanitizeFixture.test.ts`, reads the same names to hold every committed file to the script under [Sanitizing](#sanitizing):
 
 - `src/docx/producerRoundtrip.test.ts` opens each file, exports it untouched and compares every part, then edits the first paragraph and, separately, a cell of the first table, and checks that the bytes on either side of the edited block are still the producer's own.
 - `src/docx/exportSchemaValidation.test.ts` validates the untouched export against an approved list of the violations each producer wrote in, then makes the same two edits and compares each edited export against the untouched one occurrence by occurrence: an edit may add no violation, neither a new kind nor one more of a kind the producer already wrote, and may drop only what [Known gaps](#known-gaps) says a rebuilt block normalizes.
@@ -59,6 +59,8 @@ Three suites read the lane, through `producerFixtureNames` and `readProducerFixt
 | `google-docs-export.docx` | Google Docs on the web, downloaded as `.docx` | 2026-09-07 |
 
 Google Docs writes no `docProps/` at all, so this file cannot testify to its own origin the way a Word or LibreOffice package does through `docProps/app.xml`. This table is the record instead.
+
+The lane is meant to hold the same document saved from Word, from LibreOffice, and from Google Docs, and so far it holds only the Google Docs file. The lane is therefore not complete: the markup the other two would bring, a deletion suggestion, `mc:AlternateContent` with a floating drawing inside it, a content control, a range bookmark, and a `docProps/` for the sanitizer to act on, is covered by no saved document yet, and [the contract below](#producersgoogle-docs-exportdocx) lists each gap. Adding those two files, through [Sanitizing](#sanitizing) and with a row in this table, is what closes it.
 
 ### Sanitizing
 

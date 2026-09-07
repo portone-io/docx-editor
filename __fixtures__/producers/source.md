@@ -3,8 +3,14 @@
 This is the body every file in `__fixtures__/producers/` carries, so that the same document can be saved out of more than one word processor and the differences between the packages are the software's rather than the prose's.
 [README.md](../README.md#producer-lane) says which producer wrote which file and how each one is sanitized.
 
-Type this into the producer and apply the structure named in each section with the producer's own controls, not by editing XML afterwards.
+Type this into the producer and apply the structure named in each section with the producer's own controls.
+The markup under each section is meant to be whatever that software saves, so do not edit the XML to add or repair a structure afterwards.
 Where a producer offers no equivalent of something below, leave that piece out and record what is missing rather than approximating it.
+
+When the producer cannot be driven, as Google Docs on the web cannot, make the file another way: open a document that already carries every structure below in the producer, save it out, and afterwards substitute this text into the saved package's `w:t` elements and its comment body, touching nothing else.
+The markup stays the producer's; only the prose changes.
+Record in the README which file was made this way and from which document.
+`google-docs-export.docx` was, from `demo.docx`.
 
 ## Producer lane fixture
 
