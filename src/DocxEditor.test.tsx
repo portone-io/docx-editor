@@ -16,7 +16,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { decode, makeDocx, readFixture } from "./__testing__/docx";
 import { AUTHOR, EDITING } from "./__testing__/mode";
 import { renderInto } from "./__testing__/react";
@@ -44,6 +44,7 @@ beforeEach(() => {
 
 afterEach(() => {
   host.remove();
+  vi.unstubAllGlobals();
 });
 
 const ONE_PARAGRAPH = makeDocx(
@@ -207,6 +208,23 @@ describe("DocxEditor", () => {
     // Nothing of the editor itself is standing
     expect(host.querySelector(`.${editorClassNames.sheet}`)).toBeNull();
     unmount();
+  });
+
+  /**
+   * `DOMParser` is built into the browser, so this is not a refusal a second try clears, and the
+   * panel has to say what the browser cannot do rather than ask for one
+   */
+  it("tells a browser holding no XML parser what it cannot do", () => {
+    vi.stubGlobal("DOMParser", undefined);
+    const unmount = render(
+      <DocxEditor document={ONE_PARAGRAPH} mode={EDITING} />
+    );
+    const said = host.querySelector(
+      `.${editorClassNames.rejection}`
+    )?.textContent;
+    unmount();
+
+    expect(said).toContain("This browser cannot read documents.");
   });
 
   it("opens bytes handed in as an ArrayBuffer without waiting", () => {

@@ -45,11 +45,20 @@ of them is given reads every part it touches, including both of the files `onlyC
 opens for itself.
 `documentNumbering` and `parseNumbering` read XML of their own rather than through one of those
 calls, so they take the option as a second argument.
-The option asks only for `parseFromString(source, "application/xml")` returning a DOM document.
-The package bundles no parser of its own, so the choice is yours: jsdom is the obvious one on a
-long-running Node server, while on serverless functions it adds noticeable bundle weight and
-cold-start time and edge runtimes cannot run it at all, which is where a lighter implementation
-earns its keep.
+The option asks for `parseFromString(source, "application/xml")`, and what it hands back has to be
+a real DOM document rather than an object shaped like one: the readers walk it with the standard
+DOM API, `documentElement`, `children`, `childNodes`, `attributes`, `getAttribute` and
+`getElementsByTagName` with their namespace-aware forms, `localName`, `nodeName`, `nodeType`,
+`nodeValue`, `namespaceURI`, `textContent`, `parentElement`, `ownerDocument` and `cloneNode` among
+them.
+Markup it cannot read has to be reported the way a browser reports it, by throwing or by handing
+back a document holding a `parsererror` element; either way the read is refused with
+`malformed-xml`.
+
+The package bundles no parser of its own, and jsdom is the only implementation it tests. jsdom is
+the obvious one on a long-running Node server, while on serverless functions it adds noticeable
+bundle weight and cold-start time and edge runtimes cannot run it at all, so treat those
+environments as unsupported for now.
 
 Installing a `DOMParser` global instead works, and every call then leaves the option out:
 
@@ -192,6 +201,11 @@ and `too-large` are usually the person's to fix, while the others describe the f
 | `lost-original` | A node that carries only its original XML has lost it. |
 | `malformed-xml` | An original XML fragment cannot be read well enough to rewrite. |
 | `invalid-table` | The table grid is inconsistent, such as a vertical merge outliving its rows. |
+
+Writing reads the document it produced back, so `exportDocx` needs an XML parser as much as
+`importDocx` does.
+A call on a runtime with none is refused ahead of all of these, with `DocxImportError` and the
+import code `no-xml-parser`; [Server environments](#server-environments) covers it.
 
 An export failure leaves the editor state untouched, so a screen can report the reason and let the
 person carry on editing.
