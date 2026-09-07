@@ -184,16 +184,23 @@ describe("the indentation the level specifies", () => {
       '<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num></w:numbering>'
   );
 
-  function listDoc(format: Record<string, unknown>): PMNode {
+  function listDoc(
+    format: Record<string, unknown>,
+    pPr: string | null = null
+  ): PMNode {
     return docxSchema.nodes.doc.create(null, [
       docxSchema.nodes.paragraph.create(
-        { srcId: "opened:body:0", pAttrs: null, pPr: null, format },
+        { srcId: "opened:body:0", pAttrs: null, pPr, format },
         docxSchema.text("Item")
       ),
     ]);
   }
 
   const numbered = { numbering: { numId: 1, ilvl: 0 } };
+
+  /** The properties the display values above are worked out from, which a state reads them off again */
+  const NUMBERED_PPR =
+    '<w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr></w:pPr>';
 
   /** A document that knows these level definitions and nothing else */
   const withLevels: EditorDocument = {
@@ -229,7 +236,7 @@ describe("the indentation the level specifies", () => {
   });
 
   it("that indentation actually applies to the paragraph rendered on screen", () => {
-    const doc = listDoc(numbered);
+    const doc = listDoc(numbered, NUMBERED_PPR);
     const mount = document.createElement("div");
     document.body.appendChild(mount);
     const view = createEditorView({
@@ -247,11 +254,13 @@ describe("the indentation the level specifies", () => {
   });
 
   it("the overlaid indentation does not remain in the document model", () => {
-    const doc = listDoc(numbered);
+    const doc = listDoc(numbered, NUMBERED_PPR);
     const state = createEditorState(doc, { document: withLevels });
-    expect(toParagraphFormat(state.doc.child(0).attrs.format)).toEqual({
-      numbering: { numId: 1, ilvl: 0 },
-    });
+    const format = toParagraphFormat(state.doc.child(0).attrs.format);
+    expect(format?.numbering).toEqual({ numId: 1, ilvl: 0 });
+    expect(format?.indentStartPt).toBeUndefined();
+    expect(format?.indentEndPt).toBeUndefined();
+    expect(format?.textIndentPt).toBeUndefined();
   });
 });
 

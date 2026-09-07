@@ -310,7 +310,7 @@ function firstMergeable(doc: PMNode): Mergeable | null {
       if (left === right) continue;
       const candidate = state.apply(
         state.tr.setSelection(
-          CellSelection.create(doc, start + left, start + right)
+          CellSelection.create(state.doc, start + left, start + right)
         )
       );
       if (canMergeCells(candidate)) {

@@ -654,7 +654,7 @@ describe("a cell Word locked", () => {
   });
 });
 
-/** A default style, which is what gives `editor/styledParagraphs` something to lay on a paragraph */
+/** A default style, which is what gives `editor/plugins/paragraphDisplay` something to lay on a paragraph */
 const NORMAL_STYLE =
   '<w:style w:type="paragraph" w:styleId="Normal" w:default="1">' +
   '<w:name w:val="Normal"/><w:rPr><w:b/></w:rPr></w:style>';
@@ -666,8 +666,9 @@ function openedStyled(body: string): EditorState {
 }
 
 /**
- * `table/gridBorders` and `editor/styledParagraphs` each append a transaction of their own, which
- * carries no pass through the guard, so a replay has to leave them nothing the guard would refuse.
+ * `editor/plugins/displayDerivation` appends a transaction of its own after every edit, which
+ * carries the display-only pass and nothing else, so a replay has to leave it nothing but display
+ * values to write.
  */
 describe("a lock among the structure edits of a table", () => {
   it("goes back and comes again whole, appended transactions and all", () => {

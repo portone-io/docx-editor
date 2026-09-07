@@ -21,7 +21,6 @@ import {
   type FontFallbacks,
 } from "../styles/fontStack";
 import { documentDefaultsStyle } from "../styles/inlineStyle";
-import { gridBorders, withDerivedGridBorders } from "../table/gridBorders";
 import type { CommentAuthor } from "./commands/comments/model";
 import {
   documentOf,
@@ -34,6 +33,10 @@ import { externalClipboard } from "./externalClipboard";
 import { imageFiles } from "./imageFiles";
 import { columnResize } from "./plugins/columnResize";
 import { commentDecorations } from "./plugins/commentDecorations";
+import {
+  displayDerivation,
+  withDerivedDisplay,
+} from "./plugins/displayDerivation";
 import { documentProtection } from "./plugins/documentProtection";
 import { imagePaste } from "./plugins/imagePaste";
 import { docxKeymap, historyKeys } from "./plugins/keymap";
@@ -42,7 +45,6 @@ import { listInputRules } from "./plugins/listInputRules";
 import { lockedContent } from "./plugins/lockedContent";
 import { numberingMarkers } from "./plugins/numberingDecorations";
 import { rowResize } from "./plugins/rowResize";
-import { styledParagraphs } from "./plugins/styledParagraphs";
 import { tabCaret } from "./plugins/tabCaret";
 import { tabDecorations } from "./plugins/tabDecorations";
 import { tabLayout } from "./plugins/tabLayout";
@@ -95,7 +97,9 @@ export function createEditorState(
     editableComments = "own",
   } = options;
   return EditorState.create({
-    doc: withDerivedGridBorders(doc),
+    // The values the document arrived with were worked out against whatever opened it; the
+    // state's are worked out against its own snapshot, tables' shared lines included
+    doc: withDerivedDisplay(doc, document),
     plugins: [
       // Consumer plugins lead the array. ProseMirror walks the plugins in order and takes the
       // first answer for a keypress, a paste, a drop or any other DOM event, so this is the
@@ -135,10 +139,9 @@ export function createEditorState(
       tabPointer(),
       tabLayout(),
       tabCaret(),
-      // Keeps table-cell lines aligned with OOXML precedence after an edit
-      gridBorders(),
-      // Reads the document's styles into the paragraphs an edit built from nothing
-      styledParagraphs(),
+      // Works the display values out again after every edit: the lines of a table's cells, and
+      // the style values of the paragraphs the edit built or rewrote
+      displayDerivation(),
       // Receiving a right-click means taking the browser's own menu away, so both of these stand
       // or fall together with the menus the editor draws. The text menu stands ahead of the table
       // menu, and hands a click with nothing selected inside a cell back to it

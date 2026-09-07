@@ -84,7 +84,7 @@ function rendered(paragraph: PMNode): string {
   return host.innerHTML;
 }
 
-/** A paragraph carrying no style values, which is the one shape this plugin writes to */
+/** A paragraph carrying no style values, which is the shape an edit builds one in */
 function freshHeading(text = "heading"): PMNode {
   return docxSchema.nodes.paragraph.create(
     { pPr: '<w:pPr><w:pStyle w:val="Heading1"/></w:pPr>' },

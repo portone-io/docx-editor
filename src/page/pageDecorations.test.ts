@@ -30,9 +30,13 @@ function mounted(doc: PMNode): EditorView {
 function editor(): EditorView {
   return mounted(
     docxSchema.nodes.doc.create(null, [
-      docxSchema.nodes.paragraph.create({ format: { spaceBeforePt: 12 } }, [
-        docxSchema.text("first paragraph"),
-      ]),
+      docxSchema.nodes.paragraph.create(
+        {
+          pPr: '<w:pPr><w:spacing w:before="240"/></w:pPr>',
+          format: { spaceBeforePt: 12 },
+        },
+        [docxSchema.text("first paragraph")]
+      ),
       docxSchema.nodes.paragraph.create({}, [
         docxSchema.text("second paragraph"),
       ]),
