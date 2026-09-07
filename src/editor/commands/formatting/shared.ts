@@ -4,7 +4,7 @@ import type { Mark, Node as PMNode } from "prosemirror-model";
 import type { EditorState } from "prosemirror-state";
 import { type RunFormat, toRunFormat } from "../../../model/format";
 import { docxSchema } from "../../../schema";
-import { rangeTouchesLocked } from "../../../schema/locks";
+import { openStretches } from "../../../schema/guards";
 
 /** One piece of text whose formatting is to be edited */
 export interface TextPiece {
@@ -73,12 +73,10 @@ export function caretPiece(state: EditorState): TextPiece {
 
 /**
  * The places formatting currently applies to: a single caret, or the text pieces of the selection
- * a lock leaves open. It has to leave out what `applyToSelection` leaves out, or a toggle reads off
- * for text that is already on and can never turn it off.
+ * the guards leave open. It has to leave out what `applyToSelection` leaves out, or a toggle reads
+ * off for text that is already on and can never turn it off.
  */
 export function activePieces(state: EditorState): TextPiece[] {
   if (state.selection.empty) return [caretPiece(state)];
-  return textPieces(state).filter(
-    (target) => !rangeTouchesLocked(state.doc, target.from, target.to)
-  );
+  return openStretches(state, textPieces(state), "mark");
 }
