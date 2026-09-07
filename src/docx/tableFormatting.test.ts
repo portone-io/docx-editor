@@ -244,6 +244,9 @@ describe("cell layout formatting", () => {
     expect(
       editCellProps(null, { kind: "padding", values: { left: -1 } })
     ).toBeNull();
+    expect(
+      editCellProps(null, { kind: "padding", values: { left: -0.01 } })
+    ).toBeNull();
   });
 });
 

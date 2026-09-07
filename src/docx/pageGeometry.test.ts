@@ -45,6 +45,12 @@ describe("the page geometry a document lays down", () => {
     expect(geometryOf(bodyWith(LETTER_SECT_PR_UNIVERSAL))).toEqual(LETTER);
   });
 
+  it("reads a Letter page with explicit plus signs on its integer measurements", () => {
+    expect(
+      geometryOf(bodyWith(LETTER_SECT_PR.replace(/="([0-9]+)"/g, '="+$1"')))
+    ).toEqual(LETTER);
+  });
+
   it("draws a document that names no section on A4", () => {
     expect(geometryOf(bodyWith(""))).toEqual(A4_PORTRAIT);
   });

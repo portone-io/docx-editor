@@ -8,9 +8,8 @@
  * be read one way in one reader and another way in the next, so both are decided here, and the
  * writer that puts a value back reaches for the same pair.
  *
- * `parse` answers null for a value the type does not admit rather than guessing, and `format`
- * answers null for a value the type cannot record. Neither rounds: a caller that means to round
- * says so, so that no value is silently moved to a neighbouring one on its way into the document.
+ * Readers accept the decimal counts some producers write in integer slots. `format` answers null
+ * for a value it cannot record; a caller that intends to round must do so before formatting.
  */
 
 import {
@@ -21,7 +20,7 @@ import {
 } from "../model/tabStops";
 
 export interface SimpleType<T> {
-  /** null for an absent value or one the type does not admit; never a guess */
+  /** null for an absent or unreadable value; see the type's producer compatibility rules */
   parse(value: string | null): T | null;
   /** null for a value the type cannot record */
   format(value: T): string | null;
@@ -72,10 +71,12 @@ export function universalMeasureToTwips(value: string): number | null {
  *
  * The schema counts in integers, but a producer does not always: Google Docs writes
  * `w:tblW w:w="9026.0"` and cell margins with the same trailing zero. Refusing those would drop a
- * width the file plainly states, so a fraction is read and it is `format` that writes an integer
- * back.
+ * width the file plainly states. Measurement readers retain fractions; count readers truncate
+ * them. Writers must choose how to quantize a measurement before formatting its integer count.
+ * Signed integer types allow an optional plus sign; unsigned counts retain the previous reader's
+ * tolerance for that spelling even though XML Schema 1.0 unsignedLong excludes it.
  */
-const DECIMAL_NUMBER = /^-?[0-9]+(?:\.[0-9]+)?$/;
+const DECIMAL_NUMBER = /^[+-]?[0-9]+(?:\.[0-9]+)?$/;
 
 function decimalNumber(value: string): number | null {
   const text = value.trim();
@@ -282,7 +283,9 @@ const TAB_JC_BY_VALUE: Readonly<Record<string, TabJc>> = {
 
 export const ST_TabJc: SimpleType<TabJc> = {
   parse(value) {
-    return value === null ? null : (TAB_JC_BY_VALUE[value] ?? null);
+    return value !== null && Object.hasOwn(TAB_JC_BY_VALUE, value)
+      ? TAB_JC_BY_VALUE[value]
+      : null;
   },
   format(value) {
     return value;

@@ -27,7 +27,7 @@ import {
   renderProps,
   setChild,
 } from "../ooxml/props";
-import { ST_MeasurementOrPercent } from "../ooxml/simpleTypes";
+import { ST_MeasurementOrPercent, ST_TwipsMeasure } from "../ooxml/simpleTypes";
 import { type ExportRefs, NO_EXPORT_REFS } from "./exportRefs";
 import {
   preservedXml,
@@ -135,7 +135,17 @@ function tableGridXml(table: PMNode): string {
     typeof table.attrs.gridChange === "string" ? table.attrs.gridChange : "";
   if (gridCols.length === 0 && gridChange === "") return "";
   const cols = gridCols
-    .map((w) => elementXml(wName("gridCol"), [[wName("w"), `${w}`]]))
+    .map((w) => {
+      // Unit conversion can produce fractional twips, but the count written here must be whole.
+      const width = ST_TwipsMeasure.format(Math.round(w));
+      if (width === null) {
+        throw new DocxExportError(
+          "invalid-table",
+          "a grid column has no writable width"
+        );
+      }
+      return elementXml(wName("gridCol"), [[wName("w"), width]]);
+    })
     .join("");
   return elementXml(wName("tblGrid"), [], [cols + gridChange]);
 }

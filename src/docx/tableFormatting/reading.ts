@@ -42,11 +42,11 @@ const FIFTIETHS_PER_PERCENT = 50;
  * The width written down by `<w:tblW>` or `<w:tcW>`.
  * If we cannot make out what it means it is null, and such a width goes back out unchanged on export.
  *
- * `auto` and `nil` leave the width to the layout, so whatever number stands beside them says nothing.
+ * `auto` and `nil` leave the width to the layout unless the value carries an explicit percentage.
  * A percentage may be written in fiftieths of a percent, as in `w:w="2500"`, or as `w:w="50%"`.
  * Both have to be gathered into the same unit, or the table collapses into a thin strip on screen.
- * A width whose spelling contradicts its `w:type`, a percentage counted in twips or the other way
- * round, is not a width we can make out either.
+ * Word lets an explicit `%` override `w:type` (MS-OI29500 §2.1.185(b)); see
+ * spec/notes/simpleTypes.md. A universal measure under `pct` remains unreadable here.
  */
 export function readTableWidth(
   parent: Element | null,
@@ -55,25 +55,26 @@ export function readTableWidth(
   const el = parent ? childByLocalName(parent, name) : null;
   if (!el) return null;
   const type = wAttr(el, "type") ?? "dxa";
+  const width = ST_MeasurementOrPercent.parse(wAttr(el, "w"));
+  if (width?.kind === "percent") {
+    return {
+      type: "pct",
+      fiftieths: Math.round(width.value * FIFTIETHS_PER_PERCENT),
+    };
+  }
   if (type === "auto") return { type: "auto" };
   if (type === "nil") return { type: "nil" };
 
-  const width = ST_MeasurementOrPercent.parse(wAttr(el, "w"));
   if (width === null) return null;
   if (type === "dxa") {
     // A universal measure states an absolute width, which `universalMeasureToTwips` already gave
-    return width.kind === "percent"
-      ? null
-      : { type: "dxa", twips: width.value };
+    return { type: "dxa", twips: width.value };
   }
   if (type === "pct") {
     if (width.kind === "twips") return null;
     return {
       type: "pct",
-      fiftieths:
-        width.kind === "percent"
-          ? Math.round(width.value * FIFTIETHS_PER_PERCENT)
-          : width.value,
+      fiftieths: width.value,
     };
   }
   // A unit we do not know at all

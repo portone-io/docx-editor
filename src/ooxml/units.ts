@@ -35,9 +35,8 @@ export function wAttr(el: Element, name: string): string | null {
  * Whether a boolean property element states on (§17.17.4).
  *
  * An element carrying no `w:val` states on, and one that is not there at all states nothing, which
- * a caller asking "is this on" reads as off. A `w:val` the type does not admit is on as well: the
- * six spellings are the only ways a document has of switching something off, so anything else was
- * never one.
+ * a caller asking "is this on" reads as off. For malformed values, this project uses the same
+ * fallback as an absent attribute. That recovery policy is not a schema or Word guarantee.
  */
 export function isOnElement(el: Element | null): boolean {
   if (!el) return false;

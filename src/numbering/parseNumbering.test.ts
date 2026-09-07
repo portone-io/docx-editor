@@ -17,6 +17,16 @@ const DECIMAL_LEVEL =
   "</w:pPr></w:lvl>";
 
 describe("parseNumbering", () => {
+  it("resolves numbered list references with explicit plus signs", () => {
+    const numbering = parseNumbering(
+      numberingXml(
+        `<w:abstractNum w:abstractNumId="+7">${DECIMAL_LEVEL}</w:abstractNum>` +
+          '<w:num w:numId="+2"><w:abstractNumId w:val="+7"/></w:num>'
+      )
+    );
+    expect(numbering.lists.get(2)?.levels.get(0)?.start).toBe(3);
+  });
+
   it("there are no lists when there is no numbering.xml", () => {
     expect(parseNumbering(null).lists.size).toBe(0);
   });

@@ -1034,12 +1034,29 @@ describe("the exported package after an edit battery", () => {
     expectBatteryValidates(name, doc, session);
   });
 
-  /**
-   * The same battery over a section written the way `ST_TwipsMeasure` also admits.
-   *
-   * Such a document is read on the paper it names rather than on A4, so the battery works against
-   * a body width that came out of `8.5in`, and the section itself rides out untouched.
-   */
+  it("keeps a universal table width valid after editing a cell", () => {
+    const bytes = makeDocx(
+      '<w:tbl><w:tblPr><w:tblW w:w="1cm" w:type="dxa"/></w:tblPr>' +
+        '<w:tblGrid><w:gridCol w:w="1cm"/></w:tblGrid><w:tr><w:tc>' +
+        '<w:tcPr><w:tcW w:w="1cm" w:type="dxa"/></w:tcPr>' +
+        "<w:p><w:r><w:t>cell</w:t></w:r></w:p></w:tc></w:tr></w:tbl>"
+    );
+    const { doc, session } = importDocx(bytes);
+    expectPartsValidate("universal table input", wordprocessingParts(bytes));
+    const edited = withEditedFirst(doc, "table", EDITED);
+    const parts = wordprocessingParts(exportDocx(edited, session));
+    expect(parts.get(session.mainPartPath)).toContain(EDITED);
+    expectPartsValidate("edited universal table", parts);
+    expect(parts.get(session.mainPartPath)).toContain('<w:gridCol w:w="567"/>');
+    expect(parts.get(session.mainPartPath)).toContain(
+      '<w:tblW w:w="567" w:type="dxa"/>'
+    );
+    expect(parts.get(session.mainPartPath)).toContain(
+      '<w:tcW w:w="567" w:type="dxa"/>'
+    );
+  });
+
+  /** The section remains preserved while the battery uses the paper size read from its units. */
   it("validates a document whose section is written in universal measures", () => {
     const parts = unzipSync(readFixture(LETTER_FIXTURE));
     const main = "word/document.xml";

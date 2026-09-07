@@ -6,4 +6,4 @@ Universal measures such as `8.5in` are read correctly. A measurement in a docume
 
 `on` and `off` spellings of boolean attributes are read as the schema admits. A style marked `w:default="on"` is now recognised as the default style for its kind, as `w:default="1"` already was, so a document that marks its defaults that way is shown with the formatting they lay down.
 
-The bytes on disk were never at fault, and an untouched document still exports byte for byte as it arrived.
+Integer measurements retain support for an explicit `+` sign. Table and cell widths with an explicit `%` follow Word's percentage interpretation even when their width type says otherwise. Rebuilt table widths and grid columns are written in whole units; untouched XML is preserved.

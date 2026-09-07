@@ -275,6 +275,7 @@ function editedPadding(
   for (const side of ALL_CELL_SIDES) {
     const points = values[side];
     if (points === undefined) continue;
+    if (points < 0) return null;
     const twips = ST_TwipsMeasure.format(Math.round(points * TWIPS_PER_PT));
     if (twips === null) return null;
     // The spelling the document already used for this side, else the side's own name, which is

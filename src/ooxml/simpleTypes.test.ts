@@ -63,6 +63,35 @@ const ROUND_TRIPS: readonly [string, SimpleType<unknown>, unknown][] = [
 ];
 
 describe("the simple types the schema names", () => {
+  it("accepts an explicit plus sign on integer counts, but not on universal measures", () => {
+    for (const type of [
+      ST_TwipsMeasure,
+      ST_SignedTwipsMeasure,
+      ST_HpsMeasure,
+      ST_SignedHpsMeasure,
+      ST_EighthPointMeasure,
+      ST_DecimalNumber,
+      ST_UnsignedDecimalNumber,
+    ]) {
+      expect(type.parse("+24")).toBe(24);
+    }
+    expect(ST_MeasurementOrPercent.parse("+2500")).toEqual({
+      kind: "number",
+      value: 2500,
+    });
+    expect(ST_TwipsMeasure.parse("+1in")).toBeNull();
+  });
+
+  it("ignores tab names inherited from Object.prototype", () => {
+    for (const name of ["constructor", "toString", "__proto__"]) {
+      expect(ST_TabJc.parse(name)).toBeNull();
+      const pPr = parseXml(
+        `<w:pPr ${W_NS}><w:tabs><w:tab w:pos="720" w:val="${name}"/></w:tabs></w:pPr>`
+      ).documentElement;
+      expect(readTabStopDirectives(pPr)).toEqual([]);
+    }
+  });
+
   it.each(ROUND_TRIPS)("parse(format(v)) === v for %s", (_, type, value) => {
     const written = type.format(value);
     expect(written).not.toBeNull();
