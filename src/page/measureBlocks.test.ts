@@ -6,9 +6,8 @@ import { createEditorState } from "../editor/createEditor";
 import { docxSchema } from "../schema";
 import { editorAttributes } from "../styles/classNames";
 import { measureSheet } from "./measureBlocks";
-import { setPageBreakSpaces, setPagePushes } from "./pageDecorations";
+import { setPageMarks } from "./pageDecorations";
 import { type MeasuredBlock, pageLayout } from "./pageLayout";
-import { cutsToLegacyMarks } from "./usePageLayout";
 
 const PAGE = 500;
 const STEP = 100;
@@ -186,9 +185,7 @@ describe("measureSheet", () => {
     expect(applied.cuts).toHaveLength(1);
     expect(applied.pushes).toHaveLength(1);
 
-    const marks = cutsToLegacyMarks(applied.cuts, first.tables, live.state.doc);
-    setPagePushes(live, applied.pushes);
-    setPageBreakSpaces(live, marks.spaces);
+    setPageMarks(live, { pushes: applied.pushes, cuts: applied.cuts });
     draw(live, SHAPES);
 
     const again = measureSheet(live, live.dom);
