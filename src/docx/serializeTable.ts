@@ -27,6 +27,7 @@ import {
   renderProps,
   setChild,
 } from "../ooxml/props";
+import { ST_MeasurementOrPercent } from "../ooxml/simpleTypes";
 import { type ExportRefs, NO_EXPORT_REFS } from "./exportRefs";
 import {
   preservedXml,
@@ -61,7 +62,24 @@ function modelled(
   return elementXml(wName(name), attrs, inner === "" ? [] : [inner]);
 }
 
-/** A width that carries no number goes out with the 0 Word writes in its place */
+/**
+ * The number a width goes out as.
+ *
+ * A width that carries no number, and one no whole count can record, both go out with the 0 Word
+ * writes in its place. Word counts a `dxa` width in whole twips and a `pct` one in whole fiftieths,
+ * so a number that arrived with a fraction is rounded rather than written down as it stands.
+ */
+function widthText(width: TableWidth): string {
+  const value = widthNumber(width);
+  if (value === null || !Number.isFinite(value)) return "0";
+  return (
+    ST_MeasurementOrPercent.format({
+      kind: "number",
+      value: Math.round(value),
+    }) ?? "0"
+  );
+}
+
 function widthXml(
   name: string,
   width: TableWidth,
@@ -70,7 +88,7 @@ function widthXml(
   return modelled(
     name,
     [
-      [wName("w"), `${widthNumber(width) ?? 0}`],
+      [wName("w"), widthText(width)],
       [wName("type"), width.type],
     ],
     replacing

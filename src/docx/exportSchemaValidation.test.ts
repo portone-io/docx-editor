@@ -16,7 +16,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { unzipSync } from "fflate";
+import { unzipSync, zipSync } from "fflate";
 import type { Node as PMNode } from "prosemirror-model";
 import { type EditorState, TextSelection } from "prosemirror-state";
 import { afterAll, describe, expect, it } from "vitest";
@@ -24,6 +24,9 @@ import {
   bytesEqual,
   decode,
   fixtureNames,
+  LETTER_FIXTURE,
+  LETTER_GEOMETRY,
+  LETTER_SECT_PR_UNIVERSAL,
   makeDocx,
   makeHeadersFootersDocx,
   makeNotesDocx,
@@ -1029,6 +1032,28 @@ describe("the exported package after an edit battery", () => {
   it.each(fixtureNames)("%s: every WordprocessingML part validates", (name) => {
     const { doc, session } = importDocx(readFixture(name));
     expectBatteryValidates(name, doc, session);
+  });
+
+  /**
+   * The same battery over a section written the way `ST_TwipsMeasure` also admits.
+   *
+   * Such a document is read on the paper it names rather than on A4, so the battery works against
+   * a body width that came out of `8.5in`, and the section itself rides out untouched.
+   */
+  it("validates a document whose section is written in universal measures", () => {
+    const parts = unzipSync(readFixture(LETTER_FIXTURE));
+    const main = "word/document.xml";
+    // The paper the fixture names, written the other way `ST_TwipsMeasure` admits it
+    const rewritten = decode(parts[main]).replace(
+      /<w:pgSz [^>]*\/><w:pgMar [^>]*\/>/,
+      LETTER_SECT_PR_UNIVERSAL.replace(/<\/?w:sectPr>/g, "")
+    );
+    parts[main] = new TextEncoder().encode(rewritten);
+    const { doc, session } = importDocx(zipSync(parts));
+
+    // The same paper as `LETTER_FIXTURE`, so the battery lays out against the width it names
+    expect(session.geometry).toEqual(LETTER_GEOMETRY);
+    expectBatteryValidates("universal measures", doc, session);
   });
 
   /**

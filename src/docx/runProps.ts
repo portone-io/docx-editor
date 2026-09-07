@@ -22,6 +22,7 @@ import {
   renderProps,
   setChild,
 } from "../ooxml/props";
+import { HALF_POINTS_PER_PT, ST_HpsMeasure } from "../ooxml/simpleTypes";
 import { normalizeHex } from "../ooxml/units";
 import { isEastAsianFontName } from "../styles/fontStack";
 import { fontNamesOf, readRunFormat } from "./formatting";
@@ -72,9 +73,6 @@ const TOGGLE_OFF_VALUE: Record<RunToggle, string> = {
   strike: "0",
 };
 
-/** The limit on the font size Word records in half-points (819pt) */
-const MAX_FONT_SIZE_PT = 819;
-
 /** A formatting child that records its whole setting in `w:val`, or one that records nothing */
 function valXml(name: string, value: string | null): string {
   return elementXml(wName(name), value === null ? [] : [[wName("val"), value]]);
@@ -90,14 +88,6 @@ function shadingXml(fill: string): string {
     [wName("color"), "auto"],
     [wName("fill"), fill],
   ]);
-}
-
-/** Gathers `#2e74b5` and `2E74B5` alike into the shape the document uses. null if it is not a color */
-/** Whether the size can be recorded in half-points. Anything not on a 0.5pt step cannot be written into the document */
-function halfPoints(pt: number): number | null {
-  if (!Number.isFinite(pt) || pt <= 0 || pt > MAX_FONT_SIZE_PT) return null;
-  const half = pt * 2;
-  return Number.isInteger(half) ? half : null;
 }
 
 /**
@@ -206,11 +196,12 @@ function childEdits(
           ["szCs", null],
         ];
       }
-      const half = halfPoints(edit.pt);
+      // A size off the half-point step, or past the ceiling, is not one the document can record
+      const half = ST_HpsMeasure.format(edit.pt * HALF_POINTS_PER_PT);
       if (half === null) return null;
       return [
-        ["sz", valXml("sz", `${half}`)],
-        ["szCs", valXml("szCs", `${half}`)],
+        ["sz", valXml("sz", half)],
+        ["szCs", valXml("szCs", half)],
       ];
     }
     case "fontFamily": {

@@ -21,6 +21,9 @@ import {
 } from "../../ooxml/simpleTypes";
 import {
   ALIGN_BY_JC,
+  type BorderLine,
+  borderLineCss,
+  borderLineOfCss,
   borderSide,
   childValue,
   isOn,
@@ -174,12 +177,17 @@ export function layerCellMargins(
   };
 }
 
-/** The lines a cell falls back on, one per side, already resolved for its spot in the grid */
+/**
+ * The lines a cell falls back on, one per side, already resolved for its spot in the grid.
+ *
+ * They are held as the markup records them rather than as CSS, because a cell that takes one of
+ * them over as a border of its own writes it back into `w:tcBorders`.
+ */
 export interface CellBorderDefaults {
-  top: string | null;
-  bottom: string | null;
-  left: string | null;
-  right: string | null;
+  top: BorderLine | null;
+  bottom: BorderLine | null;
+  left: BorderLine | null;
+  right: BorderLine | null;
 }
 
 export const NO_BORDER_DEFAULTS: CellBorderDefaults = {
@@ -237,10 +245,18 @@ export function cellBorderDefaults(
   inside: InsideBorders
 ): CellBorderDefaults {
   return {
-    top: edges.top ? (outer?.borderTop ?? null) : inside.horizontal,
-    bottom: edges.bottom ? (outer?.borderBottom ?? null) : inside.horizontal,
-    left: edges.left ? (outer?.borderLeft ?? null) : inside.vertical,
-    right: edges.right ? (outer?.borderRight ?? null) : inside.vertical,
+    top: borderLineOfCss(
+      edges.top ? (outer?.borderTop ?? null) : inside.horizontal
+    ),
+    bottom: borderLineOfCss(
+      edges.bottom ? (outer?.borderBottom ?? null) : inside.horizontal
+    ),
+    left: borderLineOfCss(
+      edges.left ? (outer?.borderLeft ?? null) : inside.vertical
+    ),
+    right: borderLineOfCss(
+      edges.right ? (outer?.borderRight ?? null) : inside.vertical
+    ),
   };
 }
 
@@ -336,19 +352,20 @@ export function readCellFormat(
 ): CellFormat | null {
   const borders = tcPr ? childByLocalName(tcPr, "tcBorders") : null;
   const format: CellFormat = {};
-  const top = borderSide(borders, "top") ?? defaults.top;
+  const top = borderSide(borders, "top") ?? borderLineCss(defaults.top);
   if (top) format.borderTop = top;
-  const bottom = borderSide(borders, "bottom") ?? defaults.bottom;
+  const bottom =
+    borderSide(borders, "bottom") ?? borderLineCss(defaults.bottom);
   if (bottom) format.borderBottom = bottom;
   const left =
     borderSide(borders, "left") ??
     borderSide(borders, "start") ??
-    defaults.left;
+    borderLineCss(defaults.left);
   if (left) format.borderLeft = left;
   const right =
     borderSide(borders, "right") ??
     borderSide(borders, "end") ??
-    defaults.right;
+    borderLineCss(defaults.right);
   if (right) format.borderRight = right;
 
   if (tcPr) {

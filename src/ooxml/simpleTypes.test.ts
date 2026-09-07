@@ -77,7 +77,9 @@ describe("the simple types the schema names", () => {
     expect(ST_TwipsMeasure.parse("6pc")).toBe(1440);
     expect(ST_TwipsMeasure.parse("6pi")).toBe(1440);
     expect(ST_HpsMeasure.parse("12pt")).toBe(24);
-    expect(ST_EighthPointMeasure.parse("0.5pt")).toBe(4);
+    // A border thickness is the one measurement that unites with no universal measure
+    expect(ST_EighthPointMeasure.parse("4")).toBe(4);
+    expect(ST_EighthPointMeasure.parse("0.5pt")).toBeNull();
     expect(ST_SignedTwipsMeasure.parse("-0.5in")).toBe(-720);
   });
 

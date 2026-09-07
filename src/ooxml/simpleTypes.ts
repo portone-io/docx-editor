@@ -159,12 +159,6 @@ export const ST_SignedHpsMeasure: SimpleType<number> = measure({
   signed: true,
 });
 
-/** Eighths of a point (§17.18.23): the thickness of a border side */
-export const ST_EighthPointMeasure: SimpleType<number> = measure({
-  twipsPerUnit: TWIPS_PER_PT / EIGHTHS_PER_PT,
-  signed: false,
-});
-
 function wholeNumber(signed: boolean): SimpleType<number> {
   const admits = (value: number) => signed || value >= 0;
   return {
@@ -182,6 +176,14 @@ function wholeNumber(signed: boolean): SimpleType<number> {
     },
   };
 }
+
+/**
+ * Eighths of a point (§17.18.23): the thickness of a border side.
+ *
+ * Alone among the measurements this restricts `ST_UnsignedDecimalNumber` rather than uniting with a
+ * universal measure, so a thickness is a count and a unit written beside it is not one.
+ */
+export const ST_EighthPointMeasure: SimpleType<number> = wholeNumber(false);
 
 /** A whole number, signed (§17.18.10): `w:numId`, `w:ilvl`, `w:start` */
 export const ST_DecimalNumber: SimpleType<number> = wholeNumber(true);
