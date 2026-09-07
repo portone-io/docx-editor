@@ -15,6 +15,8 @@ import {
   localPart,
   parseXml,
   R_NS,
+  withXmlParser,
+  type XmlParser,
 } from "../ooxml/xml";
 import { docxSchema } from "../schema";
 import { commentReferencesIn, readComments } from "./comments";
@@ -245,7 +247,26 @@ export type DocxBytes = ArrayBuffer | Uint8Array;
  */
 export type DocxSource = DocxBytes | Blob;
 
-export function importDocx(input: DocxBytes): {
+/** What a caller may say about a read beyond handing over the bytes */
+export interface ImportOptions {
+  /**
+   * The parser every part of the package is read through. Left out, the `DOMParser` global is
+   * used, and a runtime carrying none refuses the read with `no-xml-parser`.
+   */
+  xmlParser?: XmlParser;
+}
+
+export function importDocx(
+  input: DocxBytes,
+  options?: ImportOptions
+): {
+  doc: PMNode;
+  session: SessionStore;
+} {
+  return withXmlParser(options?.xmlParser, () => readDocx(input));
+}
+
+function readDocx(input: DocxBytes): {
   doc: PMNode;
   session: SessionStore;
 } {

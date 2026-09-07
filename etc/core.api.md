@@ -65,7 +65,7 @@ export interface DocumentDefaults {
 }
 
 // @public
-export function documentNumbering(session: DocxSession): Numbering;
+export function documentNumbering(session: DocxSession, options?: NumberingOptions): Numbering;
 
 // @public
 export function documentPartPath(session: DocxSession): string;
@@ -91,7 +91,7 @@ export class DocxImportError extends Error {
 }
 
 // @public
-export type DocxImportErrorCode = "not-a-docx" | "too-large" | "missing-part" | "missing-body" | "malformed-xml" | "unsupported-content";
+export type DocxImportErrorCode = "no-xml-parser" | "not-a-docx" | "too-large" | "missing-part" | "missing-body" | "malformed-xml" | "unsupported-content";
 
 // @public (undocumented)
 export const docxSchema: Schema<"bookmarkBlock" | "commentEnd" | "commentReference" | "commentStart" | "doc" | "docxRaw" | "hardBreak" | "image" | "noteReference" | "paragraph" | "rawBlock" | "rawInline" | "table" | "tableCell" | "tableRow" | "text", "link" | "run" | "sdt" | "tab">;
@@ -109,7 +109,12 @@ type EditableComments = "own" | "all";
 export function emuToPx(emu: number): number;
 
 // @public (undocumented)
-export function exportDocx(doc: Node_2, session: DocxSession): Uint8Array;
+export function exportDocx(doc: Node_2, session: DocxSession, options?: ExportOptions): Uint8Array;
+
+// @public
+export interface ExportOptions {
+    xmlParser?: XmlParser;
+}
 
 // Warning: (ae-forgotten-export) The symbol "HIGHLIGHTS" needs to be exported by the entry point core.d.ts
 //
@@ -128,10 +133,15 @@ export interface ImageExtent {
 }
 
 // @public
-export function importDocx(input: DocxBytes): {
+export function importDocx(input: DocxBytes, options?: ImportOptions): {
     doc: Node_2;
     session: DocxSession;
 };
+
+// @public
+export interface ImportOptions {
+    xmlParser?: XmlParser;
+}
 
 // @public
 export interface LevelIndent {
@@ -188,6 +198,11 @@ export interface NumberingList {
 }
 
 // @public
+export interface NumberingOptions {
+    xmlParser?: XmlParser;
+}
+
+// @public
 export interface NumberingRef {
     // (undocumented)
     ilvl: number;
@@ -198,6 +213,7 @@ export interface NumberingRef {
 // @public
 export function onlyCommentsChangedBy(original: DocxBytes, submitted: DocxBytes, authorId: string, input?: {
     editableComments?: EditableComments;
+    xmlParser?: XmlParser;
 }): CommentOnlyVerdict;
 
 // Warning: (ae-forgotten-export) The symbol "ALIGNS" needs to be exported by the entry point core.d.ts
@@ -250,8 +266,8 @@ export interface ParagraphStyleOption {
     primary: boolean;
 }
 
-// @public (undocumented)
-export function parseNumbering(xml: string | null): Numbering;
+// @public
+export function parseNumbering(xml: string | null, options?: NumberingOptions): Numbering;
 
 // @public (undocumented)
 export function pxToEmu(px: number): number;
@@ -394,9 +410,15 @@ const VERTICAL_ALIGNS: readonly ["superscript", "subscript"];
 // @public (undocumented)
 export type VerticalAlign = (typeof VERTICAL_ALIGNS)[number];
 
+// @public
+export interface XmlParser {
+    // (undocumented)
+    parseFromString(source: string, type: "application/xml"): Document;
+}
+
 // Warnings were encountered during analysis:
 //
-// dist/docx/commentOnlyChange.d.ts:46:5 - (ae-forgotten-export) The symbol "EditableComments" needs to be exported by the entry point core.d.ts
+// dist/docx/commentOnlyChange.d.ts:49:5 - (ae-forgotten-export) The symbol "EditableComments" needs to be exported by the entry point core.d.ts
 
 // (No @packageDocumentation comment for this package)
 

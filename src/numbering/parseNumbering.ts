@@ -9,7 +9,13 @@
 import type { TabStopDirective } from "../model/tabStops";
 import { readTabStopDirectives } from "../ooxml/tabStops";
 import { childValue, round, wAttr } from "../ooxml/units";
-import { childByLocalName, elementChildren, parseXml } from "../ooxml/xml";
+import {
+  childByLocalName,
+  elementChildren,
+  parseXml,
+  withXmlParser,
+  type XmlParser,
+} from "../ooxml/xml";
 
 /** The number formats actually used across every fixture */
 const NUMBER_FORMATS = [
@@ -182,8 +188,28 @@ function readList(
   return { levels };
 }
 
-export function parseNumbering(xml: string | null): Numbering {
+/** What a caller may say about reading numbering beyond handing over the XML */
+export interface NumberingOptions {
+  /**
+   * The parser the numbering XML is read through. Left out, the `DOMParser` global is used, and a
+   * runtime carrying none refuses the read with `no-xml-parser`.
+   */
+  xmlParser?: XmlParser;
+}
+
+/**
+ * The lists this numbering XML defines. `null` is the document that has no numbering part, which
+ * defines none and asks nothing of a parser.
+ */
+export function parseNumbering(
+  xml: string | null,
+  options?: NumberingOptions
+): Numbering {
   if (xml === null) return EMPTY_NUMBERING;
+  return withXmlParser(options?.xmlParser, () => readNumbering(xml));
+}
+
+function readNumbering(xml: string): Numbering {
   const root = parseXml(xml).documentElement;
 
   const abstractLevels = new Map<number, Map<number, NumberingLevel>>();

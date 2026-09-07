@@ -9,6 +9,7 @@
 /**
  * Why a document could not be opened.
  *
+ * - `no-xml-parser`: the runtime has no XML parser to read the package with. The one code here that is about where the call was made rather than about the file
  * - `not-a-docx`: the bytes are not a readable zip container, its entry names are not a package's, or an entry does not hold what it says it does
  * - `too-large`: the package asks to inflate to more than we open
  * - `missing-part`: the package has no main document part to read
@@ -17,6 +18,7 @@
  * - `unsupported-content`: the document holds markup we cannot write back out unchanged
  */
 export type DocxImportErrorCode =
+  | "no-xml-parser"
   | "not-a-docx"
   | "too-large"
   | "missing-part"

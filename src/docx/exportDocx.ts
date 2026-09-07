@@ -16,7 +16,14 @@ import { toParagraphFormat } from "../model/format";
 import { parseNumbering } from "../numbering/parseNumbering";
 import { addListDefinitions } from "../numbering/writeNumbering";
 import { DocxExportError } from "../ooxml/errors";
-import { decodeUtf8, encodeUtf8, parseXml, W_NS } from "../ooxml/xml";
+import {
+  decodeUtf8,
+  encodeUtf8,
+  parseXml,
+  W_NS,
+  withXmlParser,
+  type XmlParser,
+} from "../ooxml/xml";
 import { sameSource } from "../schema/sourceEquality";
 import { planCommentParts } from "./comments";
 import { repackParts } from "./container";
@@ -194,7 +201,25 @@ function newNumberingPart(
   };
 }
 
-export function exportDocx(doc: PMNode, session: DocxSession): Uint8Array {
+/** What a caller may say about a write beyond handing over the document and its session */
+export interface ExportOptions {
+  /**
+   * The parser the original XML kept in the session is read back through. Left out, the
+   * `DOMParser` global is used, and a runtime carrying none refuses the write with
+   * `no-xml-parser`.
+   */
+  xmlParser?: XmlParser;
+}
+
+export function exportDocx(
+  doc: PMNode,
+  session: DocxSession,
+  options?: ExportOptions
+): Uint8Array {
+  return withXmlParser(options?.xmlParser, () => writeDocx(doc, session));
+}
+
+function writeDocx(doc: PMNode, session: DocxSession): Uint8Array {
   const store = sessionOf(session);
   const relsPath = relsPathOf(store.mainPartPath);
   const relationships = relationshipWriter(

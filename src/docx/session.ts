@@ -10,7 +10,11 @@
 
 import type { Node as PMNode } from "prosemirror-model";
 import type { DocumentDefaults } from "../model/format";
-import { type Numbering, parseNumbering } from "../numbering/parseNumbering";
+import {
+  type Numbering,
+  type NumberingOptions,
+  parseNumbering,
+} from "../numbering/parseNumbering";
 import type { ImportedComments } from "./comments";
 import type {
   ParagraphFormatLayer,
@@ -112,8 +116,11 @@ export function documentPartPath(session: DocxSession): string {
 }
 
 /** The list definitions the document carries, which is what a paragraph's numbering points into */
-export function documentNumbering(session: DocxSession): Numbering {
-  return parseNumbering(sessionOf(session).numberingXml);
+export function documentNumbering(
+  session: DocxSession,
+  options?: NumberingOptions
+): Numbering {
+  return parseNumbering(sessionOf(session).numberingXml, options);
 }
 
 /** Finds which original block a node came from. undefined for a node newly created during editing */

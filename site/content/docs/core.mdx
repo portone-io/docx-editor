@@ -28,21 +28,50 @@ exposed by the public API.
 
 ## Server environments
 
-Browsers provide the `DOMParser` and `Node` globals used during import. A server must install
-compatible implementations before calling `importDocx`:
+Reading a DOCX means reading the XML inside it, and that needs a parser. Browsers have one.
+Anywhere else, pass one in:
 
 ```ts
 import { JSDOM } from "jsdom";
+import { importDocx } from "@portone/docx-editor/core";
 
-const { window } = new JSDOM();
-globalThis.DOMParser = window.DOMParser;
-globalThis.Node = window.Node;
+const { DOMParser } = new JSDOM().window;
+
+const { doc, session } = importDocx(source, { xmlParser: new DOMParser() });
+```
+
+`importDocx`, `exportDocx`, and `onlyCommentsChangedBy` all take `xmlParser`, and the parser one
+of them is given reads every part it touches, including both of the files `onlyCommentsChangedBy`
+opens for itself.
+`documentNumbering` and `parseNumbering` read XML of their own rather than through one of those
+calls, so they take the option as a second argument.
+The option asks for `parseFromString(source, "application/xml")`, and what it hands back has to be
+a real DOM document rather than an object shaped like one: the readers walk it with the standard
+DOM API, `documentElement`, `children`, `childNodes`, `attributes`, `getAttribute` and
+`getElementsByTagName` with their namespace-aware forms, `localName`, `nodeName`, `nodeType`,
+`nodeValue`, `namespaceURI`, `textContent`, `parentElement`, `ownerDocument` and `cloneNode` among
+them.
+Markup it cannot read has to be reported the way a browser reports it, by throwing or by handing
+back a document holding a `parsererror` element; either way the read is refused with
+`malformed-xml`.
+
+The package bundles no parser of its own, and jsdom is the only implementation it tests. jsdom is
+the obvious one on a long-running Node server, while on serverless functions it adds noticeable
+bundle weight and cold-start time and edge runtimes cannot run it at all, so treat those
+environments as unsupported for now.
+
+Installing a `DOMParser` global instead works, and every call then leaves the option out:
+
+```ts
+globalThis.DOMParser = new JSDOM().window.DOMParser;
 ```
 
 Use a parser configuration that disables external entities and external fetching.
 
-This works without friction on a long-running Node server.
-On serverless functions jsdom adds noticeable bundle weight and cold-start time, and edge runtimes cannot run it at all, so treat those environments as unsupported for now.
+A call with neither is refused with `DocxImportError` and the code `no-xml-parser`, so a runtime
+missing its parser reads as that rather than as a damaged file.
+
+Nothing else about the browser is needed: no `Node` global, no `document`, no `window`.
 
 ## Verifying a commenter's file
 
@@ -149,6 +178,7 @@ codes without importing the core entry.
 
 | Code | Why the document was refused |
 | --- | --- |
+| `no-xml-parser` | The runtime has no XML parser: no `xmlParser` was passed and there is no `DOMParser` global. |
 | `not-a-docx` | The bytes are not a readable zip container, its entry names are not a package's, or an entry does not hold what it claims to. |
 | `too-large` | The package asks to inflate beyond the limits below. |
 | `missing-part` | The package carries no main document part. |
@@ -156,8 +186,10 @@ codes without importing the core entry.
 | `malformed-xml` | The XML cannot be parsed, declares a DTD, or its markup is inconsistent. |
 | `unsupported-content` | The document holds markup that could not be written back out unchanged. |
 
-A file a person picked can fail with any of these, so the code is worth showing: `not-a-docx` and
-`too-large` are usually the person's to fix, while the rest describe the file itself.
+`no-xml-parser` is about where the call was made rather than about the file, and a browser never
+reaches it; [Server environments](#server-environments) covers it.
+A file a person picked can fail with any of the rest, so the code is worth showing: `not-a-docx`
+and `too-large` are usually the person's to fix, while the others describe the file itself.
 
 ### Export codes
 
@@ -169,6 +201,11 @@ A file a person picked can fail with any of these, so the code is worth showing:
 | `lost-original` | A node that carries only its original XML has lost it. |
 | `malformed-xml` | An original XML fragment cannot be read well enough to rewrite. |
 | `invalid-table` | The table grid is inconsistent, such as a vertical merge outliving its rows. |
+
+Writing reads the document it produced back, so `exportDocx` needs an XML parser as much as
+`importDocx` does.
+A call on a runtime with none is refused ahead of all of these, with `DocxImportError` and the
+import code `no-xml-parser`; [Server environments](#server-environments) covers it.
 
 An export failure leaves the editor state untouched, so a screen can report the reason and let the
 person carry on editing.

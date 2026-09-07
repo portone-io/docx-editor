@@ -8,7 +8,13 @@
  * styles, its headers - and a document comparison would see none of it.
  */
 
-import { decodeUtf8, elementChildren, parseXml } from "../ooxml/xml";
+import {
+  decodeUtf8,
+  elementChildren,
+  parseXml,
+  withXmlParser,
+  type XmlParser,
+} from "../ooxml/xml";
 import {
   commentAdditionsBy,
   commentEditsOwned,
@@ -324,6 +330,8 @@ function storyKept(
  *
  * `editableComments: "all"` judges the file of an editor opened for a moderator, where every
  * comment was theirs to edit; an identity is nobody's to rewrite under either setting.
+ * `xmlParser` names the parser both files are read through, for a runtime that holds no
+ * `DOMParser` global of its own.
  *
  * Bytes that are not a readable docx are turned down the way opening one is, with a
  * `DocxImportError`, rather than being answered as a file that changed.
@@ -332,16 +340,23 @@ export function onlyCommentsChangedBy(
   original: DocxBytes,
   submitted: DocxBytes,
   authorId: string,
-  { editableComments = "own" }: { editableComments?: EditableComments } = {}
+  {
+    editableComments = "own",
+    xmlParser,
+  }: { editableComments?: EditableComments; xmlParser?: XmlParser } = {}
 ): CommentOnlyVerdict {
-  const before = importDocx(original);
-  const after = importDocx(submitted);
-  const packaged = packageKept(before.session, after.session);
-  if (!packaged.ok) return packaged;
-  const story = storyKept(before, after, authorId, editableComments);
-  // The parts are judged last, so a comment the wrong hand touched is named for that rather than
-  // for the part it was written across
-  return story.ok
-    ? commentPartsKept(before, after, authorId, editableComments)
-    : story;
+  // Both files are opened inside the one scope, so the parser named here is the parser both
+  // reads go through even though neither `importDocx` call is given it
+  return withXmlParser(xmlParser, () => {
+    const before = importDocx(original);
+    const after = importDocx(submitted);
+    const packaged = packageKept(before.session, after.session);
+    if (!packaged.ok) return packaged;
+    const story = storyKept(before, after, authorId, editableComments);
+    // The parts are judged last, so a comment the wrong hand touched is named for that rather
+    // than for the part it was written across
+    return story.ok
+      ? commentPartsKept(before, after, authorId, editableComments)
+      : story;
+  });
 }

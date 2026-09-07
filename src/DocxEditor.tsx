@@ -325,6 +325,9 @@ function useDocumentBytes(source: DocxSource): DocxBytes | null {
 }
 
 const IMPORT_REJECTION_REASON: Record<DocxImportErrorCode, string> = {
+  // `DOMParser` is built into the browser rather than loaded with the page, so a browser that
+  // reaches this line has no XML reader at all and will not have gained one on a second try
+  "no-xml-parser": "This browser cannot read documents.",
   "not-a-docx": "This file is not a docx document, or it is damaged.",
   "too-large": "This document is too large to open.",
   "missing-part": "This document is missing the part that holds its body.",

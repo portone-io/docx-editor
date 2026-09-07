@@ -95,13 +95,76 @@ function declaresDtd(source: string): boolean {
   }
 }
 
+/**
+ * What reading a package part asks of a runtime: an XML string in, a document out.
+ *
+ * A browser's `DOMParser` is one, and so is a `DOMParser` from jsdom. The package ships none of
+ * them.
+ *
+ * Markup it cannot read may be answered either way a parser answers one: by handing back a
+ * document holding a `parsererror` element, or by throwing. Both are read as `malformed-xml`.
+ */
+export interface XmlParser {
+  parseFromString(source: string, type: "application/xml"): Document;
+}
+
+let scopedParser: XmlParser | undefined;
+
+/** The parser named here, else the one the enclosing scope settled on, else the browser's own */
+function resolveParser(parser: XmlParser | undefined): XmlParser {
+  const named = parser ?? scopedParser;
+  if (named) return named;
+  if (typeof DOMParser === "function") return new DOMParser();
+  throw new DocxImportError(
+    "no-xml-parser",
+    "no XML parser: pass `xmlParser` or install a DOMParser global"
+  );
+}
+
+/**
+ * Runs `work` with every `parseXml` inside it reading through the one parser settled on here.
+ *
+ * Settling it at the boundary rather than at each read is what lets an entry point turn a runtime
+ * holding no parser down before it has read anything, instead of wherever the first part happens
+ * to be parsed; it also means one parser serves the whole call rather than a fresh `DOMParser`
+ * being built for every part.
+ *
+ * The public entry points are synchronous, so the scope covers exactly the work one of them does
+ * and nothing that runs after it. `undefined` keeps the enclosing scope's parser rather than
+ * clearing it, which is what lets an entry point opening a file through another one - the verifier
+ * running two imports - hand its own parser down without every inner call having to carry it.
+ */
+export function withXmlParser<T>(
+  parser: XmlParser | undefined,
+  work: () => T
+): T {
+  const enclosing = scopedParser;
+  scopedParser = resolveParser(parser);
+  try {
+    return work();
+  } finally {
+    scopedParser = enclosing;
+  }
+}
+
 export function parseXml(source: string): Document {
-  // ECMA-376 allows no DTD in a package part, and DOMParser expands the entities one
+  // ECMA-376 allows no DTD in a package part, and an XML parser expands the entities one
   // declares, so a part carrying one could show text that the part itself does not hold
   if (declaresDtd(source)) {
     throw new DocxImportError("malformed-xml", "the XML declares a DTD");
   }
-  const doc = new DOMParser().parseFromString(source, "application/xml");
+  let doc: Document;
+  try {
+    doc = resolveParser(undefined).parseFromString(source, "application/xml");
+  } catch (cause) {
+    // A parser is free to answer markup it cannot read by throwing rather than by handing back a
+    // document holding a `parsererror`, and either way the source did not parse. This package's
+    // own refusals keep the code they were raised with
+    if (cause instanceof DocxImportError) throw cause;
+    throw new DocxImportError("malformed-xml", "could not parse the XML", {
+      cause,
+    });
+  }
   if (doc.getElementsByTagName("parsererror").length > 0) {
     throw new DocxImportError("malformed-xml", "could not parse the XML");
   }
@@ -170,24 +233,27 @@ export function attrString(el: Element): string | null {
 }
 
 /**
- * Whether this node is an element.
+ * The `nodeType` values read below, written as the numbers the DOM standard fixes them to.
  *
- * `Node` is a global a server is asked to install (`site/content/docs/core.mdx`); `Element` is
- * not, so nothing here may reach for it at run time.
+ * `Node` and `Element` are names in the type positions here and nowhere else. Reading a constant
+ * off the `Node` global would make the package ask a runtime for an object it has no other use for.
  */
+const ELEMENT_NODE = 1;
+const TEXT_NODE = 3;
+const CDATA_SECTION_NODE = 4;
+const COMMENT_NODE = 8;
+
+/** Whether this node is an element */
 export function isElement(node: Node): node is Element {
-  return node.nodeType === Node.ELEMENT_NODE;
+  return node.nodeType === ELEMENT_NODE;
 }
 
 function serializeChildNode(node: Node): string {
   if (isElement(node)) return serializeXml(node);
-  if (
-    node.nodeType === Node.TEXT_NODE ||
-    node.nodeType === Node.CDATA_SECTION_NODE
-  ) {
+  if (node.nodeType === TEXT_NODE || node.nodeType === CDATA_SECTION_NODE) {
     return escapeXml(node.nodeValue ?? "");
   }
-  if (node.nodeType === Node.COMMENT_NODE) {
+  if (node.nodeType === COMMENT_NODE) {
     return `<!--${node.nodeValue ?? ""}-->`;
   }
   throw new DocxImportError(

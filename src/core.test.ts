@@ -5,12 +5,14 @@ import { fileURLToPath } from "node:url";
 import { unzipSync, zipSync } from "fflate";
 import { Fragment, type Node as PMNode } from "prosemirror-model";
 import { TextSelection } from "prosemirror-state";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   decode,
   fixtureNames,
+  importErrorCode,
   LETTER_SECT_PR,
   makeDocx,
+  ONE_LIST_NUMBERING,
   readFixture,
 } from "./__testing__/docx";
 import { rangeOfText } from "./__testing__/editing";
@@ -25,7 +27,9 @@ import {
   importDocx,
   type NumberingRef,
   onlyCommentsChangedBy,
+  parseNumbering,
   toParagraphFormat,
+  type XmlParser,
 } from "./core";
 import { COMMENTS_REL_TYPE, PEOPLE_REL_TYPE } from "./docx/comments/constants";
 import {
@@ -111,6 +115,26 @@ function numberingRefsIn(doc: PMNode): NumberingRef[] {
 }
 
 describe("core entry", () => {
+  it("constructs one global parser for all the XML an import reads", () => {
+    let constructed = 0;
+    class CountingParser extends DOMParser {
+      constructor() {
+        super();
+        constructed += 1;
+      }
+    }
+    vi.stubGlobal("DOMParser", CountingParser);
+
+    try {
+      const { doc } = importDocx(readFixture("demo.docx"));
+
+      expect(doc.textContent).not.toBe("");
+      expect(constructed).toBe(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("reaches nothing but the zip and document-model packages", () => {
     expect(packagesReachedBy(join(srcDir, "core.ts"))).toEqual([
       "fflate",
@@ -804,5 +828,141 @@ describe("onlyCommentsChangedBy", () => {
         partRefused(COMMENTS_PART)
       );
     });
+  });
+});
+
+/**
+ * The entry points read where a server reads them, holding the parser they were handed rather
+ * than one the runtime happened to have. A `ReferenceError` out of the middle of a read is what
+ * this replaces: a caller could not tell it apart from a file that is damaged.
+ */
+describe("with no DOMParser global", () => {
+  // Taken while the global is still there, the way a server takes one off jsdom
+  const xmlParser = new DOMParser();
+
+  beforeEach(() => {
+    vi.stubGlobal("DOMParser", undefined);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("refuses to open a file with no-xml-parser rather than a ReferenceError", () => {
+    expect(importErrorCode(() => importDocx(readFixture(FIXTURE)))).toBe(
+      "no-xml-parser"
+    );
+  });
+
+  it("opens the fixture through the xmlParser option instead", () => {
+    const { doc, session } = importDocx(readFixture(FIXTURE), { xmlParser });
+
+    expect(doc.textContent).not.toBe("");
+    expect(documentPartPath(session)).toBe("word/document.xml");
+  });
+
+  /**
+   * Writing reads the exported body back, and that read is the one wrapped in a refusal about the
+   * document. The runtime's own refusal is settled as the call comes in, ahead of the wrapper, so
+   * it comes through as itself even for a package that parses nothing until then
+   */
+  it("refuses to write a file with no-xml-parser rather than an export code", () => {
+    const bare = makeDocx(`<w:p>${LETTER_SECT_PR}</w:p>`);
+    const { doc, session } = importDocx(bare, { xmlParser });
+
+    expect(importErrorCode(() => exportDocx(doc, session))).toBe(
+      "no-xml-parser"
+    );
+  });
+
+  /**
+   * The parser is settled before the bytes are looked at, so a runtime that cannot read any file
+   * says so rather than passing judgement on the one it was handed
+   */
+  it("refuses bytes that are no docx for the parser rather than for the bytes", () => {
+    expect(importErrorCode(() => importDocx(new Uint8Array([1, 2, 3])))).toBe(
+      "no-xml-parser"
+    );
+    expect(
+      importErrorCode(() =>
+        importDocx(new Uint8Array([1, 2, 3]), { xmlParser })
+      )
+    ).toBe("not-a-docx");
+  });
+
+  /**
+   * A parser that gives out is a runtime problem, and letting its own exception through would put
+   * the caller back where a bare `ReferenceError` left them: unable to place what went wrong.
+   * There is nothing to read past a parser that refuses to read, so it reads as a file that did
+   * not parse
+   */
+  it("refuses a file its parser threw on rather than letting the throw out", () => {
+    const throwing: XmlParser = {
+      parseFromString: () => {
+        throw new TypeError("this parser gave up");
+      },
+    };
+
+    expect(
+      importErrorCode(() =>
+        importDocx(readFixture(FIXTURE), { xmlParser: throwing })
+      )
+    ).toBe("malformed-xml");
+  });
+
+  /**
+   * A session hands its numbering out through a reader of its own, and the parser it was opened
+   * through is long out of scope by the time a consumer asks for it
+   */
+  it("reads an opened document's numbering through the same option", () => {
+    const { session } = importDocx(readFixture(FIXTURE), { xmlParser });
+
+    expect(
+      documentNumbering(session, { xmlParser }).lists.size
+    ).toBeGreaterThan(0);
+    expect(importErrorCode(() => documentNumbering(session))).toBe(
+      "no-xml-parser"
+    );
+  });
+
+  it("reads a numbering part handed over on its own through the same option", () => {
+    expect(parseNumbering(ONE_LIST_NUMBERING, { xmlParser }).lists.size).toBe(
+      1
+    );
+    expect(importErrorCode(() => parseNumbering(ONE_LIST_NUMBERING))).toBe(
+      "no-xml-parser"
+    );
+  });
+
+  // A document with no numbering part defines no lists, and there is nothing there to read
+  it("answers a document carrying no numbering with no parser at all", () => {
+    const bare = makeDocx(`<w:p>${LETTER_SECT_PR}</w:p>`);
+    const { session } = importDocx(bare, { xmlParser });
+
+    expect(documentNumbering(session).lists.size).toBe(0);
+    expect(parseNumbering(null).lists.size).toBe(0);
+  });
+
+  it("writes the file back out with the same option", () => {
+    const { doc, session } = importDocx(readFixture(FIXTURE), { xmlParser });
+
+    const out = exportDocx(doc, session, { xmlParser });
+
+    expect(importDocx(out, { xmlParser }).doc.textContent).toBe(
+      doc.textContent
+    );
+  });
+
+  // The verifier opens two files through `importDocx`, and neither call is handed the option;
+  // the scope the verifier put the parser in is what both of them read through
+  it("takes the same option for a verdict and keeps it through both imports", () => {
+    const bytes = readFixture(FIXTURE);
+
+    expect(onlyCommentsChangedBy(bytes, bytes, "me", { xmlParser })).toEqual({
+      ok: true,
+    });
+    expect(
+      importErrorCode(() => onlyCommentsChangedBy(bytes, bytes, "me"))
+    ).toBe("no-xml-parser");
   });
 });
