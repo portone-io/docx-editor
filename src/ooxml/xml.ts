@@ -98,9 +98,11 @@ function declaresDtd(source: string): boolean {
 /**
  * What reading a package part asks of a runtime: an XML string in, a document out.
  *
- * A browser's `DOMParser` is one, and so is anything else that answers the same call - a
- * `DOMParser` from jsdom, or a lighter implementation on a runtime jsdom is too heavy for.
- * The package ships none of them.
+ * A browser's `DOMParser` is one, and so is a `DOMParser` from jsdom. The package ships none of
+ * them.
+ *
+ * Markup it cannot read may be answered either way a parser answers one: by handing back a
+ * document holding a `parsererror` element, or by throwing. Both are read as `malformed-xml`.
  */
 export interface XmlParser {
   parseFromString(source: string, type: "application/xml"): Document;
@@ -151,10 +153,18 @@ export function parseXml(source: string): Document {
   if (declaresDtd(source)) {
     throw new DocxImportError("malformed-xml", "the XML declares a DTD");
   }
-  const doc = resolveParser(undefined).parseFromString(
-    source,
-    "application/xml"
-  );
+  let doc: Document;
+  try {
+    doc = resolveParser(undefined).parseFromString(source, "application/xml");
+  } catch (cause) {
+    // A parser is free to answer markup it cannot read by throwing rather than by handing back a
+    // document holding a `parsererror`, and either way the source did not parse. This package's
+    // own refusals keep the code they were raised with
+    if (cause instanceof DocxImportError) throw cause;
+    throw new DocxImportError("malformed-xml", "could not parse the XML", {
+      cause,
+    });
+  }
   if (doc.getElementsByTagName("parsererror").length > 0) {
     throw new DocxImportError("malformed-xml", "could not parse the XML");
   }

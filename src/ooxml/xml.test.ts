@@ -75,6 +75,31 @@ describe("the parser a read goes through", () => {
     expect(sources).toEqual([XML]);
   });
 
+  /**
+   * A `DOMParser` answers markup it cannot read with a `parsererror` document, but a parser is
+   * free to throw instead, and an exception of the parser's own reaching the caller is the very
+   * thing a caller cannot tell apart from a runtime giving out
+   */
+  it("reads a throw of the parser's own as markup that did not parse", () => {
+    const real = new DOMParser();
+    const throwing: XmlParser = {
+      parseFromString: (source, type) => {
+        const doc = real.parseFromString(source, type);
+        if (doc.getElementsByTagName("parsererror").length > 0) {
+          throw new SyntaxError("unexpected end of input");
+        }
+        return doc;
+      },
+    };
+
+    expect(
+      importErrorCode(() => withXmlParser(throwing, () => parseXml("<w:t>")))
+    ).toBe("malformed-xml");
+    expect(
+      withXmlParser(throwing, () => parseXml(XML)).documentElement
+    ).not.toBeNull();
+  });
+
   it("refuses with no-xml-parser when no parser is in scope and none is global", () => {
     vi.stubGlobal("DOMParser", undefined);
 

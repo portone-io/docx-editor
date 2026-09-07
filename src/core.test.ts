@@ -27,6 +27,7 @@ import {
   type NumberingRef,
   onlyCommentsChangedBy,
   toParagraphFormat,
+  type XmlParser,
 } from "./core";
 import { COMMENTS_REL_TYPE, PEOPLE_REL_TYPE } from "./docx/comments/constants";
 import {
@@ -861,6 +862,26 @@ describe("without a DOM", () => {
         importDocx(new Uint8Array([1, 2, 3]), { xmlParser })
       )
     ).toBe("not-a-docx");
+  });
+
+  /**
+   * A parser that gives out is a runtime problem, and letting its own exception through would put
+   * the caller back where a bare `ReferenceError` left them: unable to place what went wrong.
+   * There is nothing to read past a parser that refuses to read, so it reads as a file that did
+   * not parse
+   */
+  it("refuses a file its parser threw on rather than letting the throw out", () => {
+    const throwing: XmlParser = {
+      parseFromString: () => {
+        throw new TypeError("this parser gave up");
+      },
+    };
+
+    expect(
+      importErrorCode(() =>
+        importDocx(readFixture(FIXTURE), { xmlParser: throwing })
+      )
+    ).toBe("malformed-xml");
   });
 
   it("writes the file back out with the same option", () => {
