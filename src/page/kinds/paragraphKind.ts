@@ -46,7 +46,7 @@ interface BreakAt {
  * The measurement reads the same list to pair each space element it finds with the break it
  * belongs to.
  */
-export function pageBreaksIn(block: PMNode, blockPos: number): BreakAt[] {
+function pageBreaksIn(block: PMNode, blockPos: number): BreakAt[] {
   const found: BreakAt[] = [];
   if (block.type !== docxSchema.nodes.paragraph) return found;
   block.forEach((child, offset) => {

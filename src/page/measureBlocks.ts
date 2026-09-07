@@ -2,19 +2,19 @@
  * Measures the sheet as drawn on screen: the height of each body block, the gap above it, and
  * where the page breaks inside it stand, with nothing computed line by line.
  *
- * Every place a block may be parted at is read as a break candidate (`page/blockKinds`), whatever
- * shape of block it is: a page break for a paragraph, a safe row boundary for a table.
+ * Every place a block may be parted at is read as a break candidate (`page/blockKinds`) by the
+ * block's own kind (`page/kinds`), so this pass names no shape of block itself.
  * The engine's own marks are taken back off as they are read, so a block already pushed and a
  * break already given its space read as they would with neither applied. A measurement that read
  * them in would add to what is already there, and the layout would creep on every pass.
  * Where there is no layout (in tests) everything is 0, so the result is a single page.
  */
 
+import type { Node as PMNode } from "prosemirror-model";
 import type { EditorView } from "prosemirror-view";
 import { editorAttributes } from "../styles/classNames";
-import type { BreakCandidate, MeasuredBlock } from "./blockKinds";
-import { pageBreaksIn } from "./kinds/paragraphKind";
-import { tableKind } from "./kinds/tableKind";
+import { blockKindFor, type MeasuredBlock } from "./blockKinds";
+import { blockKindsOf } from "./pageDecorations";
 
 /**
  * The measurements taken in order to draw the page overlay. Positions are relative to
@@ -30,9 +30,6 @@ export interface SheetMeasure {
   blocks: MeasuredBlock[];
 }
 
-const PAGE_BREAK_BR = `br[${editorAttributes.breakType}="page"]`;
-const BREAK_SPACE = `[${editorAttributes.pageBreakSpace}]`;
-
 function pixels(value: string): number {
   const parsed = Number.parseFloat(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -47,24 +44,21 @@ function appliedPush(element: HTMLElement): number {
   return pixels(element.getAttribute(editorAttributes.pagePush) ?? "");
 }
 
-function drawnBlocks(view: EditorView): { pos: number; dom: HTMLElement }[] {
-  const found: { pos: number; dom: HTMLElement }[] = [];
-  view.state.doc.forEach((_node, offset) => {
+interface DrawnBlock {
+  node: PMNode;
+  pos: number;
+  dom: HTMLElement;
+}
+
+function drawnBlocks(view: EditorView): DrawnBlock[] {
+  const found: DrawnBlock[] = [];
+  view.state.doc.forEach((node, offset) => {
     const dom = view.nodeDOM(offset);
     if (dom instanceof HTMLElement && dom.getBoundingClientRect().height > 0) {
-      found.push({ pos: offset, dom });
+      found.push({ node, pos: offset, dom });
     }
   });
   return found;
-}
-
-/**
- * A break with no space of its own sits somewhere the space could not be opened, inside a table
- * cell (`page/pageDecorations`). Those still start a new page, but only after the whole block,
- * which the layout answers from `breakAfter`.
- */
-function breakWithoutSpace(dom: HTMLElement, spaces: number): boolean {
-  return dom.querySelectorAll(PAGE_BREAK_BR).length > spaces;
 }
 
 export function measureSheet(
@@ -80,64 +74,39 @@ export function measureSheet(
   const contentBottom = pixels(style.paddingBottom);
   const sheetY = (viewportY: number) => (viewportY - sheetRect.top) / scale;
 
+  const kinds = blockKindsOf(view.state);
   const blocks: MeasuredBlock[] = [];
   let previousBottom = contentTop;
   /** Everything the engine has opened up above the point being read */
   let applied = 0;
 
-  for (const { pos, dom } of drawnBlocks(view)) {
-    const node = view.state.doc.nodeAt(pos);
+  for (const { node, pos, dom } of drawnBlocks(view)) {
     const rect = dom.getBoundingClientRect();
     applied += appliedPush(dom);
     /** Everything opened up above this block, which its own measurements are read without */
     const above = applied;
     const blockY = (viewportY: number) => sheetY(viewportY) - above;
     const top = blockY(rect.top);
-    const measuredTable =
-      node && tableKind.matches(node)
-        ? tableKind.measure({
-            view,
-            node,
-            pos,
-            dom,
-            sheetY: blockY,
-            top,
-            scale,
-          })
-        : null;
-
-    // Each space element is the one the break at the same ordinal was given
-    const breaks = node ? pageBreaksIn(node, pos) : [];
-    const spaces = Array.from(dom.querySelectorAll(BREAK_SPACE));
-    const forced: BreakCandidate[] = [];
-    spaces.forEach((space, index) => {
-      const box = space.getBoundingClientRect();
-      const found = breaks.at(index);
-      if (found) {
-        forced.push({
-          at: found.at,
-          offset: sheetY(box.top) - applied - top,
-          forced: true,
-          repeatHeight: 0,
-        });
-      }
-      applied += box.height / scale;
+    const measured = blockKindFor(kinds, node).measure({
+      view,
+      node,
+      pos,
+      dom,
+      sheetY: blockY,
+      top,
+      scale,
     });
 
-    applied += measuredTable?.appliedHeight ?? 0;
+    applied += measured.appliedHeight;
     const bottom = sheetY(rect.bottom) - applied;
-    const height = bottom - top;
     blocks.push({
       pos,
       gap: top - previousBottom,
-      height,
+      height: bottom - top,
       breakBefore: dom.hasAttribute(editorAttributes.pageBreakBefore),
-      breakAfter:
-        measuredTable?.breakAfter ?? breakWithoutSpace(dom, spaces.length),
-      // A space is never opened inside a table, so at most one of the two lists holds anything
-      candidates: [...forced, ...(measuredTable?.candidates ?? [])],
-      minFirstPiece:
-        measuredTable?.minFirstPiece ?? forced[0]?.offset ?? height,
+      breakAfter: measured.breakAfter,
+      candidates: measured.candidates,
+      minFirstPiece: measured.minFirstPiece,
     });
     previousBottom = bottom;
   }
