@@ -274,6 +274,44 @@ describe("WordprocessingML comments", () => {
     );
   });
 
+  /**
+   * The name a new part takes is what its relationship points at and what the content types part
+   * declares, so a package already holding something under the obvious name gets the next one
+   * rather than having that part written over.
+   */
+  it("adds the comments part at word/comments.xml, and at comments2.xml when that name is taken", () => {
+    const body =
+      '<w:p><w:r><w:t xml:space="preserve">Alpha beta</w:t></w:r></w:p>';
+    const commentedAt = (parts: Record<string, Uint8Array>): string => {
+      const opened = importDocx(zipSync(parts));
+      const range = firstTextRange(opened.doc);
+      let state = createEditorState(opened.doc);
+      state = state.apply(
+        state.tr.setSelection(
+          TextSelection.create(state.doc, range.from, range.from + 5)
+        )
+      );
+      state = apply(state, addComment({ text: "New note", author: "Grace" }));
+      const output = unzipSync(exportDocx(state.doc, opened.session));
+      const rels = decode(output["word/_rels/document.xml.rels"]);
+      const target = /Target="(comments\d*\.xml)"/.exec(rels)?.[1];
+      if (target === undefined) throw new Error("no comments relationship");
+      expect(decode(output["[Content_Types].xml"])).toContain(
+        `PartName="/word/${target}"`
+      );
+      expect(output[`word/${target}`]).toBeDefined();
+      return target;
+    };
+
+    const parts = unzipSync(makeCommentReadyDocx(body));
+    expect(commentedAt(parts)).toBe("comments.xml");
+
+    // A part of somebody else's making sits at the obvious name, and it stays as it is
+    const taken = encoder.encode("<w:notComments/>");
+    const output = { ...parts, "word/comments.xml": taken };
+    expect(commentedAt(output)).toBe("comments2.xml");
+  });
+
   it("keeps the prefix used by a prefixed content-types root", () => {
     const parts = unzipSync(
       makeCommentReadyDocx(
