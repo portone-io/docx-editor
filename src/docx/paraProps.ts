@@ -19,7 +19,15 @@ import type {
   RunFormat,
 } from "../model/format";
 import type { LevelIndent } from "../numbering/parseNumbering";
-import { childByLocalName, escapeXml, localPart } from "../ooxml/xml";
+import {
+  attrPairs,
+  elementXml,
+  withoutAttrs,
+  type XmlAttr,
+} from "../ooxml/element";
+import { wName } from "../ooxml/names";
+import { setAttr } from "../ooxml/precedence";
+import { childByLocalName, localPart } from "../ooxml/xml";
 import {
   layerParagraphFormat,
   layerRunFormat,
@@ -103,46 +111,31 @@ function readParagraphStyleRun(
 
 function numPrXml(ref: NumberingRef | null): string | null {
   if (!ref) return null;
-  return (
-    `<w:numPr><w:ilvl w:val="${ref.ilvl}"/>` +
-    `<w:numId w:val="${ref.numId}"/></w:numPr>`
+  return elementXml(
+    wName("numPr"),
+    [],
+    [
+      elementXml(wName("ilvl"), [[wName("val"), `${ref.ilvl}`]]),
+      elementXml(wName("numId"), [[wName("val"), `${ref.numId}`]]),
+    ]
   );
 }
 
-/** The attributes we do not decide (the right indent and so on) keep their original values */
-function keptIndAttrs(
-  ind: Element | null,
-  dropped: readonly string[]
-): [string, string][] {
-  if (!ind) return [];
-  return Array.from(ind.attributes)
-    .filter((attr) => !dropped.includes(localPart(attr.name)))
-    .map((attr): [string, string] => [attr.name, attr.value]);
-}
-
-function levelIndAttrs(indent: LevelIndent): [string, string][] {
-  const attrs: [string, string][] = [];
+function levelIndAttrs(indent: LevelIndent): XmlAttr[] {
+  const attrs: XmlAttr[] = [];
   if (indent.startTwips !== null)
-    attrs.push(["w:left", `${indent.startTwips}`]);
+    attrs.push([wName("left"), `${indent.startTwips}`]);
   if (indent.hangingTwips !== null) {
-    attrs.push(["w:hanging", `${indent.hangingTwips}`]);
+    attrs.push([wName("hanging"), `${indent.hangingTwips}`]);
   } else if (indent.firstLineTwips !== null) {
-    attrs.push(["w:firstLine", `${indent.firstLineTwips}`]);
+    attrs.push([wName("firstLine"), `${indent.firstLineTwips}`]);
   }
   return attrs;
 }
 
-/** One formatting child written out from its attributes. Null when none are left, which removes the child */
-function attrsXml(tag: string, attrs: [string, string][]): string | null {
-  if (attrs.length === 0) return null;
-  const text = attrs
-    .map(([name, value]) => `${name}="${escapeXml(value)}"`)
-    .join(" ");
-  return `<${tag} ${text}/>`;
-}
-
-function indXml(attrs: [string, string][]): string | null {
-  return attrsXml("w:ind", attrs);
+/** The indent written out from its attributes. Null when none are left, which removes the child */
+function indXml(attrs: readonly XmlAttr[]): string | null {
+  return attrs.length === 0 ? null : elementXml(wName("ind"), attrs);
 }
 
 /** The new `<w:ind>` fragment. undefined when the intent is to leave it as it is */
@@ -152,12 +145,12 @@ function nextIndXml(
 ): string | null | undefined {
   if (change.kind === "keep") return undefined;
   if (change.kind === "clearHanging") {
-    return indXml(keptIndAttrs(ind, HANGING_IND_ATTRS));
+    return indXml(withoutAttrs(attrPairs(ind), HANGING_IND_ATTRS));
   }
   const dropped = [...LEFT_IND_ATTRS, ...FIRST_LINE_IND_ATTRS];
   return indXml([
     ...levelIndAttrs(change.indent),
-    ...keptIndAttrs(ind, dropped),
+    ...withoutAttrs(attrPairs(ind), dropped),
   ]);
 }
 
@@ -169,25 +162,21 @@ function nextIndXml(
  * that had none to begin with gets none back.
  * The character-unit spellings drop out, because Word lets them override the value we just wrote.
  */
-function leftIndAttrs(
-  ind: Element | null,
-  leftTwips: number
-): [string, string][] {
-  const original = ind ? Array.from(ind.attributes) : [];
-  const slot = original.find((attr) =>
-    LEFT_TWIPS_IND_ATTRS.includes(localPart(attr.name))
-  )?.name;
-  const moved = original.flatMap((attr): [string, string][] => {
-    if (!LEFT_IND_ATTRS.includes(localPart(attr.name))) {
-      return [[attr.name, attr.value]];
-    }
-    return attr.name === slot && leftTwips > 0
-      ? [[attr.name, `${leftTwips}`]]
-      : [];
-  });
-  return slot === undefined && leftTwips > 0
-    ? [["w:left", `${leftTwips}`], ...moved]
-    : moved;
+function leftIndAttrs(ind: Element | null, leftTwips: number): XmlAttr[] {
+  const original = attrPairs(ind);
+  const slot = original.find(([name]) =>
+    LEFT_TWIPS_IND_ATTRS.includes(localPart(name))
+  )?.[0];
+  const written = leftTwips > 0 ? `${leftTwips}` : null;
+  // Every other spelling of the left indent goes, so the one value is recorded in one place
+  const kept = withoutAttrs(
+    original,
+    LEFT_IND_ATTRS.filter(
+      (name) => slot === undefined || name !== localPart(slot)
+    )
+  );
+  if (slot !== undefined) return setAttr(kept, "ind", localPart(slot), written);
+  return written === null ? kept : [[wName("left"), written], ...kept];
 }
 
 const EMPTY_P_PR = { tag: "w:pPr", attrs: null, children: [] };
@@ -268,21 +257,11 @@ type AttrEdit = readonly [name: string, value: string];
 function spacingAttrs(
   spacing: Element | null,
   edits: readonly AttrEdit[]
-): [string, string][] {
-  const original = spacing ? Array.from(spacing.attributes) : [];
-  const editOf = (name: string) =>
-    edits.find(([edited]) => edited === localPart(name));
-  const changed = original.map((attr): [string, string] => [
-    attr.name,
-    editOf(attr.name)?.[1] ?? attr.value,
-  ]);
-  const added = edits.filter(
-    ([name]) => !original.some((attr) => localPart(attr.name) === name)
+): XmlAttr[] {
+  return edits.reduce(
+    (attrs, [name, value]) => setAttr(attrs, "spacing", name, value),
+    attrPairs(spacing)
   );
-  return [
-    ...changed,
-    ...added.map(([name, value]): [string, string] => [`w:${name}`, value]),
-  ];
 }
 
 /**
@@ -305,7 +284,7 @@ export function withLineSpacing(
       ["line", `${line}`],
       ["lineRule", spacing.rule],
     ]);
-    return [["spacing", attrsXml("w:spacing", attrs)]];
+    return [["spacing", elementXml(wName("spacing"), attrs)]];
   });
 }
 
@@ -323,7 +302,9 @@ export function withParagraphStyle(
   defaultStyleId: string | null = null
 ): ParagraphProps | null {
   const pStyle =
-    styleId === null ? null : `<w:pStyle w:val="${escapeXml(styleId)}"/>`;
+    styleId === null
+      ? null
+      : elementXml(wName("pStyle"), [[wName("val"), styleId]]);
   return editParagraphProps(pPr, styles, defaultStyleId, () => [
     ["pStyle", pStyle],
   ]);
@@ -347,6 +328,6 @@ export function withParagraphAlign(
   styles: StyleTable = NO_STYLES,
   defaultStyleId: string | null = null
 ): ParagraphProps | null {
-  const jc = `<w:jc w:val="${JC_BY_ALIGN[align]}"/>`;
+  const jc = elementXml(wName("jc"), [[wName("val"), JC_BY_ALIGN[align]]]);
   return editParagraphProps(pPr, styles, defaultStyleId, () => [["jc", jc]]);
 }
