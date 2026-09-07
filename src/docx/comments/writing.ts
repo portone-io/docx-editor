@@ -3,8 +3,10 @@
  */
 
 import type { Node as PMNode } from "prosemirror-model";
+import { elementXml, type XmlAttr, xmlnsAttr } from "../../ooxml/element";
 import { DocxExportError } from "../../ooxml/errors";
-import { encodeUtf8, escapeXml, W_NS } from "../../ooxml/xml";
+import { wName, xmlnsDecl } from "../../ooxml/names";
+import { encodeUtf8 } from "../../ooxml/xml";
 import { directoryOf, type RelationshipWriter } from "../relationships";
 import type { SessionStore } from "../session";
 import {
@@ -13,9 +15,6 @@ import {
   COMMENTS_EXTENDED_REL_TYPE,
   COMMENTS_REL_TYPE,
   CONTENT_TYPES_PATH,
-  MC_NS,
-  W14_NS,
-  W15_NS,
 } from "./constants";
 import { withContentType } from "./contentTypes";
 import {
@@ -110,7 +109,7 @@ function extensionsXml(
   if (comments.extendedXml === null) {
     return (
       '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
-      `<w15:commentsEx xmlns:w15="${W15_NS}">${pieces.join("")}</w15:commentsEx>`
+      `<w15:commentsEx ${xmlnsDecl("w15")}>${pieces.join("")}</w15:commentsEx>`
     );
   }
   const open = /<(?:[^\s<>/:="']+:)?commentsEx\b[^>]*>/.exec(
@@ -213,28 +212,29 @@ function renderedComment(
         )
       : comment.commentXml;
   }
-  const attrs = [
-    `w:id="${escapeXml(comment.id)}"`,
-    comment.author === null ? null : `w:author="${escapeXml(comment.author)}"`,
-    comment.date === null ? null : `w:date="${escapeXml(comment.date)}"`,
-    comment.initials === null
-      ? null
-      : `w:initials="${escapeXml(comment.initials)}"`,
-  ]
-    .filter((entry): entry is string => entry !== null)
-    .join(" ");
+  const attrs: readonly (XmlAttr | null)[] = [
+    xmlnsAttr("w"),
+    [wName("id"), comment.id],
+    comment.author === null ? null : [wName("author"), comment.author],
+    comment.date === null ? null : [wName("date"), comment.date],
+    comment.initials === null ? null : [wName("initials"), comment.initials],
+  ];
   const paraId = keyedEntry(comment, arrivedKeyed) ? comment.paraId : null;
   const body = renderCommentBody(comment.text, paraId);
-  return `<w:comment xmlns:w="${W_NS}" ${attrs}>${body}</w:comment>`;
+  return elementXml(
+    wName("comment"),
+    attrs.filter((attr): attr is XmlAttr => attr !== null),
+    [body]
+  );
 }
 
 function withThreadMarkupCompatibility(openTag: string): string {
   let updated = openTag;
   if (!/\sxmlns:w14\s*=/.test(updated)) {
-    updated = updated.replace(/>$/, ` xmlns:w14="${W14_NS}">`);
+    updated = updated.replace(/>$/, ` ${xmlnsDecl("w14")}>`);
   }
   if (!/\sxmlns:mc\s*=/.test(updated)) {
-    updated = updated.replace(/>$/, ` xmlns:mc="${MC_NS}">`);
+    updated = updated.replace(/>$/, ` ${xmlnsDecl("mc")}>`);
   }
   const ignorable = /\smc:Ignorable\s*=\s*(["'])([^"']*)\1/.exec(updated);
   if (!ignorable) {
@@ -319,11 +319,11 @@ function commentsXml(
 
   if (comments.xml === null) {
     const compatibility = hasThreadMetadata
-      ? ` xmlns:w14="${W14_NS}" xmlns:mc="${MC_NS}" mc:Ignorable="w14"`
+      ? ` ${xmlnsDecl("w14")} ${xmlnsDecl("mc")} mc:Ignorable="w14"`
       : "";
     return (
       '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
-      `<w:comments xmlns:w="${W_NS}"${compatibility}>${pieces.join("")}</w:comments>`
+      `<w:comments ${xmlnsDecl("w")}${compatibility}>${pieces.join("")}</w:comments>`
     );
   }
 

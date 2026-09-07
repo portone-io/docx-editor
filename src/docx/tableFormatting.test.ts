@@ -371,6 +371,21 @@ describe("coloring the borders of a cell", () => {
     );
   });
 
+  it.each(["top", "bottom", "left", "right", "start", "end"])(
+    "removes every theme color attribute when recoloring the %s border",
+    (side) => {
+      const current = tcPr(
+        borders(
+          `<w:${side} w:val="single" w:sz="4" w:color="000000" w:themeColor="text1" w:themeTint="80" w:themeShade="40"/>`
+        )
+      );
+
+      expect(edited(current, RED)).toBe(
+        tcPr(borders(`<w:${side} w:val="single" w:sz="4" w:color="FF0000"/>`))
+      );
+    }
+  );
+
   it("resets the color to auto", () => {
     const current = tcPr(
       borders('<w:top w:val="single" w:sz="4" w:color="FF0000"/>')

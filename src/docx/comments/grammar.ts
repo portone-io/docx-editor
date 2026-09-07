@@ -9,6 +9,13 @@
  */
 
 import {
+  attrsText,
+  elementXml,
+  type XmlAttr,
+  xmlnsAttr,
+} from "../../ooxml/element";
+import { qualify, wName } from "../../ooxml/names";
+import {
   attributeByLocalName,
   elementChildren,
   escapeXml,
@@ -120,16 +127,18 @@ export function renderCommentBody(text: string, paraId: string | null): string {
   const lines = text.split("\n");
   const pieces: string[] = [];
   lines.forEach((line, index) => {
-    if (index > 0) pieces.push("<w:br/>");
+    if (index > 0) pieces.push(elementXml(wName("br"), []));
     if (line.length > 0 || lines.length === 1) {
-      pieces.push(`<w:t xml:space="preserve">${escapeXml(line)}</w:t>`);
+      pieces.push(
+        elementXml(wName("t"), [["xml:space", "preserve"]], [escapeXml(line)])
+      );
     }
   });
-  const attrs =
+  const key: readonly XmlAttr[] =
     paraId === null
-      ? ""
-      : ` xmlns:w14="${W14_NS}" w14:paraId="${escapeXml(paraId)}"`;
-  return `<w:p${attrs}><w:r>${pieces.join("")}</w:r></w:p>`;
+      ? []
+      : [xmlnsAttr("w14"), [qualify("w14", "paraId"), paraId]];
+  return elementXml(wName("p"), key, [elementXml(wName("r"), [], pieces)]);
 }
 
 /**
@@ -230,7 +239,7 @@ export function withThreadKey(
   const selfClosing = opening[0].endsWith("/>");
   const keyed =
     opening[0].slice(0, selfClosing ? -2 : -1) +
-    ` w14:paraId="${escapeXml(paraId)}"` +
+    ` ${attrsText([[qualify("w14", "paraId"), paraId]])}` +
     (selfClosing ? "/>" : ">");
   return (
     commentXml.slice(0, opening.index) +
@@ -332,13 +341,19 @@ export function renderCommentExtension(
   comment: CommentReferenceData | CommentReplyData
 ): string {
   if (comment.extensionXml !== null) return comment.extensionXml;
-  const parent =
+  const parent: readonly XmlAttr[] =
     "parentParaId" in comment
-      ? ` w15:paraIdParent="${escapeXml(comment.parentParaId)}"`
-      : "";
-  const done =
-    "resolved" in comment ? ` w15:done="${comment.resolved ? "1" : "0"}"` : "";
-  return `<w15:commentEx w15:paraId="${escapeXml(comment.paraId)}"${parent}${done}/>`;
+      ? [[qualify("w15", "paraIdParent"), comment.parentParaId]]
+      : [];
+  const done: readonly XmlAttr[] =
+    "resolved" in comment
+      ? [[qualify("w15", "done"), comment.resolved ? "1" : "0"]]
+      : [];
+  return elementXml(qualify("w15", "commentEx"), [
+    [qualify("w15", "paraId"), comment.paraId],
+    ...parent,
+    ...done,
+  ]);
 }
 
 /**
@@ -351,11 +366,18 @@ export function renderPerson(
   author: string,
   userId: string,
   prefix: string,
-  declaration: string
+  declaration: XmlAttr | null
 ): string {
-  return (
-    `<${prefix}person${declaration} ${prefix}author="${escapeXml(author)}">` +
-    `<${prefix}presenceInfo ${prefix}providerId="${COMMENT_AUTHOR_PROVIDER}" ${prefix}userId="${escapeXml(userId)}"/>` +
-    `</${prefix}person>`
+  const declared: readonly XmlAttr[] =
+    declaration === null ? [] : [declaration];
+  return elementXml(
+    `${prefix}person`,
+    [...declared, [`${prefix}author`, author]],
+    [
+      elementXml(`${prefix}presenceInfo`, [
+        [`${prefix}providerId`, COMMENT_AUTHOR_PROVIDER],
+        [`${prefix}userId`, userId],
+      ]),
+    ]
   );
 }

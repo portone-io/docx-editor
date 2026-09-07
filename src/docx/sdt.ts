@@ -12,6 +12,8 @@
  * own way, and the wrapper they put back on export is the same string in both cases.
  */
 
+import { elementXml, emptyTagXml, openTagXml } from "../ooxml/element";
+import { wName } from "../ooxml/names";
 import { wAttr } from "../ooxml/units";
 import { attrString, elementChildren, serializeXml } from "../ooxml/xml";
 import {
@@ -68,9 +70,7 @@ export function readSdtWrapper(el: Element): SdtWrapper | null {
   const attrs = attrString(el);
   const val = lockValue(sdtPr);
   return {
-    prefix:
-      (attrs ? `<w:sdt ${attrs}>` : "<w:sdt>") +
-      head.map(serializeXml).join(""),
+    prefix: openTagXml(wName("sdt"), attrs) + head.map(serializeXml).join(""),
     content,
     contentsLocked: val !== null && CONTENTS_LOCKED.includes(val),
     deletionLocked: val !== null && DELETION_LOCKED.includes(val),
@@ -102,11 +102,10 @@ export function newControlId(): number {
 }
 
 function renderPrefix(props: Props): string {
-  const open = props.attrs ? `<${props.tag} ${props.attrs}>` : `<${props.tag}>`;
   const inner = props.children
     .map((child) => (child.before ?? "") + child.xml)
     .join("");
-  return open + inner + (props.tail ?? "");
+  return openTagXml(props.tag, props.attrs) + inner + (props.tail ?? "");
 }
 
 /** What text one child of the control's `w:sdtPr` is to be changed to. A null xml removes that child */
@@ -132,7 +131,7 @@ export function namesNothing(prefix: string): boolean {
 
 /** A `w:sdtPr` left with nothing inside it is still written, because a control without one is not one we read back */
 function emptyProps(props: Props): string {
-  return props.attrs ? `<${props.tag} ${props.attrs}/>` : `<${props.tag}/>`;
+  return emptyTagXml(props.tag, props.attrs);
 }
 
 /**
@@ -177,7 +176,7 @@ export function editSdtPrefix(
  */
 export function copiedControlPrefix(prefix: string, id: number): string {
   const copied = editSdtPrefix(prefix, [
-    ["id", `<w:id w:val="${id}"/>`],
+    ["id", elementXml(wName("id"), [[wName("val"), `${id}`]])],
     ["dataBinding", null],
   ]);
   return copied ?? prefix;

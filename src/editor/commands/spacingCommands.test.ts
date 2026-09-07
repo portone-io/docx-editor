@@ -85,6 +85,26 @@ describe("setting the line spacing", () => {
     );
   });
 
+  it.each(["line", "lineRule"])(
+    "updates the WML spacing when an extension's %s attribute comes first",
+    (name) => {
+      const value = name === "line" ? "111" : "exact";
+      const { state, session } = opened(
+        '<w:p xmlns:x="urn:extension" ' +
+          'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" mc:Ignorable="x">' +
+          `<w:pPr><w:spacing x:${name}="${value}" w:line="240" w:lineRule="exact"/></w:pPr>` +
+          `<w:r><w:t>${TEXT}</w:t></w:r></w:p>`
+      );
+      const spaced = runCommand(at(state, TEXT), setLineSpacing(DOUBLE));
+
+      expect(activeLineSpacing(spaced)).toEqual(DOUBLE);
+      expect(documentXmlOf(spaced.doc, session)).toContain(
+        `<w:spacing x:${name}="${name === "line" ? "480" : "auto"}" w:line="480" w:lineRule="auto"/>`
+      );
+      expect(setLineSpacing(DOUBLE)(spaced)).toBe(false);
+    }
+  );
+
   it("does nothing to a paragraph already drawn with that spacing", () => {
     const pPr = '<w:pPr><w:spacing w:line="360" w:lineRule="auto"/></w:pPr>';
     const { state } = opened(paragraph(TEXT, pPr));

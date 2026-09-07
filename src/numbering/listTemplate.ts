@@ -9,6 +9,8 @@
  * at the same template.
  */
 
+import { elementXml, type XmlAttr } from "../ooxml/element";
+import { wName } from "../ooxml/names";
 import type {
   LevelIndent,
   NumberFormat,
@@ -97,25 +99,31 @@ export function nextNumId(used: Iterable<number>, kind: ListKind): number {
 
 /** Writes only the slots that carry a value. If none do, no indent is written at all */
 function indXml(indent: LevelIndent | null): string {
-  const attrs = [
-    ["w:left", indent?.startTwips],
-    ["w:right", indent?.endTwips],
-    ["w:hanging", indent?.hangingTwips],
-    ["w:firstLine", indent?.firstLineTwips],
-  ]
-    .filter((entry): entry is [string, number] => typeof entry[1] === "number")
-    .map(([name, value]) => `${name}="${value}"`)
-    .join(" ");
-  return attrs === "" ? "" : `<w:pPr><w:ind ${attrs}/></w:pPr>`;
+  const slots: readonly (readonly [name: string, twips: number | null])[] = [
+    ["left", indent?.startTwips ?? null],
+    ["right", indent?.endTwips ?? null],
+    ["hanging", indent?.hangingTwips ?? null],
+    ["firstLine", indent?.firstLineTwips ?? null],
+  ];
+  const attrs = slots
+    .filter((slot): slot is readonly [string, number] => slot[1] !== null)
+    .map(([name, twips]): XmlAttr => [wName(name), `${twips}`]);
+  if (attrs.length === 0) return "";
+  return elementXml(wName("pPr"), [], [elementXml(wName("ind"), attrs)]);
 }
 
 function levelXml(ilvl: number, level: NumberingLevel): string {
   const ind = indXml(level.indent);
-  return (
-    `<w:lvl w:ilvl="${ilvl}"><w:start w:val="${level.start}"/>` +
-    `<w:numFmt w:val="${level.format}"/>` +
-    `<w:lvlText w:val="${level.text}"/><w:lvlJc w:val="left"/>` +
-    `${ind}</w:lvl>`
+  return elementXml(
+    wName("lvl"),
+    [[wName("ilvl"), `${ilvl}`]],
+    [
+      elementXml(wName("start"), [[wName("val"), `${level.start}`]]),
+      elementXml(wName("numFmt"), [[wName("val"), level.format]]),
+      elementXml(wName("lvlText"), [[wName("val"), level.text]]),
+      elementXml(wName("lvlJc"), [[wName("val"), "left"]]),
+      ind,
+    ]
   );
 }
 
@@ -125,13 +133,18 @@ export function abstractNumXml(abstractNumId: number, kind: ListKind): string {
   const body = Array.from(levels.entries())
     .map(([ilvl, level]) => levelXml(ilvl, level))
     .join("");
-  return `<w:abstractNum w:abstractNumId="${abstractNumId}">${body}</w:abstractNum>`;
+  return elementXml(
+    wName("abstractNum"),
+    [[wName("abstractNumId"), `${abstractNumId}`]],
+    [body]
+  );
 }
 
 /** The `<w:num>` that ties a list number to a definition */
 export function numXml(numId: number, abstractNumId: number): string {
-  return (
-    `<w:num w:numId="${numId}">` +
-    `<w:abstractNumId w:val="${abstractNumId}"/></w:num>`
+  return elementXml(
+    wName("num"),
+    [[wName("numId"), `${numId}`]],
+    [elementXml(wName("abstractNumId"), [[wName("val"), `${abstractNumId}`]])]
   );
 }

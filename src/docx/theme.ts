@@ -36,19 +36,6 @@ export const NO_THEME_FONTS: ThemeFonts = {
   minor: NO_FONT_SCHEME,
 };
 
-/**
- * The theme attribute paired with each font slot.
- * A theme reference and a name in the same slot cannot both apply, so the name wins,
- * the way Word reads them.
- */
-export const THEME_ATTRS: Record<string, readonly string[]> = {
-  ascii: ["asciiTheme"],
-  hAnsi: ["hAnsiTheme"],
-  eastAsia: ["eastAsiaTheme"],
-  // This is the slot whose capitalization varies from document to document
-  cs: ["cstheme", "csTheme"],
-};
-
 interface ThemeSlot {
   scheme: keyof ThemeFonts;
   script: keyof ThemeFontScheme;

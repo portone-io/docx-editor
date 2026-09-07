@@ -12,6 +12,8 @@ import {
 } from "prosemirror-state";
 import { namesNothing, newControlId } from "../../docx/sdt";
 import { withContentLock } from "../../docx/sdtProps";
+import { elementXml, openTagXml } from "../../ooxml/element";
+import { wName } from "../../ooxml/names";
 import { docxSchema } from "../../schema";
 import {
   type ControlSpan,
@@ -32,9 +34,15 @@ import { editsShut } from "../../schema/protectionState";
 function lockedControlMark(id: number): Mark {
   return docxSchema.marks.sdt.create({
     sdtPrefix:
-      "<w:sdt><w:sdtPr>" +
-      `<w:id w:val="${id}"/><w:lock w:val="sdtContentLocked"/>` +
-      "</w:sdtPr>",
+      openTagXml(wName("sdt"), null) +
+      elementXml(
+        wName("sdtPr"),
+        [],
+        [
+          elementXml(wName("id"), [[wName("val"), `${id}`]]),
+          elementXml(wName("lock"), [[wName("val"), "sdtContentLocked"]]),
+        ]
+      ),
     contentsLocked: true,
     deletionLocked: true,
   });

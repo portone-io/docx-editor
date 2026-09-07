@@ -10,8 +10,15 @@
  */
 
 import { type RunFormat, toRunFormat } from "../model/format";
+import {
+  attrPairs,
+  attrValue,
+  elementXml,
+  type XmlAttr,
+} from "../ooxml/element";
+import { wName } from "../ooxml/names";
+import { setAttr } from "../ooxml/precedence";
 import { normalizeHex } from "../ooxml/units";
-import { escapeXml, localPart } from "../ooxml/xml";
 import { isEastAsianFontName } from "../styles/fontStack";
 import { fontNamesOf, readRunFormat } from "./formatting";
 import {
@@ -23,7 +30,6 @@ import {
   renderProps,
   setPropsChild,
 } from "./propsXml";
-import { THEME_ATTRS } from "./theme";
 
 /** The character formatting that is toggled on and off */
 export type RunToggle = "bold" | "italic" | "underline" | "strike";
@@ -74,8 +80,9 @@ const TOGGLE_OFF_VALUE: Record<RunToggle, string> = {
 /** The limit on the font size Word records in half-points (819pt) */
 const MAX_FONT_SIZE_PT = 819;
 
-function elementXml(name: string, value: string | null): string {
-  return value === null ? `<w:${name}/>` : `<w:${name} w:val="${value}"/>`;
+/** A formatting child that records its whole setting in `w:val`, or one that records nothing */
+function valXml(name: string, value: string | null): string {
+  return elementXml(wName(name), value === null ? [] : [[wName("val"), value]]);
 }
 
 /**
@@ -83,7 +90,11 @@ function elementXml(name: string, value: string | null): string {
  * `fill="auto"` means "no background", so it acts as an off that overrides inheritance.
  */
 function shadingXml(fill: string): string {
-  return `<w:shd w:val="clear" w:color="auto" w:fill="${fill}"/>`;
+  return elementXml(wName("shd"), [
+    [wName("val"), "clear"],
+    [wName("color"), "auto"],
+    [wName("fill"), fill],
+  ]);
 }
 
 /** Gathers `#2e74b5` and `2E74B5` alike into the shape the document uses. null if it is not a color */
@@ -127,17 +138,6 @@ function fontName(value: string): string | null {
   return name.length > 0 && !/["';<>&]/.test(name) ? name : null;
 }
 
-/** The attributes of the rFonts this run wrote down. null if its shape cannot be made out */
-function rFontsAttrs(xml: string | null): [string, string][] | null {
-  if (xml === null) return [];
-  const el = parsePropsXml(xml);
-  if (!el) return null;
-  return Array.from(el.attributes, (attr): [string, string] => [
-    attr.name,
-    attr.value,
-  ]);
-}
-
 /**
  * A new rFonts with the font name written in.
  *
@@ -147,21 +147,18 @@ function rFontsAttrs(xml: string | null): [string, string][] | null {
  * The attributes we do not decide (`w:hint` and so on) keep their original values.
  */
 function rFontsXml(current: string | null, name: string): string | null {
-  const attrs = rFontsAttrs(current);
-  if (!attrs) return null;
-  const slots = fontSlots(
-    name,
-    attrs.some(([attr]) => localPart(attr) === "cs")
+  const el = current === null ? null : parsePropsXml(current);
+  if (current !== null && !el) return null;
+  const attrs = attrPairs(el);
+  const slots = fontSlots(name, attrValue(attrs, "cs") !== null);
+  const kept = slots.reduce(
+    (rest, slot) => setAttr(rest, "rFonts", slot, null),
+    attrs
   );
-  const dropped = slots.flatMap((slot) => [slot, ...(THEME_ATTRS[slot] ?? [])]);
-  const kept = attrs.filter(([attr]) => !dropped.includes(localPart(attr)));
-  const text = [
-    ...slots.map((slot): [string, string] => [`w:${slot}`, name]),
+  return elementXml(wName("rFonts"), [
+    ...slots.map((slot): XmlAttr => [wName(slot), name]),
     ...kept,
-  ]
-    .map(([attr, value]) => `${attr}="${escapeXml(value)}"`)
-    .join(" ");
-  return `<w:rFonts ${text}/>`;
+  ]);
 }
 
 function hasChild(xml: string | null, name: string): boolean {
@@ -187,7 +184,7 @@ type ChildEdit = readonly [name: string, xml: string | null];
  * removing the element is what comes closest to the original.
  */
 function offEdit(name: string, value: string, inherited: boolean): ChildEdit {
-  return [name, inherited ? elementXml(name, value) : null];
+  return [name, inherited ? valXml(name, value) : null];
 }
 
 /** Which children of the rPr one job changes and how. null for a value whose meaning cannot be made out */
@@ -201,7 +198,7 @@ function childEdits(
       const names = TOGGLE_CHILDREN[edit.toggle];
       if (edit.on) {
         const value = TOGGLE_ON_VALUE[edit.toggle];
-        return names.map((name) => [name, elementXml(name, value)]);
+        return names.map((name) => [name, valXml(name, value)]);
       }
       const off = TOGGLE_OFF_VALUE[edit.toggle];
       return names.map((name) => offEdit(name, off, inherited));
@@ -217,8 +214,8 @@ function childEdits(
       const half = halfPoints(edit.pt);
       if (half === null) return null;
       return [
-        ["sz", elementXml("sz", `${half}`)],
-        ["szCs", elementXml("szCs", `${half}`)],
+        ["sz", valXml("sz", `${half}`)],
+        ["szCs", valXml("szCs", `${half}`)],
       ];
     }
     case "fontFamily": {
@@ -233,7 +230,7 @@ function childEdits(
       // auto means "the text color as the document decides", so it acts as an off that overrides inheritance
       if (edit.hex === null) return [offEdit("color", "auto", inherited)];
       const hex = normalizeHex(edit.hex);
-      return hex === null ? null : [["color", elementXml("color", hex)]];
+      return hex === null ? null : [["color", valXml("color", hex)]];
     }
     case "background": {
       // Word paints the highlight on top of the shading. Left in place, it would hide the new background color underneath it

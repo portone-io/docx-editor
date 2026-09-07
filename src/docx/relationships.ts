@@ -10,12 +10,12 @@
  * hand out the same one.
  */
 
+import { elementXml, type XmlAttr } from "../ooxml/element";
 import { DocxExportError } from "../ooxml/errors";
 import {
   decodeUtf8,
   elementChildren,
   encodeUtf8,
-  escapeXml,
   parseXml,
 } from "../ooxml/xml";
 
@@ -108,8 +108,13 @@ function takeRelId(taken: Set<string>): string {
 }
 
 function relationshipXml(added: AddedRelationship): string {
-  const mode = added.external ? ' TargetMode="External"' : "";
-  return `<Relationship Id="${added.id}" Type="${added.type}" Target="${escapeXml(added.target)}"${mode}/>`;
+  const mode: XmlAttr[] = added.external ? [["TargetMode", "External"]] : [];
+  return elementXml("Relationship", [
+    ["Id", added.id],
+    ["Type", added.type],
+    ["Target", added.target],
+    ...mode,
+  ]);
 }
 
 /** A part that is not there yet is written from scratch */
