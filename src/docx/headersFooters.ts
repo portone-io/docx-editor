@@ -1,7 +1,7 @@
 /** Reads the first section's header and footer stories for the page preview. */
 
 import type { ParagraphAlign } from "../model/format";
-import { ALIGN_BY_JC } from "../ooxml/units";
+import { ALIGN_BY_JC, isOnElement } from "../ooxml/units";
 import {
   attributeByLocalName,
   decodeUtf8,
@@ -52,12 +52,6 @@ export const NO_HEADERS_FOOTERS: HeadersFooters = {
   evenAndOdd: false,
   pageNumberStart: 1,
 };
-
-function isOn(el: Element | null): boolean {
-  if (!el) return false;
-  const value = attributeByLocalName(el, "val")?.toLowerCase();
-  return value !== "0" && value !== "false" && value !== "off";
-}
 
 function firstSectPrIn(root: Element): Element | null {
   const namespaced = root.getElementsByTagNameNS(W_NS, "sectPr").item(0);
@@ -212,7 +206,7 @@ function settingsEvenAndOdd(
   const setting = root
     .getElementsByTagNameNS(W_NS, "evenAndOddHeaders")
     .item(0);
-  return isOn(setting);
+  return isOnElement(setting);
 }
 
 function readVariants(
@@ -271,7 +265,7 @@ export function readHeadersFooters(
   return {
     headers: readVariants(parts, mainPartPath, sectPr, "header"),
     footers: readVariants(parts, mainPartPath, sectPr, "footer"),
-    firstPageDifferent: isOn(
+    firstPageDifferent: isOnElement(
       elementChildren(sectPr).find((child) => child.localName === "titlePg") ??
         null
     ),

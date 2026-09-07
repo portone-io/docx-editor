@@ -4,6 +4,7 @@ import {
   HALF_POINTS_PER_PT,
   ST_EighthPointMeasure,
   ST_HexColor,
+  ST_OnOff,
   TWIPS_PER_PT,
 } from "./simpleTypes";
 import { childByLocalName, W_NS } from "./xml";
@@ -29,12 +30,22 @@ export function wAttr(el: Element, name: string): string | null {
   return el.getAttributeNS(W_NS, name) ?? el.getAttribute(name);
 }
 
+/**
+ * Whether a boolean property element states on (§17.17.4).
+ *
+ * An element carrying no `w:val` states on, and one that is not there at all states nothing, which
+ * a caller asking "is this on" reads as off. A `w:val` the type does not admit is on as well: the
+ * six spellings are the only ways a document has of switching something off, so anything else was
+ * never one.
+ */
+export function isOnElement(el: Element | null): boolean {
+  if (!el) return false;
+  return ST_OnOff.parse(wAttr(el, "val")) ?? true;
+}
+
 /** `<w:b/>` means on, `<w:b w:val="0"/>` means off */
 export function isOn(parent: Element, name: string): boolean {
-  const el = childByLocalName(parent, name);
-  if (!el) return false;
-  const value = wAttr(el, "val");
-  return value === null || value === "1" || value === "true" || value === "on";
+  return isOnElement(childByLocalName(parent, name));
 }
 
 export function childValue(parent: Element, name: string): string | null {

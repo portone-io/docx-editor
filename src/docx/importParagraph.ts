@@ -11,7 +11,9 @@
 
 import type { Mark, Node as PMNode } from "prosemirror-model";
 import { readDrawingPicture } from "../ooxml/image";
+import { ST_OnOff } from "../ooxml/simpleTypes";
 import {
+  attributeByLocalName,
   attrString,
   childByLocalName,
   elementChildren,
@@ -144,11 +146,10 @@ function buildRunChild(
       const kind: NoteKind =
         el.localName === "footnoteReference" ? "footnote" : "endnote";
       const note = noteById(notes, kind, id);
-      const customMarkFollows = Array.from(el.attributes).some(
-        (entry) =>
-          entry.localName === "customMarkFollows" &&
-          !["0", "false", "off"].includes(entry.value)
-      );
+      const written = attributeByLocalName(el, "customMarkFollows");
+      // The attribute is absent far more often than it is there, and only then does it say nothing
+      const customMarkFollows =
+        written !== null && (ST_OnOff.parse(written) ?? true);
       return [
         docxSchema.nodes.noteReference.create(
           {
