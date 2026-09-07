@@ -17,6 +17,7 @@
  */
 
 import { Fragment, type Node as PMNode } from "prosemirror-model";
+import { sameSource } from "./sourceEquality";
 
 export type EditingProtection = "none" | "readOnly" | "comments";
 
@@ -60,9 +61,15 @@ export function withoutComments(node: PMNode): PMNode {
   return node.copy(Fragment.fromArray(kept));
 }
 
-/** Whether the two documents differ in nothing but their comments */
+/**
+ * Whether the two documents differ in nothing but their comments.
+ *
+ * The comparison is by source (`./sourceEquality`): a display value worked out again beside a
+ * comment is no content change, so it neither turns a comment edit into a body edit nor takes the
+ * ownership question off it.
+ */
 export function changesOnlyComments(before: PMNode, after: PMNode): boolean {
-  return withoutComments(before).eq(withoutComments(after));
+  return sameSource(withoutComments(before), withoutComments(after));
 }
 
 /**

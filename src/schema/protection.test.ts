@@ -183,6 +183,21 @@ describe("changesOnlyComments", () => {
     expect(changesOnlyComments(state.doc, typed(state))).toBe(false);
     expect(changesOnlyComments(plain.doc, typed(state))).toBe(false);
   });
+
+  /** A display value is worked out from the source (`./attrRoles`), so writing it again is no content change */
+  it("holds for a display value worked out again beside a comment", () => {
+    const state = commented("me");
+    const redrawn = state.apply(
+      state.tr.setNodeMarkup(0, null, {
+        ...state.doc.child(0).attrs,
+        format: { align: "center" },
+      })
+    ).doc;
+
+    expect(redrawn.eq(state.doc)).toBe(false);
+    expect(changesOnlyComments(opened().doc, redrawn)).toBe(true);
+    expect(changesOnlyComments(state.doc, redrawn)).toBe(true);
+  });
 });
 
 describe("protectionAllows", () => {
