@@ -62,7 +62,9 @@ describe("round trip without editing", () => {
 
 /**
  * `createEditorState` works the display attrs out again over the imported document, so this is the
- * path a real editing session takes and the one the byte identity has to survive.
+ * path a real editing session takes and the one the byte identity has to survive. The sweep is a
+ * regression guard rather than a proof: it holds the identity over the display values the fixtures
+ * happen to move, and a display value none of them moves is guarded by the case below it.
  */
 describe("round trip through the editor state", () => {
   it.each(fixtureNames)(
