@@ -1,127 +1,9 @@
-/** Applies inline formatting while preserving each run's untouched XML. */
+/** The character formatting commands the package exports, each built from the property it edits. */
 
-import type { Mark } from "prosemirror-model";
-import type { Command, EditorState, Transaction } from "prosemirror-state";
-import {
-  inheritedRunFormat,
-  resolveParagraph,
-  resolveRun,
-} from "../../../docx/formatting";
-import {
-  editRunProps,
-  isRunToggleOn,
-  matchesRunEdit,
-  type RunEdit,
-  type RunToggle,
-} from "../../../docx/runProps";
-import { docxSchema } from "../../../schema";
+import type { Command, EditorState } from "prosemirror-state";
 import { editShut, openStretches } from "../../../schema/guards";
-import { documentFormatting } from "../../documentStyles";
-import {
-  activePieces,
-  caretPiece,
-  type TextPiece,
-  text,
-  textPieces,
-} from "./shared";
-
-export type { RunToggle } from "../../../docx/runProps";
-
-function editedMark(
-  state: EditorState,
-  target: TextPiece,
-  edit: RunEdit
-): Mark | null {
-  const context = documentFormatting(state);
-  const rPr = text(target.mark?.attrs.rPr);
-  const paragraph = resolveParagraph(target.pPr, context);
-  const next = editRunProps(
-    { rPr, format: target.format },
-    inheritedRunFormat(rPr, paragraph, context),
-    edit
-  );
-  if (!next) return null;
-  // Original values we do not read, such as rAttrs, are inherited as they are
-  return docxSchema.marks.run.create({
-    ...target.mark?.attrs,
-    rPr: next.rPr,
-    format: resolveRun(next.rPr, paragraph, context),
-  });
-}
-
-interface MarkChange {
-  from: number;
-  to: number;
-  mark: Mark;
-}
-
-/** Builds the new mark for every piece up front. If even one cannot be edited, the whole thing is abandoned */
-function planChanges(
-  state: EditorState,
-  pieces: TextPiece[],
-  edit: RunEdit
-): MarkChange[] | null {
-  const changes: MarkChange[] = [];
-  for (const target of pieces) {
-    const mark = editedMark(state, target, edit);
-    if (!mark) return null;
-    changes.push({ from: target.from, to: target.to, mark });
-  }
-  return changes;
-}
-
-function applyToSelection(
-  state: EditorState,
-  dispatch: ((tr: Transaction) => void) | undefined,
-  edit: RunEdit
-): boolean {
-  const pieces = openStretches(
-    state,
-    // Text already in the desired state is left untouched, so its original XML survives
-    textPieces(state).filter((target) => !matchesRunEdit(target.format, edit)),
-    "mark"
-  );
-  const changes = pieces.length > 0 ? planChanges(state, pieces, edit) : null;
-  if (!changes) return false;
-  if (dispatch) {
-    const tr = state.tr;
-    for (const change of changes) {
-      tr.addMark(change.from, change.to, change.mark);
-    }
-    dispatch(tr);
-  }
-  return true;
-}
-
-/**
- * With a collapsed caret, the formatting is only staged for the text typed next, so what settles it
- * is whether that text could go in at all.
- */
-function applyToCaret(
-  state: EditorState,
-  dispatch: ((tr: Transaction) => void) | undefined,
-  edit: RunEdit
-): boolean {
-  if (editShut(state, { kind: "insert", at: state.selection.from })) {
-    return false;
-  }
-  const target = caretPiece(state);
-  if (matchesRunEdit(target.format, edit)) return false;
-  const mark = editedMark(state, target, edit);
-  if (!mark) return false;
-  if (dispatch) {
-    const marks = state.storedMarks ?? state.selection.$from.marks();
-    dispatch(state.tr.setStoredMarks(mark.addToSet(marks)));
-  }
-  return true;
-}
-
-function runEditCommand(edit: RunEdit): Command {
-  return (state, dispatch) =>
-    state.selection.empty
-      ? applyToCaret(state, dispatch, edit)
-      : applyToSelection(state, dispatch, edit);
-}
+import { runPropertyCommands } from "./propertyCommands";
+import { textPieces } from "./shared";
 
 /**
  * Whether character formatting reaches anything where the selection stands, which is what a
@@ -139,53 +21,34 @@ export function canFormatText(state: EditorState): boolean {
   return openStretches(state, textPieces(state), "mark").length > 0;
 }
 
-/** Whether a toggled format is on at the current position. It counts as on only when it is on everywhere */
-function isToggleActive(state: EditorState, toggle: RunToggle): boolean {
-  const pieces = activePieces(state);
-  return (
-    pieces.length > 0 &&
-    pieces.every((target) => isRunToggleOn(target.format, toggle))
-  );
-}
+const bold = runPropertyCommands("bold");
+const italic = runPropertyCommands("italic");
+const underline = runPropertyCommands("underline");
+const strike = runPropertyCommands("strike");
+const fontSize = runPropertyCommands("fontSizePt");
+const fontFamily = runPropertyCommands("fontFamily");
+const textColor = runPropertyCommands("color");
+const textBackground = runPropertyCommands("background");
 
-/**
- * The same toggle convention as Word.
- * If every character in the selection is already on, turn them all off; otherwise turn them all on.
- */
-function toggleCommand(toggle: RunToggle): Command {
-  return (state, dispatch) => {
-    const pieces = openStretches(
-      state,
-      state.selection.empty ? [caretPiece(state)] : textPieces(state),
-      "mark"
-    );
-    const edit: RunEdit = {
-      kind: "toggle",
-      toggle,
-      on: !pieces.every((target) => isRunToggleOn(target.format, toggle)),
-    };
-    return runEditCommand(edit)(state, dispatch);
-  };
-}
-
-export const toggleBold: Command = toggleCommand("bold");
-export const toggleItalic: Command = toggleCommand("italic");
-export const toggleUnderline: Command = toggleCommand("underline");
-export const toggleStrike: Command = toggleCommand("strike");
+export const toggleBold: Command = bold.toggle(true);
+export const toggleItalic: Command = italic.toggle(true);
+/** Switching the underline on writes a single one; a run already underlined keeps the kind it has */
+export const toggleUnderline: Command = underline.toggle("single");
+export const toggleStrike: Command = strike.toggle(true);
 
 /** Sets the font size in points. Null withdraws the setting and falls back to the document default */
 export function setFontSize(pt: number | null): Command {
-  return runEditCommand({ kind: "fontSize", pt });
+  return fontSize.set(pt);
 }
 
 /** Sets the font by name. Null withdraws the setting and falls back to the document default font */
 export function setFontFamily(name: string | null): Command {
-  return runEditCommand({ kind: "fontFamily", name });
+  return fontFamily.set(name);
 }
 
 /** Sets the text color as `#RRGGBB`. Null withdraws the color setting */
 export function setTextColor(hex: string | null): Command {
-  return runEditCommand({ kind: "color", hex });
+  return textColor.set(hex);
 }
 
 /**
@@ -193,21 +56,21 @@ export function setTextColor(hex: string | null): Command {
  * A highlight (`w:highlight`) written by an older document is removed along with it at that spot.
  */
 export function setTextBackground(hex: string | null): Command {
-  return runEditCommand({ kind: "background", hex });
+  return textBackground.set(hex);
 }
 
 export function isBoldActive(state: EditorState): boolean {
-  return isToggleActive(state, "bold");
+  return bold.isActive(state);
 }
 
 export function isItalicActive(state: EditorState): boolean {
-  return isToggleActive(state, "italic");
+  return italic.isActive(state);
 }
 
 export function isUnderlineActive(state: EditorState): boolean {
-  return isToggleActive(state, "underline");
+  return underline.isActive(state);
 }
 
 export function isStrikeActive(state: EditorState): boolean {
-  return isToggleActive(state, "strike");
+  return strike.isActive(state);
 }

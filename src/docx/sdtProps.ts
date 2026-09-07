@@ -1,5 +1,6 @@
 /**
- * Turning the lock of a content control on and off inside the opening XML it goes back out as.
+ * Turning the lock of a content control on and off inside the opening XML it goes back out as,
+ * and writing the opening of a control that is locked from the start.
  *
  * Nothing but the `w:lock` child of the `w:sdtPr` moves. The id Word gave the control, the alias
  * and tag it goes by, and the `w:dataBinding` that ties it to the file's own XML all stay, which
@@ -11,10 +12,28 @@
  * being given the stricter value, and lifting that lock afterwards opens both clauses.
  */
 
+import { elementXml, openTagXml } from "../ooxml/element";
+import { wName } from "../ooxml/names";
 import { editSdtPrefix } from "./sdt";
 
 /** The value Word writes for a control whose contents may not be edited, and which may not be deleted either */
 const LOCK_BOTH_CLAUSES = '<w:lock w:val="sdtContentLocked"/>';
+
+/**
+ * The opening of a new control that shuts both clauses, which is what a stretch being locked is
+ * wrapped in. It carries its id and the lock and nothing else, so a later lock may take it over
+ * (`namesNothing` in `./sdt`).
+ */
+export function lockedControlPrefix(id: number): string {
+  return (
+    openTagXml(wName("sdt"), null) +
+    elementXml(
+      wName("sdtPr"),
+      [],
+      [elementXml(wName("id"), [[wName("val"), `${id}`]]), LOCK_BOTH_CLAUSES]
+    )
+  );
+}
 
 /**
  * The opening of the control with its lock shut or lifted.

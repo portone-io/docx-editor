@@ -174,8 +174,14 @@ export interface RunFormat {
   /** The underline kind, or `none` for an underline switched off outright. Absent when the run says nothing */
   underline?: UnderlineKind | "none";
   strike?: boolean;
+  /** Two lines through the text (`w:dstrike`). Read from the document and not drawn or edited yet */
+  doubleStrike?: boolean;
   smallCaps?: boolean;
+  /** Every letter drawn as a capital (`w:caps`). Read from the document and not drawn or edited yet */
+  caps?: boolean;
   fontSizePt?: number;
+  /** The room added between characters (`w:spacing`), below zero where they are drawn closer. Read from the document and not drawn or edited yet */
+  characterSpacingPt?: number;
   /** A CSS font name list in the form `"맑은 고딕","Malgun Gothic"` */
   fontFamily?: string;
   color?: string;
@@ -190,6 +196,29 @@ export interface RunFormat {
    */
   lang?: string;
 }
+
+/**
+ * Every key of `RunFormat`, in the order a run's properties are read. The run property table
+ * (`docx/formatting/runProperties`) walks this list, which lives here because `model` imports
+ * nothing above it.
+ */
+export const RUN_FORMAT_KEYS = [
+  "bold",
+  "italic",
+  "strike",
+  "doubleStrike",
+  "smallCaps",
+  "caps",
+  "underline",
+  "fontSizePt",
+  "characterSpacingPt",
+  "fontFamily",
+  "color",
+  "highlight",
+  "background",
+  "verticalAlign",
+  "lang",
+] as const satisfies readonly (keyof RunFormat)[];
 
 /**
  * The table formatting to render on screen. The inner lines between cells are folded
@@ -393,12 +422,17 @@ export function toRunFormat(value: unknown): RunFormat | null {
   if (typeof value.bold === "boolean") format.bold = value.bold;
   if (typeof value.italic === "boolean") format.italic = value.italic;
   if (typeof value.strike === "boolean") format.strike = value.strike;
+  if (typeof value.doubleStrike === "boolean")
+    format.doubleStrike = value.doubleStrike;
   if (typeof value.smallCaps === "boolean") format.smallCaps = value.smallCaps;
+  if (typeof value.caps === "boolean") format.caps = value.caps;
   if (isUnderlineKind(value.underline) || value.underline === "none") {
     format.underline = value.underline;
   }
   if (typeof value.fontSizePt === "number")
     format.fontSizePt = value.fontSizePt;
+  if (typeof value.characterSpacingPt === "number")
+    format.characterSpacingPt = value.characterSpacingPt;
   const fontFamily = matching(FONT_FAMILY, value.fontFamily);
   if (fontFamily) format.fontFamily = fontFamily;
   const color = matching(HEX_COLOR, value.color);

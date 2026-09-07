@@ -1,6 +1,6 @@
 import type { Mark, Node as PMNode } from "prosemirror-model";
-import { editRunProps, type RunEdit } from "../../docx/runProps";
-import type { RunFormat } from "../../model/format";
+import { type RunSettings, rPrOf } from "../../docx/formatting";
+import { readRunProps } from "../../docx/runProps";
 import { HALF_POINTS_PER_PT, ST_HpsMeasure } from "../../ooxml/simpleTypes";
 import { docxSchema } from "../../schema";
 import { editorClassNames } from "../../styles/classNames";
@@ -232,36 +232,25 @@ export function withInlineStyle(
   return { ...context, style: { ...context.style, ...style } };
 }
 
+/** The run settings a pasted element's style asks for. An underline is pasted as a single one */
+function settingsOf(style: InlineStyle): RunSettings {
+  const settings: RunSettings = {};
+  if (style.bold) settings.bold = true;
+  if (style.italic) settings.italic = true;
+  if (style.underline) settings.underline = "single";
+  if (style.strike) settings.strike = true;
+  if (style.fontSizePt !== undefined) settings.fontSizePt = style.fontSizePt;
+  if (style.fontFamily !== undefined) settings.fontFamily = style.fontFamily;
+  if (style.color !== undefined) settings.color = style.color;
+  if (style.background !== undefined) settings.background = style.background;
+  return settings;
+}
+
 function runMark(style: InlineStyle): Mark | null {
-  const edits: RunEdit[] = [];
-  if (style.bold) edits.push({ kind: "toggle", toggle: "bold", on: true });
-  if (style.italic) edits.push({ kind: "toggle", toggle: "italic", on: true });
-  if (style.underline) {
-    edits.push({ kind: "toggle", toggle: "underline", on: true });
-  }
-  if (style.strike) edits.push({ kind: "toggle", toggle: "strike", on: true });
-  if (style.fontSizePt !== undefined) {
-    edits.push({ kind: "fontSize", pt: style.fontSizePt });
-  }
-  if (style.fontFamily !== undefined) {
-    edits.push({ kind: "fontFamily", name: style.fontFamily });
-  }
-  if (style.color !== undefined)
-    edits.push({ kind: "color", hex: style.color });
-  if (style.background !== undefined) {
-    edits.push({ kind: "background", hex: style.background });
-  }
-  let props: { rPr: string | null; format: RunFormat | null } = {
-    rPr: null,
-    format: null,
-  };
-  for (const edit of edits) {
-    const next = editRunProps(props, {}, edit);
-    if (next) props = next;
-  }
-  return props.rPr === null
+  const rPr = rPrOf(settingsOf(style));
+  return rPr === null
     ? null
-    : docxSchema.marks.run.create({ rPr: props.rPr, format: props.format });
+    : docxSchema.marks.run.create({ rPr, format: readRunProps(rPr) });
 }
 
 export function marksFor(context: InlineContext): Mark[] {

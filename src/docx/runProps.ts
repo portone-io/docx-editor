@@ -5,38 +5,35 @@
  * even things we do not know about). So instead of building a new fragment we swap out just the one
  * child. It is the same principle `tableFormatting` applies to `w:tcPr`.
  *
+ * Which children a job swaps, and what it swaps them for, is the run property table's to say
+ * (`formatting/runProperties`); this module holds the surgery around it.
+ *
  * The display values produced here are used on screen only. What goes back into the document is
  * always the rPr string.
  */
 
-import { NO_FILL, type RunFormat, toRunFormat } from "../model/format";
-import { elementXml, wAttrValue, type XmlAttr } from "../ooxml/element";
-import { wName } from "../ooxml/names";
-import { setAttr } from "../ooxml/precedence";
+import { type RunFormat, toRunFormat } from "../model/format";
 import {
-  attrsOf,
   type Props,
   parseProps,
   parsePropsXml,
-  propsChild,
   renderProps,
-  setChild,
 } from "../ooxml/props";
-import { HALF_POINTS_PER_PT, ST_HpsMeasure } from "../ooxml/simpleTypes";
-import { normalizeHex } from "../ooxml/units";
-import { isEastAsianFontName } from "../styles/fontStack";
-import { fontNamesOf, readRunFormat } from "./formatting";
+import {
+  type EditableRunKey,
+  EMPTY_RUN_PROPS,
+  RUN_PROPERTIES,
+  type RunEdit,
+  readRunFormat,
+  runChildEdits,
+  withChildEdits,
+} from "./formatting";
+
+export type { RunEdit } from "./formatting";
+export { matchesRunEdit } from "./formatting";
 
 /** The character formatting that is toggled on and off */
 export type RunToggle = "bold" | "italic" | "underline" | "strike";
-
-/** A job that changes one piece of character formatting. A null value means withdrawing the setting */
-export type RunEdit =
-  | { kind: "toggle"; toggle: RunToggle; on: boolean }
-  | { kind: "fontSize"; pt: number | null }
-  | { kind: "fontFamily"; name: string | null }
-  | { kind: "color"; hex: string | null }
-  | { kind: "background"; hex: string | null };
 
 /** The formatting a run holds. The original XML and the display values derived from that XML form a pair */
 export interface RunProps {
@@ -45,193 +42,8 @@ export interface RunProps {
   format: RunFormat | null;
 }
 
-/**
- * The elements used when turning something on.
- * For bold and italic we write the Latin and complex-script pair together, following the convention
- * of Korean documents.
- */
-const TOGGLE_CHILDREN: Record<RunToggle, readonly string[]> = {
-  bold: ["b", "bCs"],
-  italic: ["i", "iCs"],
-  underline: ["u"],
-  strike: ["strike"],
-};
-
-/** The value written to mean on. Only underline also records a kind */
-const TOGGLE_ON_VALUE: Record<RunToggle, string | null> = {
-  bold: null,
-  italic: null,
-  underline: "single",
-  strike: null,
-};
-
-/** The value written when pinning down an off state */
-const TOGGLE_OFF_VALUE: Record<RunToggle, string> = {
-  bold: "0",
-  italic: "0",
-  underline: "none",
-  strike: "0",
-};
-
-/** A formatting child that records its whole setting in `w:val`, or one that records nothing */
-function valXml(name: string, value: string | null): string {
-  return elementXml(wName(name), value === null ? [] : [[wName("val"), value]]);
-}
-
-/**
- * The shading that records a text background. `clear` means paint with the `fill` color alone, with no pattern.
- * `fill="auto"` means "no background", so it acts as an off that overrides inheritance.
- */
-function shadingXml(fill: string): string {
-  return elementXml(wName("shd"), [
-    [wName("val"), "clear"],
-    [wName("color"), "auto"],
-    [wName("fill"), fill],
-  ]);
-}
-
-/**
- * The slots that record font names.
- *
- * A single run records the Latin, the East Asian, and the complex-script font apart from one
- * another, and which of them a chosen font is written into depends on the font itself.
- * An East Asian name goes into all three: it is one name meant for the whole run, which is
- * how the Korean contract fixtures write it and what Word writes when the font picked is a
- * CJK one.
- * A Latin name goes into the Latin slots alone and leaves the East Asian slot standing.
- * A Japanese or Chinese document names a Latin font beside its own on purpose - the Latin one
- * for the letters and digits, its own for the rest - so writing the Latin name into the East
- * Asian slot as well would draw its Japanese text in a font that has no such glyphs at all.
- */
-const LATIN_SLOTS: readonly string[] = ["ascii", "hAnsi"];
-const EAST_ASIAN_SLOTS: readonly string[] = [...LATIN_SLOTS, "eastAsia"];
-
-/**
- * The slots one name is written into.
- * The complex-script slot follows along wherever the run already carries one; a run carrying
- * none is not given one.
- */
-function fontSlots(name: string, hasComplexScript: boolean): readonly string[] {
-  const slots = isEastAsianFontName(name) ? EAST_ASIAN_SLOTS : LATIN_SLOTS;
-  return hasComplexScript ? [...slots, "cs"] : slots;
-}
-
-/** Whether the font name can be written as is into both the document and the screen. null otherwise */
-function fontName(value: string): string | null {
-  const name = value.trim();
-  // The display value is a CSS name list, so a name holding a quote or a semicolon breaks the declaration
-  return name.length > 0 && !/["';<>&]/.test(name) ? name : null;
-}
-
-/**
- * A new rFonts with the font name written in.
- *
- * The name goes into the slots `fontSlots` names, and a theme reference in one of those slots
- * is cleared away, since a theme beats a name. The slots the name does not reach keep both
- * their name and their theme reference.
- * The attributes we do not decide (`w:hint` and so on) keep their original values.
- */
-function rFontsXml(current: string | null, name: string): string | null {
-  const props = current === null ? null : parseProps(current);
-  const attrs = props === null ? [] : attrsOf(props);
-  if ((current !== null && props === null) || attrs === null) return null;
-  const slots = fontSlots(name, wAttrValue(attrs, "cs") !== null);
-  const kept = slots.reduce(
-    (rest, slot) => setAttr(rest, "rFonts", slot, null),
-    attrs
-  );
-  return elementXml(wName("rFonts"), [
-    ...slots.map((slot): XmlAttr => [wName(slot), name]),
-    ...kept,
-  ]);
-}
-
-/** Turning formatting on for a run with no formatting creates a minimal rPr from scratch */
 function propsOf(rPr: string | null): Props | null {
-  if (rPr === null) return { tag: "w:rPr", attrs: null, children: [] };
-  return parseProps(rPr);
-}
-
-/** What text one child is to be changed to. A null xml removes that child */
-type ChildEdit = readonly [name: string, xml: string | null];
-
-/**
- * How formatting is turned off.
- *
- * Where a layer below the run switched the setting on, removing the element would let that layer
- * win again, so the off state is pinned down instead. Where nothing below switched it on,
- * removing the element is what comes closest to the original.
- */
-function offEdit(name: string, value: string, pinned: boolean): ChildEdit {
-  return [name, pinned ? valXml(name, value) : null];
-}
-
-/** Which children of the rPr one job changes and how. null for a value whose meaning cannot be made out */
-function childEdits(
-  edit: RunEdit,
-  inherited: RunFormat,
-  rFonts: string | null
-): ChildEdit[] | null {
-  switch (edit.kind) {
-    case "toggle": {
-      const names = TOGGLE_CHILDREN[edit.toggle];
-      if (edit.on) {
-        const value = TOGGLE_ON_VALUE[edit.toggle];
-        return names.map((name) => [name, valXml(name, value)]);
-      }
-      const off = TOGGLE_OFF_VALUE[edit.toggle];
-      const pinned = isRunToggleOn(inherited, edit.toggle);
-      return names.map((name) => offEdit(name, off, pinned));
-    }
-    case "fontSize": {
-      // There is no off for size. Withdrawing the setting inherits the style and the document default again
-      if (edit.pt === null) {
-        return [
-          ["sz", null],
-          ["szCs", null],
-        ];
-      }
-      // A size off the half-point step, or past the ceiling, is not one the document can record
-      const half = ST_HpsMeasure.format(edit.pt * HALF_POINTS_PER_PT);
-      if (half === null) return null;
-      return [
-        ["sz", valXml("sz", half)],
-        ["szCs", valXml("szCs", half)],
-      ];
-    }
-    case "fontFamily": {
-      // There is no off for the font either. Withdrawing the setting removes the whole rFonts so the document default font applies again
-      if (edit.name === null) return [["rFonts", null]];
-      const name = fontName(edit.name);
-      if (name === null) return null;
-      const xml = rFontsXml(rFonts, name);
-      return xml === null ? null : [["rFonts", xml]];
-    }
-    case "color": {
-      // auto means "the text color as the document decides", so it acts as an off that overrides inheritance
-      if (edit.hex === null) {
-        return [offEdit("color", "auto", inherited.color !== undefined)];
-      }
-      const hex = normalizeHex(edit.hex);
-      return hex === null ? null : [["color", valXml("color", hex)]];
-    }
-    case "background": {
-      // Word paints the highlight on top of the shading. Left in place, it would hide the new background color underneath it
-      const highlight = offEdit(
-        "highlight",
-        "none",
-        inherited.highlight !== undefined
-      );
-      if (edit.hex === null) {
-        const painted =
-          inherited.background !== undefined &&
-          inherited.background !== NO_FILL;
-        return [["shd", painted ? shadingXml("auto") : null], highlight];
-      }
-      const hex = normalizeHex(edit.hex);
-      return hex === null ? null : [["shd", shadingXml(hex)], highlight];
-    }
-  }
+  return rPr === null ? EMPTY_RUN_PROPS : parseProps(rPr);
 }
 
 /** Derives the display values again from the rPr we operated on. The same rPr always yields the same display values */
@@ -270,21 +82,18 @@ function nextProps(rPr: string | null, previous: RunProps): RunProps {
  * null for an rPr whose shape could not be made out, or for a value that cannot be written into
  * the document, in which case the original is left untouched.
  */
-export function editRunProps(
+export function editRunProps<K extends EditableRunKey>(
   current: RunProps,
   inherited: RunFormat,
-  edit: RunEdit
+  edit: RunEdit<K>
 ): RunProps | null {
   const props = propsOf(current.rPr);
   if (!props) return null;
 
-  const rFonts = propsChild(props.children, "rFonts")?.xml ?? null;
-  const edits = childEdits(edit, inherited, rFonts);
+  const edits = runChildEdits(edit, { rPr: props, inherited });
   if (!edits) return null;
 
-  const rPr = renderProps(
-    edits.reduce((kept, [name, xml]) => setChild(kept, name, xml), props)
-  );
+  const rPr = renderProps(withChildEdits(props, edits));
   return nextProps(rPr === "" ? null : rPr, current);
 }
 
@@ -293,40 +102,5 @@ export function isRunToggleOn(
   format: RunFormat | null,
   toggle: RunToggle
 ): boolean {
-  if (!format) return false;
-  if (toggle === "bold") return format.bold === true;
-  if (toggle === "italic") return format.italic === true;
-  if (toggle === "strike") return format.strike === true;
-  // Underline holds a kind rather than an on/off state, `none` being the kind that is off
-  return format.underline !== undefined && format.underline !== "none";
-}
-
-/** Whether this text is already in the state the job wants. If it already is, we leave it untouched */
-export function matchesRunEdit(
-  format: RunFormat | null,
-  edit: RunEdit
-): boolean {
-  switch (edit.kind) {
-    case "toggle":
-      return isRunToggleOn(format, edit.toggle) === edit.on;
-    case "fontSize":
-      return (format?.fontSizePt ?? null) === edit.pt;
-    case "fontFamily": {
-      const names = fontNamesOf(format?.fontFamily);
-      if (edit.name === null) return names.length === 0;
-      // If the slots are using different names, it is not yet in the state we want
-      return names.length === 1 && names[0] === fontName(edit.name);
-    }
-    case "color": {
-      const current = format?.color ?? null;
-      if (current === null || edit.hex === null) return current === edit.hex;
-      return normalizeHex(current) === normalizeHex(edit.hex);
-    }
-    case "background": {
-      // If a highlight is still there, it is not yet in the state we want. It has to move over to shading
-      if (format?.highlight !== undefined) return false;
-      const fill = format?.background ? normalizeHex(format.background) : null;
-      return fill === (edit.hex === null ? null : normalizeHex(edit.hex));
-    }
-  }
+  return RUN_PROPERTIES[toggle].isOn(format ?? {});
 }

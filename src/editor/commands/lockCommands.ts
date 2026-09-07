@@ -11,9 +11,7 @@ import {
   type Transaction,
 } from "prosemirror-state";
 import { namesNothing, newControlId } from "../../docx/sdt";
-import { withContentLock } from "../../docx/sdtProps";
-import { elementXml, openTagXml } from "../../ooxml/element";
-import { wName } from "../../ooxml/names";
+import { lockedControlPrefix, withContentLock } from "../../docx/sdtProps";
 import { docxSchema } from "../../schema";
 import { guardedCommand, openStretches } from "../../schema/guards";
 import {
@@ -33,16 +31,7 @@ import { editsShut } from "../../schema/protectionState";
  */
 function lockedControlMark(id: number): Mark {
   return docxSchema.marks.sdt.create({
-    sdtPrefix:
-      openTagXml(wName("sdt"), null) +
-      elementXml(
-        wName("sdtPr"),
-        [],
-        [
-          elementXml(wName("id"), [[wName("val"), `${id}`]]),
-          elementXml(wName("lock"), [[wName("val"), "sdtContentLocked"]]),
-        ]
-      ),
+    sdtPrefix: lockedControlPrefix(id),
     contentsLocked: true,
     deletionLocked: true,
   });

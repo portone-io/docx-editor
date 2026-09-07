@@ -15,6 +15,7 @@ import type { SessionStore } from "../../docx/session";
 import { toRunFormat } from "../../model/format";
 import { editorStateForSession } from "../createEditor";
 import { documentDefaults } from "../documentStyles";
+import { runPropertyCommands } from "./formatting/propertyCommands";
 import {
   activeFontFamily,
   activeFontSize,
@@ -217,6 +218,27 @@ describe("switching off what a style or the document defaults switched on", () =
     expect(documentXmlOf(plain.doc, session)).toContain(
       `<w:r>${PINNED_OFF}<w:t xml:space="preserve">ab</w:t></w:r>`
     );
+  });
+});
+
+describe("setting an underline kind", () => {
+  it("replaces a different kind while the public toggle still switches any kind off", () => {
+    const { state, session } = opened(
+      "<w:p>" +
+        paragraph('<w:rPr><w:u w:val="single"/></w:rPr>', "Body") +
+        "</w:p>"
+    );
+    const selected = select(state, 1, 5);
+    const double = runCommand(
+      selected,
+      runPropertyCommands("underline").set("double")
+    );
+    expect(documentXmlOf(double.doc, session)).toContain(
+      '<w:u w:val="double"/>'
+    );
+    expect(isUnderlineActive(double)).toBe(true);
+    const plain = runCommand(double, toggleUnderline);
+    expect(isUnderlineActive(plain)).toBe(false);
   });
 });
 

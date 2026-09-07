@@ -8,17 +8,13 @@
 
 import {
   type DocumentDefaults,
-  isHighlightName,
-  isUnderlineKind,
   type LineSpacing,
   type ParagraphFormat,
+  RUN_FORMAT_KEYS,
   type RunFormat,
-  type VerticalAlign,
 } from "../../model/format";
-import { overridingAttrs } from "../../ooxml/precedence";
 import {
   ST_DecimalNumber,
-  ST_HpsMeasure,
   ST_SignedTwipsMeasure,
   ST_TwipsMeasure,
   TWIPS_PER_PT,
@@ -28,89 +24,16 @@ import {
   ALIGN_BY_JC,
   borderSide,
   childValue,
-  halfPointsToPt,
   isOn,
-  isOnElement,
   round,
   shadingOf,
-  toHexColor,
   twipsToPt,
   wAttr,
 } from "../../ooxml/units";
 import { childByLocalName } from "../../ooxml/xml";
-import { NO_THEME_FONTS, type ThemeFonts, themeFontName } from "../theme";
+import { NO_THEME_FONTS, type ThemeFonts } from "../theme";
+import { RUN_PROPERTIES } from "./runProperties";
 import type { ParagraphFormatLayer } from "./tabStops";
-
-const VERTICAL_ALIGN_BY_VAL: Record<string, VerticalAlign> = {
-  superscript: "superscript",
-  subscript: "subscript",
-};
-
-/**
- * The font names held in a display value.
- * Splits the CSS name list `fontFamilyOf` produced back into individual names.
- */
-export function fontNamesOf(cssNames: string | undefined | null): string[] {
-  if (!cssNames) return [];
-  return cssNames
-    .split(",")
-    .map((name) => name.trim().replace(/^"|"$/g, ""))
-    .filter((name) => name.length > 0);
-}
-
-/** The order the slots are read in. The Latin one leads, since that is the font a mixed run mostly shows */
-const FONT_SLOTS: readonly string[] = ["ascii", "eastAsia", "hAnsi", "cs"];
-
-/**
- * The font one slot asks for: the name it wrote down, or else the font the theme
- * reference beside it stands for
- */
-function slotFontName(
-  rFonts: Element,
-  slot: string,
-  themeFonts: ThemeFonts
-): string | null {
-  const written = wAttr(rFonts, slot);
-  if (written !== null) return written;
-  for (const attr of overridingAttrs("rFonts", slot)) {
-    const resolved = themeFontName(themeFonts, wAttr(rFonts, attr));
-    if (resolved !== null) return resolved;
-  }
-  return null;
-}
-
-/** Builds the list to use on screen out of the several font names */
-function fontFamilyOf(rFonts: Element, themeFonts: ThemeFonts): string | null {
-  const names = FONT_SLOTS.map((slot) => slotFontName(rFonts, slot, themeFonts))
-    .filter((name): name is string => name !== null)
-    // A name holding a quote or a semicolon would break the CSS declaration it is written
-    // into, and a trailing backslash would escape the quote we wrap it in, so we drop it
-    .filter((name) => name.length > 0 && !/["';\\]/.test(name));
-  const unique = Array.from(new Set(names));
-  return unique.length > 0 ? unique.map((name) => `"${name}"`).join(",") : null;
-}
-
-/**
- * The language a run records (`w:lang`).
- *
- * `w:eastAsia` is the one that decides which shape of a Han character is drawn, so where a
- * run states one it wins over the `w:val` that holds the Latin language.
- * Nothing here reaches the file: `w:lang` goes back out inside the original rPr text.
- */
-function langOf(rPr: Element): string | null {
-  const lang = childByLocalName(rPr, "lang");
-  if (!lang) return null;
-  const eastAsia = wAttr(lang, "eastAsia");
-  if (eastAsia !== null && eastAsia.length > 0) return eastAsia;
-  const value = wAttr(lang, "val");
-  return value !== null && value.length > 0 ? value : null;
-}
-
-/** A toggle property (§17.7.3) as the run wrote it: on, switched off outright, or not mentioned */
-function toggleState(rPr: Element, name: string): boolean | null {
-  const toggle = childByLocalName(rPr, name);
-  return toggle ? isOnElement(toggle) : null;
-}
 
 /** Paragraph borders carry only the sides actually drawn. A side pinned down as not drawn is the same as none at all */
 function drawnBorder(pBdr: Element, side: string): string | null {
@@ -223,49 +146,25 @@ export function readParagraphFormat(
   return format;
 }
 
+function readRunProperty<K extends keyof RunFormat>(
+  format: RunFormat,
+  key: K,
+  rPr: Element,
+  themeFonts: ThemeFonts
+): void {
+  const value = RUN_PROPERTIES[key].read(rPr, themeFonts);
+  if (value !== undefined) format[key] = value;
+}
+
 export function readRunFormat(
   rPr: Element | null,
   themeFonts: ThemeFonts = NO_THEME_FONTS
 ): RunFormat | null {
   if (!rPr) return null;
   const format: RunFormat = {};
-  const bold = toggleState(rPr, "b");
-  if (bold !== null) format.bold = bold;
-  const italic = toggleState(rPr, "i");
-  if (italic !== null) format.italic = italic;
-  const strike = toggleState(rPr, "strike");
-  if (strike !== null) format.strike = strike;
-  const smallCaps = toggleState(rPr, "smallCaps");
-  if (smallCaps !== null) format.smallCaps = smallCaps;
-
-  const underline = childValue(rPr, "u");
-  if (isUnderlineKind(underline) || underline === "none") {
-    format.underline = underline;
+  for (const key of RUN_FORMAT_KEYS) {
+    readRunProperty(format, key, rPr, themeFonts);
   }
-
-  const fontSizePt = halfPointsToPt(ST_HpsMeasure.parse(childValue(rPr, "sz")));
-  if (fontSizePt !== null) format.fontSizePt = fontSizePt;
-
-  const rFonts = childByLocalName(rPr, "rFonts");
-  const fontFamily = rFonts ? fontFamilyOf(rFonts, themeFonts) : null;
-  if (fontFamily) format.fontFamily = fontFamily;
-
-  const color = toHexColor(childValue(rPr, "color"));
-  if (color) format.color = color;
-
-  const highlight = childValue(rPr, "highlight");
-  if (isHighlightName(highlight)) format.highlight = highlight;
-
-  const background = shadingOf(rPr);
-  if (background) format.background = background;
-
-  const verticalAlign =
-    VERTICAL_ALIGN_BY_VAL[childValue(rPr, "vertAlign") ?? ""];
-  if (verticalAlign) format.verticalAlign = verticalAlign;
-
-  const lang = langOf(rPr);
-  if (lang) format.lang = lang;
-
   return format;
 }
 
@@ -319,14 +218,11 @@ export function readDocumentDefaults(
   styles: Document,
   themeFonts: ThemeFonts = NO_THEME_FONTS
 ): DocumentDefaults {
-  const rPr = defaultProperties(styles, "rPrDefault", "rPr");
+  const run = readRunDefaults(styles, themeFonts);
   const pPr = defaultProperties(styles, "pPrDefault", "pPr");
-  const rFonts = rPr ? childByLocalName(rPr, "rFonts") : null;
   return {
-    fontSizePt: rPr
-      ? halfPointsToPt(ST_HpsMeasure.parse(childValue(rPr, "sz")))
-      : null,
-    fontFamily: rFonts ? fontFamilyOf(rFonts, themeFonts) : null,
+    fontSizePt: run.fontSizePt ?? null,
+    fontFamily: run.fontFamily ?? null,
     lineSpacing: pPr ? readLineSpacing(pPr) : null,
   };
 }

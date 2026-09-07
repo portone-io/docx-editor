@@ -533,7 +533,7 @@ export const toggleNumberedList: Command;
 // @public (undocumented)
 export const toggleStrike: Command;
 
-// @public (undocumented)
+// @public
 export const toggleUnderline: Command;
 
 // @public (undocumented)
