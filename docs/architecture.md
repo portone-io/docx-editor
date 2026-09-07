@@ -33,7 +33,7 @@ A folder may import itself and folders with a lower rank only.
 | 5 | `docx` | Import, export, session state, and page geometry |
 | 6 | `page` | Page-boundary calculations |
 | 6 | `table` | Table editing, formatting, and resizing |
-| 7 | `editor` | Editor view, plugins, node views, and commands |
+| 7 | `editor` | Editor view, the document snapshot, plugins, node views, and commands |
 | 8 | `ui` | Toolbar, menus, panels, and keyboard behavior |
 | 9 | `(root)` | Public entries and the React component |
 
