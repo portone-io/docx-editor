@@ -54,6 +54,23 @@ describe("the original a block points at", () => {
 });
 
 describe("a block key", () => {
+  it.each([
+    ["an empty story", "opened::0"],
+    ["an index that loses precision", "opened:body:9007199254740993"],
+    ["an index that overflows", `opened:body:${"9".repeat(400)}`],
+  ])("refuses %s", (_description, key) => {
+    expect(splitBlockKey(key)).toBeNull();
+  });
+
+  it.each([0, Number.MAX_SAFE_INTEGER])("keeps the exact index %s", (index) => {
+    const session = { sessionId: "opened" };
+    expect(splitBlockKey(blockKey(session, "comment:4", index))).toEqual({
+      sessionId: "opened",
+      storyKey: "comment:4",
+      index,
+    });
+  });
+
   it("splitBlockKey reads a story key that itself holds a colon", () => {
     expect(splitBlockKey("d3-1a2b:comment:4:7")).toEqual({
       sessionId: "d3-1a2b",

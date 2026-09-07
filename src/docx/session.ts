@@ -175,13 +175,15 @@ export function blockKey(
 export function splitBlockKey(key: string): BlockKey | null {
   const first = key.indexOf(":");
   const last = key.lastIndexOf(":");
-  if (first < 1 || last <= first) return null;
-  const index = key.slice(last + 1);
-  if (!/^\d+$/.test(index)) return null;
+  if (first < 1 || last <= first + 1) return null;
+  const indexText = key.slice(last + 1);
+  if (!/^\d+$/.test(indexText)) return null;
+  const index = Number(indexText);
+  if (!Number.isSafeInteger(index)) return null;
   return {
     sessionId: key.slice(0, first),
     storyKey: key.slice(first + 1, last),
-    index: Number(index),
+    index,
   };
 }
 
