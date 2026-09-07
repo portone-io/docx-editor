@@ -14,7 +14,7 @@
     "typecheck": "next typegen && tsc --noEmit"
   },
   "dependencies": {
-    "@portone/docx-editor": "workspace:*",
+    "@portone/docx-editor": "0.2.1",
     "@portone/docx-editor-demo": "workspace:*",
     "fumadocs-core": "16.15.1",
     "fumadocs-mdx": "15.3.1",

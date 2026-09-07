@@ -8,8 +8,9 @@ const config = {
   // Next writes its own AGENTS.md and CLAUDE.md into this folder otherwise, and the
   // repository keeps that guidance at its root
   agentRules: false,
-  // Both workspace packages resolve to TypeScript sources through the workspace link
-  transpilePackages: ["@portone/docx-editor", "@portone/docx-editor-demo"],
+  // The demo is a workspace package and resolves to TypeScript sources. The library it imports
+  // is the published package, which ships built JavaScript and needs no transpiling.
+  transpilePackages: ["@portone/docx-editor-demo"],
   // The `.md` suffix is the convention llms.txt specifies for a page's Markdown
   // representation, and a dynamic segment cannot carry it without colliding with
   // the docs page route, so it is rewritten onto the route that renders Markdown

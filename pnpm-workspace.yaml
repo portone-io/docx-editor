@@ -5,3 +5,10 @@ packages:
 
 allowBuilds:
   esbuild: true
+
+# The site and the demo pin a release of this repository's own package, which the release
+# workflow publishes. The maturity delay exists to let a compromised third-party release be
+# yanked before it is depended on, and it would otherwise hold the demo a day behind every
+# release of the library it demonstrates.
+minimumReleaseAgeExclude:
+  - '@portone/docx-editor'
