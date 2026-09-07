@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { exportErrorCode } from "../__testing__/docx";
 import { parseNumbering } from "./parseNumbering";
 import { addListDefinitions } from "./writeNumbering";
 
@@ -66,10 +65,13 @@ describe("splicing in new list definitions", () => {
     expect(parseNumbering(written).lists.get(2)?.levels.size).toBe(9);
   });
 
-  it("stops when there is no closing tag", () => {
-    expect(
-      exportErrorCode(() => addListDefinitions(`<w:numbering ${W_NS}/>`, [2]))
-    ).toBe("malformed-xml");
+  it("opens a root that closes on itself to hold the definitions", () => {
+    const written = addListDefinitions(`<w:numbering ${W_NS}/>`, [2]);
+    expect(written.startsWith(`<w:numbering ${W_NS}><w:abstractNum`)).toBe(
+      true
+    );
+    expect(written.endsWith("</w:num></w:numbering>")).toBe(true);
+    expect(parseNumbering(written).lists.get(2)?.levels.size).toBe(9);
   });
 });
 
