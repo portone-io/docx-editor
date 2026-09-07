@@ -87,7 +87,8 @@ function opened() {
   parts["word/comments.xml"] = encoder.encode(COMMENTS_XML);
   parts["word/commentsExtended.xml"] = encoder.encode(COMMENTS_EXTENDED_XML);
   parts["word/settings.xml"] = encoder.encode(
-    `<w:settings xmlns:w="${W_NS}"><w:defaultTabStop w:val="960"/></w:settings>`
+    `<w:settings xmlns:w="${W_NS}"><w:defaultTabStop w:val="960"/>` +
+      "<w:compat><w:noTabHangInd/></w:compat></w:settings>"
   );
   return importDocx(zipSync(parts));
 }
@@ -121,6 +122,7 @@ describe("reading an opened document into editor values", () => {
 
     // Every one of them is a value the document actually wrote down, not a fallback
     expect(document.formatting.defaultParagraphStyleId).toBe("Normal");
+    expect(document.formatting.compat).toEqual({ noTabHangInd: true });
     expect(
       document.formatting.paragraphDefaults.lineSpacing
     ).not.toBeUndefined();
