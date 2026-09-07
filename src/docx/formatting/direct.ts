@@ -15,6 +15,7 @@ import {
   type RunFormat,
   type VerticalAlign,
 } from "../../model/format";
+import { overridingAttrs } from "../../ooxml/precedence";
 import { readTabStopDirectives } from "../../ooxml/tabStops";
 import {
   ALIGN_BY_JC,
@@ -30,12 +31,7 @@ import {
   wAttr,
 } from "../../ooxml/units";
 import { childByLocalName } from "../../ooxml/xml";
-import {
-  NO_THEME_FONTS,
-  THEME_ATTRS,
-  type ThemeFonts,
-  themeFontName,
-} from "../theme";
+import { NO_THEME_FONTS, type ThemeFonts, themeFontName } from "../theme";
 import type { ParagraphFormatLayer } from "./tabStops";
 
 const VERTICAL_ALIGN_BY_VAL: Record<string, VerticalAlign> = {
@@ -69,7 +65,7 @@ function slotFontName(
 ): string | null {
   const written = wAttr(rFonts, slot);
   if (written !== null) return written;
-  for (const attr of THEME_ATTRS[slot] ?? []) {
+  for (const attr of overridingAttrs("rFonts", slot)) {
     const resolved = themeFontName(themeFonts, wAttr(rFonts, attr));
     if (resolved !== null) return resolved;
   }

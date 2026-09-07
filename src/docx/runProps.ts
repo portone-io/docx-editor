@@ -10,6 +10,7 @@
  */
 
 import { type RunFormat, toRunFormat } from "../model/format";
+import { overridingAttrs } from "../ooxml/precedence";
 import { normalizeHex } from "../ooxml/units";
 import { escapeXml, localPart } from "../ooxml/xml";
 import { isEastAsianFontName } from "../styles/fontStack";
@@ -23,7 +24,6 @@ import {
   renderProps,
   setPropsChild,
 } from "./propsXml";
-import { THEME_ATTRS } from "./theme";
 
 /** The character formatting that is toggled on and off */
 export type RunToggle = "bold" | "italic" | "underline" | "strike";
@@ -153,7 +153,10 @@ function rFontsXml(current: string | null, name: string): string | null {
     name,
     attrs.some(([attr]) => localPart(attr) === "cs")
   );
-  const dropped = slots.flatMap((slot) => [slot, ...(THEME_ATTRS[slot] ?? [])]);
+  const dropped = slots.flatMap((slot) => [
+    slot,
+    ...overridingAttrs("rFonts", slot),
+  ]);
   const kept = attrs.filter(([attr]) => !dropped.includes(localPart(attr)));
   const text = [
     ...slots.map((slot): [string, string] => [`w:${slot}`, name]),
