@@ -8,20 +8,30 @@ import {
   settle,
 } from "./support/harness";
 
+/**
+ * Every place one page parts from the next carries a mark, whether the gap is drawn as a band
+ * or the text crosses it, so the pages on the sheet are those marks plus the first page.
+ */
+const PAGE_BOUNDARIES = `.${editorClassNames.pageSplit}, .${editorClassNames.pageCrossed}`;
+
 async function layoutSnapshot(page: Page) {
-  return page.evaluate((classes) => {
-    const layer = document.querySelector(`.${classes.pageLayer}`);
-    if (!(layer instanceof HTMLElement)) throw new Error("page layer missing");
-    return {
-      sheetHeight: layer.style.getPropertyValue("--docx-editor-sheet-height"),
-      pages: document.querySelectorAll(`.${classes.pageBadge}`).length,
-    };
-  }, editorClassNames);
+  return page.evaluate(
+    ({ classes, boundaries }) => {
+      const layer = document.querySelector(`.${classes.pageLayer}`);
+      if (!(layer instanceof HTMLElement))
+        throw new Error("page layer missing");
+      return {
+        sheetHeight: layer.style.getPropertyValue("--docx-editor-sheet-height"),
+        pages: document.querySelectorAll(boundaries).length + 1,
+      };
+    },
+    { classes: editorClassNames, boundaries: PAGE_BOUNDARIES }
+  );
 }
 
 async function frameSnapshots(page: Page, count: number) {
   return page.evaluate(
-    async ({ classes, frames }) => {
+    async ({ classes, boundaries, frames }) => {
       const layer = document.querySelector(`.${classes.pageLayer}`);
       if (!(layer instanceof HTMLElement))
         throw new Error("page layer missing");
@@ -31,12 +41,12 @@ async function frameSnapshots(page: Page, count: number) {
           requestAnimationFrame(() => resolve())
         );
         found.push(
-          `${layer.style.getPropertyValue("--docx-editor-sheet-height")}/${document.querySelectorAll(`.${classes.pageBadge}`).length}`
+          `${layer.style.getPropertyValue("--docx-editor-sheet-height")}/${document.querySelectorAll(boundaries).length + 1}`
         );
       }
       return found;
     },
-    { classes: editorClassNames, frames: count }
+    { classes: editorClassNames, boundaries: PAGE_BOUNDARIES, frames: count }
   );
 }
 
@@ -73,6 +83,9 @@ test("the demo keeps its pagination stable in narrow layouts", async ({
   await page.getByRole("button", { name: "Show comments" }).click();
   await settle(page);
   const baseline = await layoutSnapshot(page);
+  // A one-page demo would hold the count still on its own, so the comparisons below would pass
+  // over a pagination that had stopped running at all
+  expect(baseline.pages).toBeGreaterThan(1);
   const zoom = page.getByLabel("Zoom");
   await expect(zoom).toHaveValue("fit-width");
   const font = page.getByLabel("Font", { exact: true });

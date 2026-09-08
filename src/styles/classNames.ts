@@ -64,8 +64,6 @@ export const editorClassNames = {
   pageSplit: `${PREFIX}-page-split`,
   /** The line drawn where a block that cannot be pushed down crosses a page */
   pageCrossed: `${PREFIX}-page-crossed`,
-  /** The page number laid on the top corner of a page */
-  pageBadge: `${PREFIX}-page-badge`,
   /** A first-section header story projected into a visual page margin */
   pageHeader: `${PREFIX}-page-header`,
   /** A first-section footer story projected into a visual page margin */

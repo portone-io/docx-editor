@@ -115,11 +115,6 @@ export interface PageSplit {
   /** Whether the document records a break at this place */
   forced: boolean;
   /**
-   * Whether every place before this one was recorded by the document, so the number can
-   * be trusted
-   */
-  exactPage: boolean;
-  /**
    * Whether the block is taller than one page, so it cannot be pushed and the text
    * crosses this place
    */
@@ -131,11 +126,6 @@ export interface PageStart {
   page: number;
   /** Where this page's body starts, measured from the top of the body */
   bodyStart: number;
-  /**
-   * Whether every place before this one was recorded by the document, so the number can
-   * be trusted
-   */
-  exactPage: boolean;
   /**
    * Whether text crosses over from the previous page, so this page continues with no top
    * margin
@@ -240,12 +230,7 @@ export function pageLayout({
   const pushes: BlockPush[] = [];
   const cuts: PageCut[] = [];
   const splits: PageSplit[] = [];
-  const firstPage: PageStart = {
-    page: 1,
-    bodyStart: 0,
-    exactPage: true,
-    crossed: false,
-  };
+  const firstPage: PageStart = { page: 1, bodyStart: 0, crossed: false };
   const pages: PageStart[] = [firstPage];
   if (!(pageBodyHeight > 0)) {
     return { pushes, cuts, splits, pages, bodyHeight: 0 };
@@ -253,14 +238,12 @@ export function pageLayout({
 
   let pageStart = 0;
   let cursor = 0;
-  let exactPage = true;
 
   const split = (y: number, crossed: boolean, forced: boolean) => {
-    if (!forced) exactPage = false;
     const page = splits.length + 2;
-    splits.push({ y: round(y), page, forced, exactPage, crossed });
+    splits.push({ y: round(y), page, forced, crossed });
     pageStart = crossed ? y : y + pageStep;
-    pages.push({ page, bodyStart: round(pageStart), exactPage, crossed });
+    pages.push({ page, bodyStart: round(pageStart), crossed });
   };
 
   // No gap is placed along a stretch the text crosses: what a block taller than one page covers,

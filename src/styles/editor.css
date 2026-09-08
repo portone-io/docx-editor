@@ -677,22 +677,6 @@ button.docx-editor-comment-body {
   border-top: 1px dotted rgb(26 79 208 / 40%);
 }
 
-/* The page number. Laid on the top right corner of every page */
-.docx-editor-page-badge {
-  position: absolute;
-  right: 10px;
-  min-width: 18px;
-  padding: 0 6px;
-  border-radius: 9px;
-  background: rgb(0 0 0 / 6%);
-  color: #808080;
-  font-family: system-ui, sans-serif;
-  font-size: 10px;
-  line-height: 18px;
-  text-align: center;
-  letter-spacing: 0.02em;
-}
-
 /* Display-only projections of the first section's header and footer stories. */
 .docx-editor-page-header,
 .docx-editor-page-footer {

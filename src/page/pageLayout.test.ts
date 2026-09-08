@@ -82,9 +82,7 @@ describe("pageLayout", () => {
     const result = layout(blocks(300, 300, 300));
     expect(result.pushes).toEqual([]);
     expect(result.splits).toEqual([]);
-    expect(result.pages).toEqual([
-      { page: 1, bodyStart: 0, exactPage: true, crossed: false },
-    ]);
+    expect(result.pages).toEqual([{ page: 1, bodyStart: 0, crossed: false }]);
     expect(result.bodyHeight).toBe(PAGE);
   });
 
@@ -177,44 +175,19 @@ describe("pageLayout", () => {
     expect(result.cuts).toEqual([{ at: 100, height: 2 * PAGE - 1500 + STEP }]);
   });
 
-  it("a page split by a break inside a block has an exact number", () => {
-    const result = layout(blocks(broken(300, 100)));
-    expect(result.pages.map((start) => start.exactPage)).toEqual([true, true]);
-  });
-
-  it("a page split by written breaks alone has an exact number, and becomes an estimate once an estimate is involved", () => {
-    const exact = layout(
-      blocks(
-        200,
-        { height: 200, breakBefore: true },
-        {
-          height: 200,
-          breakBefore: true,
-        }
-      )
-    );
-    expect(exact.splits.map((split) => split.exactPage)).toEqual([true, true]);
-
-    const mixed = layout(blocks(900, 300, { height: 200, breakBefore: true }));
-    expect(mixed.splits.map((split) => split.exactPage)).toEqual([
-      false,
-      false,
-    ]);
-  });
-
   it("reports where each page starts", () => {
     const result = layout(blocks(900, 300));
     expect(result.pages).toEqual([
-      { page: 1, bodyStart: 0, exactPage: true, crossed: false },
-      { page: 2, bodyStart: PAGE + STEP, exactPage: false, crossed: false },
+      { page: 1, bodyStart: 0, crossed: false },
+      { page: 2, bodyStart: PAGE + STEP, crossed: false },
     ]);
   });
 
   it("a page reached by crossing joins onto the previous page with no top margin", () => {
     const result = layout(blocks(1500));
     expect(result.pages).toEqual([
-      { page: 1, bodyStart: 0, exactPage: true, crossed: false },
-      { page: 2, bodyStart: PAGE, exactPage: false, crossed: true },
+      { page: 1, bodyStart: 0, crossed: false },
+      { page: 2, bodyStart: PAGE, crossed: true },
     ]);
   });
 
