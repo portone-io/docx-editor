@@ -11,6 +11,7 @@ import {
   type DocxEditorHandle,
   type DocxEditorMode,
 } from "../DocxEditor";
+import { defineClipboardEvent } from "../editor/clipboard/__testing__/clipboardEvent";
 import { toRunFormat } from "../model/format";
 
 declare global {
@@ -33,6 +34,9 @@ let handedOver: string[];
 
 beforeEach(() => {
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+  // The menu's Paste runs the editor's own paste path, which builds a paste event when it is
+  // handed none
+  defineClipboardEvent();
   host = document.createElement("div");
   document.body.appendChild(host);
   handedOver = [];

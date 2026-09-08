@@ -39,7 +39,7 @@ function declaredExtent(element: HTMLElement) {
 
 /**
  * The size an image is drawn at, which is what a copy out of this editor carries: the extent in
- * EMU is the document's own measure and does not travel (`editor/externalClipboard`), while the
+ * EMU is the document's own measure and does not travel (`editor/clipboard/plugin`), while the
  * pixels the browser was given do.
  */
 function renderedExtent(element: HTMLElement) {
