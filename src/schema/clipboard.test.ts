@@ -290,4 +290,35 @@ describe("the outbound clipboard shape", () => {
       "the-token"
     );
   });
+  it("keeps a cell's own paragraphs on one line so a pasted row stays one spreadsheet row", () => {
+    const table = docxSchema.nodes.table.create(
+      null,
+      docxSchema.nodes.tableRow.create(null, [
+        cell(
+          paragraph(docxSchema.text("top")),
+          paragraph(docxSchema.text("bottom"))
+        ),
+        cell(paragraph(docxSchema.text("beside"))),
+      ])
+    );
+
+    expect(copiedText(table)).toBe("top bottom\tbeside");
+  });
+
+  it("opens no blank line where a block the editor only kept stood", () => {
+    const kept = docxSchema.nodes.rawBlock.create({
+      xml: "<w:tbl>an unsupported table</w:tbl>",
+      name: "w:tbl",
+      display: "chip",
+    });
+
+    expect(
+      copiedText(
+        paragraph(docxSchema.text("above")),
+        kept,
+        paragraph(docxSchema.text("below"))
+      )
+    ).toBe("above\nbelow");
+    expect(copiedHtml(kept)).toBe("");
+  });
 });
