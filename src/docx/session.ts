@@ -22,7 +22,7 @@ import {
   numberingOptionsFor,
   type ParagraphStyleOption,
 } from "./formatting";
-import type { HeadersFooters } from "./headersFooters";
+import type { HeaderFooterStories } from "./headersFooters";
 import type { PageGeometry } from "./pageGeometry";
 import type { ImportedStory } from "./story";
 
@@ -91,8 +91,12 @@ export class SessionStore implements DocxSession, SessionIdentity {
   readonly comments: ImportedComments;
   /** Comment ids referenced by the original main story. A missing id after editing means deletion. */
   readonly commentReferenceIds: ReadonlySet<string>;
-  /** The first section's header and footer stories, projected for the page preview. */
-  readonly headersFooters: HeadersFooters;
+  /**
+   * What picking one section's headers and footers takes beyond the section itself: which story
+   * each header or footer relationship names, and the document-wide switch between odd and even.
+   * The stories themselves stand with every other one, so an edited header is read the same way.
+   */
+  readonly headerFooterStories: HeaderFooterStories;
   /**
    * The side stories the package arrived holding - a comment's body, a footnote's - each as the
    * blocks it was written in. What the document currently says stands on the document node
@@ -117,7 +121,7 @@ export class SessionStore implements DocxSession, SessionIdentity {
     this.numberingPartPath = opened.numberingPartPath;
     this.comments = opened.comments;
     this.commentReferenceIds = opened.commentReferenceIds;
-    this.headersFooters = opened.headersFooters;
+    this.headerFooterStories = opened.headerFooterStories;
     this.stories = opened.stories;
   }
 

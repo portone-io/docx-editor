@@ -41,6 +41,8 @@ export interface PageMark {
 /** The paper area of one visual page, used to place its header and footer stories. */
 export interface PageFace {
   page: number;
+  /** The position of the block this page opens with, which says which section it belongs to */
+  pos: number;
   headerTop: number;
   footerTop: number;
   left: number;
@@ -177,6 +179,7 @@ export function usePageLayout({
             (start.crossed ? 0 : page.marginTop);
           return {
             page: start.page,
+            pos: start.pos,
             headerTop: paperTop + page.marginTop / 2,
             footerTop: paperTop + page.pageHeight - page.marginBottom / 2,
             left: page.marginLeft,

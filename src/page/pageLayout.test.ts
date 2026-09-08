@@ -82,7 +82,9 @@ describe("pageLayout", () => {
     const result = layout(blocks(300, 300, 300));
     expect(result.pushes).toEqual([]);
     expect(result.splits).toEqual([]);
-    expect(result.pages).toEqual([{ page: 1, bodyStart: 0, crossed: false }]);
+    expect(result.pages).toEqual([
+      { page: 1, bodyStart: 0, pos: 0, crossed: false },
+    ]);
     expect(result.bodyHeight).toBe(PAGE);
   });
 
@@ -175,19 +177,25 @@ describe("pageLayout", () => {
     expect(result.cuts).toEqual([{ at: 100, height: 2 * PAGE - 1500 + STEP }]);
   });
 
-  it("reports where each page starts", () => {
+  it("reports where each page starts and which block it opens with", () => {
     const result = layout(blocks(900, 300));
     expect(result.pages).toEqual([
-      { page: 1, bodyStart: 0, crossed: false },
-      { page: 2, bodyStart: PAGE + STEP, crossed: false },
+      { page: 1, bodyStart: 0, pos: 0, crossed: false },
+      { page: 2, bodyStart: PAGE + STEP, pos: 10, crossed: false },
     ]);
+  });
+
+  it("names the block a page continues, not the one after it", () => {
+    // The one block is two pages and a half tall, so both pages after the first continue it
+    const result = layout(blocks(300, 2500));
+    expect(result.pages.map((page) => page.pos)).toEqual([0, 10, 10]);
   });
 
   it("a page reached by crossing joins onto the previous page with no top margin", () => {
     const result = layout(blocks(1500));
     expect(result.pages).toEqual([
-      { page: 1, bodyStart: 0, crossed: false },
-      { page: 2, bodyStart: PAGE, crossed: true },
+      { page: 1, bodyStart: 0, pos: 0, crossed: false },
+      { page: 2, bodyStart: PAGE, pos: 0, crossed: true },
     ]);
   });
 
