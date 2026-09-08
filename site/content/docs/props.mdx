@@ -75,8 +75,9 @@ the document beside the display name; `name` is what the comment shows; `initial
 form Word uses where a name does not fit, and is optional.
 
 Within one file a display name stands for one identity, so give each `id` a distinct `name`; a
-name two ids share, one a Word user recorded first, or one the document already holds a comment
-under, resolves to no identity and its comments become everyone's to edit.
+name two ids share, one a Word user recorded first, or one an existing unattributed comment uses,
+resolves to no identity and its comments become everyone's to edit. This includes comments
+preserved outside the editable story.
 
 `editableComments` is whose comments the panel offers to edit or delete.
 `"own"`, the default, is a comment carrying this `id` or no recorded identity at all; `"all"` is

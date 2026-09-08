@@ -376,6 +376,16 @@ describe("who may have written an entry", () => {
     ).toBe(true);
     expect(
       entryAllowed(
+        person("me"),
+        null,
+        "me",
+        "own",
+        NO_PEOPLE,
+        new Set(["Mine"])
+      )
+    ).toBe(false);
+    expect(
+      entryAllowed(
         person("other"),
         null,
         "me",

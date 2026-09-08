@@ -390,7 +390,9 @@ function partKept(
   if (submitted === null) return false;
   if (!kind.rootKept(before.session, after.session)) return false;
 
-  const unattributed = unattributedCommentAuthors(before.doc);
+  const unattributed = unattributedCommentAuthors(
+    before.session.comments.ordered
+  );
   const stoodBehindNow = kind.referents(after);
   for (const [id, entry] of submitted) {
     const original = arrived.get(id);

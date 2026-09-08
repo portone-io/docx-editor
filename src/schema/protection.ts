@@ -291,19 +291,17 @@ export function protectionAllows(
 }
 
 /**
- * The display names this document already writes comments under while recording nobody for them.
+ * The display names these comment bodies write under while recording nobody for them.
  *
  * A name here is one no comment in the file can be attributed through, so a comment that appears
  * under it names no more of a person than the ones already there do.
  */
-export function unattributedCommentAuthors(doc: PMNode): ReadonlySet<string> {
+export function unattributedCommentAuthors(
+  bodies: Iterable<{ author: string | null; authorId: string | null }>
+): ReadonlySet<string> {
   const names = new Set<string>();
-  const carried = (body: CommentBody) => {
+  for (const body of bodies) {
     if (body.authorId === null && body.author !== null) names.add(body.author);
-  };
-  for (const thread of threadsIn(doc).values()) {
-    carried(thread);
-    for (const reply of thread.replies.values()) carried(reply);
   }
   return names;
 }
@@ -336,13 +334,23 @@ export function commentAdditionAllowed(
 export function commentAdditionsBy(
   before: PMNode,
   after: PMNode,
-  authorId: string
+  authorId: string,
+  unattributed?: ReadonlySet<string>
 ): boolean {
   if (!commentIdentitiesKept(before, after)) return false;
-  const unattributed = unattributedCommentAuthors(before);
-  const allowed = (added: CommentBody) =>
-    commentAdditionAllowed(added, authorId, unattributed);
   const was = threadsIn(before);
+  // A package verifier also supplies names from preserved Comments-part entries, which have no
+  // reference node in the editable story but share the same people-part identity lookup.
+  const names =
+    unattributed ??
+    unattributedCommentAuthors(
+      Array.from(was.values()).flatMap((thread) => [
+        thread,
+        ...thread.replies.values(),
+      ])
+    );
+  const allowed = (added: CommentBody) =>
+    commentAdditionAllowed(added, authorId, names);
   for (const [id, thread] of threadsIn(after)) {
     const earlier = was.get(id);
     if (earlier === undefined) {

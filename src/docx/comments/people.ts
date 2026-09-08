@@ -23,6 +23,7 @@ import {
   encodeUtf8,
   parseXml,
 } from "../../ooxml/xml";
+import { unattributedCommentAuthors } from "../../schema/protection";
 import { relatedPartPath } from "../packageParts";
 import type { PartPlanContext } from "../partPlan";
 import type { StoryPartKind } from "../protectionPolicy";
@@ -105,15 +106,19 @@ export function commentAuthorId(
  * carry under more than one identity, one identity and none among them: recording it would hand
  * the comments carrying no identity to whoever the name then resolved to, and a document saved by
  * a Word that wrote no people part carries every one of its comments that way.
+ * `unattributed` also reserves names from the original Comments part, including preserved entries
+ * the current editable bodies do not carry. The planner and export invariants use this same set.
  */
 export function unrecordedAuthors(
   bodies: Iterable<CommentReferenceData | CommentReplyData>,
-  people: ImportedPeople
+  people: ImportedPeople,
+  unattributed: ReadonlySet<string>
 ): Map<string, string> {
   const identities = new Map<string, Set<string | null>>();
   for (const body of bodies) {
     if (body.author === null) continue;
-    if (people.byAuthor.has(body.author)) continue;
+    if (people.byAuthor.has(body.author) || unattributed.has(body.author))
+      continue;
     const ids = identities.get(body.author) ?? new Set<string | null>();
     ids.add(body.authorId);
     identities.set(body.author, ids);
@@ -189,7 +194,11 @@ export function planPeoplePart(
   context: PartPlanContext
 ): ReadonlyMap<string, Uint8Array> | null {
   const people = session.comments.people;
-  const added = unrecordedAuthors(bodies, people);
+  const added = unrecordedAuthors(
+    bodies,
+    people,
+    unattributedCommentAuthors(session.comments.ordered)
+  );
   if (added.size === 0) return null;
 
   const parts = new Map<string, Uint8Array>();

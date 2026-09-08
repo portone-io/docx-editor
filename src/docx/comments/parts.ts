@@ -178,7 +178,13 @@ export function entryAllowed(
   }
   if (entry.namespaceURI === W15_NS && entry.localName === "person") {
     // An identity already recorded is nobody's to rewrite, its own subject included
-    return original === null && recordedIdentity(entry) === authorId;
+    const author = attributeByLocalName(entry, "author");
+    return (
+      original === null &&
+      recordedIdentity(entry) === authorId &&
+      author !== null &&
+      !unattributed.has(author)
+    );
   }
   return false;
 }

@@ -22,6 +22,7 @@ import {
 import { onlyCommentsChangedBy } from "../commentOnlyChange";
 import { exportDocx } from "../exportDocx";
 import { importDocx } from "../importDocx";
+import { exportProblems } from "../invariants";
 import {
   COMMENT_AUTHOR_PROVIDER,
   PEOPLE_CONTENT_TYPE,
@@ -326,6 +327,68 @@ describe("the people part", () => {
     const output = exportDocx(state.doc, opened.session);
     expect(unzipSync(output)["word/people.xml"]).toBeUndefined();
     expect(authorIdsOf(output)).toEqual([null, null]);
+  });
+
+  it("needs no content types part when a preserved author's name adds no person", () => {
+    const parts = unzipSync(commentedDocx(null));
+    parts["word/document.xml"] = unzipSync(plainDocx())["word/document.xml"];
+    delete parts["[Content_Types].xml"];
+    const opened = importDocx(zipSync(parts));
+    const state = applied(
+      selecting(createEditorState(opened.doc), "beta"),
+      addComment({ text: "Mine", author: "Ada", authorId: "u_ada" })
+    );
+    expect(exportProblems(state.doc, opened.session)).toEqual([]);
+    const output = unzipSync(exportDocx(state.doc, opened.session));
+    expect(output["[Content_Types].xml"]).toBeUndefined();
+    expect(output["word/people.xml"]).toBeUndefined();
+  });
+
+  it.each([
+    ["an orphan comment", ""],
+    [
+      "a reference inside preserved markup",
+      `<w:customXml>${COMMENTED_BODY}</w:customXml>`,
+    ],
+  ])("keeps the author of %s unattributed", (_label, preserved) => {
+    const parts = unzipSync(commentedDocx(null));
+    parts["word/document.xml"] = unzipSync(
+      makeDocx(`${preserved}<w:p>${run("Target")}</w:p>`)
+    )["word/document.xml"];
+    const bytes = zipSync(parts);
+    const opened = importDocx(bytes);
+    expect(documentComments(createEditorState(opened.doc))).toEqual([]);
+    const state = applied(
+      selecting(createEditorState(opened.doc), "Target"),
+      addComment({ text: "Mine", author: "Ada", authorId: "u_ada" })
+    );
+    const output = exportDocx(state.doc, opened.session);
+    const reopened = importDocx(output);
+    expect(reopened.session.comments.byId.get("4")?.authorId).toBeNull();
+    expect(reopened.session.comments.byId.get("4")?.xml).toBe(
+      opened.session.comments.byId.get("4")?.xml
+    );
+    expect(authorIdsOf(output)).toEqual([null]);
+    expect(unzipSync(output)["word/people.xml"]).toBeUndefined();
+    expect(onlyCommentsChangedBy(bytes, output, "u_ada")).toEqual({ ok: true });
+
+    // Changing only the people lookup can claim a preserved comment without touching its XML.
+    // The verifier must reject that transfer even though neither story contains its body.
+    const forged = unzipSync(output);
+    forged["word/people.xml"] = encoder.encode(
+      peopleXml(person("Ada", COMMENT_AUTHOR_PROVIDER, "u_ada"))
+    );
+    forged["word/_rels/document.xml.rels"] = encoder.encode(
+      relationships(COMMENTS_REL + PEOPLE_REL)
+    );
+    forged["[Content_Types].xml"] = encoder.encode(
+      contentTypes(COMMENTS_OVERRIDE + PEOPLE_OVERRIDE)
+    );
+    expect(onlyCommentsChangedBy(bytes, zipSync(forged), "u_ada")).toEqual({
+      ok: false,
+      reason: "comment-markup-rejected",
+      part: "word/people.xml",
+    });
   });
 
   it("leaves the comments already written under a shared name under no identity", () => {
