@@ -15,8 +15,13 @@
 import type { Node as PMNode } from "prosemirror-model";
 import { DocxExportError } from "../ooxml/errors";
 import {
+  ensureRootDeclarations,
+  type RootDeclarations,
+} from "../ooxml/partSplice";
+import {
   encodeUtf8,
   parseXml,
+  R_NS,
   W_NS,
   withXmlParser,
   type XmlParser,
@@ -92,8 +97,8 @@ function localAttribute(el: Element, name: string): string | null {
   );
 }
 
-/** OOXML requires every bookmark end to identify an earlier unmatched start. */
-function assertBookmarkPairs(documentXml: string): void {
+/** Checks bookmark pairing and, when links were written, their relationship namespace in scope. */
+function assertMainPart(documentXml: string, wroteLinks: boolean): void {
   let root: Element;
   try {
     root = parseXml(documentXml).documentElement;
@@ -108,6 +113,15 @@ function assertBookmarkPairs(documentXml: string): void {
   const used = new Set<string>();
   for (const element of root.getElementsByTagName("*")) {
     if (element.namespaceURI !== W_NS) continue;
+    if (wroteLinks && element.localName === "hyperlink") {
+      const id = element.getAttributeNode("r:id");
+      if (id && id.namespaceURI !== R_NS) {
+        throw new DocxExportError(
+          "unsupported-content",
+          "a hyperlink's r:id is shadowed by a different relationship namespace"
+        );
+      }
+    }
     if (
       element.localName !== "bookmarkStart" &&
       element.localName !== "bookmarkEnd"
@@ -145,6 +159,12 @@ function assertBookmarkPairs(documentXml: string): void {
     );
   }
 }
+
+/**
+ * What the main part has to declare once a link has gone out under an `r:id` put on its tag: the
+ * attribute names a relationship, and it names nothing at all in a part that binds no `r`.
+ */
+const LINK_MARKUP: RootDeclarations = { namespaces: { r: R_NS } };
 
 /** The parts written beside the body, in the order their parts go into the package */
 const PART_PLANNERS: readonly PartPlanner[] = [
@@ -242,12 +262,16 @@ function writeDocx(
   // The body has to know which relationship a newly inserted image ends up on, so the
   // media is planned before the body is written
   const media = planImageMedia(doc, store, context);
-  const documentXml = buildDocumentXml(doc, store, {
+  const links = hyperlinkRefs(context.relationships);
+  const body = buildDocumentXml(doc, store, {
     images: media?.refs ?? NO_IMAGE_REFS,
-    links: hyperlinkRefs(context.relationships),
+    links,
     notes,
   });
-  assertBookmarkPairs(documentXml);
+  const documentXml = links.addedRelId()
+    ? ensureRootDeclarations(body, LINK_MARKUP)
+    : body;
+  assertMainPart(documentXml, links.addedRelId());
 
   const parts = runPartPlanners(planners, doc, store, context, media?.parts);
   const rels = context.relationships.part(store.parts.get(relsPath));

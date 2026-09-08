@@ -7,7 +7,16 @@
  * decided once rather than at every call site.
  */
 
-import { R_NS, W_NS } from "./xml";
+/** The wordprocessing namespace that every element we read lives in */
+export const W_NS =
+  "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+
+/**
+ * The relationship namespace. It is both where the `r:embed` attributes live and the base
+ * every relationship type name is built on
+ */
+export const R_NS =
+  "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 
 /** The prefix every WordprocessingML element and attribute this package writes carries */
 export const W_PREFIX = "w";
@@ -24,6 +33,11 @@ export const NAMESPACES = {
 } as const;
 
 export type KnownPrefix = keyof typeof NAMESPACES;
+
+/** Whether this is a prefix the package has a namespace for, rather than one a document brought */
+export function isKnownPrefix(prefix: string): prefix is KnownPrefix {
+  return Object.hasOwn(NAMESPACES, prefix);
+}
 
 /** The name `local` goes out under (`qualify("w15", "commentEx")` -> `w15:commentEx`) */
 export function qualify(prefix: KnownPrefix, local: string): string {

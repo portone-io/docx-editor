@@ -108,8 +108,9 @@ const DOCUMENT_RELS = relationships(
   `<Relationship Id="rId1" Target="styles.xml" Type="${REL_BASE}/styles"/>`
 );
 
-const W_NS_DECL =
-  'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+const W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+
+const W_NS_DECL = `xmlns:w="${W_NS}"`;
 
 /**
  * Declares the namespaces the fixtures use as well, so a fragment lifted from a real
@@ -119,17 +120,40 @@ const BODY_NS_DECL =
   `${W_NS_DECL} xmlns:w14="http://schemas.microsoft.com/office/word/2010/wordml"` +
   ` xmlns:r="${REL_BASE}"`;
 
+/** What a built package may say about its main part beyond the body it holds */
+export interface DocxOptions {
+  /**
+   * The prefix the main part binds WordprocessingML to, and the only prefix its root declares.
+   * The body goes inside a root written under it, so a caller passing one spells its own markup
+   * that way too.
+   *
+   * Left out, the root declares `w`, `w14` and `r`, which is what a body lifted from a real
+   * document needs. Passing `"w"` therefore says something the default cannot: a document that
+   * declares nothing but the wordprocessing namespace, which is what a writer adding markup of
+   * another namespace has to declare for itself.
+   */
+  prefix?: string;
+}
+
 /**
  * Takes a body and the contents of styles.xml and zips them into the smallest possible
  * docx
  */
-function buildDocx(body: string, styles: string | null): Uint8Array {
+function buildDocx(
+  body: string,
+  styles: string | null,
+  { prefix }: DocxOptions = {}
+): Uint8Array {
   const encoder = new TextEncoder();
+  const name = prefix === undefined ? "w" : prefix;
+  const declarations =
+    prefix === undefined ? BODY_NS_DECL : `xmlns:${prefix}="${W_NS}"`;
   const parts: Record<string, Uint8Array> = {
     "_rels/.rels": encoder.encode(PACKAGE_RELS),
     "word/document.xml": encoder.encode(
       '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
-        `<w:document ${BODY_NS_DECL}><w:body>${body}</w:body></w:document>`
+        `<${name}:document ${declarations}><${name}:body>${body}` +
+        `</${name}:body></${name}:document>`
     ),
   };
   if (styles !== null) {
@@ -145,12 +169,17 @@ function buildDocx(body: string, styles: string | null): Uint8Array {
  * The smallest possible docx with only the body swapped in. Given an rPrDefault, a
  * styles.xml is included as well
  */
-export function makeDocx(body: string, rPrDefault?: string): Uint8Array {
+export function makeDocx(
+  body: string,
+  rPrDefault?: string,
+  options?: DocxOptions
+): Uint8Array {
   return buildDocx(
     body,
     rPrDefault === undefined
       ? null
-      : `<w:docDefaults><w:rPrDefault>${rPrDefault}</w:rPrDefault></w:docDefaults>`
+      : `<w:docDefaults><w:rPrDefault>${rPrDefault}</w:rPrDefault></w:docDefaults>`,
+    options
   );
 }
 

@@ -15,6 +15,7 @@
  * - `missing-part`: the package has no main document part to read
  * - `missing-body`: the main part carries no `w:body`
  * - `malformed-xml`: the XML cannot be parsed, declares a DTD, or its markup is inconsistent
+ * - `unsupported-conformance`: the package is an ECMA-376 Strict one, and this editor reads Transitional
  * - `unsupported-content`: the document holds markup we cannot write back out unchanged
  */
 export type DocxImportErrorCode =
@@ -24,6 +25,7 @@ export type DocxImportErrorCode =
   | "missing-part"
   | "missing-body"
   | "malformed-xml"
+  | "unsupported-conformance"
   | "unsupported-content";
 
 /** Thrown when we hit a document whose content cannot be kept safely. We refuse to open it instead of losing it silently */

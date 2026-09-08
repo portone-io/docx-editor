@@ -43,7 +43,7 @@ import {
   setCommentResolved,
 } from "../editor/commands";
 import { createEditorState } from "../editor/createEditor";
-import { parseXml, W_NS } from "../ooxml/xml";
+import { parseXml, R_NS, W_NS } from "../ooxml/xml";
 import { docxSchema } from "../schema";
 import { setCellPadding } from "../table";
 import { type EditedBlock, withEditedFirst } from "./__testing__/blockEdits";
@@ -265,6 +265,44 @@ function expectEveryXmlPartParses(name: string, bytes: Uint8Array): void {
     }
   });
   expect(unreadable, `${name}: parts no reader gets past`).toEqual([]);
+}
+
+/**
+ * A package no root of which declares more than the wordprocessing namespace: no `w14`, no `mc`,
+ * no `r`. Its comments part already holds an entry, so writing a thread key into it is a splice
+ * into a root that binds none of what the key needs rather than a part written from scratch.
+ */
+function plainlyDeclaredPackage(): Uint8Array {
+  const encoder = new TextEncoder();
+  const parts = unzipSync(
+    makeDocx(
+      '<w:p><w:commentRangeStart w:id="4"/>' +
+        '<w:r><w:t xml:space="preserve">Alpha</w:t></w:r>' +
+        '<w:commentRangeEnd w:id="4"/>' +
+        '<w:r><w:commentReference w:id="4"/></w:r></w:p>',
+      undefined,
+      { prefix: "w" }
+    )
+  );
+  parts["word/_rels/document.xml.rels"] = encoder.encode(
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      '<Relationship Id="rId5" Target="comments.xml" ' +
+      `Type="${R_NS}/comments"/></Relationships>`
+  );
+  parts["word/comments.xml"] = encoder.encode(
+    `<w:comments xmlns:w="${W_NS}">` +
+      '<w:comment w:id="4" w:author="Ada"><w:p><w:r>' +
+      '<w:t xml:space="preserve">Check this</w:t></w:r></w:p></w:comment>' +
+      "</w:comments>"
+  );
+  parts[CONTENT_TYPES_PATH] = encoder.encode(
+    '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+      '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+      '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>' +
+      '<Override PartName="/word/comments.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml"/>' +
+      "</Types>"
+  );
+  return zipSync(parts);
 }
 
 const EDITED = "edited before the export was validated";
@@ -964,6 +1002,41 @@ describe("the markup-compatibility preprocessing", () => {
 
     const { valid, report } = validate("word/document.xml", processed);
     expect(valid, report).toBe(true);
+  });
+
+  /**
+   * A package whose parts declare the wordprocessing namespace and nothing else, which is all the
+   * standard asks of them: the markup a comment brings lives in namespaces of its own, and the
+   * roots of the parts written have to declare each one for the schemas to read them at all.
+   */
+  it("accepts a comment written into a package that declares nothing else", () => {
+    const opened = importDocx(plainlyDeclaredPackage());
+    const state = openState(opened.doc, opened.session);
+    const commented = ran(
+      firstTextParagraph(state),
+      addComment({
+        text: "A note in a plainly declared package",
+        author: "Schema test",
+        initials: "ST",
+        date: "2026-08-22T00:00:00Z",
+      })
+    );
+    const added = documentComments(commented);
+    const comment = added[added.length - 1];
+    if (comment === undefined) throw new Error("no comment was added");
+    const resolved = ran(commented, setCommentResolved(comment.id, true));
+
+    const written = exportDocx(resolved.doc, opened.session);
+    const rawComments = decode(unzipSync(written)["word/comments.xml"]);
+    expect(rawComments).toContain(`<w:comments xmlns:w="${W_NS}" xmlns:w14=`);
+    expect(rawComments).toContain('mc:Ignorable="w14"');
+
+    const parts = wordprocessingParts(written);
+    const commentsXml = parts.get("word/comments.xml");
+    expect(commentsXml, "the export wrote no comments part").toBeDefined();
+    expect(commentsXml).toContain("A note in a plainly declared package");
+    expectPartsValidate("a plainly declared package", parts);
+    expectEveryXmlPartParses("a plainly declared package", written);
   });
 
   /**

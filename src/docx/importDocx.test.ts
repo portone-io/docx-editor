@@ -11,6 +11,8 @@ import {
   readFixture,
 } from "../__testing__/docx";
 import { toParagraphFormat, toRunFormat } from "../model/format";
+import { STRICT_OFFICE_DOCUMENT_REL, STRICT_W_NS } from "../ooxml/conformance";
+import { W_NS } from "../ooxml/xml";
 import { exportDocx } from "./exportDocx";
 import { importDocx } from "./importDocx";
 
@@ -31,8 +33,13 @@ const PACKAGE_RELS =
   'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument"/>' +
   "</Relationships>";
 
-const W_NS_DECL =
-  'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+const STRICT_PACKAGE_RELS =
+  '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+  '<Relationship Id="rId1" Target="word/document.xml" ' +
+  `Type="${STRICT_OFFICE_DOCUMENT_REL}"/>` +
+  "</Relationships>";
+
+const W_NS_DECL = `xmlns:w="${W_NS}"`;
 
 describe("refusing to open", () => {
   it("explicitly rejects bytes that are not a docx", () => {
@@ -86,6 +93,68 @@ describe("refusing to open", () => {
         "<w:t>&fee;</w:t></w:r></w:p></w:body></w:document>",
     });
     expect(importErrorCode(() => importDocx(withDtd))).toBe("malformed-xml");
+  });
+
+  it("refuses a Strict package with unsupported-conformance", () => {
+    const strict = makePackage({
+      "_rels/.rels": STRICT_PACKAGE_RELS,
+      "word/document.xml": `<w:document xmlns:w="${STRICT_W_NS}"><w:body><w:p/></w:body></w:document>`,
+    });
+    expect(importErrorCode(() => importDocx(strict))).toBe(
+      "unsupported-conformance"
+    );
+  });
+
+  /**
+   * The relationship and the part's own namespace each say which class the package belongs to, and
+   * a package saying it either way is refused as the class it names rather than for binding `w`
+   * somewhere the writer does not know.
+   */
+  it("refuses a Strict main part reached through a transitional relationship", () => {
+    const strict = makePackage({
+      "_rels/.rels": PACKAGE_RELS,
+      "word/document.xml": `<w:document xmlns:w="${STRICT_W_NS}"><w:body><w:p/></w:body></w:document>`,
+    });
+    expect(importErrorCode(() => importDocx(strict))).toBe(
+      "unsupported-conformance"
+    );
+  });
+
+  it("refuses a main part that binds the namespace to another prefix with unsupported-content", () => {
+    const otherPrefix = makeDocx("<p:p/>", undefined, { prefix: "p" });
+    expect(importErrorCode(() => importDocx(otherPrefix))).toBe(
+      "unsupported-content"
+    );
+  });
+
+  it("refuses a foreign main root even when it declares the writing prefix", () => {
+    const bytes = makePackage({
+      "_rels/.rels": PACKAGE_RELS,
+      "word/document.xml": `<x:document xmlns:x="urn:foreign" xmlns:w="${W_NS}"><w:body><w:p/></w:body></x:document>`,
+    });
+    expect(importErrorCode(() => importDocx(bytes))).toBe(
+      "unsupported-content"
+    );
+  });
+
+  it("refuses a main part that binds the namespace as the default one", () => {
+    const defaultNamespace = makePackage({
+      "_rels/.rels": PACKAGE_RELS,
+      "word/document.xml": `<document xmlns="${W_NS}"><body><p/></body></document>`,
+    });
+    expect(importErrorCode(() => importDocx(defaultNamespace))).toBe(
+      "unsupported-content"
+    );
+  });
+
+  it("opens a document that binds the namespace to w beside another prefix", () => {
+    const both = makePackage({
+      "_rels/.rels": PACKAGE_RELS,
+      "word/document.xml":
+        `<p:document xmlns:p="${W_NS}" xmlns:w="${W_NS}">` +
+        "<p:body><p:p/></p:body></p:document>",
+    });
+    expect(() => importDocx(both)).not.toThrow();
   });
 
   it("rejects a document holding an XML node we cannot write back out", () => {

@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
-import { unzipSync } from "fflate";
+import { unzipSync, zipSync } from "fflate";
 import type { Node as PMNode } from "prosemirror-model";
 import type { EditorState } from "prosemirror-state";
 import { describe, expect, it } from "vitest";
 import {
+  bytesEqual,
   decode,
   documentXmlOf,
   makeDocx,
@@ -13,6 +14,7 @@ import { runCommand, select } from "../../__testing__/editing";
 import { exportDocx } from "../../docx/exportDocx";
 import { importDocx } from "../../docx/importDocx";
 import type { SessionStore } from "../../docx/session";
+import { R_NS, W_NS } from "../../ooxml/xml";
 import { docxSchema } from "../../schema";
 import { createEditorState } from "../createEditor";
 import {
@@ -125,8 +127,68 @@ describe("putting a link on plain text", () => {
 
     expect(xml).toContain(`${run("see ")}<w:hyperlink`);
     expect(xml).toMatch(
-      /<w:hyperlink xmlns:r="[^"]+" r:id="rId\d+"><w:r><w:t xml:space="preserve">our terms<\/w:t><\/w:r><\/w:hyperlink>/
+      /<w:hyperlink r:id="rId\d+"><w:r><w:t xml:space="preserve">our terms<\/w:t><\/w:r><\/w:hyperlink>/
     );
+  });
+
+  /**
+   * The `r:id` a new link goes out under names a relationship, and it names nothing at all in a
+   * part that binds no `r`, so the main part's root gains the binding when a link went out under
+   * an attribute its own tag did not arrive with.
+   */
+  it("declares the relationship prefix on the root of a document that lacked it", () => {
+    const { state, session } = opened(
+      makeDocx(BODY, undefined, { prefix: "w" })
+    );
+    const linkedState = runCommand(over(state, "our terms"), setLink(TERMS));
+    const xml = bodyXml(linkedState, session);
+
+    expect(xml).toContain(`<w:document xmlns:w="${W_NS}" xmlns:r="${R_NS}">`);
+    expect(() =>
+      importDocx(exportDocx(linkedState.doc, session))
+    ).not.toThrow();
+  });
+
+  it.each(["root", "paragraph", "link"])(
+    "refuses a new relationship attribute shadowed at the %s",
+    (scope) => {
+      const body =
+        scope === "paragraph"
+          ? BODY.replace("<w:p>", '<w:p xmlns:r="urn:foreign">')
+          : scope === "link"
+            ? `<w:p><w:hyperlink xmlns:r="urn:foreign" w:anchor="target">${run("our terms")}</w:hyperlink></w:p>`
+            : BODY;
+      const parts = unzipSync(makeDocx(body, undefined, { prefix: "w" }));
+      if (scope === "root")
+        parts["word/document.xml"] = new TextEncoder().encode(
+          decode(parts["word/document.xml"]).replace(
+            "<w:document ",
+            '<w:document xmlns:r="urn:foreign" '
+          )
+        );
+      const { state, session } = opened(zipSync(parts));
+      expect(
+        bytesEqual(
+          unzipSync(exportDocx(state.doc, session))["word/document.xml"],
+          parts["word/document.xml"]
+        )
+      ).toBe(true);
+      const linkedState = runCommand(over(state, "our terms"), setLink(TERMS));
+      expect(() => exportDocx(linkedState.doc, session)).toThrowError(
+        expect.objectContaining({ code: "unsupported-content" })
+      );
+    }
+  );
+
+  it("leaves the root of a document nobody linked in as it arrived", () => {
+    const bytes = makeDocx(BODY, undefined, { prefix: "w" });
+    const before = unzipSync(bytes)["word/document.xml"];
+    const { state, session } = opened(bytes);
+    const after = unzipSync(exportDocx(state.doc, session))[
+      "word/document.xml"
+    ];
+
+    expect(bytesEqual(after, before)).toBe(true);
   });
 
   it("writes exactly one relationship for it, marked as pointing outside the package", () => {

@@ -5,6 +5,11 @@
  */
 
 import { Fragment, type Node as PMNode } from "prosemirror-model";
+import {
+  bindsWritingPrefix,
+  conformanceOf,
+  STRICT_OFFICE_DOCUMENT_REL,
+} from "../ooxml/conformance";
 import { DocxImportError } from "../ooxml/errors";
 import {
   childByLocalName,
@@ -59,16 +64,51 @@ const SETTINGS_REL = `${R_NS}/settings`;
 
 /** Finds where inside the zip the part holding the body sits */
 function findMainPartPath(parts: Map<string, Uint8Array>): string {
-  const target = readRelationships(parts, "_rels/.rels").find(
+  const relationships = readRelationships(parts, "_rels/.rels");
+  const target = relationships.find(
     (rel) => rel.type === OFFICE_DOCUMENT_REL
   )?.target;
   if (!target) {
+    // A Strict package names the same relationship under its own type, so it has a main part and
+    // is refused for what it is rather than for lacking one
+    if (relationships.some((rel) => rel.type === STRICT_OFFICE_DOCUMENT_REL)) {
+      throw new DocxImportError(
+        "unsupported-conformance",
+        "the package relates its main document part as an ECMA-376 Strict one"
+      );
+    }
     throw new DocxImportError(
       "missing-part",
       "no relationship pointing at the main document part"
     );
   }
   return target.replace(/^\//, "");
+}
+
+/**
+ * Turns down a main part this editor could read but never write back into: one written in the
+ * Strict vocabulary, or one whose root does not bind `w` to the Transitional namespace.
+ * Strict is asked first so that its namespace is refused under the conformance code.
+ */
+function assertWritableMainPart(root: Element): void {
+  if (conformanceOf(root) === "strict") {
+    throw new DocxImportError(
+      "unsupported-conformance",
+      "the main document part is written in the ECMA-376 Strict vocabulary"
+    );
+  }
+  if (conformanceOf(root) !== "transitional" || root.localName !== "document") {
+    throw new DocxImportError(
+      "unsupported-content",
+      "the main part is not a Transitional WordprocessingML document"
+    );
+  }
+  if (!bindsWritingPrefix(root)) {
+    throw new DocxImportError(
+      "unsupported-content",
+      "the main document part binds WordprocessingML to a prefix other than w"
+    );
+  }
 }
 
 /** Moves a single body block into a node. If we cannot model it, the result is a preservation node pointing at the original fragment */
@@ -209,6 +249,7 @@ function readDocx(input: DocxBytes): {
   const { text: source, hadBom } = decodeUtf8(mainPart);
   const scanned = scanBody(source);
   const dom = parseXml(source);
+  assertWritableMainPart(dom.documentElement);
   const body = childByLocalName(dom.documentElement, "body");
   if (!body) {
     throw new DocxImportError("missing-body", "document has no w:body");

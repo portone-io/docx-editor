@@ -215,6 +215,51 @@ describe("WordprocessingML comments", () => {
     ).toBe("A revised note");
   });
 
+  /**
+   * A comments part is free to bind WordprocessingML to a prefix of its own, and every entry this
+   * editor writes into it is spelled `w:`, so the binding goes on the part's root rather than on
+   * each entry. Without it the part holds a prefix nothing bound and does not read back at all.
+   */
+  it("declares the prefix a new entry is written under on the part root", () => {
+    const parts = unzipSync(makeCommentedDocx());
+    parts["word/comments.xml"] = encoder.encode(
+      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+        `<c:comments xmlns:c="${W_NS}">` +
+        '<c:comment c:id="4" c:author="Ada"><c:p><c:r>' +
+        '<c:t xml:space="preserve">Check this</c:t></c:r></c:p></c:comment>' +
+        "</c:comments>"
+    );
+    const opened = importDocx(zipSync(parts));
+    const state = apply(
+      createEditorState(opened.doc),
+      updateComment("4", "A revised note")
+    );
+    const output = exportDocx(state.doc, opened.session);
+    const commentsXml = decode(unzipSync(output)["word/comments.xml"]);
+
+    expect(commentsXml).toContain(`<c:comments xmlns:c="${W_NS}" xmlns:w=`);
+    expect(commentsXml).toContain('<w:comment w:id="4"');
+    expect(commentsXml).not.toContain("<w:comment xmlns:w=");
+    expect(
+      documentComments(createEditorState(importDocx(output).doc))[0]?.text
+    ).toBe("A revised note");
+  });
+
+  /** A part that binds `w` already goes back out with the root it arrived with */
+  it("leaves a comments root that binds the prefix already as it was written", () => {
+    const opened = importDocx(makeCommentedDocx());
+    const state = apply(
+      createEditorState(opened.doc),
+      updateComment("4", "A revised note")
+    );
+    const commentsXml = decode(
+      unzipSync(exportDocx(state.doc, opened.session))["word/comments.xml"]
+    );
+
+    expect(commentsXml).toContain(`<w:comments xmlns:w="${W_NS}">`);
+    expect(commentsXml).not.toContain("xmlns:w14=");
+  });
+
   it("removes the anchor markers, reference and comment entry together", () => {
     const opened = importDocx(makeCommentedDocx());
     const state = apply(createEditorState(opened.doc), removeComment("4"));
@@ -590,4 +635,28 @@ describe("WordprocessingML comments", () => {
     expect(comment?.from).toBe(comment?.to);
     expect(comment?.from).not.toBe(comment?.referencePos);
   });
+});
+
+it("declares w15 when editing an extension part written under another prefix", () => {
+  const parts = unzipSync(threadedCommentDocument());
+  parts["word/commentsExtended.xml"] = encoder.encode(
+    decode(parts["word/commentsExtended.xml"])
+      .replaceAll("w15:", "ex:")
+      .replace("xmlns:w15=", "xmlns:ex=")
+  );
+  const opened = importDocx(zipSync(parts));
+  const state = apply(
+    editorStateForSession(opened),
+    setCommentResolved("4", false)
+  );
+  const exported = exportDocx(state.doc, opened.session);
+  expect(decode(unzipSync(exported)["word/commentsExtended.xml"])).toContain(
+    `xmlns:w15="${W15_NS}"`
+  );
+  const read = importDocx(exported);
+  expect(
+    documentComments(editorStateForSession(read)).find(
+      (comment) => comment.id === "4"
+    )?.resolved
+  ).toBe(false);
 });

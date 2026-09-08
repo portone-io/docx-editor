@@ -246,12 +246,15 @@ codes without importing the core entry.
 | `missing-part` | The package carries no main document part. |
 | `missing-body` | The main part carries no body. |
 | `malformed-xml` | The XML cannot be parsed, declares a DTD, or its markup is inconsistent. |
+| `unsupported-conformance` | The package is an ECMA-376 Strict one. This editor reads and writes Transitional, which is what Word saves by default. |
 | `unsupported-content` | The document holds markup that could not be written back out unchanged. |
 
 `no-xml-parser` is about where the call was made rather than about the file, and a browser never
 reaches it; [Server environments](#server-environments) covers it.
 A file a person picked can fail with any of the rest, so the code is worth showing: `not-a-docx`
 and `too-large` are usually the person's to fix, while the others describe the file itself.
+A main document root that does not bind `w` to the Transitional WordprocessingML namespace is
+refused as `unsupported-content`, since the WordprocessingML writer emits that prefix.
 
 ### Checking before export
 
@@ -287,6 +290,8 @@ first entry of the same list with its code and message. An empty list does not g
 writing will succeed.
 Inside an editor, [`canExport`](/docs/custom-controls#commands-and-queries) asks the same question
 of the state.
+A write that needs a namespace prefix already bound to a different namespace is also refused as `unsupported-content`; this includes a local declaration that changes the meaning of a newly written hyperlink.
+
 A refusal the list does not foresee is still thrown: `unsupported-content` for a node or an image
 of a kind the writer cannot put out, `lost-original` or `malformed-xml` for a node a plugin
 stripped of an attribute the writer needs or a raw fragment it wrote that does not hold its shape,
