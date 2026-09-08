@@ -42,6 +42,9 @@ interface TypeFacts {
 
 const FACTS = new WeakMap<MarkType, TypeFacts>();
 
+/** Shared, so that a node standing in no wrapper costs no array */
+const NO_WRAPPERS: readonly Mark[] = [];
+
 function factsOf(type: MarkType): TypeFacts {
   const known = FACTS.get(type);
   if (known) return known;
@@ -72,9 +75,17 @@ function depthOf(mark: Mark): number {
  */
 export function wrapperMarks(node: PMNode): readonly Mark[] {
   const marks = node.marks;
-  if (marks.length === 0) return marks;
-  const wrappers = marks.filter((mark) => factsOf(mark.type).wrapper);
-  if (wrappers.length < 2) return wrappers;
+  // Every inline node of every walk asks this, and most of them stand in no wrapper at all
+  let found = 0;
+  for (const mark of marks) {
+    if (factsOf(mark.type).wrapper) found += 1;
+  }
+  if (found === 0) return NO_WRAPPERS;
+  const wrappers =
+    found === marks.length
+      ? [...marks]
+      : marks.filter((mark) => factsOf(mark.type).wrapper);
+  if (found < 2) return wrappers;
   return wrappers.sort(
     (a, b) =>
       depthOf(a) - depthOf(b) || factsOf(a.type).rank - factsOf(b.type).rank
