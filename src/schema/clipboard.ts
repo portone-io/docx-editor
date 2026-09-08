@@ -32,7 +32,6 @@ import {
   toTableFormat,
   toTableWidth,
 } from "../model/format";
-import { emuToPx, toImageExtent, toImageSrc } from "../ooxml/image";
 import { styleIdOf } from "../ooxml/props";
 import { editorClassNames } from "../styles/classNames";
 import { DEFAULT_FONT_FALLBACKS } from "../styles/fontStack";
@@ -41,10 +40,10 @@ import {
   columnWidthPx,
   paragraphStyle,
   rowStyle,
-  runStyle,
   tableStyle,
 } from "../styles/inlineStyle";
 import { type docxSchema, isPageBreak } from "./docxSchema";
+import { imageAttrs, runAttrs } from "./rendering";
 
 /**
  * The paragraph style a copy carries, which is the one thing a paste needs that the drawing does
@@ -107,23 +106,31 @@ function noteLabel(node: PMNode): string {
     : (textAttr(node.attrs.label) ?? "");
 }
 
+/** The same text with every line it holds run together, for somewhere a line means the next row */
+function oneLine(text: string): string {
+  return text.replace(/[\n\f]+/g, " ");
+}
+
 function spanAttribute(count: unknown): string | undefined {
   const span = spanCount(count);
   return span > 1 ? `${span}` : undefined;
 }
 
 /**
- * What a fragment the editor kept rather than modelled leaves as.
+ * What a fragment the editor kept rather than modelled leaves as: what it draws, and nothing else.
  *
- * Only what it draws travels. A `w:cr` is a line and a `w:noBreakHyphen` is a character, so both
- * are text wherever they are pasted; a chip is the editor naming the element that stands here,
- * which is scaffolding rather than content and means nothing in another application.
+ * A `w:cr` is a line and a `w:noBreakHyphen` is a character, so both are text wherever they are
+ * pasted. A chip draws the text its element held - a field's cached result, the words a tracked
+ * insertion put there - and that is what a reader sees on the page, so it travels too. A chip
+ * holding no text of its own (a `w:fldChar`) draws only the editor's name for the element that
+ * stands here, which means nothing in another application and stays behind.
  */
 function preservedText(node: PMNode): string | null {
   const display = node.attrs.display;
   if (display === "break") return "\n";
-  if (display === "text") return textAttr(node.attrs.text) ?? "";
-  return null;
+  if (display !== "text" && display !== "chip") return null;
+  const drawn = textAttr(node.attrs.text);
+  return drawn === undefined || drawn === "" ? null : drawn;
 }
 
 /** A preserved fragment leaves the one way, whichever level it was kept at */
@@ -143,10 +150,8 @@ const WRITES_NOTHING: ClipboardNodeSpec = {
 };
 
 const CLIPBOARD_NODES: Readonly<Record<DocxNodeName, ClipboardNodeSpec>> = {
-  doc: {
-    toClipboardDOM: null,
-    toClipboardText: (_node, children) => children.join("\n"),
-  },
+  // A slice carries blocks, never the document itself, so neither answer is ever asked for
+  doc: WRITES_NOTHING,
   paragraph: {
     toClipboardDOM: (node) => [
       "p",
@@ -204,8 +209,9 @@ const CLIPBOARD_NODES: Readonly<Record<DocxNodeName, ClipboardNodeSpec>> = {
       0,
     ],
     // A tab stands between two cells and a line between two rows wherever a table is pasted as
-    // text, so a cell of several paragraphs says them on one line rather than breaking its row
-    toClipboardText: (_node, children) => children.join(" "),
+    // text, so nothing inside a cell may write a line: several paragraphs, a line break of their
+    // own and a nested table all say what they hold on the one line this cell stands on
+    toClipboardText: (_node, children) => oneLine(children.join(" ")),
   },
   rawBlock: WRITES_NOTHING,
   hardBreak: {
@@ -214,21 +220,9 @@ const CLIPBOARD_NODES: Readonly<Record<DocxNodeName, ClipboardNodeSpec>> = {
     toClipboardText: (node) => (isPageBreak(node.attrs.brAttrs) ? "\f" : "\n"),
   },
   image: {
-    toClipboardDOM: (node) => {
-      const extent = toImageExtent(node.attrs.extent);
-      return [
-        "img",
-        {
-          class: editorClassNames.image,
-          src: toImageSrc(node.attrs.src) ?? undefined,
-          alt: textAttr(node.attrs.alt) ?? "",
-          // The measure the document keeps is its own. The pixels it was drawn at are what another
-          // application reads a size from, and what a paste back into this editor reads one from
-          width: extent ? `${Math.round(emuToPx(extent.cx))}` : undefined,
-          height: extent ? `${Math.round(emuToPx(extent.cy))}` : undefined,
-        },
-      ];
-    },
+    // The measure the document keeps stays behind. The pixels it was drawn at are what another
+    // application reads a size from, and what a paste back into this editor reads one from
+    toClipboardDOM: (node) => ["img", imageAttrs(node.attrs)],
     // A picture is not text. But a copy may be read where no picture can follow, and there the
     // words the document gave it for that very case are better than a gap
     toClipboardText: (node) => textAttr(node.attrs.alt) ?? "",
@@ -241,7 +235,11 @@ const CLIPBOARD_NODES: Readonly<Record<DocxNodeName, ClipboardNodeSpec>> = {
     // nothing wherever the copy lands
     toClipboardDOM: (node) => {
       const label = noteLabel(node);
-      return label === "" ? null : ["sup", label];
+      if (label === "") return null;
+      const kind = node.attrs.kind === "endnote" ? "Endnote" : "Footnote";
+      // A bare number in superscript is what a reader sees; what it stands for is what a reader
+      // who is listening to the page is told, here as on the page it was copied from
+      return ["sup", { "aria-label": `${kind} ${label}` }, label];
     },
     toClipboardText: noteLabel,
   },
@@ -256,7 +254,9 @@ const CLIPBOARD_NODES: Readonly<Record<DocxNodeName, ClipboardNodeSpec>> = {
 };
 
 const CLIPBOARD_MARKS: Readonly<Record<DocxMarkName, ClipboardMarkSpec>> = {
-  sdt: { toClipboardDOM: () => ["span", 0] },
+  // A content control is a wrapper the file keeps and nothing outside this editor reads back, so
+  // the text it held leaves on its own rather than inside a span standing for nothing
+  sdt: { toClipboardDOM: null },
   link: {
     // The editor draws the address as data so that a click inside the text places the caret.
     // Anywhere else an anchor is what a link is: it follows in mail or a document, and it comes
@@ -268,19 +268,13 @@ const CLIPBOARD_MARKS: Readonly<Record<DocxMarkName, ClipboardMarkSpec>> = {
     },
   },
   run: {
-    toClipboardDOM: (mark) => {
-      const format = toRunFormat(mark.attrs.format);
-      return [
-        "span",
-        {
-          class: editorClassNames.run,
-          style: runStyle(format, DEFAULT_FONT_FALLBACKS),
-          // Which shape of a Han character is drawn is decided by this and nothing else
-          lang: format?.lang,
-        },
-        0,
-      ];
-    },
+    // The built-in fallbacks rather than the ones this editor was given: a copy is read where the
+    // host's font list means nothing, and the schema cannot see which editor it is drawing for
+    toClipboardDOM: (mark) => [
+      "span",
+      runAttrs(mark.attrs, DEFAULT_FONT_FALLBACKS),
+      0,
+    ],
   },
   tab: { toClipboardDOM: () => ["span", { class: editorClassNames.tab }, 0] },
 };
@@ -290,8 +284,16 @@ export const clipboardSpecs: {
   marks: Readonly<Record<DocxMarkName, ClipboardMarkSpec>>;
 } = { nodes: CLIPBOARD_NODES, marks: CLIPBOARD_MARKS };
 
+/**
+ * The declaration is exhaustive over the schema's own names, and a document can hold no other
+ * node. Reading it by name is still a lookup that may miss, and saying so here is what lets the
+ * two callers below answer for a node the schema gained without a shape.
+ */
+const NODES_BY_NAME: Readonly<Record<string, ClipboardNodeSpec | undefined>> =
+  CLIPBOARD_NODES;
+
 function nodeSpec(node: PMNode): ClipboardNodeSpec | undefined {
-  return CLIPBOARD_NODES[node.type.name as DocxNodeName];
+  return NODES_BY_NAME[node.type.name];
 }
 
 function clipboardDOMOf(node: PMNode): DOMOutputSpec | null {
@@ -316,37 +318,94 @@ function written(fragment: Fragment): Fragment {
  * node's children by calling `serializeFragment` again with the element it drew as the target, so
  * a call carrying one is inside the copy rather than around it.
  */
-export function clipboardSerializer(
-  stampCopy?: (copy: HTMLElement | DocumentFragment) => void
-): DOMSerializer {
-  const nodes: DOMSerializer["nodes"] = Object.fromEntries(
+class ClipboardSerializer extends DOMSerializer {
+  constructor(
+    private readonly stampCopy:
+      | ((copy: HTMLElement | DocumentFragment) => void)
+      | undefined
+  ) {
+    super(clipboardNodes(), clipboardMarks());
+  }
+
+  serializeFragment(
+    fragment: Fragment,
+    options?: { document?: Document },
+    target?: HTMLElement | DocumentFragment
+  ): HTMLElement | DocumentFragment {
+    const dom = super.serializeFragment(written(fragment), options, target);
+    if (target !== undefined) return dom;
+    if (dom.firstChild === null && fragment.childCount > 0) {
+      carrier(dom, options?.document);
+    }
+    this.stampCopy?.(dom);
+    return dom;
+  }
+}
+
+/**
+ * The one element a copy of nothing visible is written as.
+ *
+ * A selection can hold only content that writes nothing - a block the editor kept and draws no
+ * text for, a comment marker on its own. `prosemirror-view` gives up on a clipboard with neither
+ * HTML nor text before any reader runs, so an empty copy could not be pasted back even into the
+ * editor it was cut from, where the name on it stands for the content itself. This element is
+ * what that name rides on; a reader anywhere else finds an empty span and puts in nothing.
+ */
+function carrier(
+  copy: HTMLElement | DocumentFragment,
+  document: Document | undefined
+): void {
+  const owner = document ?? copy.ownerDocument;
+  if (owner !== null) copy.appendChild(owner.createElement("span"));
+}
+
+function clipboardNodes(): DOMSerializer["nodes"] {
+  return Object.fromEntries(
     Object.entries(CLIPBOARD_NODES).flatMap(([name, spec]) => {
       const draw = spec.toClipboardDOM;
-      // A node that draws nothing is taken out of the fragment before the serializer sees it, so
-      // the empty span below stands for a case `written` has already ruled out
       return draw === null
         ? []
-        : [[name, (node: PMNode) => draw(node) ?? ["span"]]];
+        : [
+            [
+              name,
+              (node: PMNode) => {
+                const drawn = draw(node);
+                // `written` takes a node drawing nothing out of the fragment before the
+                // serializer reaches it, so the two disagreeing is a fault in this module
+                if (drawn === null) {
+                  throw new Error(
+                    `${name} was serialized after drawing nothing`
+                  );
+                }
+                return drawn;
+              },
+            ],
+          ];
     })
   );
-  const marks: DOMSerializer["marks"] = Object.fromEntries(
+}
+
+function clipboardMarks(): DOMSerializer["marks"] {
+  return Object.fromEntries(
     Object.entries(CLIPBOARD_MARKS).flatMap(([name, spec]) =>
       // A mark with no drawing of its own is left out, and `DOMSerializer` writes the content it
       // covered without a wrapper
       spec.toClipboardDOM === null ? [] : [[name, spec.toClipboardDOM]]
     )
   );
-  return new (class extends DOMSerializer {
-    serializeFragment(
-      fragment: Fragment,
-      options?: { document?: Document },
-      target?: HTMLElement | DocumentFragment
-    ): HTMLElement | DocumentFragment {
-      const dom = super.serializeFragment(written(fragment), options, target);
-      if (target === undefined) stampCopy?.(dom);
-      return dom;
-    }
-  })(nodes, marks);
+}
+
+/**
+ * The serializer a copy is written with.
+ *
+ * `stampCopy` is handed the whole copy once it stands, and only once: `DOMSerializer` draws a
+ * node's children by calling `serializeFragment` again with the element it drew as the target, so
+ * a call carrying one is inside the copy rather than around it.
+ */
+export function clipboardSerializer(
+  stampCopy?: (copy: HTMLElement | DocumentFragment) => void
+): DOMSerializer {
+  return new ClipboardSerializer(stampCopy);
 }
 
 function textPieces(fragment: Fragment): string[] {
