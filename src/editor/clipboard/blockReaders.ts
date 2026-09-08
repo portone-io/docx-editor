@@ -228,8 +228,11 @@ const IGNORED_MARKER = /mso-list:\s*Ignore/i;
 const MARKER_START = /^\[if\s+!supportLists\]/i;
 const MARKER_END = /^\[endif\]/i;
 
-/** A marker counting off items rather than standing in front of each of them */
-const COUNTED_MARKER = /^\s*(?:\d+|[A-Za-z]+)\s*[.)]/;
+/**
+ * A marker counting off items rather than standing in front of each of them, with the space a
+ * writer sets it apart from the text by. A no-break space is what Word uses, and `\s` holds it.
+ */
+const COUNTED_MARKER = /^\s*(?:\d+|[A-Za-z]+)\s*[.)]\s*/;
 
 /** Where a Word paragraph says it stands in a list */
 interface WordListItem {
@@ -281,19 +284,83 @@ function withoutMarker(element: HTMLElement): {
   return { marker, content };
 }
 
+/** The fonts a bullet is drawn in, which is how a marker nothing marks is known for one */
+const SYMBOL_FONTS = /symbol|wingdings|webdings/i;
+
+/** The first node of an element that is neither blank text nor nothing */
+function leadingNode(element: HTMLElement): ChildNode | null {
+  for (const child of element.childNodes) {
+    const blank =
+      child.nodeType === child.TEXT_NODE &&
+      (child.nodeValue ?? "").trim() === "";
+    if (!blank) return child;
+  }
+  return null;
+}
+
+/** The first text of an element that is not just space, wherever inside it that sits */
+function firstText(element: Node): Node | null {
+  for (const child of element.childNodes) {
+    if (child.nodeType === child.TEXT_NODE) {
+      if ((child.nodeValue ?? "").trim() !== "") return child;
+    } else if (child instanceof HTMLElement) {
+      const found = firstText(child);
+      if (found !== null) return found;
+    }
+  }
+  return null;
+}
+
+/**
+ * The marker of a list paragraph that says nothing about where its marker ends, taken off the
+ * front of the paragraph.
+ *
+ * Not every writer of `mso-list` marks its marker: a copy that has been through another
+ * application, and Word's own older HTML, leave the bullet or the number standing as ordinary
+ * content. Left there it would be a second marker beside the one this document draws, and the
+ * shape of it is the only thing saying whether the list counts its items.
+ *
+ * The paragraph is copied before its marker is taken out, so that the markup a later reading is
+ * handed is the markup the clipboard carried.
+ */
+function leadingMarker(
+  element: HTMLElement
+): { marker: string; content: readonly Node[] } | null {
+  const copy = element.cloneNode(true);
+  if (!(copy instanceof HTMLElement)) return null;
+  const lead = leadingNode(copy);
+  if (
+    lead instanceof HTMLElement &&
+    SYMBOL_FONTS.test(lead.getAttribute("style") ?? "")
+  ) {
+    const marker = lead.textContent ?? "";
+    lead.remove();
+    return { marker, content: [...copy.childNodes] };
+  }
+  const text = firstText(copy);
+  const counted = COUNTED_MARKER.exec(text?.nodeValue ?? "");
+  if (text === null || counted === null) return null;
+  text.nodeValue = (text.nodeValue ?? "").slice(counted[0].length);
+  return { marker: counted[0], content: [...copy.childNodes] };
+}
+
 /**
  * A Word paragraph that is an item of a list, read as an item of a list here.
  *
  * Word puts no `<ul>` or `<ol>` on the clipboard: every item is a paragraph saying which list it
  * belongs to, so the paragraphs of one list are joined by that name rather than by standing inside
- * one element. Whether the list counts its items is only visible in the marker Word drew.
+ * one element. Whether the list counts its items is only visible in the marker Word drew, which
+ * is taken out of the paragraph wherever it is: marked as a marker, or standing at the front of
+ * the content as anything else would.
  */
 export const wordListReader: HtmlBlockReader = {
   read: (element, inline, host) => {
     if (host.context.source !== "word") return null;
     const item = wordListItemOf(element);
     if (item === null) return null;
-    const { marker, content } = withoutMarker(element);
+    const marked = withoutMarker(element);
+    const { marker, content } =
+      marked.marker === "" ? (leadingMarker(element) ?? marked) : marked;
     const kind: ListKind = COUNTED_MARKER.test(marker) ? "numbered" : "bullet";
     return [
       host.paragraph(host.readInline(content, contextFor(inline, element)), {

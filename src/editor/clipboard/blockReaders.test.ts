@@ -215,6 +215,31 @@ describe("reading HTML written by another application", () => {
     ]);
   });
 
+  it("counts a Word list whose marker it could not find", () => {
+    const doc = pasted(
+      '<meta name=Generator content="Microsoft Word 15">' +
+        "<p class=MsoNormal style='mso-list:l0 level1 lfo1'>" +
+        "<span style='font-size:11.0pt'>1.\u00a0\u00a0</span>Rope</p>" +
+        "<p class=MsoNormal style='mso-list:l0 level1 lfo1'>" +
+        "<span style='font-size:11.0pt'>2.\u00a0\u00a0</span>Chart</p>" +
+        "<p class=MsoNormal style='mso-list:l1 level1 lfo2'>" +
+        "<span style='font-family:Symbol'>\u00b7</span>Cord</p>"
+    );
+
+    const items = nodesOfType(doc, "paragraph").filter((block) =>
+      ["Rope", "Chart", "Cord"].includes(block.textContent)
+    );
+    expect(items).toHaveLength(3);
+    const [rope, chart, cord] = items.map(
+      (item) => listRefOf(item)?.numId ?? null
+    );
+    expect(rope).toBe(chart);
+    expect(cord).not.toBe(rope);
+    const registered = newListsOf(doc.attrs.newLists);
+    expect(registered.get(rope ?? -1)).toEqual(templateList("numbered"));
+    expect(registered.get(cord ?? -1)).toEqual(templateList("bullet"));
+  });
+
   it("keeps a table's caption", () => {
     const doc = pasted(
       "<table><caption>Crates and weights</caption>" +
