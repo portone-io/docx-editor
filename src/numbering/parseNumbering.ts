@@ -312,21 +312,34 @@ interface Definitions {
 function levelsOf(
   id: number,
   definitions: Definitions,
-  seen: Set<number>
+  resolved: Map<number, Map<number, NumberingLevel>>
 ): Map<number, NumberingLevel> {
-  const el = definitions.byId.get(id);
-  if (!el) return new Map();
-  const own = readLevels(el, definitions.readRun);
-  const styleId = childValue(el, "numStyleLink");
-  if (own.size > 0 || styleId === null) return own;
-
-  const named = definitions.links.get(styleId);
-  const deferred =
-    (named === undefined ? undefined : definitions.ofList.get(named)) ??
-    definitions.ofStyle.get(styleId);
-  if (deferred === undefined || seen.has(deferred)) return own;
-  seen.add(deferred);
-  return levelsOf(deferred, definitions, seen);
+  const path = new Set<number>();
+  let current = id;
+  let levels = new Map<number, NumberingLevel>();
+  while (!path.has(current)) {
+    const known = resolved.get(current);
+    if (known) {
+      levels = known;
+      break;
+    }
+    path.add(current);
+    const el = definitions.byId.get(current);
+    if (!el) break;
+    levels = readLevels(el, definitions.readRun);
+    const styleId = childValue(el, "numStyleLink");
+    if (levels.size > 0 || styleId === null) break;
+    const named = definitions.links.get(styleId);
+    const deferred =
+      (named === undefined ? undefined : definitions.ofList.get(named)) ??
+      definitions.ofStyle.get(styleId);
+    if (deferred === undefined) break;
+    current = deferred;
+  }
+  // Every definition along this chain resolves to the same levels. Reading them once also
+  // avoids invoking a consumer's run-format reader again for each referring list.
+  for (const seen of path) resolved.set(seen, levels);
+  return levels;
 }
 
 /**
@@ -370,7 +383,7 @@ function readNumbering(xml: string, options?: NumberingOptions): Numbering {
 
   const abstractLevels = new Map<number, Map<number, NumberingLevel>>();
   for (const id of byId.keys()) {
-    abstractLevels.set(id, levelsOf(id, definitions, new Set([id])));
+    abstractLevels.set(id, levelsOf(id, definitions, abstractLevels));
   }
 
   const lists = new Map<number, NumberingList>();

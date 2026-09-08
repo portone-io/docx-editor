@@ -29,6 +29,7 @@ IME tests drive Chrome's real composition pipeline through CDP `Input.imeSetComp
 | `notesAndPages.spec.ts` | Notes alignment, displayed page numbering, and the demo's closing order |
 | `responsiveLayout.spec.ts` | Stable narrow-screen pagination and horizontal scroll, responsive comments, and viewport-contained popovers |
 | `tableEditing.spec.ts` | Table-separator editing, pointer-based row resizing, and stable page-boundary previews |
+| `numbering.spec.ts` | Marker-only character formatting and tab, space, and empty suffix spacing |
 | `tabs.spec.ts` | Tab insertion, formatting, caret and selection geometry, custom alignment, wrapping, links, and RTL layout |
 
 ## Layout

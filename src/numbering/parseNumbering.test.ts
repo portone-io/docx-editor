@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { fixtureNames, readFixture } from "../__testing__/docx";
 import { readRunFormat } from "../docx/formatting";
 import { importDocx } from "../docx/importDocx";
@@ -196,6 +196,34 @@ describe("parseNumbering", () => {
     );
 
     expect(numbering.lists.get(1)?.levels.size).toBe(0);
+  });
+
+  it("reads shared levels once across a chain of numbering-style links", () => {
+    const depth = 256;
+    const abstracts = Array.from(
+      { length: depth },
+      (_, id) =>
+        `<w:abstractNum w:abstractNumId="${id}"><w:numStyleLink w:val="s${id + 1}"/></w:abstractNum>`
+    ).join("");
+    const nums = Array.from(
+      { length: depth + 1 },
+      (_, id) =>
+        `<w:num w:numId="${id + 1}"><w:abstractNumId w:val="${id}"/></w:num>`
+    ).join("");
+    const links = new Map(
+      Array.from({ length: depth }, (_, id) => [`s${id + 1}`, id + 2] as const)
+    );
+    const readRun = vi.fn(() => null);
+    const parsed = parseNumbering(
+      numberingXml(
+        abstracts +
+          `<w:abstractNum w:abstractNumId="${depth}">${DECIMAL_LEVEL.replace("</w:lvl>", "<w:rPr><w:b/></w:rPr></w:lvl>")}</w:abstractNum>` +
+          nums
+      ),
+      { links, readRun }
+    );
+    expect(parsed.lists.get(1)?.levels.get(0)?.start).toBe(3);
+    expect(readRun).toHaveBeenCalledTimes(1);
   });
 
   it("reads lvlRestart, isLgl, suff and lvlJc", () => {

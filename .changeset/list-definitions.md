@@ -10,4 +10,6 @@ Each level is drawn the way it asks to be: where its counting starts over (`w:lv
 
 A marker is also drawn in the character formatting its own level writes down (`lvl/rPr`): bold, italic, colour, size and typeface reach the number and never the text of the paragraph it stands in front of.
 
+Shared numbering-style chains are resolved once per definition, avoiding repeated parsing when many lists refer to the same levels.
+
 Everything here is read. The numbering part goes back out exactly as it arrived.
