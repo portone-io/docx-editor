@@ -422,6 +422,13 @@ const LINK_IN_CONTROL_BODY =
   `${run("our terms")}</w:hyperlink></w:sdtContent></w:sdt>` +
   "</w:p>";
 
+/** A link holding a control, the nesting the other way round */
+const CONTROL_IN_LINK_BODY =
+  "<w:p>" +
+  `<w:hyperlink r:id="rId9">${OPEN_SDT_PREFIX}<w:sdtContent>` +
+  `${run("our terms")}</w:sdtContent></w:sdt></w:hyperlink>` +
+  "</w:p>";
+
 /** The markup Word leaves inside a control of its own accord */
 const WORD_MARKUP_INSIDE =
   '<w:proofErr w:type="spellStart"/><w:bookmarkStart w:id="1" w:name="signedOn"/>' +
@@ -454,6 +461,7 @@ const READ_STRUCTURES: ReadonlyArray<
   ["a control Word left its own markup inside", WORD_MARKUP_BODY, makeDocx],
   ["a paragraph holding links of every shape", LINK_BODY, linkedDocx],
   ["a control holding a link", LINK_IN_CONTROL_BODY, linkedDocx],
+  ["a link holding a control", CONTROL_IN_LINK_BODY, linkedDocx],
 ];
 
 describe.each(READ_STRUCTURES)("%s", (_name, body, make) => {

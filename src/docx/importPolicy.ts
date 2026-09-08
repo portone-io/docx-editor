@@ -182,15 +182,14 @@ const PARAGRAPH_LEVEL: ReadonlyMap<string, ElementPolicy> = new Map([
 /**
  * The same content model read inside a wrapper the paragraph reader unwrapped.
  *
- * A control may hold a link and the marks record that nesting, so a link is unwrapped here too. A
- * control inside a wrapper is a nesting the marks cannot record in that order, and it stays whole
- * as a chip until the wrapper registry (theme 02) gives it a model.
+ * `EG_PContent` is the same list at both levels, and the marks record any nesting of the wrappers
+ * in it (`docx/wrappers`), so a control and a link are unwrapped here exactly as they are directly
+ * inside the paragraph.
  */
 const WRAPPER_LEVEL: ReadonlyMap<string, ElementPolicy> = new Map([
   ...rules([
-    [["r", "hyperlink"], MODEL],
+    [["r", "hyperlink", "sdt"], MODEL],
     [COMMENT_RANGE_MARKERS, MODEL],
-    [["sdt"], INLINE_CHIP],
     ...PARAGRAPH_CHILDREN,
   ]),
   ...MATH.map((name): [string, ElementPolicy] => [name, INLINE_CHIP]),

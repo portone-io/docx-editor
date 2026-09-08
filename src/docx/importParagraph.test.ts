@@ -2,6 +2,7 @@
 import type { Mark, Node as PMNode } from "prosemirror-model";
 import { describe, expect, it } from "vitest";
 import { parseXml, R_NS } from "../ooxml/xml";
+import { wrapperMarks, wrappersOf } from "../schema/wrappers";
 import type { LinkTargets } from "./hyperlink";
 import { buildParagraph, NO_IMPORT_SOURCES } from "./importParagraph";
 
@@ -264,10 +265,6 @@ describe("a control we could not take apart stays one preserved inline", () => {
       `<w:p><w:sdt>${ID_PR}<w:sdtContent>${run("value")}</w:sdtContent>` +
         "<w:sdtEndPr/></w:sdt></w:p>",
     ],
-    [
-      "a control holding another control",
-      `<w:p>${sdt(sdt(run("value")))}</w:p>`,
-    ],
     ["a control with nothing inside it at all", `<w:p>${sdt("")}</w:p>`],
   ])("%s", (_name, xml) => {
     const preserved = lonePreserved(xml);
@@ -285,6 +282,22 @@ describe("a control we could not take apart stays one preserved inline", () => {
     );
 
     expect(preserved.attrs.text).toBe("value");
+  });
+});
+
+describe("a control holding another control", () => {
+  it("opens editable, with a mark each and the outer one first", () => {
+    const node = requireParagraph(`<w:p>${sdt(sdt(run("value")))}</w:p>`);
+    const child = node.child(0);
+
+    expect(child.text).toBe("value");
+    expect(markNames(child)).toEqual(["sdt", "sdt", "run"]);
+    expect(
+      wrappersOf(child, "sdt").map((mark) => [mark.attrs.depth, mark.attrs.key])
+    ).toEqual([
+      [0, 0],
+      [1, 1],
+    ]);
   });
 });
 
@@ -397,18 +410,37 @@ describe("a link and a control standing one inside the other", () => {
     );
   });
 
-  /** The marks record the control outside the link, so the other nesting has nowhere to go */
-  it("a link holding a control stays one preserved inline", () => {
-    const preserved = lonePreserved(
+  /** The marks record the nesting the file wrote, so this way round opens as well */
+  it("a link holding a control opens with the link outside the control", () => {
+    const node = requireParagraph(
       `<w:p>${link(sdt(run("terms")))}</w:p>`,
       LINKS
     );
+    const child = node.child(0);
 
-    expect(preserved.type.name).toBe("rawInline");
-    expect(preserved.attrs.element).toBe("sdt");
-    expect(preserved.attrs.text).toBe("terms");
-    // The link around it was read, so the control that stayed whole still wears its mark
-    expect(markNames(preserved)).toEqual(["link"]);
+    expect(child.text).toBe("terms");
+    expect(wrapperMarks(child).map((mark) => mark.type.name)).toEqual([
+      "link",
+      "sdt",
+    ]);
+    expect(wrapperMarks(child).map((mark) => mark.attrs.depth)).toEqual([0, 1]);
+  });
+
+  it("three wrappers deep records every one of them in file order", () => {
+    const node = requireParagraph(
+      `<w:p>${sdt(link(sdt(run("terms"))))}</w:p>`,
+      LINKS
+    );
+    expect(
+      wrapperMarks(node.child(0)).map((mark) => [
+        mark.type.name,
+        mark.attrs.depth,
+      ])
+    ).toEqual([
+      ["sdt", 0],
+      ["link", 1],
+      ["sdt", 2],
+    ]);
   });
 });
 
