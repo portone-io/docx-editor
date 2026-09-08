@@ -25,8 +25,10 @@ import {
   useState,
 } from "react";
 import { exportDocx } from "./docx/exportDocx";
+import { type HeadersFooters, variantsFor } from "./docx/headersFooters";
 import { type DocxBytes, type DocxSource, importDocx } from "./docx/importDocx";
 import { type ExportProblem, exportProblems } from "./docx/invariants";
+import { sectionIn, sectionsOf } from "./docx/sections";
 import type { SessionStore } from "./docx/session";
 import type { CommentAuthor } from "./editor/commands/commentCommands";
 import { activeLinkSpan } from "./editor/commands/linkCommands";
@@ -43,9 +45,10 @@ import { textMenuAnchor } from "./editor/plugins/textContextMenu";
 import { DocxImportError, type DocxImportErrorCode } from "./ooxml/errors";
 import { PageGuides } from "./page/PageGuides";
 import { A4_PAGE_PIXELS, pagePixels } from "./page/pageLayout";
-import { usePageLayout } from "./page/usePageLayout";
+import { type PageFace, usePageLayout } from "./page/usePageLayout";
 import type { EditableComments, EditingProtection } from "./schema/protection";
 import { editingProtection, protectionOf } from "./schema/protectionState";
+import { storyNodeOf } from "./schema/stories";
 import { editorClassNames } from "./styles/classNames";
 import type { FontFallbacks } from "./styles/fontStack";
 import { CommentsPanel } from "./ui/CommentsPanel";
@@ -529,6 +532,22 @@ function DocxEditorSurface(
     geometry: opened?.status === "opened" ? opened.session.geometry : undefined,
   });
 
+  // The section table is read once per document rather than once per page: reading it walks every
+  // block, and a preview asks about it for each page it draws
+  const doc = live?.state.doc ?? null;
+  const session = opened?.status === "opened" ? opened.session : null;
+  const headersFootersFor = useMemo(() => {
+    if (doc === null || session === null) return undefined;
+    const sections = sectionsOf(doc);
+    const shown = sections.map((section) =>
+      variantsFor(section, session.headerFooterStories, (key) =>
+        storyNodeOf(doc, key)
+      )
+    );
+    return (face: PageFace): HeadersFooters | null =>
+      shown[sectionIn(sections, doc, face.pos).index] ?? null;
+  }, [doc, session]);
+
   if (opened?.status === "rejected") {
     return renderImportError ? (
       renderImportError(opened.error)
@@ -623,11 +642,7 @@ function DocxEditorSurface(
             {overlay && (
               <PageGuides
                 overlay={overlay}
-                headersFooters={
-                  opened?.status === "opened"
-                    ? opened.session.headersFooters
-                    : undefined
-                }
+                headersFootersFor={headersFootersFor}
               />
             )}
             {live && opened?.status === "opened" && (

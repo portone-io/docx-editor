@@ -127,6 +127,11 @@ export interface PageStart {
   /** Where this page's body starts, measured from the top of the body */
   bodyStart: number;
   /**
+   * The position of the block this page opens with, which is the block the text crossing into it
+   * belongs to. 0 for a document holding no block at all
+   */
+  pos: number;
+  /**
    * Whether text crosses over from the previous page, so this page continues with no top
    * margin
    */
@@ -230,7 +235,14 @@ export function pageLayout({
   const pushes: BlockPush[] = [];
   const cuts: PageCut[] = [];
   const splits: PageSplit[] = [];
-  const firstPage: PageStart = { page: 1, bodyStart: 0, crossed: false };
+  /** The block being placed, which is the one a page opened along the way starts with */
+  let blockPos = blocks[0]?.pos ?? 0;
+  const firstPage: PageStart = {
+    page: 1,
+    bodyStart: 0,
+    pos: blockPos,
+    crossed: false,
+  };
   const pages: PageStart[] = [firstPage];
   if (!(pageBodyHeight > 0)) {
     return { pushes, cuts, splits, pages, bodyHeight: 0 };
@@ -243,7 +255,7 @@ export function pageLayout({
     const page = splits.length + 2;
     splits.push({ y: round(y), page, forced, crossed });
     pageStart = crossed ? y : y + pageStep;
-    pages.push({ page, bodyStart: round(pageStart), crossed });
+    pages.push({ page, bodyStart: round(pageStart), pos: blockPos, crossed });
   };
 
   // No gap is placed along a stretch the text crosses: what a block taller than one page covers,
@@ -259,6 +271,7 @@ export function pageLayout({
   let breakAfterPrevious = false;
 
   for (const [index, block] of blocks.entries()) {
+    blockPos = block.pos;
     const pageEnd = pageStart + pageBodyHeight;
     const top = cursor + block.gap;
     const startsPage =
