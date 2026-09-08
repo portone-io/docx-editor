@@ -380,8 +380,9 @@ function expectBatteryValidates(
   const seen = new Set<string>();
   let step = 0;
   // What a probe is handed is what the one before it left, apart from the caret, so the package
-  // it is measured against is the one already written out for that probe. Only the table probes,
-  // which prepare the state by inserting a table, are handed a document nothing has exported.
+  // it is measured against is the one already written out for that probe. Only a probe with a
+  // `prepare` step, which the one deleting a table it inserts itself is the sole registered case
+  // of, is handed a document nothing has exported.
   const untouched = exportedPackage(name, doc, session);
   let written: { doc: PMNode; exported: ExportedPackage } = {
     doc,
@@ -429,14 +430,18 @@ function expectBatteryValidates(
     }
     step += 1;
   });
-  expectPartsValidate(name, snapshots);
+  // Ahead of the validation, so that a part the final package stopped writing is reported in the
+  // same run as a schema rejection rather than hidden behind one.
   for (const path of UNDESCRIBED_PARTS) {
     expect(
       written.exported.parts[path] !== undefined,
       `${name} wrote no ${path}`
     ).toBe(true);
   }
-  expectProbesWrote(written.exported, untouched);
+  expectPartsValidate(name, snapshots);
+  // What a probe says of the final package is about the document, not about whichever probe
+  // happened to write it last, so it is handed that package under the document's name.
+  expectProbesWrote({ ...written.exported, name }, untouched);
 }
 
 describe("the exported package against the OOXML schemas", () => {
@@ -1249,10 +1254,15 @@ describe("the exported package after an edit battery", () => {
     expectPartsValidate("locked existing controls", parts);
   });
 
-  it.each(fixtureNames)("%s: every WordprocessingML part validates", (name) => {
-    const { doc, session } = importDocx(readFixture(name));
-    expectBatteryValidates(name, doc, session);
-  });
+  it.each(fixtureNames)(
+    "%s: every WordprocessingML part validates",
+    (name) => {
+      const { doc, session } = importDocx(readFixture(name));
+      expectBatteryValidates(name, doc, session);
+    },
+    // Seconds against the default here, and headroom for a loaded CI runner
+    60_000
+  );
 
   it("keeps a universal table width valid after editing a cell", () => {
     const bytes = makeDocx(
@@ -1299,6 +1309,8 @@ describe("the exported package after an edit battery", () => {
     (name) => {
       const { doc, session } = importDocx(readFixture(name));
       expectBatteryValidates(name, withoutTables(doc), session);
-    }
+    },
+    // Seconds against the default here, and headroom for a loaded CI runner
+    60_000
   );
 });
