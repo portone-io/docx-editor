@@ -1,5 +1,5 @@
 /**
- * Draws the gaps between pages on the sheet, plus a number for each page.
+ * Draws the gaps between pages on the sheet.
  *
  * Straddling blocks have already been moved to the next page, so there is no text under
  * these bands.
@@ -16,14 +16,7 @@ import {
   headerFooterText,
 } from "../docx/headersFooters";
 import { editorClassNames } from "../styles/classNames";
-import type { PageBadge, PageOverlay } from "./usePageLayout";
-
-/** Only the number itself is shown; that it is an estimate is left to the tooltip */
-function badgeTitle(badge: PageBadge): string {
-  return badge.exactPage
-    ? `Page ${badge.page}`
-    : `Page ${badge.page} (approximate)`;
-}
+import type { PageOverlay } from "./usePageLayout";
 
 export function PageGuides({
   overlay,
@@ -57,16 +50,6 @@ export function PageGuides({
             height: mark.height > 0 ? `${mark.height}px` : undefined,
           }}
         />
-      ))}
-      {overlay.badges.map((badge) => (
-        <span
-          key={badge.page}
-          className={editorClassNames.pageBadge}
-          style={{ top: `${badge.top}px` }}
-          title={badgeTitle(badge)}
-        >
-          {badge.page}
-        </span>
       ))}
       {headersFooters &&
         overlay.pages.flatMap((page) => {

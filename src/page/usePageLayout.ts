@@ -38,13 +38,6 @@ export interface PageMark {
   crossed: boolean;
 }
 
-/** The number laid on the corner of a page */
-export interface PageBadge {
-  page: number;
-  top: number;
-  exactPage: boolean;
-}
-
 /** The paper area of one visual page, used to place its header and footer stories. */
 export interface PageFace {
   page: number;
@@ -62,12 +55,8 @@ export interface PageOverlay {
   /** The sheet height with the last page filled out in full */
   sheetHeight: number;
   marks: PageMark[];
-  badges: PageBadge[];
   pages: PageFace[];
 }
-
-/** How far inside the page's top corner the number is seated */
-const BADGE_INSET_PX = 8;
 
 interface PageLayoutOptions {
   view: EditorView | null;
@@ -130,7 +119,6 @@ function sameOverlay(a: PageOverlay | null, b: PageOverlay): boolean {
     a.width === b.width &&
     a.sheetHeight === b.sheetHeight &&
     JSON.stringify(a.marks) === JSON.stringify(b.marks) &&
-    JSON.stringify(a.badges) === JSON.stringify(b.badges) &&
     JSON.stringify(a.pages) === JSON.stringify(b.pages)
   );
 }
@@ -181,17 +169,7 @@ export function usePageLayout({
           height: split.crossed ? 0 : PAGE_SPLIT_PX,
           crossed: split.crossed,
         })),
-        // The number is laid on the page's top corner. A page crossed into has no margin,
-        // so the place it was split at is its corner
-        badges: layout.pages.map((start) => ({
-          page: start.page,
-          top:
-            measured.contentTop +
-            start.bodyStart -
-            (start.crossed ? 0 : page.marginTop) +
-            BADGE_INSET_PX,
-          exactPage: start.exactPage,
-        })),
+        // A page crossed into has no margin, so the place it was split at is its top corner
         pages: layout.pages.map((start) => {
           const paperTop =
             measured.contentTop +

@@ -14,7 +14,6 @@ const overlay: PageOverlay = {
   width: 800,
   sheetHeight: 3000,
   marks: [],
-  badges: [],
   pages: [
     {
       page: 1,
