@@ -369,6 +369,10 @@ function commentsXml(
   const written = new Set<string>();
 
   for (const original of comments.ordered) {
+    // A part naming one id twice holds one comment as far as anything reading it is concerned: the
+    // entry lookup, the story reader and the verifier all take the entry standing first. Writing
+    // the second as well would put back a pair no reader can tell apart
+    if (written.has(original.id)) continue;
     const current = currentBodies.get(original.id);
     if (current) {
       pieces.push(

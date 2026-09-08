@@ -423,6 +423,43 @@ describe("WordprocessingML comments", () => {
     expect(written).not.toContain("Ghost");
   });
 
+  /**
+   * A part naming one id twice holds one comment: the entry lookup, the story reader and the
+   * verifier all take the entry standing first, so the writer puts one entry back rather than a
+   * second one under an id nothing else can tell apart.
+   */
+  it("writes one entry for an id the Comments part names twice", () => {
+    const parts = unzipSync(makeCommentedDocx());
+    parts["word/comments.xml"] = encoder.encode(
+      COMMENTS_XML.replace(
+        "</w:comments>",
+        '<w:comment w:id="4" w:author="Ada">' +
+          '<w:p><w:r><w:t xml:space="preserve">Shadow</w:t></w:r></w:p>' +
+          "</w:comment>" +
+          '<w:comment w:id="9" w:author="Ada">' +
+          '<w:p><w:r><w:t xml:space="preserve">Orphan</w:t></w:r></w:p>' +
+          "</w:comment>" +
+          '<w:comment w:id="9" w:author="Ada">' +
+          '<w:p><w:r><w:t xml:space="preserve">Orphan twin</w:t></w:r></w:p>' +
+          "</w:comment></w:comments>"
+      )
+    );
+    const opened = importDocx(zipSync(parts));
+    const state = apply(
+      editorStateForSession(opened),
+      updateComment("4", "Rewritten")
+    );
+    const written = decode(
+      unzipSync(exportDocx(state.doc, opened.session))["word/comments.xml"]
+    );
+
+    expect(written.match(/<w:comment /g)).toHaveLength(2);
+    expect(written).toContain("Rewritten");
+    expect(written).toContain('<w:t xml:space="preserve">Orphan</w:t>');
+    expect(written).not.toContain("Orphan twin");
+    expect(written).not.toContain("Shadow");
+  });
+
   it("refuses a body that is no document of this schema and one saying nothing", () => {
     const opened = importDocx(makeCommentedDocx());
     const state = createEditorState(opened.doc);
