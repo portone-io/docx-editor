@@ -18,6 +18,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { unzipSync, zipSync } from "fflate";
 import type { Node as PMNode } from "prosemirror-model";
+import { Slice } from "prosemirror-model";
 import { type EditorState, TextSelection } from "prosemirror-state";
 import { afterAll, describe, expect, it } from "vitest";
 import {
@@ -37,6 +38,8 @@ import {
   withBlocks,
 } from "../__testing__/docx";
 import { posOfText } from "../__testing__/editing";
+import { withPastedContent } from "../editor/clipboard/htmlReader";
+import { normalizePasted } from "../editor/clipboard/normalizers";
 import {
   addComment,
   documentComments,
@@ -46,6 +49,7 @@ import {
 } from "../editor/commands";
 import { toggleBulletList } from "../editor/commands/listCommands";
 import { createEditorState } from "../editor/createEditor";
+import { NO_NEW_LISTS } from "../numbering/listRegistry";
 import { parseXml, R_NS, W_NS } from "../ooxml/xml";
 import { setCellPadding } from "../table";
 import { type EditedBlock, withEditedFirst } from "./__testing__/blockEdits";
@@ -311,6 +315,22 @@ function plainlyDeclaredPackage(): Uint8Array {
 const EDITED = "edited before the export was validated";
 
 /**
+ * A body worth copying whole: a paragraph carrying its own properties around a bookmarked range,
+ * a table, and a paragraph to paste the copy after.
+ */
+const COPYABLE_BODY =
+  '<w:p><w:pPr><w:jc w:val="center"/></w:pPr>' +
+  '<w:bookmarkStart w:id="1" w:name="mark"/>' +
+  '<w:r><w:rPr><w:b/></w:rPr><w:t xml:space="preserve">Copied</w:t></w:r>' +
+  '<w:bookmarkEnd w:id="1"/></w:p>' +
+  "<w:tbl>" +
+  '<w:tblPr><w:tblW w:w="0" w:type="auto"/></w:tblPr>' +
+  '<w:tblGrid><w:gridCol w:w="1200"/></w:tblGrid>' +
+  '<w:tr><w:tc><w:p><w:r><w:t xml:space="preserve">Cell</w:t></w:r></w:p>' +
+  "</w:tc></w:tr></w:tbl>" +
+  '<w:p><w:r><w:t xml:space="preserve">tail</w:t></w:r></w:p>';
+
+/**
  * The document with the first paragraph holding text rewritten, so that the part the validator
  * reads is one the export built rather than one it handed back untouched.
  */
@@ -557,6 +577,37 @@ describe("the exported package against the OOXML schemas", () => {
     expect(parts.has("word/numbering.xml")).toBe(true);
     expectPartsValidate("a numbering part written from scratch", parts);
     expectEveryXmlPartParses("a numbering part written from scratch", written);
+  });
+
+  /**
+   * What the internal clipboard channel puts in is the very nodes that were copied, normalized
+   * against the document receiving them (`editor/clipboard/normalizers`). The part the validator
+   * reads therefore holds one block the export handed back untouched and one it wrote from the
+   * model, and the bookmark of the original does not travel into the copy.
+   */
+  it("a pasted copy of the document's own blocks validates", () => {
+    const opened = importDocx(makeDeclaredDocx(COPYABLE_BODY));
+    let state = openState(opened.doc, opened.session);
+    const copied = new Slice(state.doc.content, 0, 0);
+    const content = normalizePasted(
+      { slice: copied, newLists: NO_NEW_LISTS },
+      state,
+      false
+    );
+    state = state.apply(
+      state.tr.setSelection(
+        TextSelection.create(state.doc, state.doc.content.size - 1)
+      )
+    );
+    state = state.apply(
+      withPastedContent(state.tr.replaceSelection(content.slice), content)
+    );
+
+    const parts = wordprocessingParts(exportDocx(state.doc, opened.session));
+    const main = parts.get(opened.session.mainPartPath) ?? "";
+    expect(main.split('<w:jc w:val="center"/>')).toHaveLength(3);
+    expect(main.split("<w:bookmarkStart")).toHaveLength(2);
+    expectPartsValidate("a pasted copy of the document's own blocks", parts);
   });
 
   it("cell padding remains valid beside strict leading and trailing margins", () => {

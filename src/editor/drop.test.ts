@@ -95,4 +95,30 @@ describe("drag and drop", () => {
 
     expect(view.state.doc.textContent).toBe("movedsource");
   });
+
+  it.each([
+    { move: true, kept: "kept" },
+    { move: false, kept: null },
+  ])(
+    "keeps the source identity of a block only while the drag moves it (move: $move)",
+    ({ move, kept }) => {
+      const view = openEditor();
+      view.dragging = {
+        slice: new Slice(
+          Fragment.from(
+            docxSchema.nodes.paragraph.create({ srcId: "kept" }, [
+              docxSchema.text("dragged"),
+            ])
+          ),
+          0,
+          0
+        ),
+        move,
+      };
+      drop(view, "clipboard", "clipboard");
+
+      // A copy is written from the model; only the block that moved is still the block it was
+      expect(view.state.doc.firstChild?.attrs.srcId).toBe(kept);
+    }
+  );
 });

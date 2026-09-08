@@ -24,6 +24,7 @@ import { styleIdOf } from "../../docx/formatting";
 import {
   NEW_LISTS_ATTR,
   type NewLists,
+  NO_NEW_LISTS,
   newListsOf,
   newListsValue,
 } from "../../numbering/listRegistry";
@@ -33,6 +34,11 @@ import { insertPlainText } from "../plainText";
 import { moveCaretToDrop } from "../plugins/dropCaret";
 import { COPIED_STYLE_ATTRIBUTE } from "./htmlReader";
 import { safeHref } from "./inlineFormatting";
+import {
+  DEFAULT_NORMALIZERS,
+  normalizePasted,
+  type SliceNormalizer,
+} from "./normalizers";
 import { DocxClipboardParser } from "./parser";
 import { readContextOf } from "./readContext";
 import {
@@ -273,9 +279,12 @@ function clipboardText(slice: Slice): string {
 export interface ClipboardOptions {
   /** Tried from the front. The first reader to answer decides what a paste puts in */
   readers?: readonly ClipboardReader[];
+  /** Run in order over every pasted and dropped slice before it is put in */
+  normalizers?: readonly SliceNormalizer[];
 }
 
 export function docxClipboard(options: ClipboardOptions = {}): Plugin {
+  const normalizers = options.normalizers ?? DEFAULT_NORMALIZERS;
   const serializer = clipboardSerializer();
   let host: EditorView | null = null;
   const parser = new DocxClipboardParser(
@@ -303,7 +312,11 @@ export function docxClipboard(options: ClipboardOptions = {}): Plugin {
     appendTransaction(transactions, _before, after) {
       const lists = started;
       started = null;
-      if (lists === null || !transactions.some((tr) => tr.docChanged)) {
+      if (
+        lists === null ||
+        lists.size === 0 ||
+        !transactions.some((tr) => tr.docChanged)
+      ) {
         return null;
       }
       const worn = numIdsIn(after.doc);
@@ -336,11 +349,17 @@ export function docxClipboard(options: ClipboardOptions = {}): Plugin {
       },
       clipboardTextSerializer: clipboardText,
       transformCopied: copiedSlice,
-      transformPasted(slice, _view, plain) {
+      transformPasted(slice, view, plain) {
         if (!plain) parser.setPlainText(false);
         const read = parser.takeRead();
-        started = read?.newLists ?? null;
-        return read?.slice ?? slice;
+        const content = normalizePasted(
+          read ?? { slice, newLists: NO_NEW_LISTS },
+          view.state,
+          view.dragging?.move === true,
+          normalizers
+        );
+        started = content.newLists;
+        return content.slice;
       },
       handlePaste(view, event, slice) {
         if (slice.content.size > 0) return false;
