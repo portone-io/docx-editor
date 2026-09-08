@@ -8,7 +8,20 @@
 import type { Node as PMNode } from "prosemirror-model";
 import { toParagraphFormat } from "../model/format";
 import { parseNumbering } from "../numbering/parseNumbering";
+import { R_NS } from "../ooxml/xml";
+import { CONTENT_TYPES_PATH } from "./packageParts";
 import type { SessionStore } from "./session";
+
+/**
+ * How the main part relates the numbering part, and what the package declares that part to hold.
+ *
+ * The reader finds the part by this relationship and the writer relates a new one under it, so
+ * neither can name it differently from the other.
+ */
+export const NUMBERING_REL_TYPE = `${R_NS}/numbering`;
+
+export const NUMBERING_CONTENT_TYPE =
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml";
 
 /** Collects the numbering ids used by this block and by the paragraphs inside it (down into table cells) */
 function collectNumIds(node: PMNode, into: Set<number>): void {
@@ -54,4 +67,15 @@ export function numberingPartOf(
   const path = session.numberingPartPath;
   const bytes = path === null ? undefined : session.parts.get(path);
   return path === null || bytes === undefined ? null : { path, bytes };
+}
+
+/**
+ * Whether the definition of a new list has somewhere to go: the numbering part the document was
+ * opened with, or one written from scratch, which only a package that can declare what the new
+ * part holds may take.
+ */
+export function canDefineNewList(session: SessionStore): boolean {
+  return (
+    numberingPartOf(session) !== null || session.parts.has(CONTENT_TYPES_PATH)
+  );
 }

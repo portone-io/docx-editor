@@ -188,6 +188,20 @@ export function makeStyledDocx(body: string, styles: string): Uint8Array {
   return buildDocx(body, styles);
 }
 
+/**
+ * A small docx whose parts are declared in a `[Content_Types].xml`, which `makeDocx` leaves out.
+ * A package that has one is a package an export may add a part to, since the new part is declared
+ * there.
+ */
+export function makeDeclaredDocx(
+  body: string,
+  options?: DocxOptions
+): Uint8Array {
+  const parts = unzipSync(makeDocx(body, undefined, options));
+  parts["[Content_Types].xml"] = new TextEncoder().encode(contentTypes(false));
+  return zipSync(parts);
+}
+
 /** A numbering.xml that defines just one single-level numbered list */
 export const ONE_LIST_NUMBERING =
   `<w:numbering ${W_NS_DECL}>` +

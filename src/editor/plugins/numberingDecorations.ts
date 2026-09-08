@@ -219,9 +219,8 @@ export function documentNumbering(state: EditorState): Numbering {
 
 /**
  * Whether a new list can be started in this document.
- * A document without numbering.xml has nowhere to write a new definition, so it would be
- * blocked at export time. In such a document the commands that start a list do not apply
- * in the first place.
+ * A document with nowhere to write a new definition would be blocked at export time, so in such
+ * a document the commands that start a list do not apply in the first place.
  */
 export function canStartNewList(state: EditorState): boolean {
   return documentOf(state).canStartNewList;

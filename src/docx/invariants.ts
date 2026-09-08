@@ -36,7 +36,7 @@ import { currentCommentBodies } from "./comments/writing";
 import type { ExportOptions } from "./exportDocx";
 import { identityProblems } from "./identities";
 import { insertedImageSrcs } from "./media";
-import { newNumIds, numberingPartOf } from "./newLists";
+import { canDefineNewList, newNumIds } from "./newLists";
 import { CONTENT_TYPES_PATH } from "./packageParts";
 import { lostOriginal } from "./serializeBlock";
 import {
@@ -228,26 +228,6 @@ const uniqueIdentities: ExportInvariant = {
   },
 };
 
-/**
- * A new list is defined by splicing into numbering.xml. Creating that part from scratch would
- * also mean adding a part and touching up [Content_Types].xml, so a document without one cannot
- * take a new list, and this says so rather than the export handing back a half-finished file.
- */
-const numberingPart: ExportInvariant = {
-  name: "numberingPart",
-  check(doc, session) {
-    if (numberingPartOf(session) !== null) return [];
-    if (newNumIds(doc, session).length === 0) return [];
-    return [
-      {
-        code: "missing-numbering-part",
-        message:
-          "cannot add a new list to a document that has no numbering.xml",
-      },
-    ];
-  },
-};
-
 /** Whether a changed comment needs a part the package has yet to declare. */
 function addsCommentsPart(doc: PMNode, session: SessionStore): boolean {
   const bodyChanged = commentsChanged(doc, session);
@@ -287,6 +267,12 @@ const mediaContentTypes: ExportInvariant = {
       problems.push({
         code: "missing-content-types",
         message: `cannot add an image to a package that has no ${CONTENT_TYPES_PATH}`,
+      });
+    }
+    if (!canDefineNewList(session) && newNumIds(doc, session).length > 0) {
+      problems.push({
+        code: "missing-content-types",
+        message: `cannot add a part to a package that has no ${CONTENT_TYPES_PATH}`,
       });
     }
     if (addsCommentsPart(doc, session)) {
@@ -333,7 +319,6 @@ const EXPORT_INVARIANTS: readonly ExportInvariant[] = [
   tableGrids,
   preservedOriginals,
   uniqueIdentities,
-  numberingPart,
   mediaContentTypes,
   commentPartRoots,
 ];

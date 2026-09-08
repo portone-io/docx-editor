@@ -132,9 +132,9 @@ function usedNumIds(state: EditorState, numbering: Numbering): Set<number> {
  * Changing the list kind goes down this same path: taking a new numbering id is what decides
  * the new appearance.
  *
- * A new list can only be written out if its definition goes into numbering.xml.
- * In a document without that part we do not start one, blocking up front an edit that would
- * be blocked at export time.
+ * A new list can only be written out if its definition has a numbering part to go into, whether
+ * the document arrived with one or the export writes it. Where neither is open to it we do not
+ * start a list, blocking up front an edit that would be blocked at export time.
  *
  * The indentation of the paragraph is not touched. The one the list level specifies is drawn on
  * screen only (`numberingDecorations`) and goes out in the definition, so joining a list writes

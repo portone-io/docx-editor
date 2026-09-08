@@ -206,8 +206,8 @@ describe("downloadDocx", () => {
   it("reports blocked with the problems when the document cannot be written", () => {
     const { handle, unmount } = mount(PARAGRAPH);
     const { view } = handle;
-    // The built-in list command refuses where the document has no numbering part, so the
-    // paragraph is put in a list the way a plugin of the consumer's own would put it there
+    // The built-in list command refuses where the package cannot declare the numbering part it
+    // would need, so the paragraph is put in a list the way a plugin of the consumer's own would
     const first = view.state.doc.child(0);
     view.dispatch(
       view.state.tr.setNodeMarkup(0, undefined, {
@@ -220,9 +220,9 @@ describe("downloadDocx", () => {
       status: "blocked",
       problems: [
         {
-          code: "missing-numbering-part",
+          code: "missing-content-types",
           message:
-            "cannot add a new list to a document that has no numbering.xml",
+            "cannot add a part to a package that has no [Content_Types].xml",
         },
       ],
     });

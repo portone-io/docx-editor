@@ -17,6 +17,7 @@ import {
   NO_FORMATTING,
   type ParagraphStyleOption,
 } from "../docx/formatting";
+import { canDefineNewList } from "../docx/newLists";
 import { A4_PORTRAIT, type PageGeometry } from "../docx/pageGeometry";
 import type { SessionStore } from "../docx/session";
 import type { DocumentDefaults } from "../model/format";
@@ -31,8 +32,8 @@ export interface EditorDocument {
   /** The styles the document defines for the style picker to offer */
   readonly paragraphStyles: ParagraphStyleOption[];
   /**
-   * Whether the document has a place (numbering.xml) to write the definition of a new list.
-   * A state built without opening a document assumes that place exists and behaves as every
+   * Whether the definition of a new list has somewhere to go, which is what the commands that
+   * start one ask. A state built without opening a document assumes it has and behaves as every
    * state did before the question was asked.
    */
   readonly canStartNewList: boolean;
@@ -86,7 +87,7 @@ export function editorDocumentOf(session: SessionStore): EditorDocument {
     formatting: session.formatting,
     defaults: session.defaults,
     paragraphStyles: session.paragraphStyles,
-    canStartNewList: session.numberingPartPath !== null,
+    canStartNewList: canDefineNewList(session),
     geometry: session.geometry,
     defaultTabStopPt: session.defaultTabStopPt,
     reservedCommentIds: new Set(session.comments.byId.keys()),

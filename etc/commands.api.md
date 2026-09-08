@@ -268,7 +268,7 @@ export function documentNotes(state: EditorState): readonly DocumentNote[];
 export function documentParagraphStyles(state: EditorState): ParagraphStyleOption[];
 
 // @public
-export type DocxExportErrorCode = "missing-numbering-part" | "missing-content-types" | "unsupported-content" | "lost-original" | "malformed-xml" | "invalid-table";
+export type DocxExportErrorCode = "missing-content-types" | "unsupported-content" | "lost-original" | "malformed-xml" | "invalid-table";
 
 // @public
 export type EditableComments = "own" | "all";
