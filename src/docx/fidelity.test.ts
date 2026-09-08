@@ -70,13 +70,12 @@ describe("the notes a document opens with", () => {
   });
 
   /**
-   * Import no longer stands a paragraph down (`./importParagraph`), so the code is reached only
-   * by a placeholder read back from the DOM, and it is what tells one demotion from another until
-   * the block placeholders are one node.
+   * Import no longer stands a paragraph down (`./importParagraph`), so the code is reached only by
+   * a placeholder read back from the DOM, and it is what tells one demotion from another.
    */
   it("reports a placeholder standing for a paragraph as a demoted paragraph", () => {
     const doc = docxSchema.nodes.doc.create(null, [
-      docxSchema.nodes.docxRaw.create({ srcId: "opened:body:4", name: "w:p" }),
+      docxSchema.nodes.rawBlock.create({ srcId: "opened:body:4", name: "w:p" }),
     ]);
 
     expect(fidelityNotesOf(doc, null)).toEqual([

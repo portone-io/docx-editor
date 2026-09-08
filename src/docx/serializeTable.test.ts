@@ -556,7 +556,7 @@ describe("locality of an edit inside a table cell", () => {
 });
 
 describe("a node that came from outside a table", () => {
-  it("does not pass over a block that cannot go inside a table cell quietly", () => {
+  it("does not pass over a preserved block with no original quietly", () => {
     const table = openTable(
       "<w:tbl>" + grid(1000) + row(cell("", "a")) + "</w:tbl>"
     );
@@ -569,18 +569,13 @@ describe("a node that came from outside a table", () => {
               .child(0)
               .copy(
                 Fragment.fromArray([
-                  docxSchema.nodes.docxRaw.create({
-                    srcId: "opened:body:0",
-                    name: "w:tbl",
-                  }),
+                  docxSchema.nodes.rawBlock.create({ name: "w:tbl" }),
                 ])
               ),
           ])
         ),
       ])
     );
-    expect(exportErrorCode(() => serializeTable(broken))).toBe(
-      "unsupported-content"
-    );
+    expect(exportErrorCode(() => serializeTable(broken))).toBe("lost-original");
   });
 });

@@ -318,7 +318,7 @@ describe("the prefixes that are not read as a list", () => {
   it("a preserved block does not become one", () => {
     const { view } = open("<w:customXml/>");
     const before = view.state.doc;
-    expect(before.child(0).type.name).toBe("docxRaw");
+    expect(before.child(0).type.name).toBe("rawBlock");
 
     expect(offerToRules(view, 0, 0, "1. ")).toBe(false);
     expect(view.state.doc).toBe(before);

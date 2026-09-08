@@ -798,6 +798,48 @@ describe("a preserved block that lost its original", () => {
   });
 });
 
+/**
+ * One placeholder stands for a block the editor has no model for wherever that block ended up, so
+ * the writer reads the original the same way in a cell as it does under the body.
+ */
+describe("a preserved block moved from the body into a table cell", () => {
+  const CUSTOM_XML =
+    '<w:customXml w:uri="urn:x" w:element="e"><w:p/></w:customXml>';
+  const opened = () =>
+    importDocx(
+      makeDocx(
+        `${CUSTOM_XML}<w:tbl><w:tblPr/><w:tblGrid><w:gridCol w:w="1000"/></w:tblGrid>` +
+          `<w:tr>${cell("a")}</w:tr></w:tbl>`
+      )
+    );
+
+  it("exports the cell with that block", () => {
+    const { doc, session } = opened();
+    const placeholder = doc.child(0);
+    expect(placeholder.type.name).toBe("rawBlock");
+
+    const table = doc.child(1);
+    const row = table.child(0);
+    const withBlock = doc.copy(
+      Fragment.from(
+        table.copy(
+          Fragment.from(
+            row.copy(
+              Fragment.from(
+                row.child(0).copy(row.child(0).content.addToEnd(placeholder))
+              )
+            )
+          )
+        )
+      )
+    );
+
+    expect(documentXmlOf(withBlock, session)).toContain(
+      `${run("a")}</w:p>${CUSTOM_XML}</w:tc>`
+    );
+  });
+});
+
 describe("the section setup at the end of the body", () => {
   const PAGE_SETUP = '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/></w:sectPr>';
   const bytes = makeDocx(

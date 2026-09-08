@@ -87,12 +87,8 @@ function severityOf(display: unknown): FidelitySeverity {
 /** What a node says about itself, or null for a node the editor models and draws in full */
 function preservedBy(node: PMNode, element: string | null): Preserved | null {
   switch (node.type.name) {
-    case "docxRaw":
-      return demotedBlock(element);
     case "rawBlock":
-      return { severity: "placeholder", code: "preserved-block" };
-    case "bookmarkBlock":
-      return { severity: "hidden", code: "range-marker" };
+      return preservedBlockNote(node, element);
     case "rawRunContent":
       return {
         severity: severityOf(node.attrs.display),
@@ -103,6 +99,22 @@ function preservedBy(node: PMNode, element: string | null): Preserved | null {
     default:
       return null;
   }
+}
+
+/**
+ * What a block kept in the place of one the editor has no model for reports.
+ *
+ * A placeholder says which kind of block is standing behind it, since a table nobody could take
+ * apart is the one a reader is most likely to go looking for. What draws nothing is a range marker
+ * or a trace the producer regenerates, told apart the same way a paragraph's fragments are.
+ */
+function preservedBlockNote(node: PMNode, element: string | null): Preserved {
+  if (severityOf(node.attrs.display) === "placeholder") {
+    return demotedBlock(element);
+  }
+  return node.attrs.guarded === true
+    ? { severity: "hidden", code: "range-marker" }
+    : { severity: "hidden", code: "preserved-block" };
 }
 
 /**

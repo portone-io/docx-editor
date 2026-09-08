@@ -77,18 +77,20 @@ describe("the source block rule", () => {
     expect(next.child(1).textContent).toBe("source");
   });
 
-  it.each(["docxRaw", "bookmarkBlock"])(
-    "a preserved %s standing twice refuses export as unsupported-content",
-    (name) => {
-      const preserved = () =>
-        docxSchema.nodes[name].create({ srcId: SOURCE, name: "w:tbl" });
-      expect(
-        exportErrorCode(() =>
-          withUniqueIdentities(doc(preserved(), preserved()))
-        )
-      ).toBe("unsupported-content");
-    }
-  );
+  it.each([
+    ["a placeholder", { display: "chip", guarded: false }],
+    ["a range marker", { display: "hidden", guarded: true }],
+  ])("%s standing twice refuses export as unsupported-content", (_, drawn) => {
+    const preserved = () =>
+      docxSchema.nodes.rawBlock.create({
+        srcId: SOURCE,
+        name: "w:tbl",
+        ...drawn,
+      });
+    expect(
+      exportErrorCode(() => withUniqueIdentities(doc(preserved(), preserved())))
+    ).toBe("unsupported-content");
+  });
 
   it("names the block by the text of its key, so a number claims like a session key", () => {
     const original = doc(
@@ -159,7 +161,7 @@ describe("the rules together", () => {
     const original = doc(
       opened({}, text("2026", control(3))),
       opened({ srcId: "d1-abc:body:5", pAttrs: 'w14:paraId="00000042"' }),
-      docxSchema.nodes.docxRaw.create({
+      docxSchema.nodes.rawBlock.create({
         srcId: "d1-abc:body:6",
         name: "w:sectPr",
       }),

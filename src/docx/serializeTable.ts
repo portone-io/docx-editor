@@ -29,11 +29,8 @@ import {
 } from "../ooxml/props";
 import { ST_MeasurementOrPercent, ST_TwipsMeasure } from "../ooxml/simpleTypes";
 import { type ExportRefs, NO_EXPORT_REFS } from "./exportRefs";
-import {
-  preservedXml,
-  rawAttrsOf,
-  serializeParagraph,
-} from "./serializeParagraph";
+import { rawAttrsOf, serializeParagraph } from "./serializeParagraph";
+import { serializePreservedBlock } from "./serializePreserved";
 
 /** Splits the original formatting fragment up by child. With no fragment, we start from an empty one */
 function propsOf(xml: unknown, tag: string): Props {
@@ -184,14 +181,14 @@ function cellPropsXml(cell: PMNode, role: CellRole): string {
   return renderProps(withWidth(merged, "tcW", width));
 }
 
+/**
+ * One block of a cell. A cell takes exactly the blocks the body takes, and each of them is
+ * written the same way it is written there.
+ */
 function cellBlockXml(block: PMNode, refs: ExportRefs): string {
   if (block.type.name === "paragraph") return serializeParagraph(block, refs);
-  if (block.type.name === "rawBlock") return preservedXml(block);
   if (block.type.name === "table") return serializeTable(block, refs);
-  throw new DocxExportError(
-    "unsupported-content",
-    `block that cannot go inside a table cell: ${block.type.name}`
-  );
+  return serializePreservedBlock(block, refs);
 }
 
 /**

@@ -451,7 +451,9 @@ describe("the fixture holding two sections and a revised table", () => {
     expect(sectionParagraphs.map((block) => block.type.name)).toEqual([
       "paragraph",
     ]);
-    expect(blocks.map((block) => block.type.name)).not.toContain("docxRaw");
+    // A marker between blocks is a preserved block too, so what this fixture must not hold is a
+    // placeholder standing in the place of something a reader gave up on
+    expect(blocks.map((block) => block.attrs.display)).not.toContain("chip");
   });
 });
 

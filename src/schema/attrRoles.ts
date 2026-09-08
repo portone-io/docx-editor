@@ -79,15 +79,10 @@ export const NODE_ATTR_ROLES: AttrTable = {
   },
   rawBlock: {
     xml: { role: "source", class: "preserved" },
-    name: { role: "source", class: "identity" },
-  },
-  docxRaw: {
     srcId: { role: "session", class: "identity" },
     name: { role: "session", class: "identity" },
-  },
-  bookmarkBlock: {
-    srcId: { role: "session", class: "identity" },
-    name: { role: "session", class: "identity" },
+    display: { role: "session", class: "derived" },
+    guarded: { role: "session", class: "derived" },
   },
   hardBreak: { brAttrs: { role: "source", class: "preserved" } },
   image: {

@@ -119,24 +119,38 @@ describe("toDOM", () => {
     expect(html).not.toContain("background-color");
   });
 
-  it("renders only a table it could not model as a placeholder box", () => {
+  it("renders a table it could not model as a placeholder box naming it", () => {
     const host = render(
-      docxSchema.nodes.docxRaw.create({ srcId: "opened:body:1", name: "w:tbl" })
+      docxSchema.nodes.rawBlock.create({
+        srcId: "opened:body:1",
+        name: "w:tbl",
+      })
     );
-    expect(host.innerHTML).toContain("docx-editor-table");
-    expect(host.textContent).toContain("original is preserved");
+    expect(host.textContent).toContain("Table (unsupported layout");
+  });
+
+  it("renders a block of another kind as a placeholder that does not claim to be a table", () => {
+    const host = render(
+      docxSchema.nodes.rawBlock.create({
+        srcId: "opened:body:1",
+        name: "w:sectPr",
+      })
+    );
+    expect(host.textContent).toContain("Unsupported content");
   });
 
   it("renders a body-level bookmark as a hidden marker without placeholder text", () => {
     const host = render(
-      docxSchema.nodes.bookmarkBlock.create({
+      docxSchema.nodes.rawBlock.create({
         srcId: "opened:body:1",
         name: "w:bookmarkStart",
+        display: "hidden",
+        guarded: true,
       })
     );
-    const marker = host.querySelector(".docx-editor-bookmark-block");
+    const marker = host.querySelector(".docx-editor-raw-block");
 
-    expect(marker?.hasAttribute("hidden")).toBe(true);
+    expect(marker?.getAttribute("data-display")).toBe("hidden");
     expect(host.textContent).toBe("");
   });
 
@@ -244,7 +258,7 @@ describe("toDOM", () => {
         ),
       ])
     );
-    expect(host.innerHTML).toContain("docx-editor-raw-xml");
+    expect(host.innerHTML).toContain("docx-editor-raw-block");
     expect(host.textContent).toContain("original is preserved");
   });
 
@@ -394,8 +408,8 @@ describe("parseDOM", () => {
         tableRow(cell({}, "a"), cell({}, "b")),
       ]
     ),
-    docxSchema.nodes.docxRaw.create({ srcId: "opened:body:2", name: "w:tbl" }),
-    docxSchema.nodes.docxRaw.create({
+    docxSchema.nodes.rawBlock.create({ srcId: "opened:body:2", name: "w:tbl" }),
+    docxSchema.nodes.rawBlock.create({
       srcId: "opened:body:3",
       name: "w:sectPr",
     }),
@@ -417,23 +431,24 @@ describe("parseDOM", () => {
     host.innerHTML = '<div data-src="0" data-name="w:tbl">outer text</div>';
     const parsed = parser.parse(host);
 
-    expect(parsed.firstChild?.type.name).not.toBe("docxRaw");
+    expect(parsed.firstChild?.type.name).not.toBe("rawBlock");
     expect(parsed.textContent).toBe("outer text");
   });
 
   /**
-   * A block with no original behind it still needs the attribute, because the selector that
-   * recognizes it is the attribute itself. Reading the empty string back as a block of the open
-   * document would point it at a fragment that is not its own.
+   * A block with no original and no name behind it still needs both attributes, because what
+   * recognizes it is the class and `data-name` together. Reading either empty string back as a
+   * value would point the block at a fragment or an element that is not its own.
    */
-  it("a data-src that is empty reads back as no srcId", () => {
-    const host = render(
-      docxSchema.nodes.docxRaw.create({ srcId: null, name: "w:tbl" })
-    );
+  it("a data-src and a data-name that are empty read back as neither", () => {
+    const host = render(docxSchema.nodes.rawBlock.create({ xml: "<w:tbl/>" }));
     const parsed = parser.parse(host);
 
-    expect(parsed.firstChild?.type.name).toBe("docxRaw");
-    expect(parsed.firstChild?.attrs.srcId).toBeNull();
+    expect(parsed.firstChild?.type.name).toBe("rawBlock");
+    expect(parsed.firstChild?.attrs).toMatchObject({
+      srcId: null,
+      name: null,
+    });
   });
 
   it("a stretch of text inside a content control round trips too", () => {
@@ -741,7 +756,7 @@ describe("raw XML coming in through the DOM", () => {
 
   it("a preserved block whose data-xml opens a sibling is refused", () => {
     const parsed = parseHtml(
-      `<div class="${editorClassNames.rawBlock} ${editorClassNames.rawXmlBlock}" data-xml="&lt;w:tbl/&gt;&lt;w:tbl/&gt;" data-name="w:tbl">placeholder</div>`
+      `<div class="${editorClassNames.rawBlock} ${editorClassNames.rawBlock}" data-xml="&lt;w:tbl/&gt;&lt;w:tbl/&gt;" data-name="w:tbl">placeholder</div>`
     );
 
     expect(parsed.firstChild?.type.name).not.toBe("rawBlock");

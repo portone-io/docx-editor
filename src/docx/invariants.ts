@@ -38,7 +38,7 @@ import { identityProblems } from "./identities";
 import { insertedImageSrcs } from "./media";
 import { canDefineNewList, newNumIds, startedLists } from "./newLists";
 import { CONTENT_TYPES_PATH } from "./packageParts";
-import { lostOriginal } from "./serializeBlock";
+import { lostOriginal } from "./serializePreserved";
 import {
   type DocxSession,
   originalBlock,
@@ -62,17 +62,18 @@ interface ExportInvariant {
 /**
  * The XML a node's bookmark markers stand in, or null for a node that holds none.
  *
- * A marker inside a paragraph is a `rawInline` of its own, one directly under the body is a
- * `bookmarkBlock` pointing at its original, and one inside an unsupported container stays in that
- * container's XML (spec/notes/bookmarks.md "What we preserve"), which a `docxRaw` points at and a
- * `rawBlock` carries.
+ * A marker inside a paragraph is a `rawInline` of its own and one directly under the body is a
+ * `rawBlock`, while one inside a container nobody could read stays in that container's XML
+ * (spec/notes/bookmarks.md "What we preserve"), which a `rawBlock` either carries or points at.
  */
 function markerSourceOf(node: PMNode, session: SessionStore): string | null {
-  if (node.type.name === "rawInline" || node.type.name === "rawBlock") {
+  if (node.type.name === "rawInline") {
     return typeof node.attrs.xml === "string" ? node.attrs.xml : null;
   }
   if (node.type.isInGroup("preserved")) {
-    return originalBlock(node, session)?.xml ?? null;
+    return typeof node.attrs.xml === "string"
+      ? node.attrs.xml
+      : (originalBlock(node, session)?.xml ?? null);
   }
   return null;
 }
@@ -187,11 +188,10 @@ const tableGrids: ExportInvariant = {
   },
 };
 
-/** The preserved nodes that carry their own fragment rather than pointing at an original block */
+/** The preserved nodes that always carry their own fragment rather than pointing at an original block */
 const CARRIES_ITS_XML: ReadonlySet<string> = new Set([
   "rawInline",
   "rawRunContent",
-  "rawBlock",
 ]);
 
 /** Why a preserved node has nothing to be written from, or null when it has */
@@ -202,6 +202,7 @@ function lostOriginalOf(node: PMNode, session: SessionStore): string | null {
       : "a preserved element has lost its original XML";
   }
   if (node.type.isInGroup("preserved")) {
+    if (typeof node.attrs.xml === "string") return null;
     return originalBlock(node, session) ? null : lostOriginal(node, session);
   }
   return null;

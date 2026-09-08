@@ -179,10 +179,7 @@ const NODE_FRAGMENTS: RawAttrTable = {
       adversarial: withSibling("<w:tbl/>"),
       draw: (xml) => docxSchema.nodes.rawBlock.create({ xml, name: "w:tbl" }),
     },
-    name: null,
   },
-  docxRaw: {},
-  bookmarkBlock: {},
   hardBreak: {
     brAttrs: {
       attribute: "data-battrs",

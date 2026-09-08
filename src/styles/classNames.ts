@@ -49,15 +49,11 @@ export const editorClassNames = {
   commentMarker: `${PREFIX}-comment-marker`,
   /** A superscript footnote or endnote reference */
   noteReference: `${PREFIX}-note-reference`,
-  /** An invisible bookmark marker that occurs between body blocks */
-  bookmarkBlock: `${PREFIX}-bookmark-block`,
   rawInline: `${PREFIX}-raw-inline`,
   /** A preserved child of a run, drawn by the `display` its policy gave it */
   rawRunContent: `${PREFIX}-raw-run`,
+  /** A preserved block, drawn by the `display` its policy gave it */
   rawBlock: `${PREFIX}-raw-block`,
-  /** A preserved block that carries the original XML directly (inside a table cell, and so on) */
-  rawXmlBlock: `${PREFIX}-raw-xml`,
-  tablePlaceholder: `${PREFIX}-table`,
   /** The box holding both the paper and the marks overlaid on it */
   pageLayer: `${PREFIX}-page-layer`,
   /** All of the page marks drawn over the paper */

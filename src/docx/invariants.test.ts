@@ -168,7 +168,7 @@ describe("bookmark pairs", () => {
       },
       {
         code: "unsupported-content",
-        message: "a preserved block stands in two places (bookmarkBlock)",
+        message: "a preserved block stands in two places (rawBlock)",
         pos: start.nodeSize + inside.nodeSize,
       },
     ]);
@@ -236,7 +236,7 @@ describe("preserved originals", () => {
     expect(exportProblems(stripped, opened.session)).toEqual([
       {
         code: "lost-original",
-        message: "a preserved element has lost its original XML",
+        message: "a preserved block has lost its original XML",
         pos: opened.doc.child(0).nodeSize,
       },
     ]);
@@ -281,7 +281,7 @@ describe("unique identities", () => {
     expect(problems).toEqual([
       {
         code: "unsupported-content",
-        message: "a preserved block stands in two places (docxRaw)",
+        message: "a preserved block stands in two places (rawBlock)",
         pos: opened.doc.child(0).nodeSize + placeholder.nodeSize,
       },
     ]);

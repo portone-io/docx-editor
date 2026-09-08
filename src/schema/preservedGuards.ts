@@ -75,17 +75,18 @@ export function preservedNodeGuard(
  *
  * `docx/importPolicy` decides that when the document is opened and bakes the answer into the
  * node, so the rule lives in one place and this layer reads it rather than matching element names
- * against a pattern of its own. A bookmark standing directly under the body is still a node of its
- * own carrying no such attr, and stays known by what it is until the block placeholders are one.
+ * against a pattern of its own.
  */
 function isGuardedFragment(node: PMNode): boolean {
-  return node.type.name === "bookmarkBlock" || node.attrs.guarded === true;
+  return node.attrs.guarded === true;
 }
 
+/**
+ * A block opened from the body carries no XML of its own but names the fragment it stands for
+ * (`docx/importPreserved`), so what tells two markers apart is read from both.
+ */
 function preservedSignature(node: PMNode): string {
-  return node.type.name === "bookmarkBlock"
-    ? `block:${node.attrs.srcId}:${node.attrs.name}`
-    : `${node.type.name}:${node.attrs.xml}`;
+  return `${node.type.name}:${node.attrs.name}:${node.attrs.srcId}:${node.attrs.xml}`;
 }
 
 export const preservedGuard = preservedNodeGuard(

@@ -226,11 +226,7 @@ function clipboardSerializer(): DOMSerializer {
 }
 
 /** The blocks that stand for something the editor never read, which read as nothing at all */
-const UNREADABLE_BLOCKS: ReadonlySet<string> = new Set([
-  "bookmarkBlock",
-  "docxRaw",
-  "rawBlock",
-]);
+const UNREADABLE_BLOCKS: ReadonlySet<string> = new Set(["rawBlock"]);
 
 function stringAttr(value: unknown): string {
   return typeof value === "string" ? value : "";

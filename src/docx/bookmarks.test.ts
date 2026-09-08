@@ -61,13 +61,20 @@ describe("body-level bookmarks", () => {
 
     expect(doc.children.map((node) => node.type.name)).toEqual([
       "paragraph",
-      "bookmarkBlock",
-      "bookmarkBlock",
+      "rawBlock",
+      "rawBlock",
       "paragraph",
     ]);
-    expect(doc.children.some((node) => node.type.name === "docxRaw")).toBe(
-      false
-    );
+    // A marker holds a spot and draws nothing, which is what tells it from the placeholder a
+    // block nobody could read stands as
+    expect(
+      doc.children
+        .slice(1, 3)
+        .map((node) => [node.attrs.display, node.attrs.guarded])
+    ).toEqual([
+      ["hidden", true],
+      ["hidden", true],
+    ]);
   });
 
   it("keeps untouched bookmark XML byte-identical", () => {
@@ -119,7 +126,7 @@ describe("body-level bookmarks", () => {
     const state = createEditorState(doc);
     let start = -1;
     state.doc.descendants((node, pos) => {
-      if (start < 0 && node.type.name === "bookmarkBlock") start = pos;
+      if (start < 0 && node.attrs.guarded === true) start = pos;
       return start < 0;
     });
     if (start < 0) throw new Error("no bookmark marker in the test document");
@@ -132,7 +139,7 @@ describe("body-level bookmarks", () => {
   it("refuses to export a programmatic transform with an unmatched marker", () => {
     const opened = importDocx(makeDocx(BODY_RANGE));
     const blocks = opened.doc.children.filter(
-      (node, index) => !(index === 0 && node.type.name === "bookmarkBlock")
+      (node, index) => !(index === 0 && node.type.name === "rawBlock")
     );
     const malformed = docxSchema.nodes.doc.create(null, blocks);
 
