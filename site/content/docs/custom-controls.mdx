@@ -151,6 +151,11 @@ whitespace, and an id the document refers to no comment for. Whatever the body d
 written back as the bytes it arrived as, so a paragraph nobody edited keeps everything about it the
 editor does not model.
 
+`updateComment` says what a comment should read as and nothing about how it is written, so it
+answers `false` for the text a comment already reads as and leaves the body it has - its bold run
+and its second paragraph included - rather than flattening it to the single run that text spells.
+`updateCommentReply` answers the same way. Write a body out to change how it is written.
+
 `addComment` and `canAddComment` take an optional `{ from, to }` range as their last argument, and
 use the current selection when none is given. The range must use integer document positions and
 cover a non-empty span inside one paragraph; invalid ranges return `false` without dispatching.

@@ -325,6 +325,37 @@ describe("WordprocessingML comments", () => {
     expect(documentComments(state)[0]?.text).toBe("Bold plain\nSecond");
   });
 
+  /**
+   * `updateComment` says what a comment should read as and nothing about how it is written, so a
+   * save of the text it already says leaves the body where it stands. Taking it would flatten a
+   * body the editor holds as blocks into the one plain run that text spells.
+   */
+  it("takes no update from text a comment already says, and takes one that only reformats", () => {
+    const opened = importDocx(
+      withCommentBody(
+        '<w:r><w:rPr><w:b/></w:rPr><w:t xml:space="preserve">Check this</w:t></w:r>'
+      )
+    );
+    const state = createEditorState(opened.doc);
+    let next = state;
+
+    expect(
+      updateComment("4", "Check this")(state, (tr) => {
+        next = state.apply(tr);
+      })
+    ).toBe(false);
+    expect(next).toBe(state);
+    expect(
+      decode(
+        unzipSync(exportDocx(next.doc, opened.session))["word/comments.xml"]
+      )
+    ).toContain("<w:b/>");
+    // The same body written out is a change, since it says how the comment is written
+    expect(
+      setCommentBody("4", storyFromText("Check this"))(state, () => {})
+    ).toBe(true);
+  });
+
   it("refuses a body that is no document of this schema and one saying nothing", () => {
     const opened = importDocx(makeCommentedDocx());
     const state = createEditorState(opened.doc);
