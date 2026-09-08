@@ -231,6 +231,7 @@ describe("a kind the editor was built with", () => {
         {
           untilPos: Number.POSITIVE_INFINITY,
           pixels: { ...A4_PAGE_PIXELS, bodyHeight: PAGE, pageStep: 100 },
+          type: null,
         },
       ],
     });

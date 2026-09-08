@@ -9,7 +9,8 @@
  * The size of a page is the document's own (`docx/pageGeometry`), not a fixed A4: a Letter
  * document breaks at Letter's height and fits its tables to Letter's width. A document written in
  * several sections breaks each block at the height of the section that block sits in
- * (`docx/sections`), and a section break starts a new page whatever kind it declares.
+ * (`docx/sections`), and a section opens a page of its own unless it declares `continuous`, which
+ * carries it on down the page the section before it ends on.
  *
  * The width is the exception: one sheet is drawn at one width (`styles/editor.css`), which is the
  * first section's, so a section on wider paper is paginated on its own height but drawn on the
@@ -23,7 +24,7 @@ import {
   type PageGeometry,
   twipsToPx,
 } from "../docx/pageGeometry";
-import type { DocumentSection } from "../docx/sections";
+import type { DocumentSection, SectionProperties } from "../docx/sections";
 import { editorCssVariables } from "../styles/classNames";
 import type { MeasuredBlock, PageCut } from "./blockKinds";
 
@@ -84,11 +85,16 @@ export interface SectionPixels {
    */
   untilPos: number;
   pixels: PagePixels;
+  /**
+   * How this section starts (§17.6.22). `continuous` carries it on down the page the section
+   * before it ends on; every other kind opens a page.
+   */
+  type: SectionProperties["type"];
 }
 
 /** The one section a document naming none is laid out on */
 export const A4_SECTION_PIXELS: readonly SectionPixels[] = [
-  { untilPos: Number.POSITIVE_INFINITY, pixels: A4_PAGE_PIXELS },
+  { untilPos: Number.POSITIVE_INFINITY, pixels: A4_PAGE_PIXELS, type: null },
 ];
 
 /**
@@ -104,6 +110,7 @@ export function sectionPixels(
     untilPos:
       anchor.kind === "paragraph" ? anchor.pos : Number.POSITIVE_INFINITY,
     pixels: pagePixels(props.geometry),
+    type: props.type,
   }));
 }
 
@@ -213,15 +220,20 @@ export interface PageLayoutInput {
   blocks: readonly MeasuredBlock[];
   /**
    * The paper of each section in document order (`sectionPixels`). A block is laid out on the
-   * paper of the section it sits in, and the section a block opens starts a page of its own.
+   * paper of the section it sits in, and the section a block opens starts a page of its own
+   * unless that section is `continuous`.
    */
   sections: readonly SectionPixels[];
 }
 
-/** Where one block is laid out: the paper of its section, and which section that is */
+/** Where one block is laid out: the paper of its section, and whether it opens a page */
 interface BlockPaper {
-  section: number;
   paper: PagePixels;
+  /**
+   * Whether this block opens a section that asks for a page of its own, which is every kind of
+   * section start but `continuous` (§17.6.22)
+   */
+  opensPage: boolean;
 }
 
 function round(value: number): number {
@@ -231,17 +243,17 @@ function round(value: number): number {
 /**
  * Whether the keep a block asks for can hold between it and the block after it.
  * A block parted inside itself starts its last piece where the cut put it, so there is nothing a
- * keep could move; and a page the document starts between the two is one no keep can close, a
- * section boundary included.
+ * keep could move; and a page the document starts between the two is one no keep can close, the
+ * start of a section that opens one included.
  */
 function keepsWithNext(
   block: MeasuredBlock,
   next: MeasuredBlock,
-  sameSection: boolean
+  opensPage: boolean
 ): boolean {
   return (
     block.keepWithNext &&
-    sameSection &&
+    !opensPage &&
     block.candidates.length === 0 &&
     !block.breakAfter &&
     !next.breakBefore
@@ -279,8 +291,8 @@ function keptExtents(
   for (let index = blocks.length - 2; index >= 0; index -= 1) {
     const block = blocks[index];
     const next = blocks[index + 1];
-    const sameSection = laid[index]?.section === laid[index + 1]?.section;
-    if (block && next && keepsWithNext(block, next, sameSection)) {
+    const opensPage = laid[index + 1]?.opensPage === true;
+    if (block && next && keepsWithNext(block, next, opensPage)) {
       const below = run.at(-1)?.extent ?? next.minFirstPiece;
       run.push({ index, extent: block.height + next.gap + below });
     } else {
@@ -305,7 +317,7 @@ function keptExtents(
  * A block kept with the next one is pushed together with what it is kept with: the blocks kept
  * after it and the first piece of the block the keeps end at.
  * Each block is measured against the paper of its own section, and the first block of a section
- * opens a page of its own.
+ * opens a page of its own unless the section it opens declares `continuous`.
  */
 export function pageLayout({ blocks, sections }: PageLayoutInput): PageLayout {
   const pushes: BlockPush[] = [];
@@ -330,13 +342,19 @@ export function pageLayout({ blocks, sections }: PageLayoutInput): PageLayout {
     return { pushes, cuts, splits, pages, bodyHeight: 0 };
   }
 
+  /** The section each block sits in, in document order */
+  const blockSections = blocks.map((block) =>
+    sectionIndexAt(sections, block.pos)
+  );
   /** Where each block is laid out, read once for the whole pass */
-  const laid: BlockPaper[] = blocks.map((block) => {
-    const section = sectionIndexAt(sections, block.pos);
+  const laid: BlockPaper[] = blockSections.map((section, index) => {
     const pixels = sections[section]?.pixels;
     return {
-      section,
       paper: pixels && pixels.bodyHeight > 0 ? pixels : roomy,
+      opensPage:
+        index > 0 &&
+        section !== blockSections[index - 1] &&
+        sections[section]?.type !== "continuous",
     };
   });
 
@@ -380,8 +398,7 @@ export function pageLayout({ blocks, sections }: PageLayoutInput): PageLayout {
     blockPos = block.pos;
     /** The paper this block is laid out on, which is the paper of the page it opens */
     const opening = laid[index]?.paper ?? paper;
-    const startsSection =
-      index > 0 && laid[index]?.section !== laid[index - 1]?.section;
+    const startsSection = laid[index]?.opensPage === true;
     // The page being closed was filled with the blocks already on it, so it ends where their own
     // paper ends rather than where this block's does
     const pageEnd = pageStart + paper.bodyHeight;

@@ -108,6 +108,7 @@ function layoutOf(blocks: readonly MeasuredBlock[]) {
       {
         untilPos: Number.POSITIVE_INFINITY,
         pixels: { ...A4_PAGE_PIXELS, bodyHeight: PAGE, pageStep: STEP },
+        type: null,
       },
     ],
   });

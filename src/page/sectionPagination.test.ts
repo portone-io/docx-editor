@@ -39,6 +39,12 @@ function pages(doc: PMNode, height: number): number {
 
 const RUN = '<w:r><w:t xml:space="preserve">block</w:t></w:r>';
 
+/** The same Letter paper, declared as a section that starts where the one before it ended */
+const LETTER_CONTINUOUS_SECT_PR = LETTER_SECT_PR.replace(
+  "<w:sectPr>",
+  '<w:sectPr><w:type w:val="continuous"/>'
+);
+
 function paragraphs(count: number): string {
   return `<w:p>${RUN}</w:p>`.repeat(count);
 }
@@ -85,5 +91,31 @@ describe("the pages a document comes to", () => {
       makeDocx(paragraphs(10) + LETTER_SECT_PR)
     ).doc;
     expect(pages(oneSection, 100)).toBe(2);
+  });
+
+  /**
+   * A continuous section starts where the one before it ended (§17.6.22), so eight blocks of
+   * 100px still come to the one Letter page their 800px fit on, break or no break.
+   */
+  it("does not open a page for a section that declares itself continuous", () => {
+    const continuous = importDocx(
+      makeDocx(
+        `${paragraphs(2)}<w:p><w:pPr>${LETTER_SECT_PR}</w:pPr>${RUN}</w:p>` +
+          paragraphs(5) +
+          LETTER_CONTINUOUS_SECT_PR
+      )
+    ).doc;
+
+    expect(sectionsOf(continuous)).toHaveLength(2);
+    expect(pages(continuous, 100)).toBe(1);
+    // The same document whose second section starts on a new page comes to two
+    const nextPage = importDocx(
+      makeDocx(
+        `${paragraphs(2)}<w:p><w:pPr>${LETTER_SECT_PR}</w:pPr>${RUN}</w:p>` +
+          paragraphs(5) +
+          LETTER_SECT_PR
+      )
+    ).doc;
+    expect(pages(nextPage, 100)).toBe(2);
   });
 });
