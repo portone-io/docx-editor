@@ -53,5 +53,6 @@ export const noteProjection = documentProjection<readonly DocumentNote[]>(
 
 /** The distinct notes referenced by the main document story, in first-reference order. */
 export function documentNotes(state: EditorState): readonly DocumentNote[] {
-  return noteProjection.read(state);
+  // The public records remain caller-owned; the panel reads the shared projection directly.
+  return noteProjection.read(state).map((note) => ({ ...note }));
 }

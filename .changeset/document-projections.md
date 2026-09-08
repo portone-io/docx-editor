@@ -2,4 +2,4 @@
 "@portone/docx-editor": patch
 ---
 
-Work the comment and note lists out once per edit rather than once per render. Nothing on screen changes.
+Cache comment and note lists between document edits. Public readers continue to return independent comment, reply, and note records, so changes to their results cannot alter the editor's cached data.
