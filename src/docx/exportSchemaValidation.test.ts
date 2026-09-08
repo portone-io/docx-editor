@@ -49,9 +49,13 @@ import { createEditorState } from "../editor/createEditor";
 import { parseXml, R_NS, W_NS } from "../ooxml/xml";
 import { setCellPadding } from "../table";
 import { type EditedBlock, withEditedFirst } from "./__testing__/blockEdits";
-import { withoutIgnorableMarkup } from "./__testing__/mce";
+import {
+  withoutIgnorableMarkup,
+  withoutIgnorableMarkupIn,
+} from "./__testing__/mce";
 import {
   afterTheBattery,
+  type ExportedPackage,
   expectProbesWrote,
   exportedPackage,
   openState,
@@ -204,12 +208,27 @@ function validate(path: string, xml: string): Validation {
  * conforming consumer accepts.
  */
 function wordprocessingParts(bytes: Uint8Array): Map<string, string> {
-  const parts = new Map<string, string>();
+  const documents = new Map<string, Document>();
   for (const [path, data] of Object.entries(unzipSync(bytes))) {
-    if (!path.endsWith(".xml")) continue;
-    const xml = decode(data);
-    if (parseXml(xml).documentElement.namespaceURI === W_NS) {
-      parts.set(path, withoutIgnorableMarkup(xml));
+    if (path.endsWith(".xml")) documents.set(path, parseXml(decode(data)));
+  }
+  return wordprocessingPartsOf(documents);
+}
+
+/**
+ * The same over parts a caller has already read, which is what the battery below hands it: the
+ * preprocessing rewrites the documents it is given, and they are of no further use after it.
+ */
+function wordprocessingPartsOf(
+  documents: Map<string, Document>
+): Map<string, string> {
+  const parts = new Map<string, string>();
+  for (const [path, document] of documents) {
+    if (
+      path.endsWith(".xml") &&
+      document.documentElement.namespaceURI === W_NS
+    ) {
+      parts.set(path, withoutIgnorableMarkupIn(document));
     }
   }
   return parts;
@@ -256,18 +275,23 @@ const UNDESCRIBED_PARTS: readonly string[] = [
   "word/people.xml",
 ];
 
-function expectEveryXmlPartParses(name: string, bytes: Uint8Array): void {
+function expectEveryXmlPartParses(
+  name: string,
+  bytes: Uint8Array
+): Map<string, Document> {
   const parts = xmlParts(bytes);
   expect(parts.size).toBeGreaterThan(0);
+  const documents = new Map<string, Document>();
   const unreadable = Array.from(parts).flatMap(([path, xml]) => {
     try {
-      parseXml(xml);
+      documents.set(path, parseXml(xml));
       return [];
     } catch (error) {
       return [`${name} ${path}: ${String(error)}`];
     }
   });
   expect(unreadable, `${name}: parts no reader gets past`).toEqual([]);
+  return documents;
 }
 
 /**
@@ -353,12 +377,20 @@ function expectBatteryValidates(
   const snapshots = new Map<string, string>();
   const seen = new Set<string>();
   let step = 0;
+  // What a probe is handed is what the one before it left, apart from the caret, so the package
+  // it is measured against is the one already written out for that probe. Only the table probes,
+  // which prepare the state by inserting a table, are handed a document nothing has exported.
+  let written: { doc: PMNode; exported: ExportedPackage } | undefined;
   const final = afterTheBattery(
     openState(doc, session),
     (probe, before, after) => {
       const label = `${name}: ${probe.name}`;
-      const previous = exportedPackage(label, before.doc, session);
+      const previous =
+        written !== undefined && written.doc === before.doc
+          ? written.exported
+          : exportedPackage(label, before.doc, session);
       const current = exportedPackage(label, after.doc, session);
+      written = { doc: after.doc, exported: current };
       expect(
         current.mainXml === previous.mainXml &&
           Object.keys(current.parts).every(
@@ -370,10 +402,10 @@ function expectBatteryValidates(
             Object.keys(previous.parts).length,
         `${label}: no exported part changed`
       ).toBe(false);
-      expectEveryXmlPartParses(label, current.bytes);
+      const documents = expectEveryXmlPartParses(label, current.bytes);
       // All intermediate outputs reach xmllint. Identical parts need only one validation, and
       // batching them compiles the schema set once instead of once per command.
-      for (const [path, xml] of wordprocessingParts(current.bytes)) {
+      for (const [path, xml] of wordprocessingPartsOf(documents)) {
         const key = `${path}\0${xml}`;
         if (seen.has(key)) continue;
         seen.add(key);
