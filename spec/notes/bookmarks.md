@@ -14,7 +14,9 @@ Bookmarks are cross-structure annotations and can span paragraphs. Markers insid
 
 Both carry `guarded: true`, which is what the deletion guard answers for; [Preservation tiers](./preservationTiers.md) is where that attribute is decided.
 
-Markers inside an unsupported container remain with that container's preserved XML. They are not exposed as independent model nodes.
+Markers under `w:tbl` and `w:tr` have no node of their own, because those two levels hold only rows and cells. They ride along on the child before them - a row's markers on the cell they followed, a table's on the row - and are written back in the same spot, so a bookmark spanning a column no longer costs the table its structure. A marker following a cell that only continues a vertical merge is the exception: that cell is created fresh on export and has nothing to carry the marker, so the table is preserved whole instead.
+
+Markers inside a container this reader could not take apart otherwise remain with that container's preserved XML. They are not exposed as independent model nodes.
 
 A placeholder carries the identity of the session it was read from, and an export refuses one from another session as `lost-original`.
 

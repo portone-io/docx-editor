@@ -77,9 +77,10 @@ binding such as `Mod+K` without replacing the editor.
 Content outside the supported editing surface is not silently discarded. Untouched package parts
 and document blocks are written back from their original XML, and an element the editor has no
 model for is kept where it stood: inside its run, beside the runs of its paragraph, or as a block.
-A paragraph stays editable around its preserved elements. Unsupported blocks remain placeholders,
-as do tables whose structure cannot be modelled, including tables with markers or wrappers
-between their rows or cells.
+A paragraph stays editable around its preserved elements, and a table stays a table around a
+bookmark that spans one of its columns. Unsupported blocks remain placeholders, as do tables whose
+structure cannot be modelled, including tables with a content control or a tracked change around
+a whole row.
 
 What a given document kept this way is not a guess: `documentFidelity` lists it, and `importDocx`
 returns the same list for a file opened outside the editor.

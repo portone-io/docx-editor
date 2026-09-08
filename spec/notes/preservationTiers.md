@@ -23,6 +23,8 @@ The tiers are grouped by the content model each level has in `wml.xsd`, one sub-
 
 Two levels are the exception. `tbl` holds rows and `tr` holds cells, and neither has a node a stranger could be kept in, so an element they do not name stands the whole table down as one placeholder and the fidelity report says so with `table-demoted`.
 
+What those two levels do name as `marker` or `ignorable` is invisible, so it needs no node of its own: it is carried on the child before it - a row's on the cell it followed, a table's on the row - and written back in the same spot. The one case that still stands the table down is a marker following a cell that only continues a vertical merge, since that cell is created fresh on export and would have nothing to carry it.
+
 The level rather than the element name is what the sub-tables are keyed by, because the same name means different things in different places. `w:sdt` is a content control a paragraph reader unwraps, a wrapper around one cell under `w:tr`, a block placeholder under `w:body`, and a row wrapper nothing reads under `w:tbl`. Keys are Clark names (`{namespace}localName`) so that `m:oMath`, which is not WordprocessingML at all, sits in the same map.
 
 ## Why `w:lastRenderedPageBreak` is ignorable
