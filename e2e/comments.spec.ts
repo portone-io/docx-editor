@@ -1,6 +1,12 @@
 import { expect, test } from "@playwright/test";
 import { editorClassNames } from "../src/styles/classNames";
-import { blocks, openHarness, selectText, settle } from "./support/harness";
+import {
+  blocks,
+  openHarness,
+  rightClick,
+  selectText,
+  settle,
+} from "./support/harness";
 
 test("the all-comments panel scrolls itself before continuing through the document", async ({
   page,
@@ -171,7 +177,55 @@ test("a comment starts from the selected text menu and stands beside its anchor"
     page.getByRole("complementary", { name: "Comments" })
   ).toHaveAttribute("data-view", "rail");
   await expect(card).toContainText("Review this");
-  const reopenedCardBox = await card.boundingBox();
-  if (!reopenedCardBox) throw new Error("the reopened comment was not drawn");
-  expect(Math.abs(reopenedCardBox.y - rangeBox.y)).toBeLessThan(40);
+  // Measured again rather than against the rectangle taken at the top of this test: the page has
+  // been scrolled several times since, and where the card stands is a question about the anchor
+  // as it stands now. The rail places itself over the two frames after the panel is put away, so
+  // the distance is polled rather than read once
+  await expect
+    .poll(async () => {
+      const cardNow = await card.boundingBox();
+      const rangeNow = await range.boundingBox();
+      if (!cardNow || !rangeNow) return Number.POSITIVE_INFINITY;
+      return Math.abs(cardNow.y - rangeNow.y);
+    })
+    .toBeLessThan(40);
+});
+
+/**
+ * Opening the composer used to take the reader back to the top of the document: the form is put
+ * where its anchor is only once the comment rail has measured itself, and focusing it before then
+ * had the browser scroll to where it stood in the meantime, which was the first page.
+ */
+test("the composer leaves the page where the reader left it", async ({
+  page,
+}) => {
+  await openHarness(page, "demo");
+  await page.getByTestId("editor").evaluate((element) => {
+    element.style.height = "500px";
+  });
+  await settle(page);
+
+  const editor = page.locator(`.${editorClassNames.root}`);
+  const paragraphs = (await blocks(page)).filter(
+    (block) => block.type === "paragraph" && block.docText.length > 20
+  );
+  const target = paragraphs[paragraphs.length - 1];
+  if (!target) throw new Error("the fixture holds no paragraph long enough");
+
+  await selectText(page, target.index, 2, 6);
+  await editor.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
+  await settle(page);
+  const before = await editor.evaluate((element) => element.scrollTop);
+  expect(before).toBeGreaterThan(100);
+
+  await rightClick(page);
+  await page.getByRole("menuitem", { name: "Add comment" }).click();
+  await settle(page);
+  await expect(
+    page.getByRole("textbox", { name: "Comment text" })
+  ).toBeFocused();
+
+  expect(await editor.evaluate((element) => element.scrollTop)).toBe(before);
 });

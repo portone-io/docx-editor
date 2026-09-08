@@ -9,7 +9,7 @@
  */
 
 import type { Node as PMNode } from "prosemirror-model";
-import type { EditorState, Plugin } from "prosemirror-state";
+import type { Command, EditorState, Plugin } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 import {
   type CSSProperties,
@@ -34,6 +34,10 @@ import {
 } from "./editor/commands/commentCommands";
 import { activeLinkSpan } from "./editor/commands/linkCommands";
 import { createEditorView, editorStateForSession } from "./editor/createEditor";
+import {
+  closeCommentComposer,
+  isCommentComposerOpen,
+} from "./editor/plugins/commentComposer";
 import { setProtection } from "./editor/plugins/documentProtection";
 import { isLinkPanelOpen } from "./editor/plugins/linkPanel";
 import { tableMenuAnchor } from "./editor/plugins/tableContextMenu";
@@ -105,6 +109,15 @@ export type DocxEditorMode =
       toolbar?: boolean;
       locking?: boolean;
     };
+
+/**
+ * Runs a command on the view without taking the focus, which stays with whatever control asked.
+ * The runner in `ui/runCommand` hands the focus back to the text, which is what a control acting
+ * on the text wants; a control acting on the screen around it does not.
+ */
+function runOn(view: EditorView, command: Command): void {
+  command(view.state, (transaction) => view.dispatch(transaction));
+}
 
 /** What a mode hands the reader, which is everything the component reads off the kind */
 interface ModeAffordances {
@@ -406,7 +419,6 @@ function DocxEditorSurface(
   );
   const viewRef = useRef<EditorView | null>(null);
   const [live, setLive] = useState<LiveEditor | null>(null);
-  const [commentComposerOpen, setCommentComposerOpen] = useState(false);
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [uncontrolledZoom, setUncontrolledZoom] = useState<DocxEditorZoom>(() =>
     normalizeZoom(defaultZoom)
@@ -482,8 +494,6 @@ function DocxEditorSurface(
   const mounted = live !== null;
   // biome-ignore lint/correctness/useExhaustiveDependencies: a mode written inline is a new object on every render, so the author is watched through `authorId`, the part of it the protection holds
   useLayoutEffect(() => {
-    // A composer the mode before left open has nothing to write into a document that takes no comment
-    if (protection === "readOnly") setCommentComposerOpen(false);
     const view = viewRef.current;
     if (!view || !mounted) return;
     const held = protectionOf(view.state);
@@ -533,8 +543,6 @@ function DocxEditorSurface(
   // the mode itself. The protection goes in from a layout effect above, so the state a control
   // reads and the mode it was drawn for are the same on every frame the reader sees
   const bodyOpen = live !== null && editingProtection(live.state) === "none";
-  const commentsOpenToWrite =
-    live !== null && editingProtection(live.state) !== "readOnly";
 
   // Only ever one menu at a time. Where both plugins hold a point, the text menu is the one the
   // last right click opened, so it is the one drawn.
@@ -552,17 +560,16 @@ function DocxEditorSurface(
   const comments =
     live?.state === undefined ? [] : documentComments(live.state);
   const hasUnresolvedComments = comments.some((comment) => !comment.resolved);
-  const effectiveComposerOpen = commentComposerOpen && commentsOpenToWrite;
+  // The composer's own state closes it where a comment can no longer go, the mode being switched
+  // to read-only included, so nothing here has to shut it in turn
+  const composerOpen = live !== null && isCommentComposerOpen(live.state);
   const showComments =
-    live !== null &&
-    (commentsOpen || effectiveComposerOpen || hasUnresolvedComments);
+    live !== null && (commentsOpen || composerOpen || hasUnresolvedComments);
   const commentsPanel = live && showComments && (
     <CommentsPanel
       view={live.view}
       state={live.state}
-      composerOpen={effectiveComposerOpen}
       author={author}
-      closeComposer={() => setCommentComposerOpen(false)}
       scrollContainer={rootRef.current}
       allCommentsOpen={commentsOpen}
     />
@@ -581,10 +588,9 @@ function DocxEditorSurface(
           presets={presets}
           commentsOpen={commentsOpen}
           onToggleComments={() => {
-            setCommentsOpen((open) => {
-              if (open) setCommentComposerOpen(false);
-              return !open;
-            });
+            // Putting the list away puts away the form standing in it
+            if (commentsOpen) runOn(live.view, closeCommentComposer);
+            setCommentsOpen(!commentsOpen);
           }}
           zoom={selectedZoom}
           onZoomChange={changeZoom}
@@ -650,9 +656,6 @@ function DocxEditorSurface(
           state={live.state}
           anchor={textAnchor}
           allowLocking={locking}
-          onAddComment={() => {
-            setCommentComposerOpen(true);
-          }}
         />
       )}
       {live && tableAnchor && (

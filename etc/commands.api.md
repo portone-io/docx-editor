@@ -111,7 +111,7 @@ export function activeTextBackground(state: EditorState): string | null;
 export function activeTextColor(state: EditorState): string | null;
 
 // @public
-export function addComment(comment: NewComment): Command;
+export function addComment(comment: NewComment, at?: CommentRange): Command;
 
 // @public
 export function addCommentReply(id: string, reply: NewComment): Command;
@@ -120,7 +120,7 @@ export function addCommentReply(id: string, reply: NewComment): Command;
 const ALIGNS: readonly ["left", "center", "right", "justify"];
 
 // @public
-export function canAddComment(state: EditorState): boolean;
+export function canAddComment(state: EditorState, at?: CommentRange): boolean;
 
 // @public
 export function canDecreaseIndent(state: EditorState): boolean;
@@ -162,6 +162,14 @@ export interface CommentAuthor {
     initials?: string;
     // (undocumented)
     name: string;
+}
+
+// @public
+export interface CommentRange {
+    // (undocumented)
+    from: number;
+    // (undocumented)
+    to: number;
 }
 
 // @public (undocumented)

@@ -18,6 +18,7 @@ import {
 } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { decode, makeDocx, readFixture } from "./__testing__/docx";
+import { rangeOfText } from "./__testing__/editing";
 import { AUTHOR, EDITING } from "./__testing__/mode";
 import { renderInto } from "./__testing__/react";
 import {
@@ -59,6 +60,12 @@ const BATANG_PARAGRAPH = makeDocx(
 
 const OTHER_PARAGRAPH = makeDocx(
   '<w:p><w:r><w:t xml:space="preserve">other text</w:t></w:r></w:p>'
+);
+
+/** Two paragraphs, so a comment written for one can be told from a comment written for the other */
+const TWO_PARAGRAPHS = makeDocx(
+  '<w:p><w:r><w:t xml:space="preserve">alpha</w:t></w:r></w:p>' +
+    '<w:p><w:r><w:t xml:space="preserve">beta</w:t></w:r></w:p>'
 );
 
 const cellXml = (text: string) =>
@@ -801,6 +808,156 @@ describe("DocxEditor", () => {
       expect(rightClick("p")).toBe(false);
       expect(rightClick("td")).toBe(false);
       expect(menuRows()).toBe(0);
+      unmount();
+    });
+  });
+
+  describe("the comment composer", () => {
+    function mount(document: Uint8Array) {
+      const box = handleBox();
+      const unmount = render(
+        <DocxEditor
+          document={document}
+          mode={EDITING}
+          ref={box}
+          renderImportError={() => null}
+        />
+      );
+      const handle = attached(box);
+      // jsdom draws nothing, so a right click lands on the caret the state already holds and the
+      // comment rail is laid out against positions worked out from the document order
+      handle.view.posAtCoords = () => ({
+        pos: handle.view.state.selection.head,
+        inside: -1,
+      });
+      handle.view.coordsAtPos = (pos) => ({
+        left: 0,
+        right: 0,
+        top: pos * 10,
+        bottom: pos * 10 + 16,
+      });
+      return { handle, unmount };
+    }
+
+    function control(name: string): HTMLButtonElement {
+      const found = Array.from(host.querySelectorAll("button")).find(
+        (element) =>
+          element.getAttribute("aria-label") === name ||
+          element.textContent === name
+      );
+      if (!(found instanceof HTMLButtonElement)) {
+        throw new Error(`button not found: ${name}`);
+      }
+      return found;
+    }
+
+    const composer = () =>
+      host.querySelector('textarea[aria-label="Comment text"]');
+
+    function write(value: string): void {
+      const field = composer();
+      if (!(field instanceof HTMLTextAreaElement)) {
+        throw new Error("the composer is not open");
+      }
+      const set = Object.getOwnPropertyDescriptor(
+        HTMLTextAreaElement.prototype,
+        "value"
+      )?.set;
+      if (!set) throw new Error("no value setter on HTMLTextAreaElement");
+      act(() => {
+        set.call(field, value);
+        field.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+    }
+
+    function selectText(handle: DocxEditorHandle, text: string): void {
+      const { from, to } = rangeOfText(handle.view.state.doc, text);
+      act(() => {
+        handle.view.dispatch(
+          handle.view.state.tr.setSelection(
+            TextSelection.create(handle.view.state.doc, from, to)
+          )
+        );
+      });
+    }
+
+    function openOver(handle: DocxEditorHandle, text: string): void {
+      selectText(handle, text);
+      const paragraph = host.querySelector("p");
+      if (!paragraph) throw new Error("paragraph not found");
+      act(() => {
+        paragraph.dispatchEvent(
+          new MouseEvent("contextmenu", {
+            bubbles: true,
+            cancelable: true,
+            clientX: 40,
+            clientY: 60,
+          })
+        );
+      });
+      act(() => control("Add comment").click());
+    }
+
+    /** The text each comment anchor in the document stands over */
+    function commented(handle: DocxEditorHandle): string[] {
+      const found: string[] = [];
+      const doc = handle.view.state.doc;
+      let start: number | null = null;
+      doc.descendants((node, pos) => {
+        if (node.type.name === "commentStart") start = pos + node.nodeSize;
+        if (node.type.name === "commentEnd" && start !== null) {
+          found.push(doc.textBetween(start, pos));
+          start = null;
+        }
+      });
+      return found;
+    }
+
+    it("writes the comment on the text it was opened over, not on the selection at the time", () => {
+      const { handle, unmount } = mount(TWO_PARAGRAPHS);
+      openOver(handle, "alpha");
+
+      // The reader goes on reading before writing the comment out
+      selectText(handle, "beta");
+      write("About alpha");
+      act(() => control("Comment").click());
+
+      expect(commented(handle)).toEqual(["alpha"]);
+      expect(composer()).toBeNull();
+      unmount();
+    });
+
+    it("carries the anchor through an edit elsewhere and closes when the text it marked goes", () => {
+      const { handle, unmount } = mount(TWO_PARAGRAPHS);
+      openOver(handle, "beta");
+
+      act(() => {
+        handle.view.dispatch(handle.view.state.tr.insertText("A", 1));
+      });
+      write("About beta");
+      act(() => control("Comment").click());
+      expect(commented(handle)).toEqual(["beta"]);
+      expect(handle.view.state.doc.textContent).toBe("Aalphabeta");
+
+      openOver(handle, "alpha");
+      expect(composer()).not.toBeNull();
+      const { from, to } = rangeOfText(handle.view.state.doc, "alpha");
+      act(() => {
+        handle.view.dispatch(handle.view.state.tr.delete(from, to));
+      });
+      expect(composer()).toBeNull();
+      unmount();
+    });
+
+    it("puts the composer away with the comment list it stands in", () => {
+      const { handle, unmount } = mount(TWO_PARAGRAPHS);
+      openOver(handle, "alpha");
+      expect(composer()).not.toBeNull();
+
+      act(() => control("Show comments").click());
+      expect(composer()).not.toBeNull();
+      act(() => control("Hide comments").click());
+      expect(composer()).toBeNull();
       unmount();
     });
   });

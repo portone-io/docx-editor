@@ -10,50 +10,38 @@
  * panel is about the selection it opened over, and after an edit that selection has been answered.
  */
 
-import {
-  type Command,
-  type EditorState,
-  Plugin,
-  PluginKey,
-} from "prosemirror-state";
+import type { Command, EditorState, Plugin } from "prosemirror-state";
 import { canSetLink } from "../commands/linkCommands";
+import { panelPlugin } from "./panelState";
 
-const panelKey = new PluginKey<boolean>("docxEditorLinkPanel");
+/** The panel is about the selection it opened over, so standing open is all there is to hold */
+const OPEN = true;
+
+const panel = panelPlugin<typeof OPEN>({
+  name: "docxEditorLinkPanel",
+  isAnchor: (value): value is typeof OPEN => value === OPEN,
+  // An edit answers the panel: the link went on, came off, or the text it was about moved
+  onDocChange: "close",
+  canOpen: (state) => canSetLink(state),
+});
 
 /** Whether the link panel is open */
 export function isLinkPanelOpen(state: EditorState): boolean {
-  return panelKey.getState(state) === true;
+  return panel.anchor(state) === OPEN;
 }
 
 /**
  * Opens the panel. It reports false where a link could not go on anyway - a caret standing in no
  * link, a selection a lock leaves nothing of - so that Cmd+K there is a key this editor did not
- * take, and a control drawn from it is drawn dead.
+ * take, and a control drawn from it is drawn dead. A panel already open is one more such place:
+ * the button that opened it has nothing left to do while it stands.
  */
-export const openLinkPanel: Command = (state, dispatch) => {
-  if (isLinkPanelOpen(state) || !canSetLink(state)) return false;
-  if (dispatch) dispatch(state.tr.setMeta(panelKey, true));
-  return true;
-};
+export const openLinkPanel: Command = (state, dispatch) =>
+  !isLinkPanelOpen(state) && panel.open(OPEN)(state, dispatch);
 
 /** Closes it. Called on applying, on Escape, and on a click outside */
-export const closeLinkPanel: Command = (state, dispatch) => {
-  if (!isLinkPanelOpen(state)) return false;
-  if (dispatch) dispatch(state.tr.setMeta(panelKey, false));
-  return true;
-};
+export const closeLinkPanel: Command = panel.close;
 
-export function linkPanel(): Plugin<boolean> {
-  return new Plugin<boolean>({
-    key: panelKey,
-    state: {
-      init: () => false,
-      apply: (tr, open) => {
-        const meta: unknown = tr.getMeta(panelKey);
-        if (typeof meta === "boolean") return meta;
-        // An edit answers the panel: the link went on, came off, or the text it was about moved
-        return tr.docChanged ? false : open;
-      },
-    },
-  });
+export function linkPanel(): Plugin<typeof OPEN | null> {
+  return panel.plugin;
 }

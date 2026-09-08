@@ -7,6 +7,7 @@ import { bytesEqual, decode, makeDocx } from "../__testing__/docx";
 import {
   addComment,
   addCommentReply,
+  canAddComment,
   documentComments,
   removeComment,
   removeCommentReply,
@@ -682,4 +683,32 @@ it("declares w15 when editing an extension part written under another prefix", (
       (comment) => comment.id === "4"
     )?.resolved
   ).toBe(false);
+});
+
+// Range arguments may come from a host's stored positions rather than a TextSelection.
+describe("explicit comment ranges", () => {
+  it.each([
+    { from: Number.NaN, to: 3 },
+    { from: 1, to: Number.NaN },
+    { from: Number.NEGATIVE_INFINITY, to: 3 },
+    { from: 1, to: Number.POSITIVE_INFINITY },
+    { from: 1.5, to: 3 },
+    { from: 1, to: 3.5 },
+    { from: -1, to: 3 },
+    { from: 1, to: 100 },
+    { from: 3, to: 3 },
+    { from: 3, to: 1 },
+  ])("refuses invalid positions %j without dispatching", (range) => {
+    const state = createEditorState(
+      importDocx(makeDocx("<w:p><w:r><w:t>Alpha beta</w:t></w:r></w:p>")).doc
+    );
+    let dispatched = false;
+    expect(canAddComment(state, range)).toBe(false);
+    expect(
+      addComment({ text: "Note", author: "Reviewer" }, range)(state, () => {
+        dispatched = true;
+      })
+    ).toBe(false);
+    expect(dispatched).toBe(false);
+  });
 });

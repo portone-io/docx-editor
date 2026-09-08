@@ -32,6 +32,7 @@ import {
 import { externalClipboard } from "./externalClipboard";
 import { imageFiles } from "./imageFiles";
 import { columnResize } from "./plugins/columnResize";
+import { commentComposer } from "./plugins/commentComposer";
 import { commentDecorations } from "./plugins/commentDecorations";
 import {
   displayDerivation,
@@ -146,6 +147,9 @@ export function createEditorState(
       // or fall together with the menus the editor draws. The text menu stands ahead of the table
       // menu, and hands a click with nothing selected inside a cell back to it
       ...(contextMenus ? [textContextMenu(), tableContextMenu()] : []),
+      // Holds the stretch of text the built-in comment composer was opened over. It reads the
+      // protection above it, so it stands after the plugin that holds one
+      commentComposer(),
       numberingMarkers(),
       // Values only go in when page display is turned on
       pageDecorations(),

@@ -223,6 +223,19 @@ describe("opening the link panel", () => {
     expect(button("Link").disabled).toBe(true);
     unmount();
   });
+
+  // The button and the key are the one command asked without a dispatch, so a panel already
+  // standing is one of the places it answers no: there is nothing left for a second press to do
+  it("draws the toolbar button dead while the panel already stands", () => {
+    const { handle, unmount } = mount(PLAIN);
+    selectText(handle, "our terms");
+    pressLinkKey(handle);
+
+    expect(panel()).not.toBeNull();
+    expect(button("Link").disabled).toBe(true);
+    expect(pressLinkKey(handle)).toBe(false);
+    unmount();
+  });
 });
 
 describe("the panel's buttons", () => {

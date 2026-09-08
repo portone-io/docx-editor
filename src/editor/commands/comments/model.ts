@@ -10,6 +10,15 @@ export interface CommentAuthor {
   initials?: string;
 }
 
+/**
+ * A stretch of text a comment is written for: a pair of document positions, the way a comment
+ * already in the document reports its own (`DocumentComment.from`, `.to`).
+ */
+export interface CommentRange {
+  from: number;
+  to: number;
+}
+
 export interface NewComment {
   text: string;
   author: string;
