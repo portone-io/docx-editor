@@ -27,8 +27,10 @@ A pending changeset means a release is being proposed, so it writes the release 
 No changeset, and a version the registry has never seen, means that pull request has been merged, so it publishes.
 Anything else is an ordinary commit and the run stops there.
 
-The publish path passes through a gate that runs the full `pnpm check` and `pnpm test:package` before anything reaches npm, because nothing downstream can catch a bad tarball once the registry has it.
+The publish path passes through a gate that waits for the commit's CI run to pass before anything reaches npm, because nothing downstream can catch a bad tarball once the registry has it.
+Every check a pull request gets guards a release too, the package verification, the real-browser suite, and the workflow audit included.
 A gate failure blocks the release, and the version bump stays on `main` until the next push retries it.
+To retry sooner, re-run CI on that commit, then run **Release** by hand in GitHub Actions.
 
 ## Tags and GitHub releases
 

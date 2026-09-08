@@ -44,30 +44,36 @@ jobs:
           echo "mode: ${mode}"
           echo "mode=${mode}" >>"${GITHUB_OUTPUT}"
 
-  # Nothing downstream can catch a bad tarball once npm has it.
+  # Nothing downstream can catch a bad tarball once npm has it, so publishing
+  # waits for this commit's whole CI run, package verification and real-browser
+  # suite included.
   gate:
     needs: mode
     if: needs.mode.outputs.mode == 'publish'
     runs-on: ubuntu-latest
-    # CI splits the same work across two cached jobs at ten minutes each; this
-    # one runs both uncached.
     timeout-minutes: 30
     permissions:
-      contents: read
+      actions: read
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
-      # Deliberately uncached: a cache entry written by an earlier run is
-      # attacker-reachable input, and this workflow's output is what gets signed.
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 22
-      - uses: $/.github/actions/xmllint
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm check
-      - run: pnpm test:package
+      - name: wait for this commit's CI run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          # Both workflows start on the same push, so the run can lag the lookup
+          for attempt in 1 2 3 4 5 6; do
+            run_id=$(gh run list --workflow ci.yml --event push --commit "${SHA}" \
+              --json databaseId --jq '.[0].databaseId // empty')
+            [ -n "${run_id}" ] && break
+            echo "no CI run for ${SHA} yet (attempt ${attempt})"
+            sleep 10
+          done
+          if [ -z "${run_id}" ]; then
+            echo "CI never started for ${SHA}; run it and retry this workflow"
+            exit 1
+          fi
+          gh run watch "${run_id}" --exit-status --interval 15
 
   release:
     needs: [mode, gate]
