@@ -29,6 +29,11 @@ export type AttrFacts = { readonly role: AttrRole; readonly class: AttrClass };
 type AttrTable = Readonly<Record<string, Readonly<Record<string, AttrFacts>>>>;
 
 export const NODE_ATTR_ROLES: AttrTable = {
+  doc: {
+    // The definitions of the lists started while editing. The export writes numbering.xml from
+    // them and nothing derives them again, so they are a source value the document node holds
+    newLists: { role: "source", class: "model" },
+  },
   paragraph: {
     srcId: { role: "session", class: "identity" },
     pAttrs: { role: "source", class: "preserved" },

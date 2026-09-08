@@ -217,10 +217,25 @@ export type LineSpacing = {
 };
 
 // @public
+export interface NewList {
+    // (undocumented)
+    levels: ReadonlyMap<number, NewListLevel>;
+}
+
+// @public
+export interface NewListLevel extends NumberingLevel {
+    // (undocumented)
+    readonly run: null;
+    // (undocumented)
+    readonly tabStops?: undefined;
+}
+
+// @public
 export type NumberFormat = "decimal" | "decimalZero" | "bullet" | "lowerLetter" | "upperLetter" | "lowerRoman" | "upperRoman" | "ganada" | "koreanDigital" | "chineseCounting";
 
 // @public (undocumented)
 export interface Numbering {
+    added: ReadonlyMap<number, NewList>;
     lists: Map<number, NumberingList>;
 }
 
@@ -245,7 +260,7 @@ export interface NumberingLevel {
 
 // @public (undocumented)
 export interface NumberingList {
-    levels: Map<number, NumberingLevel>;
+    levels: ReadonlyMap<number, NumberingLevel>;
 }
 
 // @public

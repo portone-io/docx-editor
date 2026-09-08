@@ -8,7 +8,7 @@ import {
   resolveClipboardImages,
 } from "../clipboard/images";
 import { documentBodyHeightPx, documentBodyWidthPx } from "../documentStyles";
-import { richHtmlSlice } from "../externalClipboard";
+import { richHtmlSlice, withPastedContent } from "../externalClipboard";
 import { insertPlainTextAt } from "../plainText";
 
 type PasteId = object;
@@ -142,7 +142,7 @@ export function imagePaste(): Plugin<ImagePasteState> {
     if (!range) return;
     removeMarker(task);
     if (task.view.isDestroyed) return;
-    const slice =
+    const content =
       resolved === null || resolved.images.size === 0
         ? null
         : richHtmlSlice(
@@ -151,11 +151,12 @@ export function imagePaste(): Plugin<ImagePasteState> {
             resolved.source,
             resolved.images
           );
-    if (slice !== null) {
+    if (content !== null) {
       task.view.dispatch(
-        task.view.state.tr
-          .replaceRange(range.from, range.to, slice)
-          .scrollIntoView()
+        withPastedContent(
+          task.view.state.tr.replaceRange(range.from, range.to, content.slice),
+          content
+        ).scrollIntoView()
       );
     } else {
       insertPlainTextAt(task.view, task.text, range.from, range.to);

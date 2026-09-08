@@ -199,7 +199,16 @@ const DOCX_RAW_SELECTOR = [
 
 export const docxSchema = new Schema({
   nodes: {
-    doc: { content: "block+" },
+    doc: {
+      content: "block+",
+      attrs: {
+        /**
+         * The definitions of the lists started while editing, which the export writes into
+         * numbering.xml. Read back through `numbering/listRegistry`.
+         */
+        newLists: { default: null },
+      },
+    },
     paragraph: {
       group: "block modelled",
       content: "inline*",

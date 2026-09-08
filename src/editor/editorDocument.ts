@@ -21,6 +21,7 @@ import { canDefineNewList } from "../docx/newLists";
 import { A4_PORTRAIT, type PageGeometry } from "../docx/pageGeometry";
 import type { SessionStore } from "../docx/session";
 import type { DocumentDefaults } from "../model/format";
+import { NEW_LISTS_ATTR, newListsOf } from "../numbering/listRegistry";
 
 /** The document-level values one editing state is built on */
 export interface EditorDocument {
@@ -80,11 +81,29 @@ function reservedParaIds(session: SessionStore): Set<string> {
   return paraIds;
 }
 
+/**
+ * The list definitions the editor resolves against: the ones the document wrote down, and the ones
+ * the lists started while editing were registered with, which the document node carries.
+ */
+function formattingWithNewLists(
+  formatting: FormattingContext,
+  doc: PMNode
+): FormattingContext {
+  const added = newListsOf(doc.attrs[NEW_LISTS_ATTR]);
+  if (added.size === 0 && formatting.numbering.added.size === 0) {
+    return formatting;
+  }
+  return { ...formatting, numbering: { ...formatting.numbering, added } };
+}
+
 /** The one place an opened document is read into the values the editor holds */
-export function editorDocumentOf(session: SessionStore): EditorDocument {
+export function editorDocumentOf(
+  session: SessionStore,
+  doc: PMNode
+): EditorDocument {
   return {
     session,
-    formatting: session.formatting,
+    formatting: formattingWithNewLists(session.formatting, doc),
     defaults: session.defaults,
     paragraphStyles: session.paragraphStyles,
     canStartNewList: canDefineNewList(session),
@@ -103,22 +122,27 @@ export function documentOf(state: EditorState): EditorDocument {
 }
 
 /**
- * The snapshot for an opened document held against the document node it was built over.
+ * The snapshot after a document-level edit.
  *
- * Today every value is the session's and the document node carries none of them, so `_doc` is
- * read for nothing. A document-level edit is recorded on the document node's attrs, which is what
- * the export reads and what undo carries, and this is where the snapshot follows it.
+ * An opened document is read again from its session, so a snapshot handed in over the session's own
+ * values stands only until the first such edit. A state built without one has no session to read,
+ * and keeps the values it was given with the register alone taken from the node.
  */
-function derive(session: SessionStore, _doc: PMNode): EditorDocument {
-  return editorDocumentOf(session);
+function derived(current: EditorDocument, doc: PMNode): EditorDocument {
+  return current.session === null
+    ? {
+        ...current,
+        formatting: formattingWithNewLists(current.formatting, doc),
+      }
+    : editorDocumentOf(current.session, doc);
 }
 
 /**
  * Holds the snapshot for the lifetime of the state.
  *
- * It is derived again only where a document-level edit could have been recorded, so an ordinary
- * edit and a selection move both leave the same object behind, allowing the sheet's style to be
- * cached against that identity.
+ * It is derived again only where a document-level edit could have been recorded - the attrs of the
+ * document node, which is where such an edit is written - so an ordinary edit and a selection move
+ * both leave the same object behind, allowing the sheet's style to be cached against that identity.
  */
 export function editorDocument(
   document: EditorDocument
@@ -128,9 +152,7 @@ export function editorDocument(
     state: {
       init: () => document,
       apply: (tr, current, old) =>
-        current.session === null || tr.doc.attrs === old.doc.attrs
-          ? current
-          : derive(current.session, tr.doc),
+        tr.doc.attrs === old.doc.attrs ? current : derived(current, tr.doc),
     },
   });
 }

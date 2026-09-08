@@ -1,7 +1,11 @@
 // @vitest-environment jsdom
 import { unzipSync, zipSync } from "fflate";
 import type { Node as PMNode } from "prosemirror-model";
-import { type EditorState, TextSelection } from "prosemirror-state";
+import {
+  AllSelection,
+  type EditorState,
+  TextSelection,
+} from "prosemirror-state";
 import { assert, describe, expect, it } from "vitest";
 import {
   bytesEqual,
@@ -14,6 +18,7 @@ import {
   ONE_LIST_NUMBERING,
   readFixture,
 } from "../__testing__/docx";
+import { runCommand } from "../__testing__/editing";
 import { canExport } from "../editor/commands/exportQueries";
 import {
   toggleBulletList,
@@ -23,11 +28,13 @@ import {
   createEditorState,
   editorStateForSession,
 } from "../editor/createEditor";
+import { richHtmlSlice, withPastedContent } from "../editor/externalClipboard";
 import {
   canStartNewList,
   paragraphMarkers,
 } from "../editor/plugins/numberingDecorations";
 import { toParagraphFormat } from "../model/format";
+import { templateList } from "../numbering/listTemplate";
 import { parseNumbering } from "../numbering/parseNumbering";
 import { R_NS, W_NS } from "../ooxml/xml";
 import { exportDocx } from "./exportDocx";
@@ -37,6 +44,8 @@ import { CONTENT_TYPES_PATH } from "./packageParts";
 import type { SessionStore } from "./session";
 
 const NUMBERING_PART = "word/numbering.xml";
+
+const W_NS_DECL = `xmlns:w="${W_NS}"`;
 
 /** The first paragraph that is not a list and has text, plus a position inside it */
 function plainParagraph(doc: PMNode): { index: number; pos: number } {
@@ -432,5 +441,164 @@ describe("a document without numbering.xml", () => {
         editorStateForSession({ doc: listed.doc, session: opened.session })
       )
     ).toBe(false);
+  });
+});
+
+/** A numbering part defining a single list under an even number, so the next one is odd */
+const EVEN_LIST_NUMBERING =
+  `<w:numbering ${W_NS_DECL}>` +
+  '<w:abstractNum w:abstractNumId="0"><w:lvl w:ilvl="0">' +
+  '<w:numFmt w:val="bullet"/><w:lvlText w:val="●"/></w:lvl></w:abstractNum>' +
+  '<w:num w:numId="2"><w:abstractNumId w:val="0"/></w:num></w:numbering>';
+
+/** The state of a document whose only paragraph is plain text, with the caret in it */
+function openedAt(bytes: Uint8Array): EditorState {
+  const { doc, session } = importDocx(bytes);
+  return withCaretAt(editorStateForSession({ doc, session }), 1);
+}
+
+describe("the definition a new list is exported with", () => {
+  const body = '<w:p><w:r><w:t xml:space="preserve">first</w:t></w:r></w:p>';
+
+  it.each([
+    { start: 1e21 },
+    { run: { bold: true } },
+    {
+      indent: {
+        startTwips: 720,
+        endTwips: null,
+        hangingTwips: -1,
+        firstLineTwips: null,
+      },
+    },
+  ])("refuses a registered value it cannot preserve (%j)", (invalid) => {
+    const opened = importDocx(makeDeclaredDocx(body));
+    const listed = runCommand(
+      editorStateForSession(opened),
+      toggleNumberedList
+    );
+    const ref = toParagraphFormat(listed.doc.child(0).attrs.format)?.numbering;
+    assert(ref);
+    const level = templateList("numbered").levels.get(0);
+    assert(level);
+    const state = listed.apply(
+      listed.tr.setDocAttribute("newLists", [
+        {
+          numId: ref.numId,
+          levels: [{ ilvl: 0, ...level, ...invalid }],
+        },
+      ])
+    );
+    expect(canExport(state)).toBe(false);
+    expect(
+      exportProblems(state.doc, opened.session).map((problem) => problem.code)
+    ).toEqual(["unsupported-content"]);
+    expect(exportErrorCode(() => exportDocx(state.doc, opened.session))).toBe(
+      "unsupported-content"
+    );
+  });
+
+  it("is the one the list was registered with and not one derived from its number", () => {
+    const bytes = makeNumberedDocx(body, EVEN_LIST_NUMBERING);
+    const { session } = importDocx(bytes);
+    const listed = runCommand(openedAt(bytes), toggleNumberedList);
+
+    // The document spends 2, so the list takes 3 - the number an odd/even rule would have read
+    // as a bullet list
+    const numId = toParagraphFormat(listed.doc.child(0).attrs.format)?.numbering
+      ?.numId;
+    expect(numId).toBe(3);
+
+    const written = parseNumbering(
+      decode(partsOf(exportDocx(listed.doc, session))[NUMBERING_PART])
+    );
+    expect(written.lists.get(3)?.levels.get(0)?.format).toBe("decimal");
+    expect(written.lists.get(3)?.levels.get(0)?.text).toBe("%1.");
+  });
+
+  it("two lists of the same kind get different numbers and the very same definition", () => {
+    const bytes = makeNumberedDocx(
+      body + '<w:p><w:r><w:t xml:space="preserve">second</w:t></w:r></w:p>'
+    );
+    const { session, doc } = importDocx(bytes);
+    const state = editorStateForSession({ doc, session });
+    const first = runCommand(withCaretAt(state, 1), toggleBulletList);
+    const second = runCommand(
+      withCaretAt(first, first.doc.child(0).nodeSize + 1),
+      toggleBulletList
+    );
+
+    const written = parseNumbering(
+      decode(partsOf(exportDocx(second.doc, session))[NUMBERING_PART])
+    );
+    expect([...written.lists.keys()].sort((a, b) => a - b)).toEqual([1, 2, 3]);
+    expect(written.lists.get(2)).toEqual(written.lists.get(3));
+  });
+
+  it("a pasted list is exported from its definition the same way a started one is", () => {
+    const bytes = makeNumberedDocx(body, EVEN_LIST_NUMBERING);
+    const { doc, session } = importDocx(bytes);
+    const opened = editorStateForSession({ doc, session });
+    const all = opened.apply(
+      opened.tr.setSelection(new AllSelection(opened.doc))
+    );
+    const content = richHtmlSlice(
+      all,
+      document,
+      "<ol><li>One</li><li>Two</li></ol>"
+    );
+    if (content === null) throw new Error("the markup read as nothing");
+    const pasted = all.apply(
+      withPastedContent(all.tr.replaceSelection(content.slice), content)
+    );
+
+    const written = parseNumbering(
+      decode(partsOf(exportDocx(pasted.doc, session))[NUMBERING_PART])
+    );
+    expect(written.lists.get(3)?.levels.get(0)?.format).toBe("decimal");
+    expect(written.lists.get(3)?.levels.get(0)?.text).toBe("%1.");
+  });
+});
+
+describe("a list number no definition stands behind", () => {
+  /**
+   * The first paragraph put into a list the way a plugin of a consumer's own would put it there:
+   * the reference is written and no definition is registered for it.
+   */
+  function listedByHand(bytes: Uint8Array): {
+    doc: PMNode;
+    session: SessionStore;
+  } {
+    const { doc, session } = importDocx(bytes);
+    const state = editorStateForSession({ doc, session });
+    const listed = state.apply(
+      state.tr.setNodeMarkup(0, undefined, {
+        ...doc.child(0).attrs,
+        format: { numbering: { numId: 9, ilvl: 0 } },
+      })
+    );
+    return { doc: listed.doc, session };
+  }
+
+  const body = '<w:p><w:r><w:t xml:space="preserve">first</w:t></w:r></w:p>';
+
+  it("is refused rather than written into a file whose list is defined nowhere", () => {
+    const { doc, session } = listedByHand(makeNumberedDocx(body));
+
+    expect(exportErrorCode(() => exportDocx(doc, session))).toBe(
+      "unsupported-content"
+    );
+  });
+
+  it("is reported ahead of the write, with the message the refusal carries", () => {
+    const { doc, session } = listedByHand(makeNumberedDocx(body));
+
+    expect(exportProblems(doc, session)).toEqual([
+      {
+        code: "unsupported-content",
+        message: "the list numbered 9 has no definition to be written",
+        pos: 0,
+      },
+    ]);
   });
 });

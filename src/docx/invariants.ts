@@ -11,7 +11,7 @@
  */
 
 import type { Node as PMNode } from "prosemirror-model";
-import { spanCount } from "../model/format";
+import { spanCount, toParagraphFormat } from "../model/format";
 import type { DocxExportErrorCode } from "../ooxml/errors";
 import {
   attributeByLocalName,
@@ -36,7 +36,7 @@ import { currentCommentBodies } from "./comments/writing";
 import type { ExportOptions } from "./exportDocx";
 import { identityProblems } from "./identities";
 import { insertedImageSrcs } from "./media";
-import { canDefineNewList, newNumIds } from "./newLists";
+import { canDefineNewList, newNumIds, startedLists } from "./newLists";
 import { CONTENT_TYPES_PATH } from "./packageParts";
 import { lostOriginal } from "./serializeBlock";
 import {
@@ -228,6 +228,39 @@ const uniqueIdentities: ExportInvariant = {
   },
 };
 
+/**
+ * A list started while editing goes out as the definition it was registered with
+ * (`numbering/listRegistry`). A paragraph in a list nothing defines - not the file it was opened
+ * from, and not the register the document node carries - has no definition to be written, and the
+ * file would go out naming a list defined nowhere, which is the one failure the register exists to
+ * rule out.
+ *
+ * The code is the one that already covers a document holding what no correct file can be written
+ * from: nothing is missing from the package, and the paragraph has lost nothing of its own. Only
+ * markup written by something other than the list commands reaches it, the same caller the code's
+ * other case names.
+ */
+const listDefinitions: ExportInvariant = {
+  name: "listDefinitions",
+  check(doc, session) {
+    const undefinedIds = new Set(startedLists(doc, session).unregistered);
+    if (undefinedIds.size === 0) return [];
+    const problems: ExportProblem[] = [];
+    doc.descendants((node, pos) => {
+      if (node.type.name !== "paragraph") return true;
+      const numId = toParagraphFormat(node.attrs.format)?.numbering?.numId;
+      if (numId === undefined || !undefinedIds.delete(numId)) return false;
+      problems.push({
+        code: "unsupported-content",
+        message: `the list numbered ${numId} has no definition to be written`,
+        pos,
+      });
+      return false;
+    });
+    return problems;
+  },
+};
+
 /** Whether a changed comment needs a part the package has yet to declare. */
 function addsCommentsPart(doc: PMNode, session: SessionStore): boolean {
   const bodyChanged = commentsChanged(doc, session);
@@ -319,6 +352,7 @@ const EXPORT_INVARIANTS: readonly ExportInvariant[] = [
   tableGrids,
   preservedOriginals,
   uniqueIdentities,
+  listDefinitions,
   mediaContentTypes,
   commentPartRoots,
 ];

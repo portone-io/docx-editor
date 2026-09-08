@@ -7,7 +7,8 @@
 
 import type { Node as PMNode } from "prosemirror-model";
 import { toParagraphFormat } from "../model/format";
-import { parseNumbering } from "../numbering/parseNumbering";
+import { NEW_LISTS_ATTR, newListsOf } from "../numbering/listRegistry";
+import { type NewList, parseNumbering } from "../numbering/parseNumbering";
 import { R_NS } from "../ooxml/xml";
 import { CONTENT_TYPES_PATH } from "./packageParts";
 import type { SessionStore } from "./session";
@@ -58,6 +59,33 @@ export function newNumIds(doc: PMNode, session: SessionStore): number[] {
   return Array.from(numIdsIn(doc))
     .filter((numId) => !defined.has(numId) && !atOpen.has(numId))
     .sort((a, b) => a - b);
+}
+
+/** The lists started during editing, split by whether a definition was registered for each */
+export interface StartedLists {
+  /** The definition each list was started with, which is what goes into numbering.xml */
+  readonly defined: ReadonlyMap<number, NewList>;
+  /** The numbers a list was started under that no definition stands behind */
+  readonly unregistered: readonly number[];
+}
+
+/**
+ * The lists started during editing, each against the definition it was started with.
+ *
+ * The definition is the one the document node carries (`numbering/listRegistry`), which the list
+ * commands and the clipboard record as they start a list. A number carrying none is reported here
+ * rather than written bare, which the export invariants turn into a refusal.
+ */
+export function startedLists(doc: PMNode, session: SessionStore): StartedLists {
+  const registered = newListsOf(doc.attrs[NEW_LISTS_ATTR]);
+  const defined = new Map<number, NewList>();
+  const unregistered: number[] = [];
+  for (const numId of newNumIds(doc, session)) {
+    const list = registered.get(numId);
+    if (list === undefined) unregistered.push(numId);
+    else defined.set(numId, list);
+  }
+  return { defined, unregistered };
 }
 
 /** The numbering part as it was opened, which a new definition is spliced into. null when the document has none */

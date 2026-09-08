@@ -9,7 +9,7 @@
 
 import type { Node as PMNode } from "prosemirror-model";
 import type { EditorState, Transaction } from "prosemirror-state";
-import { paragraphAttrsFor } from "../docx/formatting";
+import { type FormattingContext, paragraphAttrsFor } from "../docx/formatting";
 import type { ParagraphProps } from "../docx/paraProps";
 import { docxSchema } from "../schema";
 import { editShut } from "../schema/guards";
@@ -67,12 +67,28 @@ interface PlannedChange {
   props: ParagraphProps;
 }
 
+/** What an edit does beyond swapping the fragments of the paragraphs it names */
+export interface ParagraphEditExtras {
+  /**
+   * The context the new display values are resolved against, which is the state's own unless the
+   * edit is itself changing it. An edit that starts a list hands in the context that already
+   * holds it, so the paragraph is drawn against the list it is joining in that same transaction.
+   */
+  formatting?: FormattingContext;
+  /**
+   * What else the edit records in the same transaction, such as the definition of the list the
+   * paragraphs are joining, so that undo takes the two back together.
+   */
+  alongside?: (tr: Transaction) => void;
+}
+
 function writeChanges(
   state: EditorState,
-  changed: readonly PlannedChange[]
+  changed: readonly PlannedChange[],
+  extras: ParagraphEditExtras
 ): Transaction {
   const tr = state.tr;
-  const formatting = documentFormatting(state);
+  const formatting = extras.formatting ?? documentFormatting(state);
   for (const { spot, props } of changed) {
     tr.setNodeMarkup(tr.mapping.map(spot.pos), undefined, {
       ...spot.node.attrs,
@@ -84,6 +100,7 @@ function writeChanges(
       ),
     });
   }
+  extras.alongside?.(tr);
   return tr;
 }
 
@@ -91,13 +108,16 @@ function writeChanges(
 export function editParagraphs(
   state: EditorState,
   dispatch: ((tr: Transaction) => void) | undefined,
-  surgery: ParagraphSurgery
+  surgery: ParagraphSurgery,
+  extras: ParagraphEditExtras = {}
 ): boolean {
   const changed = editableParagraphs(state).flatMap((spot) => {
     const props = surgery(spot.node);
     return props ? [{ spot, props }] : [];
   });
   if (changed.length === 0) return false;
-  if (dispatch) dispatch(writeChanges(state, changed).scrollIntoView());
+  if (dispatch) {
+    dispatch(writeChanges(state, changed, extras).scrollIntoView());
+  }
   return true;
 }

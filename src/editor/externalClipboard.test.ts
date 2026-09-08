@@ -17,6 +17,8 @@ import { styleIdOf } from "../docx/formatting";
 import { importDocx } from "../docx/importDocx";
 import type { SessionStore } from "../docx/session";
 import { toParagraphFormat, toRunFormat } from "../model/format";
+import { newListsOf } from "../numbering/listRegistry";
+import { templateList } from "../numbering/listTemplate";
 import { emuToPx } from "../ooxml/image";
 import { docxSchema } from "../schema";
 import { editorClassNames } from "../styles/classNames";
@@ -26,6 +28,10 @@ import {
   createEditorView,
   editorStateForSession,
 } from "./createEditor";
+import {
+  documentNumbering,
+  paragraphMarkers,
+} from "./plugins/numberingDecorations";
 
 function openEditor(canStartNewList = true): {
   view: EditorView;
@@ -620,6 +626,28 @@ describe("pasting supported HTML", () => {
     view.destroy();
   });
 
+  it("registers a definition for each list it pastes, as starting one does", () => {
+    const { view } = openEditor();
+    view.dispatch(view.state.tr.setSelection(new AllSelection(view.state.doc)));
+    paste(view, {
+      "text/plain": "One\nTwo\nNested",
+      "text/html": "<ol><li>One</li><li>Two<ul><li>Nested</li></ul></li></ol>",
+    });
+
+    const registered = newListsOf(view.state.doc.attrs.newLists);
+    expect([...registered.keys()].sort()).toEqual([2, 3]);
+    expect(registered.get(2)).toEqual(templateList("numbered"));
+    expect(registered.get(3)).toEqual(templateList("bullet"));
+    // The numbers drawn come from those definitions and not from the ids they were given: the
+    // nested item stands at the second level of the bullet list it started
+    expect(
+      paragraphMarkers(view.state.doc, documentNumbering(view.state)).map(
+        (marker) => marker.text
+      )
+    ).toEqual(["1.", "2.", "○"]);
+    view.destroy();
+  });
+
   it("drops unsafe links and keeps their readable text", () => {
     const { view } = openEditor();
     paste(view, {
@@ -673,6 +701,8 @@ describe("pasting supported HTML", () => {
     expect(toParagraphFormat(item.attrs.format)).toEqual({
       numbering: { numId: 2, ilvl: 0 },
       spaceAfterPt: 8,
+      // The list it joined hangs its number, and that is where the text of the item begins
+      tabStops: [{ positionPt: 36, align: "start" }],
     });
     expect(toRunFormat(item.attrs.styleRun)).toEqual({
       bold: true,

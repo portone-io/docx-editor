@@ -78,6 +78,7 @@ const withSibling = (element: string) =>
   `${element}<w:r><w:t>smuggled</w:t></w:r>`;
 
 const NODE_FRAGMENTS: RawAttrTable = {
+  doc: { newLists: null },
   paragraph: {
     pAttrs: {
       attribute: "data-pattrs",

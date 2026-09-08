@@ -65,6 +65,8 @@ export type {
   LevelAlign,
   LevelIndent,
   LevelSuffix,
+  NewList,
+  NewListLevel,
   NumberFormat,
   Numbering,
   NumberingLevel,

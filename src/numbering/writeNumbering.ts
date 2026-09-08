@@ -1,5 +1,6 @@
 /**
- * Splices the definitions of newly started lists into the original numbering.xml.
+ * Splices the definitions the newly started lists were registered with into the original
+ * numbering.xml.
  *
  * Not one character of the original is altered; new elements are merely slotted in.
  * OOXML requires the definitions (`abstractNum`) to come before the numbers (`num`), and
@@ -7,37 +8,38 @@
  */
 
 import { splicePart } from "../ooxml/partSplice";
+import { ST_DecimalNumber } from "../ooxml/simpleTypes";
 import { wAttr } from "../ooxml/units";
 import { elementChildren, parseXml } from "../ooxml/xml";
-import { abstractNumXml, listKindOf, numXml } from "./listTemplate";
+import { abstractNumXml, numberingIdAllocator, numXml } from "./listTemplate";
+import type { NewList } from "./parseNumbering";
 
-/** The largest definition id already in use */
-function maxAbstractNumId(xml: string): number {
-  let max = 0;
-  for (const child of elementChildren(parseXml(xml).documentElement)) {
-    if (child.localName !== "abstractNum") continue;
-    const id = Number.parseInt(wAttr(child, "abstractNumId") ?? "", 10);
-    if (Number.isFinite(id)) max = Math.max(max, id);
-  }
-  return max;
+/** The definition ids a new definition must not reuse. */
+function abstractNumIds(xml: string): number[] {
+  return elementChildren(parseXml(xml).documentElement).flatMap((child) => {
+    if (child.localName !== "abstractNum") return [];
+    const id = ST_DecimalNumber.parse(wAttr(child, "abstractNumId"));
+    return id === null ? [] : [id];
+  });
 }
 
 /**
- * numbering.xml with a standard template definition added for every list number.
+ * numbering.xml with the definition each of these lists was started with added under its number.
  * When there is nothing to add, the original string is returned unchanged.
  */
 export function addListDefinitions(
   xml: string,
-  numIds: readonly number[]
+  lists: ReadonlyMap<number, NewList>
 ): string {
-  if (numIds.length === 0) return xml;
+  if (lists.size === 0) return xml;
 
-  const firstAbstractNumId = maxAbstractNumId(xml) + 1;
-  const additions = [...numIds]
-    .sort((a, b) => a - b)
-    .map((numId, index) => ({
+  const takeId = numberingIdAllocator(abstractNumIds(xml));
+  const additions = [...lists]
+    .sort(([left], [right]) => left - right)
+    .map(([numId, list]) => ({
       numId,
-      abstractNumId: firstAbstractNumId + index,
+      list,
+      abstractNumId: takeId(),
     }));
 
   return splicePart(xml, {
@@ -45,7 +47,7 @@ export function addListDefinitions(
     insert: [
       ...additions.map((added) => ({
         name: "abstractNum",
-        xml: abstractNumXml(added.abstractNumId, listKindOf(added.numId)),
+        xml: abstractNumXml(added.abstractNumId, added.list),
       })),
       ...additions.map((added) => ({
         name: "num",

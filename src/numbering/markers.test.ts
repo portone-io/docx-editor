@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import type { NumberingRef } from "../model/format";
+import { type ListKind, templateList } from "./listTemplate";
 import { computeMarkers } from "./markers";
 import { type Numbering, parseNumbering } from "./parseNumbering";
 
@@ -381,19 +382,25 @@ describe("hanging indent", () => {
 });
 
 /**
- * A list started fresh while editing has to show its numbers on screen even though its
- * definition is not in the document
+ * A list started fresh while editing has to show its numbers on screen even though numbering.xml
+ * does not define it yet. The definition it was registered with is what draws them, and a number
+ * nothing defines at all draws nothing.
  */
-describe("a list number the document does not know", () => {
-  const numbering = oneList([{ format: "decimal", text: "%1." }]);
+describe("a list number numbering.xml does not define", () => {
+  const document = oneList([{ format: "decimal", text: "%1." }]);
 
-  it("an even number is drawn with the numbered list template", () => {
+  function withRegistered(kind: ListKind, numId: number): Numbering {
+    return { ...document, added: new Map([[numId, templateList(kind)]]) };
+  }
+
+  it("a registered numbered list is drawn from the definition it was registered with", () => {
+    const numbering = withRegistered("numbered", 21);
     const paragraphs = [
-      { numId: 20, ilvl: 0 },
-      { numId: 20, ilvl: 1 },
-      { numId: 20, ilvl: 1 },
-      { numId: 20, ilvl: 2 },
-      { numId: 20, ilvl: 0 },
+      { numId: 21, ilvl: 0 },
+      { numId: 21, ilvl: 1 },
+      { numId: 21, ilvl: 1 },
+      { numId: 21, ilvl: 2 },
+      { numId: 21, ilvl: 0 },
     ];
     expect(texts(paragraphs, numbering)).toEqual([
       "1.",
@@ -404,16 +411,23 @@ describe("a list number the document does not know", () => {
     ]);
   });
 
-  it("an odd number is drawn with the bullet list template", () => {
-    const paragraphs = [
-      { numId: 21, ilvl: 0 },
-      { numId: 21, ilvl: 1 },
-      { numId: 21, ilvl: 2 },
-    ];
-    expect(texts(paragraphs, numbering)).toEqual(["●", "○", "■"]);
+  it("a registered bullet list is drawn from its own definition, odd or even", () => {
+    for (const numId of [20, 21]) {
+      const paragraphs = [
+        { numId, ilvl: 0 },
+        { numId, ilvl: 1 },
+        { numId, ilvl: 2 },
+      ];
+      expect(texts(paragraphs, withRegistered("bullet", numId))).toEqual([
+        "●",
+        "○",
+        "■",
+      ]);
+    }
   });
 
-  it("every template level has a hanging indent", () => {
+  it("every level of a registered list has a hanging indent", () => {
+    const numbering = withRegistered("numbered", 20);
     expect(computeMarkers([{ numId: 20, ilvl: 3 }], numbering)[0]).toEqual({
       text: "1.",
       indent: { startPt: 144, endPt: null, textIndentPt: -18 },
@@ -421,5 +435,9 @@ describe("a list number the document does not know", () => {
       align: "left",
       run: null,
     });
+  });
+
+  it("a number neither the document nor the register defines draws no marker", () => {
+    expect(texts([{ numId: 20, ilvl: 0 }], document)).toEqual([null]);
   });
 });

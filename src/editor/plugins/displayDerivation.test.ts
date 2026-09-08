@@ -440,7 +440,7 @@ describe("a paragraph in a cell of a table that wears a style", () => {
     );
     const state = createEditorState(before.doc, {
       document: {
-        ...editorDocumentOf(before.session),
+        ...editorDocumentOf(before.session, before.doc),
         formatting: after.session.formatting,
       },
     });
@@ -497,7 +497,10 @@ describe("what the state is built over", () => {
     });
 
     const under = createEditorState(doc, {
-      document: { ...editorDocumentOf(session), formatting: NO_FORMATTING },
+      document: {
+        ...editorDocumentOf(session, doc),
+        formatting: NO_FORMATTING,
+      },
     });
     const body = under.doc.child(0);
     expect(toRunFormat(body.attrs.styleRun)).toBeNull();
@@ -530,7 +533,7 @@ describe("the snapshot being replaced under the document", () => {
   } {
     const { doc, session } = importDocx(makeStyledDocx(body, styles));
     const document: EditorDocument = {
-      ...editorDocumentOf(session),
+      ...editorDocumentOf(session, doc),
       formatting: NO_FORMATTING,
     };
     const { plugin, appended } = watching();
@@ -720,7 +723,7 @@ describe("what a node maps back to", () => {
     const state = EditorState.create({
       doc,
       plugins: [
-        editorDocument(editorDocumentOf(session)),
+        editorDocument(editorDocumentOf(session, doc)),
         displayDerivation([deriver]),
       ],
     });

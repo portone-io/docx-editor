@@ -122,10 +122,9 @@ function capped(shape: string): string {
 }
 
 /**
- * A slot is null for a paragraph that is not a list item, or whose level shape could not
- * be found.
- * A number the document does not know (a list started fresh while editing) is drawn with
- * the standard template's shape.
+ * A slot is null for a paragraph that is not a list item, or whose level shape could not be found.
+ * A number nothing defines - neither numbering.xml nor a list started while editing - draws no
+ * marker, which is what Word does with a `w:numId` no `w:num` answers.
  */
 export function computeMarkers(
   paragraphs: readonly (NumberingRef | null)[],
@@ -136,8 +135,8 @@ export function computeMarkers(
   return paragraphs.map((ref) => {
     if (!ref) return null;
     const list = listFor(numbering, ref.numId);
-    const level = list.levels.get(ref.ilvl);
-    if (!level) return null;
+    const level = list?.levels.get(ref.ilvl);
+    if (!list || !level) return null;
 
     let counters = countersByList.get(ref.numId);
     if (!counters) {

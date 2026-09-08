@@ -4,7 +4,8 @@
  * All they do is change a paragraph's place in a list (its numbering id and level).
  * Editing the formatting fragments belongs to `docx/paraProps`, and the list's appearance
  * belongs to `numbering/`.
- * The definition of a new list is not put into the document; numbering.xml picks it up on export.
+ * Starting a list records its definition on the document node in the same transaction, and the
+ * export writes that definition into numbering.xml.
  */
 
 import type { Node as PMNode } from "prosemirror-model";
@@ -17,17 +18,25 @@ import {
 } from "../../docx/paraProps";
 import { type NumberingRef, toParagraphFormat } from "../../model/format";
 import {
+  listsWorn,
+  NEW_LISTS_ATTR,
+  type NewLists,
+  newListsValue,
+} from "../../numbering/listRegistry";
+import {
+  allocateList,
   type ListKind,
   listFor,
-  listKindOf,
   MAX_ILVL,
-  nextNumId,
+  templateList,
 } from "../../numbering/listTemplate";
 import type { Numbering } from "../../numbering/parseNumbering";
 import { docxSchema } from "../../schema";
+import { documentFormatting } from "../documentStyles";
 import {
   editableParagraphs,
   editParagraphs,
+  type ParagraphEditExtras,
   paragraphPPr,
   selectedParagraphs,
 } from "../paragraphEdits";
@@ -44,16 +53,28 @@ export function listRefOf(node: PMNode): NumberingRef | null {
 /** The rule that decides what to change for each paragraph. Null skips that paragraph */
 type ChangePlan = (node: PMNode) => ListChange | null;
 
-/** Edits the selected list paragraphs in a single transaction */
+/**
+ * Edits the selected list paragraphs in a single transaction, and records the register the edit
+ * leaves behind. A list nothing wears once the edit is in is not one the document has, so its
+ * definition goes with it.
+ */
 function changeParagraphs(
   state: EditorState,
   dispatch: ((tr: Transaction) => void) | undefined,
-  plan: ChangePlan
+  plan: ChangePlan,
+  extras: ParagraphEditExtras = {
+    alongside: pruneLists(documentNumbering(state).added),
+  }
 ): boolean {
-  return editParagraphs(state, dispatch, (node) => {
-    const change = plan(node);
-    return change && withListNumbering(paragraphPPr(node), change);
-  });
+  return editParagraphs(
+    state,
+    dispatch,
+    (node) => {
+      const change = plan(node);
+      return change && withListNumbering(paragraphPPr(node), change);
+    },
+    extras
+  );
 }
 
 /**
@@ -76,7 +97,7 @@ function indentForLevel(
   ) {
     return { kind: "keep" };
   }
-  const indent = listFor(numbering, ref.numId).levels.get(ref.ilvl)?.indent;
+  const indent = listFor(numbering, ref.numId)?.levels.get(ref.ilvl)?.indent;
   return indent ? { kind: "level", indent } : { kind: "keep" };
 }
 
@@ -114,16 +135,34 @@ export const increaseListLevel: Command = levelShift(1);
 /** Moves a list item one level back up, which is not the paragraph's own indent. What Shift+Tab does */
 export const decreaseListLevel: Command = levelShift(-1);
 
-/** Every list numbering id that already appears in the document and in numbering.xml */
-function usedNumIds(state: EditorState, numbering: Numbering): Set<number> {
-  const used = new Set<number>(numbering.lists.keys());
-  state.doc.descendants((node) => {
+/** Every numbering id a paragraph of this document wears */
+export function numIdsIn(doc: PMNode): Set<number> {
+  const worn = new Set<number>();
+  doc.descendants((node) => {
     if (node.type !== docxSchema.nodes.paragraph) return true;
     const ref = listRefOf(node);
-    if (ref) used.add(ref.numId);
+    if (ref) worn.add(ref.numId);
     return false;
   });
-  return used;
+  return worn;
+}
+
+/** Writes down the register this edit leaves, which is `lists` minus what it left nothing wearing */
+function recordLists(tr: Transaction, lists: NewLists): void {
+  tr.setDocAttribute(
+    NEW_LISTS_ATTR,
+    newListsValue(listsWorn(lists, numIdsIn(tr.doc)))
+  );
+}
+
+/**
+ * Takes the register down to the lists the document still holds, and leaves the document node
+ * alone when the edit orphaned none.
+ */
+function pruneLists(lists: NewLists): (tr: Transaction) => void {
+  return (tr) => {
+    if (listsWorn(lists, numIdsIn(tr.doc)) !== lists) recordLists(tr, lists);
+  };
 }
 
 /**
@@ -131,6 +170,10 @@ function usedNumIds(state: EditorState, numbering: Numbering): Set<number> {
  * Paragraphs selected together share one numbering id, so they become a single continuous list.
  * Changing the list kind goes down this same path: taking a new numbering id is what decides
  * the new appearance.
+ *
+ * The definition the list is started with is registered on the document node in the same
+ * transaction that puts the paragraphs in it, so what is drawn, what is exported and what undo
+ * takes back are one and the same value rather than three readings of the number it was given.
  *
  * A new list can only be written out if its definition has a numbering part to go into, whether
  * the document arrived with one or the export writes it. Where neither is open to it we do not
@@ -143,11 +186,26 @@ function usedNumIds(state: EditorState, numbering: Numbering): Set<number> {
 function startList(kind: ListKind): Command {
   return (state, dispatch) => {
     if (!canStartNewList(state)) return false;
-    const numId = nextNumId(usedNumIds(state, documentNumbering(state)), kind);
-    return changeParagraphs(state, dispatch, (node) => ({
-      numbering: { numId, ilvl: listRefOf(node)?.ilvl ?? 0 },
-      indent: { kind: "keep" },
-    }));
+    const started = allocateList(
+      documentNumbering(state),
+      numIdsIn(state.doc),
+      templateList(kind)
+    );
+    return changeParagraphs(
+      state,
+      dispatch,
+      (node) => ({
+        numbering: { numId: started.numId, ilvl: listRefOf(node)?.ilvl ?? 0 },
+        indent: { kind: "keep" },
+      }),
+      {
+        formatting: {
+          ...documentFormatting(state),
+          numbering: started.numbering,
+        },
+        alongside: (tr) => recordLists(tr, started.numbering.added),
+      }
+    );
   };
 }
 
@@ -164,19 +222,19 @@ export const removeFromList: Command = (state, dispatch) =>
   );
 
 /**
- * The kind of this list position.
- * If the document has the definition, the number format of that level decides it; for a new
- * list with no definition, the numbering id decides it.
+ * The kind of this list position, which the number format of its level decides.
+ * Null where nothing defines the list, which is a position whose kind cannot be told and so is
+ * neither of the two buttons.
  */
-function kindOf(numbering: Numbering, ref: NumberingRef): ListKind {
-  const level = listFor(numbering, ref.numId).levels.get(ref.ilvl);
-  if (!level) return listKindOf(ref.numId);
+function kindOf(numbering: Numbering, ref: NumberingRef): ListKind | null {
+  const level = listFor(numbering, ref.numId)?.levels.get(ref.ilvl);
+  if (!level) return null;
   return level.format === "bullet" ? "bullet" : "numbered";
 }
 
 /**
- * The kind of list the selected paragraphs belong to. Null when they are not a list or the kinds
- * are mixed.
+ * The kind of list the selected paragraphs belong to. Null when they are not a list, when nothing
+ * defines the list they are in, or when the kinds are mixed.
  * It reads the paragraphs a lock leaves open, the same ones `editParagraphs` writes to: counting a
  * locked paragraph that stays out of the list would keep the answer mixed, so the button would make
  * a list a second time instead of taking it off.
@@ -232,14 +290,19 @@ export function isInList(state: EditorState): boolean {
  * one is left alone, as is the right indent.
  */
 const leaveListAtLineStart: Command = (state, dispatch) =>
-  editParagraphs(state, dispatch, (node) => {
-    if (!listRefOf(node)) return null;
-    const unlisted = withListNumbering(paragraphPPr(node), {
-      numbering: null,
-      indent: { kind: "clearHanging" },
-    });
-    return unlisted && withLeftIndent(unlisted.pPr, 0);
-  });
+  editParagraphs(
+    state,
+    dispatch,
+    (node) => {
+      if (!listRefOf(node)) return null;
+      const unlisted = withListNumbering(paragraphPPr(node), {
+        numbering: null,
+        indent: { kind: "clearHanging" },
+      });
+      return unlisted && withLeftIndent(unlisted.pPr, 0);
+    },
+    { alongside: pruneLists(documentNumbering(state).added) }
+  );
 
 /**
  * Pressing Enter in an empty list item does not open a new item.

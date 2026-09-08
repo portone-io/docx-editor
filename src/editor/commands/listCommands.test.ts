@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+
+import { undo } from "prosemirror-history";
 import type { Node as PMNode } from "prosemirror-model";
 import type { Command, EditorState } from "prosemirror-state";
 import { describe, expect, it } from "vitest";
@@ -12,6 +14,8 @@ import { posOfText, runCommand, select } from "../../__testing__/editing";
 import { NO_FORMATTING } from "../../docx/formatting";
 import { importDocx } from "../../docx/importDocx";
 import { toParagraphFormat } from "../../model/format";
+import { newListsOf } from "../../numbering/listRegistry";
+import { templateList } from "../../numbering/listTemplate";
 import {
   EMPTY_NUMBERING,
   type Numbering,
@@ -20,7 +24,10 @@ import {
 import { createEditorState, editorStateForSession } from "../createEditor";
 import { type EditorDocument, NO_DOCUMENT } from "../editorDocument";
 import { docxKeymap } from "../plugins/keymap";
-import { paragraphMarkers } from "../plugins/numberingDecorations";
+import {
+  documentNumbering,
+  paragraphMarkers,
+} from "../plugins/numberingDecorations";
 import {
   activeListKind,
   decreaseListLevel,
@@ -240,18 +247,81 @@ describe("starting a new list", () => {
     expect(numId).toBeGreaterThan(4);
   });
 
-  it("a numbered list takes an even numbering id and a bullet list an odd one", () => {
+  it("the kind decides the definition and not the number, so both kinds take the same one", () => {
     const state = bothParagraphs(openState(body, threeLevelNumbering()));
-    const numbered = listRef(
-      paragraphAt(runCommand(state, toggleNumberedList).doc, 0)
-    );
-    const bulleted = listRef(
-      paragraphAt(runCommand(state, toggleBulletList).doc, 0)
-    );
+    const numbered = runCommand(state, toggleNumberedList);
+    const bulleted = runCommand(state, toggleBulletList);
 
-    expect(numbered && numbered.numId % 2).toBe(0);
-    expect(bulleted && bulleted.numId % 2).toBe(1);
-    expect(numbered?.numId).not.toBe(bulleted?.numId);
+    // Started from the same document, each takes the first number nothing else spends
+    expect(listRef(paragraphAt(numbered.doc, 0))?.numId).toBe(4);
+    expect(listRef(paragraphAt(bulleted.doc, 0))?.numId).toBe(4);
+    expect(newListsOf(numbered.doc.attrs.newLists).get(4)).toEqual(
+      templateList("numbered")
+    );
+    expect(newListsOf(bulleted.doc.attrs.newLists).get(4)).toEqual(
+      templateList("bullet")
+    );
+  });
+
+  it("two lists started one after the other take different numbers and the same definition", () => {
+    const state = openState(body, threeLevelNumbering());
+    const first = runCommand(
+      select(state, posOfText(state.doc, "First")),
+      toggleNumberedList
+    );
+    const second = runCommand(
+      select(first, posOfText(first.doc, "Second")),
+      toggleNumberedList
+    );
+    const registered = newListsOf(second.doc.attrs.newLists);
+
+    expect([...registered.keys()]).toEqual([4, 5]);
+    expect(registered.get(4)).toEqual(registered.get(5));
+  });
+
+  it("records the definition the list was started with on the document node", () => {
+    const state = bothParagraphs(openState(body, threeLevelNumbering()));
+    const listed = runCommand(state, toggleBulletList);
+    const numId = listRef(paragraphAt(listed.doc, 0))?.numId;
+    const registered = newListsOf(listed.doc.attrs.newLists);
+
+    expect(numId).toBeDefined();
+    expect([...registered.keys()]).toEqual([numId]);
+    // The definition is the one a bullet list is started with, whatever number it was given
+    expect(registered.get(numId ?? 0)).toEqual(templateList("bullet"));
+  });
+
+  it("draws the list from the definition it registered rather than from its number", () => {
+    const state = bothParagraphs(openState(body, threeLevelNumbering()));
+    const listed = runCommand(state, toggleBulletList);
+
+    expect(markerTexts(listed.doc, documentNumbering(listed))).toEqual([
+      "●",
+      "●",
+    ]);
+  });
+
+  it("undo takes the definition back off with the list", () => {
+    const state = bothParagraphs(openState(body, threeLevelNumbering()));
+    const listed = runCommand(state, toggleNumberedList);
+    expect(newListsOf(listed.doc.attrs.newLists).size).toBe(1);
+
+    const back = runCommand(listed, undo);
+
+    expect(newListsOf(back.doc.attrs.newLists).size).toBe(0);
+    expect(back.doc.eq(state.doc)).toBe(true);
+  });
+
+  it("leaving the list gives back the number and the definition it took", () => {
+    const state = bothParagraphs(openState(body, threeLevelNumbering()));
+    const listed = runCommand(state, toggleNumberedList);
+    const plain = runCommand(bothParagraphs(listed), removeFromList);
+
+    expect(newListsOf(plain.doc.attrs.newLists).size).toBe(0);
+    const again = runCommand(bothParagraphs(plain), toggleNumberedList);
+    expect(listRef(paragraphAt(again.doc, 0))).toEqual(
+      listRef(paragraphAt(listed.doc, 0))
+    );
   });
 
   it("a new list paragraph records no indentation and takes the level's on screen", () => {
@@ -260,8 +330,10 @@ describe("starting a new list", () => {
     const listed = runCommand(state, toggleNumberedList);
 
     expect(pPrOf(paragraphAt(listed.doc, 0))).not.toContain("<w:ind");
-    // The template's first level indents by 720 twips, drawn by the marker decoration
-    expect(paragraphMarkers(listed.doc, numbering)[0]).toMatchObject({
+    // The started list's first level indents by 720 twips, drawn by the marker decoration
+    expect(
+      paragraphMarkers(listed.doc, documentNumbering(listed))[0]
+    ).toMatchObject({
       indentStartPt: 36,
       textIndentPt: -18,
     });
@@ -338,11 +410,11 @@ describe("toggling the list buttons", () => {
       "bullet"
     );
 
-    // A numbering id absent from the definition is a numbered list when even and a bullet list when odd
+    // A number nothing defines is a list whose kind cannot be told, so neither button is pressed
     const unknown = openState(paragraph("New", listPPr(9, 0, "")));
-    expect(activeListKind(select(unknown, posOfText(unknown.doc, "New")))).toBe(
-      "bullet"
-    );
+    expect(
+      activeListKind(select(unknown, posOfText(unknown.doc, "New")))
+    ).toBeNull();
   });
 
   it("presses no button when the paragraph is not a list or the kinds are mixed", () => {
@@ -705,11 +777,9 @@ describe("a document with no numbering.xml", () => {
     expect(
       listRef(paragraphAt(runCommand(at, removeFromList).doc, 0))
     ).toBeNull();
-    // Pressing the same kind again takes the paragraph out of the list, so it applies
-    expect(
-      listRef(paragraphAt(runCommand(at, toggleBulletList).doc, 0))
-    ).toBeNull();
-    // Changing the kind means taking a new numbering id, so it is blocked here
+    // Nothing here defines list 3, so neither button is pressed and either would start a list,
+    // which is what this document has nowhere to write. `removeFromList` above is the way out
+    expect(toggleBulletList(at, () => undefined)).toBe(false);
     expect(toggleNumberedList(at, () => undefined)).toBe(false);
   });
 });

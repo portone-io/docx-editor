@@ -6,15 +6,30 @@ import {
   type Node as PMNode,
   Slice,
 } from "prosemirror-model";
-import { type EditorState, Plugin } from "prosemirror-state";
+import { type EditorState, Plugin, type Transaction } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
-import { paragraphAttrsFor, styleIdOf } from "../docx/formatting";
+import {
+  type FormattingContext,
+  paragraphAttrsFor,
+  styleIdOf,
+} from "../docx/formatting";
 import {
   type ParagraphProps,
   withListNumbering,
   withParagraphStyle,
 } from "../docx/paraProps";
-import { type ListKind, MAX_ILVL, nextNumId } from "../numbering/listTemplate";
+import {
+  listsWorn,
+  NEW_LISTS_ATTR,
+  type NewLists,
+  newListsValue,
+} from "../numbering/listRegistry";
+import {
+  allocateList,
+  type ListKind,
+  MAX_ILVL,
+  templateList,
+} from "../numbering/listTemplate";
 import { docxSchema, isPageBreak } from "../schema";
 import { editorClassNames } from "../styles/classNames";
 import { PASTED_IMAGE_ATTRIBUTE } from "./clipboard/images";
@@ -27,15 +42,12 @@ import {
   safeHref,
   withInlineStyle,
 } from "./clipboard/inlineFormatting";
-import { listRefOf } from "./commands/listCommands";
+import { numIdsIn } from "./commands/listCommands";
 import { documentFormatting, documentParagraphStyles } from "./documentStyles";
 import type { ImageToInsert } from "./insertImage";
 import { insertPlainText } from "./plainText";
 import { moveCaretToDrop } from "./plugins/dropCaret";
-import {
-  canStartNewList,
-  documentNumbering,
-} from "./plugins/numberingDecorations";
+import { canStartNewList } from "./plugins/numberingDecorations";
 
 const BLOCK_TAGS = new Set([
   "ADDRESS",
@@ -407,42 +419,40 @@ function listParagraphProps(list: ListContext | null): ParagraphProps | null {
 }
 
 function paragraphAttrs(
-  state: EditorState,
+  formatting: FormattingContext,
   list: ListContext | null,
   paragraph: ParagraphProps | null
 ): Record<string, unknown> | null {
   const props = listParagraphProps(list) ?? paragraph;
   return props
-    ? {
-        pPr: props.pPr,
-        ...paragraphAttrsFor(props.pPr, documentFormatting(state)),
-      }
+    ? { pPr: props.pPr, ...paragraphAttrsFor(props.pPr, formatting) }
     : null;
-}
-
-function usedNumIds(state: EditorState): Set<number> {
-  const used = new Set(documentNumbering(state).lists.keys());
-  state.doc.descendants((node) => {
-    if (node.type !== docxSchema.nodes.paragraph) return true;
-    const ref = listRefOf(node);
-    if (ref) used.add(ref.numId);
-    return false;
-  });
-  return used;
 }
 
 class HtmlReader {
   readonly blocks: PMNode[] = [];
   readonly used: Set<number>;
   readonly canCreateLists: boolean;
+  /**
+   * What the pasted paragraphs are resolved against: the document's context, holding the
+   * definition of each pasted list as it is read, so that an item is drawn against the list it
+   * is joining rather than against a list nothing yet defines.
+   */
+  private formatting: FormattingContext;
 
   constructor(
     private readonly state: EditorState,
     private readonly preserveParagraphStyles: boolean,
     private readonly images: ReadonlyMap<string, ImageToInsert>
   ) {
-    this.used = usedNumIds(state);
+    this.formatting = documentFormatting(state);
+    this.used = numIdsIn(state.doc);
     this.canCreateLists = canStartNewList(state);
+  }
+
+  /** The definitions of every list started while editing, the pasted ones among them */
+  get newLists(): NewLists {
+    return this.formatting.numbering.added;
   }
 
   read(root: ParentNode): readonly PMNode[] {
@@ -486,7 +496,7 @@ class HtmlReader {
     }
     this.blocks.push(
       docxSchema.nodes.paragraph.create(
-        paragraphAttrs(this.state, list, paragraph),
+        paragraphAttrs(this.formatting, list, paragraph),
         content
       )
     );
@@ -529,11 +539,20 @@ class HtmlReader {
     flush();
   }
 
+  /**
+   * The number a pasted list takes, registered with the definition that list is drawn and written
+   * with. A pasted list is started here just as the list button starts one.
+   */
   private takeNumId(kind: ListKind): number | null {
     if (!this.canCreateLists) return null;
-    const id = nextNumId(this.used, kind);
-    this.used.add(id);
-    return id;
+    const started = allocateList(
+      this.formatting.numbering,
+      this.used,
+      templateList(kind)
+    );
+    this.formatting = { ...this.formatting, numbering: started.numbering };
+    this.used.add(started.numId);
+    return started.numId;
   }
 
   private readList(
@@ -586,28 +605,55 @@ function sliceDepth(root: DocumentFragment): 0 | 1 {
   return root.querySelector(blocks.join(",")) ? 0 : 1;
 }
 
+/** What a paste puts in: the content, and the definitions of the lists it started */
+export interface PastedContent {
+  slice: Slice;
+  newLists: NewLists;
+}
+
 export function richHtmlSlice(
   state: EditorState,
   document: Document,
   source: string,
   images: ReadonlyMap<string, ImageToInsert> = new Map<string, ImageToInsert>()
-): Slice | null {
+): PastedContent | null {
   if (source.trim() === "") return null;
   const template = document.createElement("template");
   template.innerHTML = source;
   const open = sliceDepth(template.content);
-  const blocks = new HtmlReader(state, open === 0, images).read(
-    template.content
-  );
+  const reader = new HtmlReader(state, open === 0, images);
+  const blocks = reader.read(template.content);
   return blocks.length === 0
     ? null
-    : new Slice(Fragment.fromArray([...blocks]), open, open);
+    : {
+        slice: new Slice(Fragment.fromArray([...blocks]), open, open),
+        newLists: reader.newLists,
+      };
+}
+
+/**
+ * The transaction a paste is put in with: the content, and the definitions of the lists it started
+ * recorded on the document node so that the export writes them out and undo takes them back.
+ */
+export function withPastedContent(
+  tr: Transaction,
+  content: PastedContent
+): Transaction {
+  return tr.setDocAttribute(
+    NEW_LISTS_ATTR,
+    newListsValue(listsWorn(content.newLists, numIdsIn(tr.doc)))
+  );
 }
 
 export function insertRichHtml(view: EditorView, source: string): boolean {
-  const slice = richHtmlSlice(view.state, view.dom.ownerDocument, source);
-  if (slice === null) return false;
-  view.dispatch(view.state.tr.replaceSelection(slice).scrollIntoView());
+  const content = richHtmlSlice(view.state, view.dom.ownerDocument, source);
+  if (content === null) return false;
+  view.dispatch(
+    withPastedContent(
+      view.state.tr.replaceSelection(content.slice),
+      content
+    ).scrollIntoView()
+  );
   return true;
 }
 

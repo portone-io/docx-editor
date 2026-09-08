@@ -208,6 +208,7 @@ describe("downloadDocx", () => {
     const { view } = handle;
     // The built-in list command refuses where the package cannot declare the numbering part it
     // would need, so the paragraph is put in a list the way a plugin of the consumer's own would
+    // put it there. Doing it that way records no definition either, which is the second refusal
     const first = view.state.doc.child(0);
     view.dispatch(
       view.state.tr.setNodeMarkup(0, undefined, {
@@ -219,6 +220,11 @@ describe("downloadDocx", () => {
     expect(downloadDocx(handle, { fileName: "contract" })).toEqual({
       status: "blocked",
       problems: [
+        {
+          code: "unsupported-content",
+          message: "the list numbered 1 has no definition to be written",
+          pos: 0,
+        },
         {
           code: "missing-content-types",
           message:
