@@ -1,6 +1,6 @@
 {
   "name": "@portone/docx-editor",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "A simple DOCX editor for React, built directly on OOXML.",
   "license": "Apache-2.0",
   "type": "module",

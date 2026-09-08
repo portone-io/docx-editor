@@ -1,5 +1,164 @@
 # @portone/docx-editor
 
+## 0.5.0
+
+### Minor Changes
+
+- [#105](https://github.com/portone-io/docx-editor/pull/105) [`efe7dbf`](https://github.com/portone-io/docx-editor/commit/efe7dbf6f2cb260ee912dbaed4c518c11b3527b7) Thanks [@Deea222](https://github.com/Deea222)! - Keep markup the editor cannot model where it stood, instead of standing the paragraph around it down.
+  
+  Opening a document used to walk a handful of element names and give up on the rest, and giving up
+  travelled outward until a whole paragraph became an "Unsupported content" placeholder. A word
+  processor writes a `w:lastRenderedPageBreak` on every page it lays out, so a real document opened
+  with one locked paragraph per page.
+  
+  Every level of the document now has a preservation rule of its own. A run child stays inside its
+  run, a paragraph child beside the runs, a block stays a block, and only a marker or a wrapper
+  standing between the rows or the cells of a table - where there is no node to keep it in - still
+  stands the table down. What is left shows as a small box naming the element it stands for, or as
+  nothing where the file drew nothing, and the paragraph around it stays editable.
+  
+  - A field code and its drawn result, a tracked insertion or deletion, a symbol, a positional tab
+    and a content control the editor could not take apart are visible where they stand.
+  - Bookmarks, permission ranges, the markers of a moved passage and the pieces of a field cannot be
+    removed by an edit; a tracked-change container, a simple field and a symbol can be selected and
+    deleted whole.
+  - `documentFidelity` and the `notes` of `importDocx` now report `preserved-run-content`, and no
+    longer report `paragraph-demoted` for a document being opened.
+  - New node `rawRunContent`, and `rawInline` gains the attrs `element`, `display`, `text` and
+    `guarded`. A plugin reading the document model sees both.
+  - A footnote body, a comment body and a header now read a `w:cr` and a `w:noBreakHyphen` the way
+    the document body does.
+
+- [#106](https://github.com/portone-io/docx-editor/pull/106) [`f2871cd`](https://github.com/portone-io/docx-editor/commit/f2871cd5535780c10574906c9dceb2b3ecc4715c) Thanks [@Deea222](https://github.com/Deea222)! - The comment composer keeps the text it was opened over while the document is edited elsewhere, and closes when that text is deleted or the mode turns read-only. The comment is written on that text rather than on whatever is selected when the writer submits.
+  
+  Opening the composer no longer scrolls the document back to its first page.
+  
+  `addComment` and `canAddComment` take an optional `{ from, to }` range as their last argument, which a composer of your own can hold across edits the same way; the current selection is still used when none is given.
+
+- [#116](https://github.com/portone-io/docx-editor/pull/116) [`4d9964d`](https://github.com/portone-io/docx-editor/commit/4d9964d59ce66ce52dac06b86968b8ee20dc4f2d) Thanks [@Deea222](https://github.com/Deea222)! - Comment bodies keep their formatting when edited, and `setCommentBody` accepts a formatted body.
+  
+  **Breaking:** the `commentReference` node loses its `text`, `commentXml` and `imported` attrs and
+  the `noteReference` node loses its `text` attr, together with the `data-comment-text`,
+  `data-comment-xml`, `data-comment-imported` and `data-note-text` attributes that carried them into
+  the DOM. A plugin that matched any of those reads what a comment or a note says through
+  `documentComments` and `documentNotes` instead, which answer as they always did.
+  
+  **Breaking:** `DocumentComment`, `DocumentCommentReply` and `DocumentNote` declare every field
+  `readonly`. They are the editor's own records, worked out once per edit and handed out rather than
+  copied, so a caller that was writing into one copies it first.
+  
+  A side story - a comment's body, a footnote's - is now read the way the document body is: the same
+  block readers, the same verbatim slices, one document of the editor's own schema per story. It
+  stands on the document node under `doc.attrs.stories`, so an edit to it rides a transaction and
+  lands in the history, and everything the edit did not touch is written back as the bytes it arrived
+  as. Editing a comment used to flatten its body to plain text and rewrite it as one run, which lost
+  its bold, its paragraph style and its second paragraph.
+  
+  `setCommentBody(id, body)` is a new command on `./commands`. It takes a `doc` node of `docxSchema`,
+  which is what a composer of your own builds a formatted body as; `updateComment(id, text)` stays
+  what it was for a body that is only text.
+  
+  Dropping those attrs is what the story replaces them with: what a comment or a note says is no
+  longer written on the node marking where it stands, so nothing has to keep the two in step, a copy
+  of the node no longer carries the body along with it, and neither reaches the clipboard.
+
+- [#108](https://github.com/portone-io/docx-editor/pull/108) [`d783e24`](https://github.com/portone-io/docx-editor/commit/d783e2485eaf6bbbacc3498202019ab053f4e7da) Thanks [@Deea222](https://github.com/Deea222)! - Keep a table whose markers stand between its rows or its cells, and stand every block the editor
+  cannot model as one kind of placeholder.
+  
+  **Breaking:** the `docxRaw` and `bookmarkBlock` node types no longer exist. Both were placeholders
+  for a block nobody could read, differing only in where the block stood and whether anything of it
+  was drawn, and `rawBlock` is now the one node for all of them. A plugin that matched either name
+  matches `rawBlock` instead and reads `display` (`"chip"` for a placeholder box, `"hidden"` for a
+  marker that draws nothing) and `guarded` to tell them apart. The class names
+  `docx-editor-bookmark-block`, `docx-editor-raw-xml` and `docx-editor-table` are gone with them;
+  every placeholder now draws as `docx-editor-raw-block`.
+  
+  - A bookmark spanning a table column stands under the row rather than inside a cell, and used to
+    cost the whole table its structure. Such a table now opens as a table, and the marker goes back
+    exactly where it stood. A marker following a cell that only continues a vertical merge is the
+    remaining exception, since that cell is created fresh on export.
+  - `documentFidelity` and the `notes` of `importDocx` no longer report `table-demoted` for a table
+    whose only unread markup is a marker.
+  - A placeholder can now be moved between the body and a table cell and still export.
+  - `table` and `tableRow` gain a `leadingXml` attr, `tableRow` and `tableCell` a `trailingXml` attr:
+    the markers each carries between its children.
+  
+  Table markers remain protected against deletion, duplication and reordering, including markers
+  whose ranges cross into a cell paragraph. Export checks read those fragments in document order.
+
+### Patch Changes
+
+- [#109](https://github.com/portone-io/docx-editor/pull/109) [`05e9431`](https://github.com/portone-io/docx-editor/commit/05e9431c5ba773fa9f751860cbf34760b191d91a) Thanks [@Deea222](https://github.com/Deea222)! - Cache comment and note lists between document edits. Public readers continue to return independent comment, reply, and note records, so changes to their results cannot alter the editor's cached data.
+
+- [#118](https://github.com/portone-io/docx-editor/pull/118) [`7de8870`](https://github.com/portone-io/docx-editor/commit/7de8870596bf4b311ab4b9fe4f19fb1291d37dbb) Thanks [@Deea222](https://github.com/Deea222)! - Every section now previews the headers and footers it names. A document whose second section
+  selects a header of its own used to draw the first section's on every page, because only the first
+  section's references were ever resolved.
+  
+  A header and a footer body is read the way the document body is: the same block readers, the same
+  verbatim slices, one story per part on the document node beside the comment and footnote stories.
+  The plain-text walker each of them used to have is gone, so a `w:cr`, a no-break hyphen and a field
+  read the same in a header as they do anywhere else, and a `PAGE` or `NUMPAGES` field is now found by
+  pairing the field characters it is written between rather than by scanning the text they surround.
+  
+  A header story the editor rewrote is written back into its own part, around the two ends that part
+  arrived with, and every part nobody rewrote is repacked as the bytes it came as. Editing a header is
+  not offered in the editor yet; this is the model and the export path underneath it.
+
+- [#115](https://github.com/portone-io/docx-editor/pull/115) [`9c5331d`](https://github.com/portone-io/docx-editor/commit/9c5331d543b3238f9859c60f5821e7b94fe52bba) Thanks [@Deea222](https://github.com/Deea222)! - Copying and pasting inside the same document now keeps what it was copied as: paragraph and character formatting, tabs, breaks, images, links, and whole tables, instead of the part an HTML reader could make out. Copying a grid of cells and pasting it over selected cells fills them in place. Comment markers, bookmarks, and note references are not copied, so cutting and pasting them back drops them. A pasted list whose numbering the document no longer defines is given a number that it does, keeping the bullets or numbers it was copied with; a list arriving from another document or application is renumbered by the reader that reads it. Content copied from another document, including a second editor on the same page, still comes in through that reader.
+
+- [#119](https://github.com/portone-io/docx-editor/pull/119) [`9b4b3fc`](https://github.com/portone-io/docx-editor/commit/9b4b3fc72ca51b89adf81063ca7fb2fb2c126e3f) Thanks [@Deea222](https://github.com/Deea222)! - Page boundaries and table widths now follow the paper of the section a block sits in. A document
+  whose second section is landscape used to be paginated as though the whole of it were the first
+  section's portrait paper, and a table put in that section was divided into the upright body width
+  and could not be widened past it.
+  
+  Each page is now as tall as the body its own section leaves, a section break starts a new page
+  unless it is marked continuous, and a table is fitted to the body width of the section it is
+  inserted or dragged in. An image pasted into a section is fitted to the height that section's paper
+  leaves. A page number still carries on across a section boundary rather than restarting where the
+  section asks.
+  
+  One sheet is still drawn at one width, the first section's, because nothing draws two paper widths
+  on one sheet. A landscape section is therefore paginated on landscape pages but drawn on the
+  sheet's width, and a table wider than the sheet's body is drawn shrunk to fit it while the document
+  keeps the width it was given. An even-page or odd-page start is preserved and exported untouched
+  but drawn as an ordinary new page.
+
+- [#110](https://github.com/portone-io/docx-editor/pull/110) [`272cd5c`](https://github.com/portone-io/docx-editor/commit/272cd5c55098ef4c62e352fc9837b3db807c1439) Thanks [@Deea222](https://github.com/Deea222)! - Keep a picture's extension lists intact when the image is resized.
+  
+  A picture written by Word often carries extension lists - the small records a word processor
+  attaches to a picture to remember things the format has no field for, such as which application
+  created it or what resolution to keep it at. Resizing such an image used to overwrite the name of
+  any empty record with the image's new size, which left the document with content Word reads as
+  invalid. Only the two sizes an image is drawn from are rewritten now, and every extension record
+  goes back out exactly as it came in.
+  
+  Size updates follow the picture’s own XML paths, so an extension’s nested transforms and size
+  records stay unchanged too. Size attributes retain their quoting and surrounding markup.
+
+- [#112](https://github.com/portone-io/docx-editor/pull/112) [`0327d4d`](https://github.com/portone-io/docx-editor/commit/0327d4dabe1de5814d440bf21f89cf5e5d1308b9) Thanks [@Deea222](https://github.com/Deea222)! - Give a document's sections a model of their own. Every `w:sectPr` is now read once - its paper and
+  margins, the header and footer stories it selects, whether the first page differs, and the page
+  number it starts at - instead of being read twice by two readers that looked for it differently.
+  
+  The section that closes the body rides on the document node as `sectPr` rather than in the
+  preserved tail. It is written straight back out, so an untouched document still exports byte for
+  byte, and a submission that rewrites the paper it is written on is refused by
+  `onlyCommentsChangedBy` as it was before.
+  
+  Pressing Enter in the last paragraph of a section continues to leave the break on the later half,
+  now on the same reading of `w:pPr` the rest of the package uses.
+
+- [#111](https://github.com/portone-io/docx-editor/pull/111) [`4357635`](https://github.com/portone-io/docx-editor/commit/435763591d456ec26f6466b5e69ecc226a20f743) Thanks [@Deea222](https://github.com/Deea222)! - Take a comment added to a document whose author shares your display name, instead of refusing the whole save.
+  A document an older Word wrote has no people part, so its comments name an author and nobody in particular.
+  Adding a comment under one of those names no longer records a person for it, which had handed the comments already there to whoever commented next, and `onlyCommentsChangedBy` now takes such a comment back rather than reading it as a forged author.
+  Every comment carrying a shared name, the new one included, stays everyone's to edit.
+  This also protects comments preserved outside the editable story: their authors are not assigned to a new commenter, and the verifier rejects a people record that would claim them.
+
+- [#113](https://github.com/portone-io/docx-editor/pull/113) [`e61185e`](https://github.com/portone-io/docx-editor/commit/e61185e645b06ce5091e59b08c5926fcaf71da16) Thanks [@Deea222](https://github.com/Deea222)! - Pasting text over selected table cells now fills every selected cell instead of only the first. Pasting the clipboard's plain text (Ctrl/Cmd+Shift+V) ignores accompanying HTML and images. Right-click Paste passes the clipboard's HTML and text through the same handlers as Ctrl/Cmd+V, including image loading and text fallback. Unreadable clipboard content leaves the selection intact when there is no usable text fallback.
+
+- [#117](https://github.com/portone-io/docx-editor/pull/117) [`faf4081`](https://github.com/portone-io/docx-editor/commit/faf4081b43cbfd111985b1aa124e0e90b4136fc9) Thanks [@Deea222](https://github.com/Deea222)! - A hyperlink whose text is already underlined, which is how a word processor writes one, is drawn with one line under it rather than two. The editor's own link line is still drawn under a link the document leaves unstyled.
+
+- [#106](https://github.com/portone-io/docx-editor/pull/106) [`f2871cd`](https://github.com/portone-io/docx-editor/commit/f2871cd5535780c10574906c9dceb2b3ecc4715c) Thanks [@Deea222](https://github.com/Deea222)! - Reject invalid comment range positions without throwing or adding a comment at a rounded position.
+
 ## 0.4.0
 
 ### Minor Changes
