@@ -7,7 +7,13 @@
  * the places where Word actually breaks may differ.
  *
  * The size of a page is the document's own (`docx/pageGeometry`), not a fixed A4: a Letter
- * document breaks at Letter's height and fits its tables to Letter's width.
+ * document breaks at Letter's height and fits its tables to Letter's width. A document written in
+ * several sections breaks each block at the height of the section that block sits in
+ * (`docx/sections`), and a section break starts a new page whatever kind it declares.
+ *
+ * The width is the exception: one sheet is drawn at one width (`styles/editor.css`), which is the
+ * first section's, so a section on wider paper is paginated on its own height but drawn on the
+ * paper the sheet holds.
  */
 
 import {
@@ -17,6 +23,7 @@ import {
   type PageGeometry,
   twipsToPx,
 } from "../docx/pageGeometry";
+import type { DocumentSection } from "../docx/sections";
 import { editorCssVariables } from "../styles/classNames";
 import type { MeasuredBlock, PageCut } from "./blockKinds";
 
@@ -67,6 +74,53 @@ export function pagePixels(geometry: PageGeometry): PagePixels {
 
 /** The paper a document that names none is drawn on */
 export const A4_PAGE_PIXELS: PagePixels = pagePixels(A4_PORTRAIT);
+
+/** The paper one section of a document is laid out on */
+export interface SectionPixels {
+  /**
+   * The last position this section covers. A section is closed by the paragraph carrying its
+   * `w:sectPr` (§17.6.17), so the block after that one opens the section that follows, and the
+   * section the body itself closes reaches past every block.
+   */
+  untilPos: number;
+  pixels: PagePixels;
+}
+
+/**
+ * The paper of every section of a document, in the pixels the sheet is drawn with.
+ *
+ * Reading the sections walks every block (`docx/sections`), so this runs once per document change
+ * rather than once per measurement.
+ */
+export function sectionPixels(
+  sections: readonly DocumentSection[]
+): SectionPixels[] {
+  return sections.map(({ anchor, props }) => ({
+    untilPos:
+      anchor.kind === "paragraph" ? anchor.pos : Number.POSITIVE_INFINITY,
+    pixels: pagePixels(props.geometry),
+  }));
+}
+
+/** Which section the block at this position belongs to: the first one reaching that far */
+function sectionIndexAt(
+  sections: readonly SectionPixels[],
+  pos: number
+): number {
+  const reaching = sections.findIndex((section) => pos <= section.untilPos);
+  return reaching === -1 ? sections.length - 1 : reaching;
+}
+
+/**
+ * The paper the block at this position is laid out on, which is the paper of every page that
+ * block stands on. A4 where the list names no section at all.
+ */
+export function sectionPaperAt(
+  sections: readonly SectionPixels[],
+  pos: number
+): PagePixels {
+  return sections[sectionIndexAt(sections, pos)]?.pixels ?? A4_PAGE_PIXELS;
+}
 
 /** A pixel length as CSS writes it, rounded so the sheet and the arithmetic agree to the pixel */
 function px(value: number): string {
@@ -152,9 +206,17 @@ export interface PageLayout {
 
 export interface PageLayoutInput {
   blocks: readonly MeasuredBlock[];
-  pageBodyHeight: number;
-  /** From the end of the previous page's body to the top of the next page's body */
-  pageStep: number;
+  /**
+   * The paper of each section in document order (`sectionPixels`). A block is laid out on the
+   * paper of the section it sits in, and the section a block opens starts a page of its own.
+   */
+  sections: readonly SectionPixels[];
+}
+
+/** Where one block is laid out: the paper of its section, and which section that is */
+interface BlockPaper {
+  section: number;
+  paper: PagePixels;
 }
 
 function round(value: number): number {
@@ -164,11 +226,17 @@ function round(value: number): number {
 /**
  * Whether the keep a block asks for can hold between it and the block after it.
  * A block parted inside itself starts its last piece where the cut put it, so there is nothing a
- * keep could move; and a page the document starts between the two is one no keep can close.
+ * keep could move; and a page the document starts between the two is one no keep can close, a
+ * section boundary included.
  */
-function keepsWithNext(block: MeasuredBlock, next: MeasuredBlock): boolean {
+function keepsWithNext(
+  block: MeasuredBlock,
+  next: MeasuredBlock,
+  sameSection: boolean
+): boolean {
   return (
     block.keepWithNext &&
+    sameSection &&
     block.candidates.length === 0 &&
     !block.breakAfter &&
     !next.breakBefore
@@ -185,14 +253,18 @@ function keepsWithNext(block: MeasuredBlock, next: MeasuredBlock): boolean {
  */
 function keptExtents(
   blocks: readonly MeasuredBlock[],
-  fitsPage: (extent: number) => boolean
+  laid: readonly BlockPaper[]
 ): Map<number, number> {
+  const fitsPage = (extent: number, index: number) => {
+    const height = laid[index]?.paper.bodyHeight ?? 0;
+    return extent <= height + TOLERANCE_PX;
+  };
   const extents = new Map<number, number>();
   /** The run being walked up from its end, the block nearest its head last */
   let run: { index: number; extent: number }[] = [];
   const settle = () => {
     const head = run.at(-1);
-    if (head && fitsPage(head.extent)) {
+    if (head && fitsPage(head.extent, head.index)) {
       for (const { index, extent } of run) {
         extents.set(index, extent);
       }
@@ -202,7 +274,8 @@ function keptExtents(
   for (let index = blocks.length - 2; index >= 0; index -= 1) {
     const block = blocks[index];
     const next = blocks[index + 1];
-    if (block && next && keepsWithNext(block, next)) {
+    const sameSection = laid[index]?.section === laid[index + 1]?.section;
+    if (block && next && keepsWithNext(block, next, sameSection)) {
       const below = run.at(-1)?.extent ?? next.minFirstPiece;
       run.push({ index, extent: block.height + next.gap + below });
     } else {
@@ -226,12 +299,10 @@ function keptExtents(
  * a row boundary in a table - is taken only where the piece after it would run off the page.
  * A block kept with the next one is pushed together with what it is kept with: the blocks kept
  * after it and the first piece of the block the keeps end at.
+ * Each block is measured against the paper of its own section, and the first block of a section
+ * opens a page of its own.
  */
-export function pageLayout({
-  blocks,
-  pageBodyHeight,
-  pageStep,
-}: PageLayoutInput): PageLayout {
+export function pageLayout({ blocks, sections }: PageLayoutInput): PageLayout {
   const pushes: BlockPush[] = [];
   const cuts: PageCut[] = [];
   const splits: PageSplit[] = [];
@@ -244,50 +315,89 @@ export function pageLayout({
     crossed: false,
   };
   const pages: PageStart[] = [firstPage];
-  if (!(pageBodyHeight > 0)) {
+  // A section is read into a geometry that always leaves a body to draw on
+  // (`docx/pageGeometry`), so a paper with no body is a hand-built one; a list with no such paper
+  // at all cannot hold a single page, let alone a boundary between two
+  const roomy = sections.find(
+    (section) => section.pixels.bodyHeight > 0
+  )?.pixels;
+  if (roomy === undefined) {
     return { pushes, cuts, splits, pages, bodyHeight: 0 };
   }
 
+  /** Where each block is laid out, read once for the whole pass */
+  const laid: BlockPaper[] = blocks.map((block) => {
+    const section = sectionIndexAt(sections, block.pos);
+    const pixels = sections[section]?.pixels;
+    return {
+      section,
+      paper: pixels && pixels.bodyHeight > 0 ? pixels : roomy,
+    };
+  });
+
   let pageStart = 0;
   let cursor = 0;
+  /** The paper of the block being placed, which is the paper of the page it stands on */
+  let paper = laid[0]?.paper ?? roomy;
 
-  const split = (y: number, crossed: boolean, forced: boolean) => {
+  /**
+   * From the end of the body of the page being closed to the top of the body of the page opening:
+   * the closed page keeps its own bottom margin and the opening one its own top margin, which
+   * comes to the same step on both sides of a boundary inside one section.
+   */
+  const stepTo = (opening: PagePixels) =>
+    paper.pageStep - paper.marginTop + opening.marginTop;
+
+  const split = (
+    y: number,
+    crossed: boolean,
+    forced: boolean,
+    opening: PagePixels = paper
+  ) => {
     const page = splits.length + 2;
     splits.push({ y: round(y), page, forced, crossed });
-    pageStart = crossed ? y : y + pageStep;
+    pageStart = crossed ? y : y + stepTo(opening);
     pages.push({ page, bodyStart: round(pageStart), pos: blockPos, crossed });
   };
 
   // No gap is placed along a stretch the text crosses: what a block taller than one page covers,
   // and the part of a block that runs past the end of its page before the next break in it
   const crossTo = (y: number) => {
-    while (y > pageStart + pageBodyHeight + TOLERANCE_PX) {
-      split(pageStart + pageBodyHeight, true, false);
+    while (y > pageStart + paper.bodyHeight + TOLERANCE_PX) {
+      split(pageStart + paper.bodyHeight, true, false);
     }
   };
 
-  const fitsPage = (extent: number) => extent <= pageBodyHeight + TOLERANCE_PX;
-  const kept = keptExtents(blocks, fitsPage);
+  const kept = keptExtents(blocks, laid);
   let breakAfterPrevious = false;
 
   for (const [index, block] of blocks.entries()) {
     blockPos = block.pos;
-    const pageEnd = pageStart + pageBodyHeight;
+    /** The paper this block is laid out on, which is the paper of the page it opens */
+    const opening = laid[index]?.paper ?? paper;
+    const startsSection =
+      index > 0 && laid[index]?.section !== laid[index - 1]?.section;
+    // The page being closed was filled with the blocks already on it, so it ends where their own
+    // paper ends rather than where this block's does
+    const pageEnd = pageStart + paper.bodyHeight;
     const top = cursor + block.gap;
     const startsPage =
-      (block.breakBefore || breakAfterPrevious) &&
+      (block.breakBefore || breakAfterPrevious || startsSection) &&
       top > pageStart + TOLERANCE_PX;
     // Only the piece up to the first candidate has to fit on the page the block starts on, and
     // for a block kept with the next one, whatever it is kept with as well
     const first = kept.get(index) ?? block.minFirstPiece;
     const overflows = top + first > pageEnd + TOLERANCE_PX;
-    const fits = fitsPage(first);
+    const fits = first <= opening.bodyHeight + TOLERANCE_PX;
 
     const push =
       startsPage || (overflows && fits)
-        ? Math.max(0, pageEnd + pageStep - top)
+        ? Math.max(0, pageEnd + stepTo(opening) - top)
         : 0;
-    if (push > 0 || startsPage) split(pageEnd, false, startsPage);
+    if (push > 0 || startsPage) split(pageEnd, false, startsPage, opening);
+    // Whether or not a page was opened for it, this block and everything after it stand on its
+    // own section's paper
+    paper = opening;
     if (push > 0) {
       pushes.push({
         pos: block.pos,
@@ -298,6 +408,7 @@ export function pageLayout({
 
     // Offsets are read off the block with no space in it, so each cut shifts the ones after it
     const contentTop = top + push;
+    const pageBodyHeight = paper.bodyHeight;
     let added = 0;
     let pieceStart = 0;
     for (let index = 0; index <= block.candidates.length; index += 1) {
@@ -336,6 +447,7 @@ export function pageLayout({
     cuts,
     splits,
     pages,
-    bodyHeight: round(pageStart + pageBodyHeight),
+    // The last page is filled out in full on the paper of the section it opens with
+    bodyHeight: round(pageStart + paper.bodyHeight),
   };
 }

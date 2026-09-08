@@ -147,8 +147,7 @@ export function usePageLayout({
       const measured = measureSheet(view, box);
       const layout = pageLayout({
         blocks: measured.blocks,
-        pageBodyHeight: page.bodyHeight,
-        pageStep: page.pageStep,
+        sections: [{ untilPos: Number.POSITIVE_INFINITY, pixels: page }],
       });
       setPageMarks(view, { pushes: layout.pushes, cuts: layout.cuts });
 

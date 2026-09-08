@@ -7,7 +7,7 @@ import { docxSchema } from "../schema";
 import { editorAttributes } from "../styles/classNames";
 import { measureSheet } from "./measureBlocks";
 import { setPageMarks } from "./pageDecorations";
-import { type MeasuredBlock, pageLayout } from "./pageLayout";
+import { A4_PAGE_PIXELS, type MeasuredBlock, pageLayout } from "./pageLayout";
 
 const PAGE = 500;
 const STEP = 100;
@@ -102,7 +102,15 @@ function draw(
 }
 
 function layoutOf(blocks: readonly MeasuredBlock[]) {
-  return pageLayout({ blocks, pageBodyHeight: PAGE, pageStep: STEP });
+  return pageLayout({
+    blocks,
+    sections: [
+      {
+        untilPos: Number.POSITIVE_INFINITY,
+        pixels: { ...A4_PAGE_PIXELS, bodyHeight: PAGE, pageStep: STEP },
+      },
+    ],
+  });
 }
 
 /** A paragraph carrying a page break, and one below it tall enough to be pushed off the page */
