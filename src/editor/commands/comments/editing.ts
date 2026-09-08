@@ -448,41 +448,46 @@ export function removeCommentReply(
   commentId: string,
   replyId: string
 ): Command {
-  const removedReplyIds = new Set<string>();
-  return updateReference(
-    commentId,
-    (node) => {
-      const replies = repliesAttr(node.attrs.replies);
-      if (!replies.some((reply) => reply.id === replyId)) return null;
-      const removedIds = new Set([replyId]);
-      const removedParaIds = new Set(
-        replies
-          .filter((reply) => removedIds.has(reply.id))
-          .map((reply) => reply.paraId)
-      );
-      let changed = true;
-      while (changed) {
-        changed = false;
-        for (const reply of replies) {
-          if (
-            !removedIds.has(reply.id) &&
-            removedParaIds.has(reply.parentParaId)
-          ) {
-            removedIds.add(reply.id);
-            removedParaIds.add(reply.paraId);
-            changed = true;
+  return (state, dispatch) => {
+    // What comes down with the reply is worked out against the document this run is made over. A
+    // command is asked whether it applies and then asked to run, so a set the command itself held
+    // would carry one document's answer into the next
+    const removedReplyIds = new Set<string>();
+    return updateReference(
+      commentId,
+      (node) => {
+        const replies = repliesAttr(node.attrs.replies);
+        if (!replies.some((reply) => reply.id === replyId)) return null;
+        const removedIds = new Set([replyId]);
+        const removedParaIds = new Set(
+          replies
+            .filter((reply) => removedIds.has(reply.id))
+            .map((reply) => reply.paraId)
+        );
+        let changed = true;
+        while (changed) {
+          changed = false;
+          for (const reply of replies) {
+            if (
+              !removedIds.has(reply.id) &&
+              removedParaIds.has(reply.parentParaId)
+            ) {
+              removedIds.add(reply.id);
+              removedParaIds.add(reply.paraId);
+              changed = true;
+            }
           }
         }
-      }
-      for (const id of removedIds) removedReplyIds.add(id);
-      return {
-        ...node.attrs,
-        replies: replies.filter((reply) => !removedIds.has(reply.id)),
-        threadImported: false,
-      };
-    },
-    dropBodies(removedReplyIds)
-  );
+        for (const id of removedIds) removedReplyIds.add(id);
+        return {
+          ...node.attrs,
+          replies: replies.filter((reply) => !removedIds.has(reply.id)),
+          threadImported: false,
+        };
+      },
+      dropBodies(removedReplyIds)
+    )(state, dispatch);
+  };
 }
 
 /**

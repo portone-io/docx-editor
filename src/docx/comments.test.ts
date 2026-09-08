@@ -129,6 +129,18 @@ function nestedThreadDocument(): Uint8Array {
   return zipSync(parts);
 }
 
+/** The same thread with the second reply hanging off the comment rather than off the first reply */
+function siblingThreadDocument(): Uint8Array {
+  const parts = unzipSync(nestedThreadDocument());
+  parts["word/commentsExtended.xml"] = encoder.encode(
+    decode(parts["word/commentsExtended.xml"]).replace(
+      '<w15:commentEx w15:paraId="000000A3" w15:paraIdParent="000000A2"/>',
+      '<w15:commentEx w15:paraId="000000A3" w15:paraIdParent="000000A1"/>'
+    )
+  );
+  return zipSync(parts);
+}
+
 function makeCommentedDocx(body = COMMENTED_BODY): Uint8Array {
   const parts = unzipSync(makeDocx(body));
   parts["word/_rels/document.xml.rels"] = encoder.encode(
@@ -756,6 +768,25 @@ describe("WordprocessingML comments", () => {
     expect(commentsXml).not.toContain('w:id="6"');
     expect(extendedXml).not.toContain('w15:paraId="000000A2"');
     expect(extendedXml).not.toContain('w15:paraId="000000A3"');
+  });
+
+  /**
+   * A command is asked whether it applies and then asked to run, and each call answers over the
+   * document it is handed. What one call worked out is that call's own: a reply nested under
+   * another there is not a reply the next run takes away where it stands on its own.
+   */
+  it("takes away the replies of the document each run is made over", () => {
+    const nested = importDocx(nestedThreadDocument());
+    const siblings = importDocx(siblingThreadDocument());
+    const remove = removeCommentReply("4", "5");
+
+    expect(remove(createEditorState(nested.doc))).toBe(true);
+    const state = apply(createEditorState(siblings.doc), remove);
+
+    expect(documentComments(state)[0]?.replies).toEqual([
+      expect.objectContaining({ id: "6", text: "Nested reply" }),
+    ]);
+    expect(storyOf(state.doc, "comment:6")).not.toBeNull();
   });
 
   it("stops at a cycle in imported reply relationships", () => {
