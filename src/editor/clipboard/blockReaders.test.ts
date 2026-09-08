@@ -10,7 +10,10 @@ import { describe, expect, it } from "vitest";
 import { makeNumberedDocx } from "../../__testing__/docx";
 import { importDocx } from "../../docx/importDocx";
 import { toRunFormat } from "../../model/format";
+import { newListsOf } from "../../numbering/listRegistry";
+import { templateList } from "../../numbering/listTemplate";
 import { editorClassNames } from "../../styles/classNames";
+import { listRefOf } from "../commands/listCommands";
 import { createEditorView, editorStateForSession } from "../createEditor";
 import { INTERNAL_TOKEN_ATTRIBUTE } from "./internalChannel";
 import { detectHtmlSource } from "./source";
@@ -132,6 +135,45 @@ describe("reading HTML written by another application", () => {
         expect(cell.firstChild?.type.name).toBe("paragraph");
       }
     }
+  });
+
+  it("reads Word mso-list paragraphs as a list", () => {
+    const doc = pasted(fixture("word-list-table.html"));
+
+    const items = nodesOfType(doc, "paragraph").filter((block) =>
+      ["Spare rope", "Weather chart"].includes(block.textContent)
+    );
+    expect(items).toHaveLength(2);
+    const refs = items.map((item) => listRefOf(item));
+    expect(refs[0]).toEqual({ numId: refs[1]?.numId, ilvl: 0 });
+    expect(refs[0]?.numId).toEqual(expect.any(Number));
+    // Word draws the bullet into the paragraph, and the list numbers itself here
+    expect(doc.textContent).not.toContain("\u00b7");
+  });
+
+  it("keeps two Word lists apart and counts the one whose marker counts", () => {
+    const doc = pasted(
+      '<meta name=Generator content="Microsoft Word 15">' +
+        "<p class=MsoListParagraphCxSpFirst style='mso-list:l0 level1 lfo1'>" +
+        "<![if !supportLists]><span style='mso-list:Ignore'>1.</span><![endif]>First</p>" +
+        "<p class=MsoListParagraphCxSpLast style='mso-list:l0 level1 lfo1'>" +
+        "<![if !supportLists]><span style='mso-list:Ignore'>2.</span><![endif]>Second</p>" +
+        "<p class=MsoNormal style='mso-list:l1 level2 lfo2'>" +
+        "<span style='mso-list:Ignore'>\u00b7</span>Aside</p>"
+    );
+
+    const items = nodesOfType(doc, "paragraph").filter((block) =>
+      ["First", "Second", "Aside"].includes(block.textContent)
+    );
+    expect(items.map((item) => listRefOf(item)?.ilvl)).toEqual([0, 0, 1]);
+    const [first, second, aside] = items.map(
+      (item) => listRefOf(item)?.numId ?? null
+    );
+    expect(first).toBe(second);
+    expect(aside).not.toBe(first);
+    const registered = newListsOf(doc.attrs.newLists);
+    expect(registered.get(first ?? -1)).toEqual(templateList("numbered"));
+    expect(registered.get(aside ?? -1)).toEqual(templateList("bullet"));
   });
 
   it("gives a cell one paragraph for each block it holds", () => {

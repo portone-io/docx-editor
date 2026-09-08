@@ -15,7 +15,7 @@ import {
   isTableSide,
   type TableCellPlan,
 } from "../../docx/tableTemplate";
-import type { ListKind } from "../../numbering/listTemplate";
+import { type ListKind, MAX_ILVL } from "../../numbering/listTemplate";
 import { contextFor, type InlineContext } from "./inlineFormatting";
 import type { HtmlReadContext } from "./readContext";
 
@@ -178,7 +178,97 @@ export const tableBlockReader: HtmlBlockReader = {
   },
 };
 
+/**
+ * How Word says a paragraph is an item of a list: which list definition it belongs to, how deep it
+ * sits, and which list of the document it is one of (`mso-list:l0 level1 lfo1`).
+ */
+const WORD_LIST = /mso-list:\s*l(\d+)\s+level(\d+)\s+lfo(\d+)/i;
+
+/** The marker Word draws for a reader that numbers no lists itself */
+const IGNORED_MARKER = /mso-list:\s*Ignore/i;
+const MARKER_START = /^\[if\s+!supportLists\]/i;
+const MARKER_END = /^\[endif\]/i;
+
+/** A marker counting off items rather than standing in front of each of them */
+const COUNTED_MARKER = /^\s*(?:\d+|[A-Za-z]+)\s*[.)]/;
+
+/** Where a Word paragraph says it stands in a list */
+interface WordListItem {
+  /** The list definition and the list of the document, which together name one list */
+  key: string;
+  level: number;
+}
+
+function wordListItemOf(element: HTMLElement): WordListItem | null {
+  const found = WORD_LIST.exec(element.getAttribute("style") ?? "");
+  if (found === null) return null;
+  const level = Number.parseInt(found[2] ?? "", 10);
+  return {
+    key: `${found[1]}/${found[3]}`,
+    // Word counts its levels from one, and no document has more levels than the model holds
+    level: Number.isFinite(level)
+      ? Math.min(Math.max(level, 1), MAX_ILVL + 1) - 1
+      : 0,
+  };
+}
+
+/**
+ * The content of a Word list paragraph with the marker Word drew left out, and that marker.
+ *
+ * Word writes the bullet or the number into the paragraph itself, between two conditional comments
+ * or in a span it marks to be ignored, so that an application numbering no lists still shows one.
+ * Here the list carries its own numbering, so the drawn marker would be a second one.
+ */
+function withoutMarker(element: HTMLElement): {
+  marker: string;
+  content: Node[];
+} {
+  const content: Node[] = [];
+  let marker = "";
+  let inMarker = false;
+  for (const child of element.childNodes) {
+    if (child.nodeType === child.COMMENT_NODE) {
+      const data = child.nodeValue ?? "";
+      if (MARKER_START.test(data)) inMarker = true;
+      else if (MARKER_END.test(data)) inMarker = false;
+      continue;
+    }
+    const ignored =
+      child.nodeType === child.ELEMENT_NODE &&
+      IGNORED_MARKER.test((child as HTMLElement).getAttribute("style") ?? "");
+    if (inMarker || ignored) marker += child.textContent ?? "";
+    else content.push(child);
+  }
+  return { marker, content };
+}
+
+/**
+ * A Word paragraph that is an item of a list, read as an item of a list here.
+ *
+ * Word puts no `<ul>` or `<ol>` on the clipboard: every item is a paragraph saying which list it
+ * belongs to, so the paragraphs of one list are joined by that name rather than by standing inside
+ * one element. Whether the list counts its items is only visible in the marker Word drew.
+ */
+export const wordListReader: HtmlBlockReader = {
+  matches: (element, host) =>
+    host.context.source === "word" && wordListItemOf(element) !== null,
+  read: (element, inline, host) => {
+    const item = wordListItemOf(element);
+    if (item === null) return [];
+    const { marker, content } = withoutMarker(element);
+    const kind: ListKind = COUNTED_MARKER.test(marker) ? "numbered" : "bullet";
+    return [
+      host.paragraph(host.readInline(content, contextFor(inline, element)), {
+        kind,
+        numId: host.listNumber(item.key, kind),
+        level: item.level,
+      }),
+    ];
+  },
+};
+
 /** The readers every reading consults, in the order they are tried */
 export const DEFAULT_BLOCK_READERS: readonly HtmlBlockReader[] = [
   tableBlockReader,
+  wordListReader,
 ];
