@@ -63,6 +63,7 @@ import {
   removeCommentReply,
   removeLink,
   selectionLock,
+  setCommentBody,
   setCommentResolved,
   setFontFamily,
   setFontSize,
@@ -97,6 +98,7 @@ import {
   parseXml,
   W_NS,
 } from "../../ooxml/xml";
+import { docxSchema } from "../../schema";
 import { sameSource } from "../../schema/sourceEquality";
 import {
   addColumnAfter,
@@ -358,6 +360,22 @@ const ANOTHER_COMMENT: NewComment = {
 };
 
 const EDITED_COMMENT = "The comment the battery rewrote";
+
+/**
+ * The same comment written the way a composer of one's own writes one, its run bold.
+ *
+ * It says word for word what it already said: the probes after this one look the comment up by
+ * what it reads as, and the probe that wrote that text checks the part for it at the end.
+ */
+function formattedBody(): PMNode {
+  return docxSchema.nodes.doc.create(null, [
+    docxSchema.nodes.paragraph.create(null, [
+      docxSchema.text(EDITED_COMMENT, [
+        docxSchema.marks.run.create({ rPr: "<w:rPr><w:b/></w:rPr>" }),
+      ]),
+    ]),
+  ]);
+}
 
 const A_REPLY: NewComment = {
   ...AUTHOR,
@@ -1324,6 +1342,29 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
           comments,
           `${exported.name} keeps the text a comment was rewritten from`
         ).not.toContain(A_COMMENT.text);
+      },
+    },
+  ],
+  setCommentBody: [
+    {
+      name: "give that comment a formatted body",
+      slot: "spaced",
+      check: (_before, after) =>
+        expect(commentReading(after, EDITED_COMMENT).text).toBe(EDITED_COMMENT),
+      run: (state) =>
+        ran(
+          state,
+          setCommentBody(
+            commentReading(state, EDITED_COMMENT).id,
+            formattedBody()
+          )
+        ),
+      expect: (exported) => {
+        const comments = exported.text(COMMENTS_PATH);
+        expect(
+          comments,
+          `${exported.name} writes the run formatting a body was given`
+        ).toContain("<w:rPr><w:b/></w:rPr>");
       },
     },
   ],

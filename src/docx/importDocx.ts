@@ -4,7 +4,7 @@
  * This module knows nothing about the screen. All it knows is the file and the document model.
  */
 
-import { Fragment, type Node as PMNode } from "prosemirror-model";
+import type { Node as PMNode } from "prosemirror-model";
 import {
   bindsWritingPrefix,
   conformanceOf,
@@ -22,7 +22,11 @@ import {
   type XmlParser,
 } from "../ooxml/xml";
 import { docxSchema } from "../schema";
-import { commentReferencesIn, readComments } from "./comments";
+import {
+  commentReferencesIn,
+  type ImportedComments,
+  readComments,
+} from "./comments";
 import { openParts } from "./container";
 import {
   DEFAULT_TAB_STOP_PT,
@@ -36,20 +40,17 @@ import {
   NO_DOCUMENT_DEFAULTS,
   readDocumentDefaults,
   readParagraphStyles,
-  styledParagraph,
 } from "./formatting";
 import { NO_HEADERS_FOOTERS, readHeadersFooters } from "./headersFooters";
 import { readLinkTargets } from "./hyperlink";
-import { buildParagraph, type ImportSources } from "./importParagraph";
-import { buildPreservedBlock } from "./importPreserved";
-import { buildTable } from "./importTable";
+import { type ImportSources, NO_IMPORT_SOURCES } from "./importParagraph";
 import { readImageSources } from "./media";
 import { NUMBERING_REL_TYPE } from "./newLists";
-import { readNotes } from "./notes";
+import { type ImportedNotePart, type NoteKind, readNotes } from "./notes";
 import { readPart, relatedPartPath } from "./packageParts";
 import { A4_PORTRAIT } from "./pageGeometry";
 import { readRelationships } from "./relationships";
-import { type BodyScan, scanBody } from "./scan";
+import { type BlockScan, scanBody } from "./scan";
 import { firstSectPrElement, readSectionProperties } from "./sections";
 import {
   BODY_STORY_KEY,
@@ -57,6 +58,14 @@ import {
   newSessionId,
   SessionStore,
 } from "./session";
+import {
+  buildBlock,
+  type ImportedStory,
+  readStories,
+  type StoryDeps,
+  storiesByKey,
+  withStyleFormats,
+} from "./story";
 import { NO_THEME_FONTS, readThemeFonts } from "./theme";
 
 const OFFICE_DOCUMENT_REL = `${R_NS}/officeDocument`;
@@ -114,54 +123,10 @@ function assertWritableMainPart(root: Element): void {
 }
 
 /**
- * Moves a single body block into a node.
- *
- * A paragraph always opens editable (`./importParagraph`). What is left over is a table whose
- * rows this reader could not take apart, a range marker standing between blocks, and a block this
- * reader has no reader for at all; each stands as one placeholder naming the original fragment,
- * drawn by whatever `./importPolicy` says is on screen of it.
- */
-function buildBlock(
-  el: Element,
-  srcId: string,
-  sources: ImportSources,
-  context: FormattingContext
-): PMNode {
-  if (el.localName === "p") return buildParagraph(el, srcId, sources);
-  if (el.localName === "tbl") {
-    const table = buildTable(el, srcId, sources, context);
-    if (table) return table;
-  }
-  return buildPreservedBlock(el, srcId, "body");
-}
-
-/**
- * Folds the style chain into the display values.
- *
- * These values are used for display only, so the original XML fragments are left untouched.
- * A table is left alone: which part of it a cell belongs to is what its table style dresses the
- * paragraphs inside by, and `buildTable` is where that is known.
- */
-function withStyleFormats(node: PMNode, context: FormattingContext): PMNode {
-  if (node.type === docxSchema.nodes.paragraph) {
-    return styledParagraph(node, context);
-  }
-  if (node.childCount === 0 || node.type === docxSchema.nodes.table) {
-    return node;
-  }
-  const children = node.children.map((child) =>
-    withStyleFormats(child, context)
-  );
-  // If no child changed, do not rebuild the node
-  if (children.every((child, i) => child === node.child(i))) return node;
-  return node.copy(Fragment.fromArray(children));
-}
-
-/**
  * Checks that the fragments sliced out of the raw text and what the DOM read point at the same thing.
  * If the two disagree, even the parts we never edited could be corrupted, so we do not open the file.
  */
-function assertScanMatchesDom(children: Element[], scan: BodyScan): void {
+function assertScanMatchesDom(children: Element[], scan: BlockScan): void {
   if (children.length !== scan.blocks.length) {
     throw new DocxImportError(
       "malformed-xml",
@@ -190,7 +155,7 @@ function assertScanMatchesDom(children: Element[], scan: BodyScan): void {
  * A `w:sectPr` anywhere other than the very end is a shape no healthy document has, so it is
  * simply left as a preservation block.
  */
-function splitTrailingSectPr(scan: BodyScan): BodyScan & {
+function splitTrailingSectPr(scan: BlockScan): BlockScan & {
   sectPr: string | null;
 } {
   const last = scan.blocks.at(-1);
@@ -203,6 +168,59 @@ function splitTrailingSectPr(scan: BodyScan): BodyScan & {
     suffix: scan.suffix,
     sectPr: last.xml,
   };
+}
+
+/**
+ * What reading a side story of this package takes: the images and links of the part it stands in,
+ * and no comment or note of its own, since WordprocessingML puts neither inside one.
+ */
+function storyDeps(
+  parts: Map<string, Uint8Array>,
+  partPath: string,
+  sessionId: string,
+  formatting: FormattingContext
+): StoryDeps {
+  return {
+    session: { sessionId },
+    sources: {
+      ...NO_IMPORT_SOURCES,
+      images: readImageSources(parts, partPath),
+      links: readLinkTargets(parts, partPath),
+      themeFonts: formatting.themeFonts,
+    },
+    formatting,
+  };
+}
+
+/** Every comment body of the package, each read the way a body block is */
+function readCommentStories(
+  comments: ImportedComments,
+  parts: Map<string, Uint8Array>,
+  sessionId: string,
+  formatting: FormattingContext
+): readonly ImportedStory[] {
+  const { partPath, xml } = comments;
+  if (partPath === null || xml === null) return [];
+  return readStories(
+    { kind: "comment", partPath, xml, entryName: "comment", idAttr: "id" },
+    storyDeps(parts, partPath, sessionId, formatting)
+  );
+}
+
+/** The same for one notes part, whose entries are its footnotes or its endnotes */
+function readNoteStories(
+  part: ImportedNotePart,
+  kind: NoteKind,
+  parts: Map<string, Uint8Array>,
+  sessionId: string,
+  formatting: FormattingContext
+): readonly ImportedStory[] {
+  const { partPath, xml } = part;
+  if (partPath === null || xml === null) return [];
+  return readStories(
+    { kind, partPath, xml, entryName: kind, idAttr: "id" },
+    storyDeps(parts, partPath, sessionId, formatting)
+  );
 }
 
 /** A docx file as bytes, however it arrived (file input, fetch, filesystem) */
@@ -326,6 +344,17 @@ function readDocx(input: DocxBytes): {
     noteLabel,
   };
   const sessionId = newSessionId();
+  const stories = storiesByKey([
+    ...readCommentStories(comments, parts, sessionId, formatting),
+    ...readNoteStories(
+      notes.footnotes,
+      "footnote",
+      parts,
+      sessionId,
+      formatting
+    ),
+    ...readNoteStories(notes.endnotes, "endnote", parts, sessionId, formatting),
+  ]);
   const blockNodes = blockElements.map((el, i) =>
     withStyleFormats(
       buildBlock(
@@ -349,7 +378,15 @@ function readDocx(input: DocxBytes): {
       )
     );
   }
-  const doc = docxSchema.nodes.doc.create({ sectPr: scan.sectPr }, blockNodes);
+  const doc = docxSchema.nodes.doc.create(
+    {
+      sectPr: scan.sectPr,
+      stories: Object.fromEntries(
+        Array.from(stories, ([key, story]) => [key, story.doc.toJSON()])
+      ),
+    },
+    blockNodes
+  );
   return {
     doc,
     notes: fidelityNotesOf(doc, mainPartPath),
@@ -376,6 +413,7 @@ function readDocx(input: DocxBytes): {
       comments,
       commentReferenceIds: new Set(commentReferencesIn(doc).keys()),
       headersFooters,
+      stories,
     }),
   };
 }

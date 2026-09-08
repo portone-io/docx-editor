@@ -26,7 +26,6 @@ import {
   withXmlParser,
   type XmlParser,
 } from "../ooxml/xml";
-import { sameSource } from "../schema/sourceEquality";
 import { commentsPlanner } from "./comments";
 import { repackParts } from "./container";
 import type { ExportRefs } from "./exportRefs";
@@ -52,39 +51,8 @@ import {
   relationshipWriter,
   relsPathOf,
 } from "./relationships";
-import { serializeBlock } from "./serializeBlock";
-import {
-  type DocxSession,
-  originalBlock,
-  type SessionStore,
-  sessionOf,
-} from "./session";
-
-/**
- * An unchanged block is exported with its original XML as is; only a changed block is rebuilt.
- *
- * Unchanged is judged by `sameSource` rather than by `Node.eq`, because opening a file works the
- * display attrs out again (`schema/attrRoles`) and a block rebuilt over that would lose the markup
- * the writer does not model, the properties of a cell continuing a vertical merge among it.
- */
-function blockXml(
-  node: PMNode,
-  session: SessionStore,
-  refs: ExportRefs,
-  onlyBlock: boolean
-): string {
-  const imported = originalBlock(node, session);
-  // Empty original XML belongs to the editable placeholder of a section-only body. Once
-  // another block is added, that paragraph represents a real blank line and must be written.
-  if (
-    imported &&
-    (imported.xml !== "" || onlyBlock) &&
-    sameSource(node, imported.node)
-  ) {
-    return imported.xml;
-  }
-  return serializeBlock(node, refs);
-}
+import { blockXml } from "./serializeBlock";
+import { type DocxSession, type SessionStore, sessionOf } from "./session";
 
 function buildDocumentXml(
   doc: PMNode,
@@ -93,7 +61,7 @@ function buildDocumentXml(
 ): string {
   const pieces: string[] = [session.documentPrefix];
   withUniqueIdentities(doc).forEach((child) => {
-    pieces.push(blockXml(child, session, refs, doc.childCount === 1));
+    pieces.push(blockXml(child, refs, doc.childCount === 1));
   });
   // The body's own section closes the blocks and stands ahead of the tail (§17.6.18)
   const sectPr: unknown = doc.attrs.sectPr;

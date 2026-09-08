@@ -26,12 +26,10 @@ import {
   serializeXml,
 } from "../ooxml/xml";
 import { docxSchema } from "../schema";
-import {
-  commentParaId,
-  type ImportedComments,
-  importedCommentReplies,
-  NO_COMMENTS,
-} from "./comments";
+// The two comment modules are named outright rather than through the folder's barrel: the barrel
+// also carries the writer, which reads a story back out (`./story`), and a story is read here
+import { commentParaId, importedCommentReplies } from "./comments/model";
+import { type ImportedComments, NO_COMMENTS } from "./comments/reading";
 import { readParagraphFormat, readRunFormat } from "./formatting";
 import {
   type LinkTargets,
@@ -140,9 +138,6 @@ function buildModelledRunChild(
             authorId: comment?.authorId ?? null,
             initials: comment?.initials ?? null,
             date: comment?.date ?? null,
-            text: comment?.text ?? "",
-            commentXml: comment?.xml ?? null,
-            imported: true,
             paraId,
             resolved: comment?.resolved ?? false,
             extensionXml: comment?.extensionXml ?? null,
@@ -171,7 +166,6 @@ function buildModelledRunChild(
             kind,
             id,
             label: note ? noteLabel(kind, id) : "?",
-            text: note?.text ?? "",
             customMarkFollows,
             referenceXml: serializeXml(el),
           },

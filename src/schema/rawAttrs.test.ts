@@ -88,7 +88,7 @@ const NODE_FRAGMENTS: RawAttrTable = {
   // The document node is never drawn into the DOM, so neither of its source attrs reaches a
   // `data-` attribute for a rule to read back: the section that closes the body is written
   // straight into the exported part instead (`docx/exportDocx`)
-  doc: { newLists: null, sectPr: null },
+  doc: { newLists: null, sectPr: null, stories: null },
   paragraph: {
     pAttrs: {
       attribute: "data-pattrs",
@@ -271,15 +271,6 @@ const NODE_FRAGMENTS: RawAttrTable = {
           })
         ),
     },
-    commentXml: {
-      attribute: "data-comment-xml",
-      sound: '<w:comment w:id="7"><w:p/></w:comment>',
-      adversarial: '<w:comment w:id="7"/><w:comment w:id="8"/>',
-      draw: (xml) =>
-        inline(
-          docxSchema.nodes.commentReference.create({ id: "7", commentXml: xml })
-        ),
-    },
     extensionXml: {
       attribute: "data-comment-extension-xml",
       sound: '<w15:commentEx w15:paraId="0A0A0A0A" w15:done="0"/>',
@@ -292,12 +283,12 @@ const NODE_FRAGMENTS: RawAttrTable = {
           })
         ),
     },
-    // A reply's body goes out into `word/comments.xml` rather than into the story, so it is held
-    // to its shape there. Its extended properties travel the same way, held below
+    // A reply says what it says in a story of its own, which never reaches the DOM. What still
+    // travels on the reference is its extended properties, held to their shape here
     replies: {
       attribute: "data-comment-replies",
-      sound: '<w:comment w:id="8"><w:p/></w:comment>',
-      adversarial: '<w:comment w:id="8"/><w:comment w:id="9"/>',
+      sound: '<w15:commentEx w15:paraId="0B0B0B0B" w15:done="0"/>',
+      adversarial: withSibling('<w15:commentEx w15:paraId="0B0B0B0B"/>'),
       draw: (xml) =>
         inline(
           docxSchema.nodes.commentReference.create({
@@ -307,7 +298,7 @@ const NODE_FRAGMENTS: RawAttrTable = {
                 id: "8",
                 paraId: "0B0B0B0B",
                 parentParaId: "0A0A0A0A",
-                commentXml: xml,
+                extensionXml: xml,
               },
             ],
           })
@@ -318,7 +309,6 @@ const NODE_FRAGMENTS: RawAttrTable = {
     authorId: null,
     initials: null,
     date: null,
-    text: null,
     paraId: null,
     resolved: null,
   },

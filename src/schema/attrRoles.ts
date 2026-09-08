@@ -36,6 +36,9 @@ export const NODE_ATTR_ROLES: AttrTable = {
     // The section that closes the body, as the document wrote it. The export writes it back out
     // between the blocks and the tail, so a change to it is a change to the document
     sectPr: { role: "source", class: "preserved" },
+    // What each side story currently says. The comment writer puts a comment's back into the
+    // Comments part, so a change to one is a change to the document
+    stories: { role: "source", class: "model" },
   },
   paragraph: {
     srcId: { role: "session", class: "identity" },
@@ -116,14 +119,11 @@ export const NODE_ATTR_ROLES: AttrTable = {
     authorId: { role: "source", class: "model" },
     initials: { role: "source", class: "model" },
     date: { role: "source", class: "model" },
-    text: { role: "source", class: "model" },
-    commentXml: { role: "source", class: "preserved" },
     paraId: { role: "source", class: "identity" },
     resolved: { role: "source", class: "model" },
     extensionXml: { role: "source", class: "preserved" },
     replies: { role: "source", class: "model" },
-    // Read to decide whether the comment parts are rewritten at all; neither is written
-    imported: { role: "session", class: "derived" },
+    // Read to decide whether the extended comment part is rewritten at all; it is never written
     threadImported: { role: "session", class: "derived" },
   },
   noteReference: {
@@ -131,10 +131,9 @@ export const NODE_ATTR_ROLES: AttrTable = {
     id: { role: "source", class: "identity" },
     customMarkFollows: { role: "source", class: "model" },
     referenceXml: { role: "source", class: "preserved" },
-    // Both come from the notes part as the document was opened, and the writer puts back the
+    // Worked out from the notes part as the document was opened, and the writer puts back the
     // reference alone: a note renumbered around an edit is the same reference it was
     label: { role: "display", class: "derived" },
-    text: { role: "display", class: "derived" },
   },
   rawRunContent: {
     xml: { role: "source", class: "preserved" },

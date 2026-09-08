@@ -3,7 +3,7 @@
  */
 
 import type { Node as PMNode } from "prosemirror-model";
-import { elementXml, type XmlAttr } from "../../ooxml/element";
+import { attrsText, type XmlAttr } from "../../ooxml/element";
 import { NAMESPACES, wName, xmlnsDecl } from "../../ooxml/names";
 import {
   ensureRootDeclarations,
@@ -12,12 +12,21 @@ import {
   splicePart,
 } from "../../ooxml/partSplice";
 import { encodeUtf8 } from "../../ooxml/xml";
+import { sameSource } from "../../schema/sourceEquality";
+import { NO_EXPORT_REFS } from "../exportRefs";
 import type { PartPlanContext, PartPlanner } from "../partPlan";
 import { directoryOf } from "../relationships";
+import { serializeStory } from "../serializeStory";
 import type { SessionStore } from "../session";
 import {
+  type ImportedStory,
+  storyFromText,
+  storyKey,
+  storyOf,
+  withThreadKeyOn,
+} from "../story";
+import {
   arrivedEntries,
-  renderCommentBody,
   renderCommentExtension,
   withThreadKey,
 } from "./grammar";
@@ -42,10 +51,64 @@ function needsThreadKey(
   session: SessionStore
 ): boolean {
   return (
-    comment.imported &&
+    session.comments.byId.has(id) &&
     carriesThreadMetadata(comment) &&
     (session.comments.byId.get(id)?.paraId ?? null) === null
   );
+}
+
+/** The story one comment or reply says its body in, as the document currently holds it */
+function bodyStory(doc: PMNode, id: string): PMNode | null {
+  return storyOf(doc, storyKey("comment", id));
+}
+
+/** The same as the package arrived holding it, and null for a comment written since */
+function importedBody(session: SessionStore, id: string): ImportedStory | null {
+  return session.stories.get(storyKey("comment", id)) ?? null;
+}
+
+/**
+ * The entry this comment arrived as, and null for a comment the package did not arrive holding.
+ *
+ * An id alone does not claim an entry. The identity on one that arrived is nobody's to rewrite,
+ * its own author's included (`./parts`), so an entry naming somebody else is one this comment
+ * never stood in - a comment written this session onto an id the part had already spent, say.
+ * Writing into it would put that comment out under whoever the file already named there.
+ */
+function importedEntry(
+  comment: CommentReferenceData | CommentReplyData,
+  session: SessionStore
+): ImportedStory | null {
+  const arrived = session.comments.byId.get(comment.id);
+  if (
+    arrived === undefined ||
+    arrived.author !== comment.author ||
+    arrived.date !== comment.date ||
+    arrived.initials !== comment.initials
+  ) {
+    return null;
+  }
+  return importedBody(session, comment.id);
+}
+
+/**
+ * Whether this body still says what the entry that arrived said.
+ *
+ * A document holding no story for the comment says nothing about its body rather than saying it
+ * has none, so a reference that reached this document by another road - restored from a document
+ * node written without its stories - keeps the body the package arrived with.
+ */
+function bodyKept(
+  doc: PMNode,
+  comment: CommentReferenceData | CommentReplyData,
+  session: SessionStore
+): ImportedStory | null {
+  const imported = importedEntry(comment, session);
+  if (imported === null) return null;
+  const current = bodyStory(doc, comment.id);
+  return current === null || sameSource(current, imported.doc)
+    ? imported
+    : null;
 }
 
 /**
@@ -65,12 +128,8 @@ export function commentsChanged(doc: PMNode, session: SessionStore): boolean {
   for (const id of originalBodies) {
     if (!currentBodies.has(id)) return true;
   }
-  for (const id of session.commentReferenceIds) {
-    const comment = current.get(id);
-    if (!comment?.imported) return true;
-  }
-  for (const comment of current.values()) {
-    if (comment.replies.some((reply) => !reply.imported)) return true;
+  for (const comment of currentBodies.values()) {
+    if (bodyKept(doc, comment, session) === null) return true;
   }
   for (const [id, comment] of current) {
     if (needsThreadKey(id, comment, session)) return true;
@@ -191,33 +250,57 @@ function keyedEntry(
   return carriesThreadMetadata(comment) || arrivedKeyed.has(comment.id);
 }
 
-function renderedComment(
-  comment: CommentReferenceData | CommentReplyData,
-  arrivedKeyed: ReadonlySet<string>,
-  arrived: ReadonlyMap<string, Element>
-): string {
-  if (comment.imported && comment.commentXml !== null) {
-    return carriesThreadMetadata(comment)
-      ? withThreadKey(
-          comment.commentXml,
-          comment.paraId,
-          arrived.get(comment.id) ?? null
-        )
-      : comment.commentXml;
-  }
+/** The two ends of a `w:comment` this editor writes from nothing, its identity on the opening tag */
+function writtenContainer(comment: CommentReferenceData | CommentReplyData): {
+  open: string;
+  close: string;
+} {
   const attrs: readonly (XmlAttr | null)[] = [
     [wName("id"), comment.id],
     comment.author === null ? null : [wName("author"), comment.author],
     comment.date === null ? null : [wName("date"), comment.date],
     comment.initials === null ? null : [wName("initials"), comment.initials],
   ];
-  const paraId = keyedEntry(comment, arrivedKeyed) ? comment.paraId : null;
-  const body = renderCommentBody(comment.text, paraId);
-  return elementXml(
-    wName("comment"),
-    attrs.filter((attr): attr is XmlAttr => attr !== null),
-    [body]
+  const text = attrsText(
+    attrs.filter((attr): attr is XmlAttr => attr !== null)
   );
+  return {
+    open:
+      text === "" ? `<${wName("comment")}>` : `<${wName("comment")} ${text}>`,
+    close: `</${wName("comment")}>`,
+  };
+}
+
+/**
+ * One entry of the Comments part: the identity it arrived with, or the one this editor wrote, and
+ * the body its story currently says.
+ *
+ * A body nobody edited goes back out as the bytes it arrived as, so the thread key is put on the
+ * entry that arrived rather than written afresh (`./grammar`) and nothing else about it moves. A
+ * body that was edited is written block by block, each untouched block still verbatim
+ * (`docx/serializeStory`), and the key goes on the last paragraph the way Word keeps it.
+ */
+function renderedComment(
+  comment: CommentReferenceData | CommentReplyData,
+  arrivedKeyed: ReadonlySet<string>,
+  arrived: ReadonlyMap<string, Element>,
+  doc: PMNode,
+  session: SessionStore
+): string {
+  const kept = bodyKept(doc, comment, session);
+  if (kept !== null) {
+    return carriesThreadMetadata(comment)
+      ? withThreadKey(kept.xml, comment.paraId, arrived.get(comment.id) ?? null)
+      : kept.xml;
+  }
+  const paraId = keyedEntry(comment, arrivedKeyed) ? comment.paraId : null;
+  const entry = importedEntry(comment, session);
+  const said = bodyStory(doc, comment.id) ?? storyFromText("");
+  const body = paraId === null ? said : withThreadKeyOn(said, paraId);
+  return serializeStory(body, null, entry ?? writtenContainer(comment), {
+    ...NO_EXPORT_REFS,
+    session,
+  });
 }
 
 /**
@@ -265,10 +348,12 @@ function originalThreadIds(
 }
 
 function commentsXml(
+  doc: PMNode,
+  session: SessionStore,
   references: ReadonlyMap<string, CommentReferenceData>,
-  comments: ImportedComments,
   originallyReferenced: ReadonlySet<string>
 ): string {
+  const comments = session.comments;
   const currentBodies = currentCommentBodies(references);
   const arrivedKeyed = new Set(
     Array.from(comments.byId.values()).flatMap((entry) =>
@@ -284,21 +369,30 @@ function commentsXml(
   const written = new Set<string>();
 
   for (const original of comments.ordered) {
+    // A part naming one id twice holds one comment as far as anything reading it is concerned: the
+    // entry lookup, the story reader and the verifier all take the entry standing first. Writing
+    // the second as well would put back a pair no reader can tell apart
+    if (written.has(original.id)) continue;
     const current = currentBodies.get(original.id);
     if (current) {
-      pieces.push(renderedComment(current, arrivedKeyed, arrived));
+      pieces.push(
+        renderedComment(current, arrivedKeyed, arrived, doc, session)
+      );
       written.add(original.id);
       continue;
     }
     // An orphan was not deleted through the editor and stays untouched.
     if (!originalThreads.has(original.id)) {
-      pieces.push(original.xml);
+      const story = importedBody(session, original.id);
+      if (story !== null) pieces.push(story.xml);
       written.add(original.id);
     }
   }
   for (const [id, comment] of currentBodies) {
     if (!written.has(id)) {
-      pieces.push(renderedComment(comment, arrivedKeyed, arrived));
+      pieces.push(
+        renderedComment(comment, arrivedKeyed, arrived, doc, session)
+      );
     }
   }
 
@@ -350,7 +444,7 @@ function planCommentParts(
     parts.set(
       partPath,
       encodeUtf8(
-        commentsXml(references, session.comments, session.commentReferenceIds),
+        commentsXml(doc, session, references, session.commentReferenceIds),
         session.comments.hadBom
       )
     );

@@ -10,12 +10,7 @@ import type { DocumentComment } from "./model";
 export function documentComments(
   state: EditorState
 ): readonly DocumentComment[] {
-  // Public records have mutable fields. Keep caller edits out of the shared projection and the
-  // command lookup, including edits to a reply's fields.
-  return commentProjection.read(state).comments.map((comment) => ({
-    ...comment,
-    replies: comment.replies.map((reply) => ({ ...reply })),
-  }));
+  return commentProjection.read(state).comments;
 }
 
 /**

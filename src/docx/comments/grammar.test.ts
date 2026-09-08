@@ -1,23 +1,53 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import { parseXml, W_NS } from "../../ooxml/xml";
+import { NO_EXPORT_REFS } from "../exportRefs";
+import { NO_FORMATTING } from "../formatting";
+import { NO_IMPORT_SOURCES } from "../importParagraph";
+import { serializeStory } from "../serializeStory";
+import { readStory, storyFromText, storyText, withThreadKeyOn } from "../story";
 import { W14_NS, W15_NS } from "./constants";
 import {
   arrivedEntries,
-  readStrictCommentBody,
   recordedIdentity,
-  renderCommentBody,
   renderCommentExtension,
   renderPerson,
   wellFormedCommentExtension,
   wellFormedPerson,
   withThreadKey,
 } from "./grammar";
+import { wellFormedEntry } from "./parts";
 
-const entry = (body: string): Element =>
-  parseXml(
-    `<w:comment xmlns:w="${W_NS}" xmlns:w14="${W14_NS}" w:id="0">${body}</w:comment>`
+const CONTAINER = { open: '<w:comment w:id="0">', close: "</w:comment>" };
+
+/** A body this editor writes for that text, under the thread key when there is one */
+function written(text: string, key: string | null): string {
+  const story = storyFromText(text);
+  return serializeStory(
+    key === null ? story : withThreadKeyOn(story, key),
+    null,
+    CONTAINER,
+    NO_EXPORT_REFS
+  );
+}
+
+/** The same body read back as the story it says, the way opening the file reads it */
+function readBack(commentXml: string): string {
+  const el = parseXml(
+    commentXml.replace("<w:comment ", `<w:comment xmlns:w="${W_NS}" `)
   ).documentElement;
+  return storyText(
+    readStory(
+      { kind: "comment", id: "0", partPath: "word/comments.xml" },
+      { el, xml: commentXml },
+      {
+        session: { sessionId: "d0" },
+        sources: NO_IMPORT_SOURCES,
+        formatting: NO_FORMATTING,
+      }
+    ).doc
+  );
+}
 
 /**
  * The writer and the reader are two halves of one grammar, and a file is judged by whether the
@@ -37,20 +67,28 @@ describe("what the writer writes, the reader reads back", () => {
     ["not latin", "댓글 \u{1F600}"],
   ])("reads %s back as it was written", (_what, text) => {
     for (const key of [null, "12345678"]) {
-      expect(readStrictCommentBody(entry(renderCommentBody(text, key)))).toBe(
-        text
-      );
+      const body = written(text, key);
+      expect(readBack(body)).toBe(text);
+      expect(
+        wellFormedEntry(
+          parseXml(body.replace("<w:comment ", `<w:comment xmlns:w="${W_NS}" `))
+            .documentElement,
+          null
+        )
+      ).toBe(true);
     }
   });
 
   it("writes a body the reader takes and nothing it does not", () => {
-    expect(renderCommentBody("note", null)).toBe(
-      '<w:p><w:r><w:t xml:space="preserve">note</w:t></w:r></w:p>'
+    expect(written("note", null)).toBe(
+      '<w:comment w:id="0"><w:p><w:r>' +
+        '<w:t xml:space="preserve">note</w:t></w:r></w:p></w:comment>'
     );
-    expect(renderCommentBody("a\nb", "12345678")).toBe(
-      `<w:p xmlns:w14="${W14_NS}" w14:paraId="12345678">` +
+    expect(written("a\nb", "12345678")).toBe(
+      '<w:comment w:id="0">' +
+        `<w:p xmlns:w14="${W14_NS}" w14:paraId="12345678">` +
         '<w:r><w:t xml:space="preserve">a</w:t><w:br/>' +
-        '<w:t xml:space="preserve">b</w:t></w:r></w:p>'
+        '<w:t xml:space="preserve">b</w:t></w:r></w:p></w:comment>'
     );
   });
 });

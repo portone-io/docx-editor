@@ -9,16 +9,19 @@ import { describe, expect, it } from "vitest";
 import { makeDocx } from "../__testing__/docx";
 import { rangeOfText } from "../__testing__/editing";
 import { importDocx } from "../docx/importDocx";
+import { storyFromText } from "../docx/story";
 import {
   addComment,
   addCommentReply,
   removeComment,
   removeCommentReply,
+  setCommentBody,
   setCommentResolved,
   updateComment,
   updateCommentReply,
 } from "../editor/commands/commentCommands";
 import { createEditorState } from "../editor/createEditor";
+import { docxSchema } from "./index";
 import {
   changesOnlyComments,
   commentAdditionsBy,
@@ -26,6 +29,7 @@ import {
   type ProtectionState,
   protectionAllows,
 } from "./protection";
+import { STORIES_ATTR, storiesOf, storyKey } from "./stories";
 
 const run = (text: string) =>
   `<w:r><w:t xml:space="preserve">${text}</w:t></w:r>`;
@@ -184,6 +188,45 @@ describe("changesOnlyComments", () => {
     expect(changesOnlyComments(plain.doc, typed(state))).toBe(false);
   });
 
+  it("holds for a comment story rewritten with formatting rather than plain text", () => {
+    const state = commented(null);
+    const id = commentId(state);
+    const body = docxSchema.nodes.doc.create(null, [
+      docxSchema.nodes.paragraph.create(null, [
+        docxSchema.text("Bold", [
+          docxSchema.marks.run.create({ rPr: "<w:rPr><w:b/></w:rPr>" }),
+        ]),
+      ]),
+      docxSchema.nodes.paragraph.create(null, docxSchema.text("Second")),
+    ]);
+
+    expect(
+      changesOnlyComments(
+        state.doc,
+        applied(state, setCommentBody(id, body)).doc
+      )
+    ).toBe(true);
+  });
+
+  /**
+   * Every story stands on the document node, so a comparison blind to that would call every
+   * comment edit a body edit. Only comment stories come off: what a footnote or a header says is
+   * what the document says, and changing one of those is a body change.
+   */
+  it("does not hold for a footnote or a header story rewritten beside a comment", () => {
+    const state = commented("me");
+    for (const key of ["footnote:1", "header:word/header1.xml"]) {
+      const changed = state.apply(
+        state.tr.setDocAttribute(STORIES_ATTR, {
+          ...storiesOf(state.doc),
+          [key]: storyFromText("rewritten").toJSON(),
+        })
+      ).doc;
+
+      expect(changesOnlyComments(state.doc, changed)).toBe(false);
+    }
+  });
+
   /** A display value is worked out from the source (`./attrRoles`), so writing it again is no content change */
   it("holds for a display value worked out again beside a comment", () => {
     const state = commented("me");
@@ -225,6 +268,51 @@ describe("protectionAllows", () => {
     const state = opened();
     expect(protectionAllows(state.doc, typed(state), rules("none"))).toBe(true);
   });
+
+  it("comment mode takes editing one's own comment story", () => {
+    const state = commented("me");
+    const edited = applied(
+      state,
+      setCommentBody(commentId(state), storyFromText("rewritten"))
+    );
+
+    expect(protectionAllows(state.doc, edited.doc, rules("comments"))).toBe(
+      true
+    );
+  });
+
+  it("comment mode refuses replacing another author's comment story", () => {
+    const state = commented("other");
+    const rewritten = state.apply(
+      state.tr.setDocAttribute(STORIES_ATTR, {
+        ...storiesOf(state.doc),
+        [storyKey("comment", commentId(state))]:
+          storyFromText("rewritten").toJSON(),
+      })
+    ).doc;
+
+    expect(protectionAllows(state.doc, rewritten, rules("comments"))).toBe(
+      false
+    );
+    expect(protectionAllows(state.doc, rewritten, rules("none"))).toBe(false);
+  });
+
+  it.each(["footnote:1", "header:word/header1.xml"])(
+    "comment mode refuses a transaction that edits the %s story",
+    (key) => {
+      const state = commented("me");
+      const changed = state.apply(
+        state.tr.setDocAttribute(STORIES_ATTR, {
+          ...storiesOf(state.doc),
+          [key]: storyFromText("rewritten").toJSON(),
+        })
+      ).doc;
+
+      expect(protectionAllows(state.doc, changed, rules("comments"))).toBe(
+        false
+      );
+    }
+  );
 
   describe("over another author's comment", () => {
     const state = commented("other");

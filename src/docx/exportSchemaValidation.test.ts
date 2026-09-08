@@ -42,11 +42,13 @@ import {
   documentComments,
   lockSelection,
   selectionLock,
+  setCommentBody,
   setCommentResolved,
 } from "../editor/commands";
 import { toggleBulletList } from "../editor/commands/listCommands";
 import { createEditorState } from "../editor/createEditor";
 import { parseXml, R_NS, W_NS } from "../ooxml/xml";
+import { docxSchema } from "../schema";
 import { setCellPadding } from "../table";
 import { type EditedBlock, withEditedFirst } from "./__testing__/blockEdits";
 import {
@@ -1214,6 +1216,48 @@ describe("the markup-compatibility preprocessing", () => {
     expect(commentsXml, "the export wrote no comments part").toBeDefined();
     expect(commentsXml).toContain("The comment whose thread is resolved");
     expectPartsValidate("a resolved thread", parts);
+  });
+
+  /**
+   * A body written through `setCommentBody` is a story, so the writer puts out whatever the editor
+   * models rather than one run of text. `CT_Comment` takes block-level content, and this is what
+   * holds the writer to it.
+   */
+  it("a comment body edited through setCommentBody validates", () => {
+    const { doc, session } = importDocx(readFixture("kitchen-sink.docx"));
+    const state = openState(doc, session);
+    const commented = ran(
+      firstTextParagraph(state),
+      addComment({
+        text: "A note to rewrite",
+        author: "Schema test",
+        initials: "ST",
+        date: "2026-08-22T00:00:00Z",
+      })
+    );
+    const added = documentComments(commented);
+    const comment = added[added.length - 1];
+    if (comment === undefined) throw new Error("no comment was added");
+    const body = docxSchema.nodes.doc.create(null, [
+      docxSchema.nodes.paragraph.create(
+        { pPr: '<w:pPr><w:pStyle w:val="CommentText"/></w:pPr>' },
+        [
+          docxSchema.text("Bold", [
+            docxSchema.marks.run.create({ rPr: "<w:rPr><w:b/></w:rPr>" }),
+          ]),
+          docxSchema.text(" plain"),
+        ]
+      ),
+      docxSchema.nodes.paragraph.create(null, docxSchema.text("Second")),
+    ]);
+    const rewritten = ran(commented, setCommentBody(comment.id, body));
+
+    const parts = wordprocessingParts(exportDocx(rewritten.doc, session));
+    const commentsXml = parts.get("word/comments.xml");
+    expect(commentsXml, "the export wrote no comments part").toBeDefined();
+    expect(commentsXml).toContain('<w:pStyle w:val="CommentText"/>');
+    expect(commentsXml).toContain("Second");
+    expectPartsValidate("a formatted comment body", parts);
   });
 });
 

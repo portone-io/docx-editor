@@ -10,7 +10,7 @@ export function NotesPanel({
   state: EditorState;
   pageWidth: number;
 }): ReactElement | null {
-  const notes = noteProjection.read(state);
+  const { notes } = noteProjection.read(state);
   if (notes.length === 0) return null;
 
   return (
