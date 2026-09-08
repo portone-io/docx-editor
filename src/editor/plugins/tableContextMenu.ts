@@ -13,13 +13,13 @@ import type { ResolvedPos } from "prosemirror-model";
 import {
   type Command,
   type EditorState,
-  Plugin,
-  PluginKey,
+  type Plugin,
   TextSelection,
   type Transaction,
 } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 import { editsShut } from "../../schema/protectionState";
+import { panelPlugin } from "./panelState";
 
 /** Where the menu should stand (viewport coordinates) */
 export interface TableMenuAnchor {
@@ -27,33 +27,12 @@ export interface TableMenuAnchor {
   clientY: number;
 }
 
-/** The signal to close the menu. A single fixed value, so it cannot be confused with anchor data */
-const CLOSE = "close";
-
-const menuKey = new PluginKey<TableMenuAnchor | null>("docxEditorTableMenu");
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
+/** The metadata is written from wherever the transaction was built, so a point is judged as one */
+function isTableMenuAnchor(value: unknown): value is TableMenuAnchor {
+  if (typeof value !== "object" || value === null) return false;
+  const { clientX, clientY }: Partial<TableMenuAnchor> = value;
+  return typeof clientX === "number" && typeof clientY === "number";
 }
-
-function toAnchor(value: unknown): TableMenuAnchor | null {
-  if (!isRecord(value)) return null;
-  const { clientX, clientY } = value;
-  if (typeof clientX !== "number" || typeof clientY !== "number") return null;
-  return { clientX, clientY };
-}
-
-/** The anchor of the currently open table menu. Null when it is closed */
-export function tableMenuAnchor(state: EditorState): TableMenuAnchor | null {
-  return menuKey.getState(state) ?? null;
-}
-
-/** Closes the menu. Called on running an item, Escape, clicking outside, and scrolling */
-export const closeTableMenu: Command = (state, dispatch) => {
-  if (tableMenuAnchor(state) === null) return false;
-  if (dispatch) dispatch(state.tr.setMeta(menuKey, CLOSE));
-  return true;
-};
 
 /** The start position of the table cell containing this position. Null when outside a cell */
 function cellStart($pos: ResolvedPos): number | null {
@@ -94,43 +73,45 @@ function openMenu(
   anchor: TableMenuAnchor
 ): void {
   const state = view.state;
-  const tr: Transaction = state.tr.setMeta(menuKey, anchor);
+  const tr: Transaction = menu.opening(state.tr, anchor);
   if (!selectionCovers(state, cellPos)) {
     tr.setSelection(TextSelection.near(tr.doc.resolve(cellPos + 1)));
   }
   view.dispatch(tr);
 }
 
+const menu = panelPlugin<TableMenuAnchor>({
+  name: "docxEditorTableMenu",
+  isAnchor: isTableMenuAnchor,
+  // Once the document changes, the cell the menu pointed at may no longer be there
+  onDocChange: "close",
+  props: {
+    handleDOMEvents: {
+      contextmenu(view, event) {
+        // Where the body may not be edited there is nothing here to offer, so the click goes on
+        // to the text menu or the browser
+        if (editsShut(view.state)) return false;
+        const cellPos = cellAtEvent(view, event.target);
+        if (cellPos === null) return false;
+        event.preventDefault();
+        openMenu(view, cellPos, {
+          clientX: event.clientX,
+          clientY: event.clientY,
+        });
+        return true;
+      },
+    },
+  },
+});
+
+/** The anchor of the currently open table menu. Null when it is closed */
+export function tableMenuAnchor(state: EditorState): TableMenuAnchor | null {
+  return menu.anchor(state);
+}
+
+/** Closes the menu. Called on running an item, Escape, clicking outside, and scrolling */
+export const closeTableMenu: Command = menu.close;
+
 export function tableContextMenu(): Plugin<TableMenuAnchor | null> {
-  return new Plugin<TableMenuAnchor | null>({
-    key: menuKey,
-    state: {
-      init: () => null,
-      apply: (tr, current) => {
-        const meta: unknown = tr.getMeta(menuKey);
-        if (meta === CLOSE) return null;
-        const anchor = toAnchor(meta);
-        if (anchor) return anchor;
-        // Once the document changes, the cell the menu pointed at may no longer be there
-        return tr.docChanged ? null : current;
-      },
-    },
-    props: {
-      handleDOMEvents: {
-        contextmenu(view, event) {
-          // Where the body may not be edited there is nothing here to offer, so the click goes on
-          // to the text menu or the browser
-          if (editsShut(view.state)) return false;
-          const cellPos = cellAtEvent(view, event.target);
-          if (cellPos === null) return false;
-          event.preventDefault();
-          openMenu(view, cellPos, {
-            clientX: event.clientX,
-            clientY: event.clientY,
-          });
-          return true;
-        },
-      },
-    },
-  });
+  return menu.plugin;
 }

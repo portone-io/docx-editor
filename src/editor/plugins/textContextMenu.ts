@@ -6,14 +6,14 @@
 import {
   type Command,
   type EditorState,
-  Plugin,
-  PluginKey,
+  type Plugin,
   TextSelection,
   type Transaction,
 } from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
 import type { EditorView } from "prosemirror-view";
 import { editingProtection, editsShut } from "../../schema/protectionState";
+import { panelPlugin } from "./panelState";
 
 /** Where the menu should stand (viewport coordinates) */
 export interface TextMenuAnchor {
@@ -21,33 +21,12 @@ export interface TextMenuAnchor {
   clientY: number;
 }
 
-/** The signal to close the menu. A single fixed value, so it cannot be confused with anchor data */
-const CLOSE = "close";
-
-const menuKey = new PluginKey<TextMenuAnchor | null>("docxEditorTextMenu");
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
+/** The metadata is written from wherever the transaction was built, so a point is judged as one */
+function isTextMenuAnchor(value: unknown): value is TextMenuAnchor {
+  if (typeof value !== "object" || value === null) return false;
+  const { clientX, clientY }: Partial<TextMenuAnchor> = value;
+  return typeof clientX === "number" && typeof clientY === "number";
 }
-
-function toAnchor(value: unknown): TextMenuAnchor | null {
-  if (!isRecord(value)) return null;
-  const { clientX, clientY } = value;
-  if (typeof clientX !== "number" || typeof clientY !== "number") return null;
-  return { clientX, clientY };
-}
-
-/** The anchor of the currently open text menu. Null when it is closed */
-export function textMenuAnchor(state: EditorState): TextMenuAnchor | null {
-  return menuKey.getState(state) ?? null;
-}
-
-/** Closes the menu. Called on running an item, Escape, clicking outside, and scrolling */
-export const closeTextMenu: Command = (state, dispatch) => {
-  if (textMenuAnchor(state) === null) return false;
-  if (dispatch) dispatch(state.tr.setMeta(menuKey, CLOSE));
-  return true;
-};
 
 function isInEditor(view: EditorView, target: EventTarget | null): boolean {
   return target instanceof Node && view.dom.contains(target);
@@ -107,7 +86,7 @@ function openMenu(
   event: MouseEvent,
   spot: number
 ): Transaction {
-  const tr = state.tr.setMeta(menuKey, {
+  const tr = menu.opening(state.tr, {
     clientX: event.clientX,
     clientY: event.clientY,
   });
@@ -115,40 +94,42 @@ function openMenu(
   return tr.setSelection(TextSelection.near(tr.doc.resolve(spot)));
 }
 
+const menu = panelPlugin<TextMenuAnchor>({
+  name: "docxEditorTextMenu",
+  isAnchor: isTextMenuAnchor,
+  // Once the document changes, what the menu was aimed at may no longer be there
+  onDocChange: "close",
+  props: {
+    handleDOMEvents: {
+      contextmenu(view, event) {
+        // A reader has nothing this menu offers, so the browser menu is the better choice; a
+        // commenter has the comment entry, which is why editability is not what decides
+        if (editingProtection(view.state) === "readOnly") return false;
+        if (!isInEditor(view, event.target)) return false;
+        const spot = clickedSpot(view, event);
+        // Under a shut body the entries left are the ones about the selected text: copying it
+        // and commenting on it. A click landing anywhere else would open a menu with nothing to
+        // do at all, so the browser's own menu is what that click is worth
+        if (editsShut(view.state) && !isInSelection(view.state, spot)) {
+          return false;
+        }
+        if (forTableMenu(view, event.target, spot)) return false;
+        event.preventDefault();
+        view.dispatch(openMenu(view.state, event, spot));
+        return true;
+      },
+    },
+  },
+});
+
+/** The anchor of the currently open text menu. Null when it is closed */
+export function textMenuAnchor(state: EditorState): TextMenuAnchor | null {
+  return menu.anchor(state);
+}
+
+/** Closes the menu. Called on running an item, Escape, clicking outside, and scrolling */
+export const closeTextMenu: Command = menu.close;
+
 export function textContextMenu(): Plugin<TextMenuAnchor | null> {
-  return new Plugin<TextMenuAnchor | null>({
-    key: menuKey,
-    state: {
-      init: () => null,
-      apply: (tr, current) => {
-        const meta: unknown = tr.getMeta(menuKey);
-        if (meta === CLOSE) return null;
-        const anchor = toAnchor(meta);
-        if (anchor) return anchor;
-        // Once the document changes, what the menu was aimed at may no longer be there
-        return tr.docChanged ? null : current;
-      },
-    },
-    props: {
-      handleDOMEvents: {
-        contextmenu(view, event) {
-          // A reader has nothing this menu offers, so the browser menu is the better choice; a
-          // commenter has the comment entry, which is why editability is not what decides
-          if (editingProtection(view.state) === "readOnly") return false;
-          if (!isInEditor(view, event.target)) return false;
-          const spot = clickedSpot(view, event);
-          // Under a shut body the entries left are the ones about the selected text: copying it
-          // and commenting on it. A click landing anywhere else would open a menu with nothing to
-          // do at all, so the browser's own menu is what that click is worth
-          if (editsShut(view.state) && !isInSelection(view.state, spot)) {
-            return false;
-          }
-          if (forTableMenu(view, event.target, spot)) return false;
-          event.preventDefault();
-          view.dispatch(openMenu(view.state, event, spot));
-          return true;
-        },
-      },
-    },
-  });
+  return menu.plugin;
 }
