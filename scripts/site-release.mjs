@@ -10,6 +10,8 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const library = "@portone/docx-editor";
 const files = ["site/package.json", "demo/package.json", "pnpm-lock.yaml"];
 const stable = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+const branch = "production";
+const api = "https://api.github.com";
 
 function versionParts(version) {
   if (typeof version !== "string" || !stable.test(version)) {
@@ -38,22 +40,85 @@ export function assertNotOlder(version, current) {
   }
 }
 
-/** A delayed or manually retried release must not downgrade a newer site's pin. */
+/** Installs the release into the checked-out release commit and builds the site from it. */
 export async function prepare(
   directory,
   version,
   { install = pin, execute = run } = {}
 ) {
-  const manifest = JSON.parse(
-    await readFile(join(directory, "site/package.json"), "utf8")
-  );
-  assertNotOlder(version, manifest.dependencies[library]);
+  versionParts(version);
   await install(directory, { version });
   await execute("pnpm", ["build:site"], { cwd: directory });
 }
 
-/** Atomically updates only the validated inputs, and refuses if main advanced during the build. */
-export async function commit(
+function github(request, repository, token) {
+  const parse = (text) => {
+    try {
+      return JSON.parse(text);
+    } catch {
+      return null;
+    }
+  };
+  async function send(url, method, body, accept) {
+    const response = await request(url, {
+      method,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: accept,
+        "Content-Type": "application/json",
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: AbortSignal.timeout(30000),
+    });
+    return {
+      ok: response.ok,
+      status: response.status,
+      text: await response.text(),
+    };
+  }
+  return {
+    /** A 404 on a read means the branch or file is absent; anything else failing is an error. */
+    async rest(method, path, body, accept = "application/vnd.github+json") {
+      const result = await send(
+        `${api}/repos/${repository}/${path}`,
+        method,
+        body,
+        accept
+      );
+      if (!result.ok && !(method === "GET" && result.status === 404))
+        throw new Error(
+          `GitHub ${method} ${path} failed with ${result.status}: ${result.text}`
+        );
+      return result;
+    },
+    async createCommit(input) {
+      const { ok, status, text } = await send(
+        `${api}/graphql`,
+        "POST",
+        {
+          query:
+            "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { url } } }",
+          variables: { input },
+        },
+        "application/vnd.github+json"
+      );
+      const result = ok ? parse(text) : null;
+      const errors = result?.errors?.map((error) => error.message) ?? [];
+      const url = result?.data?.createCommitOnBranch?.commit?.url;
+      if (!ok || errors.length || !url)
+        throw new Error(
+          `Could not commit the site update to ${branch} (${status}): ${errors.join("; ") || text}`
+        );
+      return url;
+    },
+  };
+}
+
+/**
+ * Rebuilds the production branch as the release commit plus the verified pins.
+ * A delayed or manually retried release must not downgrade what production serves.
+ */
+export async function publish(
   directory,
   version,
   {
@@ -72,55 +137,52 @@ export async function commit(
     { cwd: directory }
   );
   const paths = changed.trim().split("\n").filter(Boolean);
-  if (!paths.length) return false;
   if (paths.some((path) => !files.includes(path)))
     throw new Error(
       "The site update changed files outside the demo pins and lockfile"
     );
   if (!repository || !token)
     throw new Error(
-      "GITHUB_REPOSITORY and GH_TOKEN are required to commit the site update"
+      "GITHUB_REPOSITORY and GH_TOKEN are required to publish the site update"
     );
+  const remote = github(request, repository, token);
+  const served = await remote.rest(
+    "GET",
+    `contents/site/package.json?ref=${branch}`,
+    undefined,
+    "application/vnd.github.raw+json"
+  );
+  if (served.status !== 404)
+    assertNotOlder(version, JSON.parse(served.text).dependencies[library]);
   const { stdout: head } = await execute("git", ["rev-parse", "HEAD"], {
     cwd: directory,
   });
+  const sha = head.trim();
+  const existing = await remote.rest("GET", `git/ref/heads/${branch}`);
+  if (existing.status === 404)
+    await remote.rest("POST", "git/refs", { ref: `refs/heads/${branch}`, sha });
+  else
+    await remote.rest("PATCH", `git/refs/heads/${branch}`, {
+      sha,
+      force: true,
+    });
+  if (!paths.length) {
+    process.stdout.write(`${branch} now points at the release commit ${sha}\n`);
+    return false;
+  }
   const additions = await Promise.all(
     paths.map(async (path) => ({
       path,
       contents: (await readFile(join(directory, path))).toString("base64"),
     }))
   );
-  const response = await request("https://api.github.com/graphql", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      query:
-        "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { url } } }",
-      variables: {
-        input: {
-          branch: { repositoryNameWithOwner: repository, branchName: "main" },
-          expectedHeadOid: head.trim(),
-          message: { headline: `chore: update site demo to ${version}` },
-          fileChanges: { additions },
-        },
-      },
-    }),
-    signal: AbortSignal.timeout(30000),
+  const url = await remote.createCommit({
+    branch: { repositoryNameWithOwner: repository, branchName: branch },
+    expectedHeadOid: sha,
+    message: { headline: `chore: update site demo to ${version}` },
+    fileChanges: { additions },
   });
-  const result = await response.json();
-  if (
-    !response.ok ||
-    result.errors?.length ||
-    !result.data?.createCommitOnBranch?.commit?.url
-  ) {
-    throw new Error(
-      "Could not commit the site update. If main advanced, rerun Update site release against current main."
-    );
-  }
-  process.stdout.write(`${result.data.createCommitOnBranch.commit.url}\n`);
+  process.stdout.write(`${url}\n`);
   return true;
 }
 
@@ -132,13 +194,13 @@ if (
   try {
     const version = process.env.SITE_RELEASE_VERSION;
     if (process.argv[2] === "prepare") await prepare(root, version);
-    else if (process.argv[2] === "commit") {
-      if (!(await commit(root, version)))
+    else if (process.argv[2] === "publish") {
+      if (!(await publish(root, version)))
         process.stdout.write(
-          "The site already pins this release; retry a failed Vercel deployment in Vercel.\n"
+          "The release commit already pins this version; retry a failed Vercel deployment in Vercel.\n"
         );
     } else
-      throw new Error("Usage: node scripts/site-release.mjs prepare|commit");
+      throw new Error("Usage: node scripts/site-release.mjs prepare|publish");
   } catch (error) {
     process.stderr.write(`${error.message}\n${error.cause?.message ?? ""}\n`);
     process.exitCode = 1;

@@ -28,15 +28,16 @@ The library it imports is deliberately not listed: the site installs it from npm
 | --- | --- | --- |
 | `pnpm dev` / `pnpm build:demo` | Development demo | Current `src/` |
 | `pnpm dev:site` | Current working tree, with hot reload | npm `latest`, resolved at startup |
-| `pnpm build:site` / Vercel | Checked-out site and docs | Exact committed release pin |
+| `pnpm build:site` / Vercel preview of `main` | Checked-out site and docs | Exact committed release pin |
+| Vercel production, from the `production` branch | Site and docs as of the latest release | That release |
 
 The site and demo pin the same published library version, including its CSS and version badge. Local site startup needs network access and may update `site/package.json`, `demo/package.json`, and `pnpm-lock.yaml` when a newer release exists. The running server keeps that version until restarted.
 
 ### Automatic updates after publishing
 
-After npm publishing succeeds, [Update site release](../.github/workflows/site-release.yml) installs that exact version and builds the current site. On success it commits the two manifests and lockfile; Vercel's existing Git integration deploys the commit. Keep that integration enabled for production `main`. Failed updates leave the previous demo version in place.
+After npm publishing succeeds, [Update site release](../.github/workflows/site-release.yml) checks out the release commit, installs that exact version, builds the site, and writes the result to the `production` branch as the release commit plus one commit updating the two manifests and lockfile. Vercel's production deployment must track `production`; `main` deploys as a preview. The live site therefore changes only at a release, and a docs-only fix reaches it with the next one. Failed updates leave the previous release in place.
 
-If the update fails before committing, run **Update site release** on `main` in GitHub Actions with the already published version. If the commit exists but its deployment failed, retry in Vercel. Neither requires republishing npm.
+If the update fails, run **Update site release** on `main` in GitHub Actions with the already published version. It rebuilds `production` from scratch, so rerunning is always safe. If `production` is right but its deployment failed, retry in Vercel. Neither requires republishing npm.
 
 To check a specific release locally, run `pnpm pin:demo-library 0.3.0` followed by `pnpm build:site`. If installation fails, run `pnpm install` before retrying.
 

@@ -14,7 +14,7 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { check, pin } from "./demo-library-pin.mjs";
-import { commit, prepare, publishedVersion } from "./site-release.mjs";
+import { prepare, publish, publishedVersion } from "./site-release.mjs";
 
 const execute = promisify(execFile);
 const repository = fileURLToPath(new URL("..", import.meta.url));
@@ -146,7 +146,7 @@ test("site preparation awaits installation and propagates install or build failu
   }
 });
 
-test("the published version is selected by name and cannot downgrade the site", async (t) => {
+test("the published version is selected by name", () => {
   const version = publishedVersion(
     JSON.stringify([
       { name: "another-package", version: "9.0.0" },
@@ -154,84 +154,146 @@ test("the published version is selected by name and cannot downgrade the site", 
     ])
   );
   assert.equal(version, "0.2.0");
-  await assert.rejects(
-    prepare(await fixture(t), version, {
-      install: async () => assert.fail("must not downgrade"),
-    }),
-    /older release/
-  );
 });
 
+const head = "a".repeat(40);
 const git = async (_command, args) => ({
-  stdout: args[0] === "diff" ? files.join("\n") : "a".repeat(40),
+  stdout: args[0] === "diff" ? files.join("\n") : head,
 });
-const commitOptions = {
-  execute: git,
+const repo = "repos/owner/repo";
+
+/** Answers GitHub as if production served `served` (absent when null) and returns the calls made. */
+function github({ served = null, exists = false, rejected = null } = {}) {
+  const calls = [];
+  const reply = (status, payload) => ({
+    ok: status < 400,
+    status,
+    text: async () => JSON.stringify(payload),
+  });
+  const request = async (url, init) => {
+    const path = url.replace("https://api.github.com/", "");
+    const body = init.body ? JSON.parse(init.body) : undefined;
+    calls.push({ method: init.method, path, body });
+    if (path.startsWith(`${repo}/contents/site/package.json?ref=production`))
+      return served
+        ? reply(200, { dependencies: { [library]: served } })
+        : reply(404, { message: "Not Found" });
+    if (path === `${repo}/git/ref/heads/production`)
+      return exists ? reply(200, {}) : reply(404, { message: "Not Found" });
+    if (
+      path === `${repo}/git/refs` ||
+      path === `${repo}/git/refs/heads/production`
+    )
+      return reply(init.method === "POST" ? 201 : 200, {});
+    if (path === "graphql")
+      return rejected
+        ? reply(200, { errors: [{ message: rejected }] })
+        : reply(200, {
+            data: {
+              createCommitOnBranch: {
+                commit: { url: "https://example.com/commit" },
+              },
+            },
+          });
+    throw new Error(`Unexpected request ${init.method} ${url}`);
+  };
+  return { calls, request };
+}
+const publishOptions = (remote, execute = git) => ({
+  execute,
+  request: remote.request,
   repository: "owner/repo",
   token: "test-token",
-};
+});
 
-test("the version commit uses only build inputs and rejects a concurrent main update", async (t) => {
+test("production is rebuilt as the release commit plus the verified inputs", async (t) => {
   const root = await fixture(t);
   const before = await inputs(root);
-  for (const conflict of [false, true]) {
-    let requests = 0;
-    const result = commit(root, "0.2.1", {
-      ...commitOptions,
-      request: async (_url, init) => {
-        requests++;
-        const input = JSON.parse(init.body).variables.input;
-        assert.equal(input.expectedHeadOid, "a".repeat(40));
-        assert.equal(input.branch.branchName, "main");
-        assert.deepEqual(
-          input.fileChanges.additions,
-          files.map((path, i) => ({
-            path,
-            contents: Buffer.from(before[i]).toString("base64"),
-          }))
-        );
-        return {
-          ok: true,
-          json: async () =>
-            conflict
-              ? { errors: [{ message: "main advanced" }] }
-              : {
-                  data: {
-                    createCommitOnBranch: {
-                      commit: { url: "https://example.com/commit" },
-                    },
-                  },
-                },
-        };
-      },
-    });
-    if (conflict) await assert.rejects(result, /main advanced/);
-    else assert.equal(await result, true);
-    assert.equal(requests, 1);
+  for (const exists of [false, true]) {
+    const remote = github({ exists });
+    assert.equal(await publish(root, "0.2.1", publishOptions(remote)), true);
+    const [, , moved, committed] = remote.calls;
+    assert.deepEqual(
+      remote.calls.map((call) => `${call.method} ${call.path}`),
+      [
+        `GET ${repo}/contents/site/package.json?ref=production`,
+        `GET ${repo}/git/ref/heads/production`,
+        exists
+          ? `PATCH ${repo}/git/refs/heads/production`
+          : `POST ${repo}/git/refs`,
+        "POST graphql",
+      ]
+    );
+    assert.deepEqual(
+      moved.body,
+      exists
+        ? { sha: head, force: true }
+        : { ref: "refs/heads/production", sha: head }
+    );
+    const input = committed.body.variables.input;
+    assert.equal(input.branch.branchName, "production");
+    assert.equal(input.expectedHeadOid, head);
+    assert.deepEqual(
+      input.fileChanges.additions,
+      files.map((path, i) => ({
+        path,
+        contents: Buffer.from(before[i]).toString("base64"),
+      }))
+    );
   }
 });
 
-test("unchanged, unrelated or mismatched inputs do not create a commit", async (t) => {
-  const root = await fixture(t);
-  const options = {
-    ...commitOptions,
-    request: async () => assert.fail("must not commit"),
-  };
+test("a retried release cannot downgrade what production serves", async (t) => {
+  const remote = github({ served: "0.3.0", exists: true });
+  await assert.rejects(
+    publish(await fixture(t), "0.2.1", publishOptions(remote)),
+    /older release/
+  );
+  assert.equal(remote.calls.length, 1);
+});
+
+test("unchanged inputs move production to the release commit without a commit", async (t) => {
+  const remote = github({ exists: true });
   assert.equal(
-    await commit(root, "0.2.1", {
-      ...options,
-      execute: async () => ({ stdout: "" }),
-    }),
+    await publish(
+      await fixture(t),
+      "0.2.1",
+      publishOptions(remote, async (_command, args) => ({
+        stdout: args[0] === "diff" ? "" : head,
+      }))
+    ),
     false
   );
+  assert.deepEqual(
+    remote.calls.map((call) => call.method),
+    ["GET", "GET", "PATCH"]
+  );
+});
+
+test("unrelated or mismatched inputs stop before GitHub is touched", async (t) => {
+  const root = await fixture(t);
+  const remote = github();
   await assert.rejects(
-    commit(root, "0.2.1", {
-      ...options,
-      execute: async () => ({ stdout: "src/index.ts" }),
-    }),
+    publish(
+      root,
+      "0.2.1",
+      publishOptions(remote, async () => ({ stdout: "src/index.ts" }))
+    ),
     /outside the demo pins/
   );
-  await assert.rejects(commit(root, "0.3.0", options), /does not match/);
+  await assert.rejects(
+    publish(root, "0.3.0", publishOptions(remote)),
+    /does not match/
+  );
+  assert.equal(remote.calls.length, 0);
+});
+
+test("a rejected commit reports GitHub's reason", async (t) => {
+  const remote = github({ rejected: "Protected branch update failed" });
+  await assert.rejects(
+    publish(await fixture(t), "0.2.1", publishOptions(remote)),
+    /production \(200\): Protected branch update failed/
+  );
 });
 
 test("Changesets bumps the library without moving demo pins to an unpublished version", async (t) => {
