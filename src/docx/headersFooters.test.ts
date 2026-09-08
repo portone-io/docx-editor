@@ -8,7 +8,12 @@ import {
   makeHeadersFootersDocx,
 } from "../__testing__/docx";
 import { docxSchema } from "../schema";
-import { storyNodeOf } from "../schema/stories";
+import {
+  type StoryKey,
+  storiesOf,
+  storyKey,
+  storyNodeOf,
+} from "../schema/stories";
 import { exportDocx } from "./exportDocx";
 import {
   displayPageNumber,
@@ -20,6 +25,7 @@ import {
 import { importDocx } from "./importDocx";
 import { sectionsOf } from "./sections";
 import type { SessionStore } from "./session";
+import { storyFromText } from "./story";
 
 const encoder = new TextEncoder();
 const W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
@@ -269,5 +275,91 @@ describe("header and footer stories", () => {
     ]) {
       expect(bytesEqual(exported[path], original[path]), path).toBe(true);
     }
+  });
+});
+
+/** The document with one story replaced, which is what `setStory` leaves on the document node */
+function withStory(doc: PMNode, key: StoryKey, story: PMNode): PMNode {
+  return doc.type.create(
+    { ...doc.attrs, stories: { ...storiesOf(doc), [key]: story.toJSON() } },
+    doc.content,
+    doc.marks
+  );
+}
+
+describe("writing an edited header story back", () => {
+  it("rewrites only the part the edited story stands in", () => {
+    const bytes = makeHeadersFootersDocx();
+    const original = unzipSync(bytes);
+    const opened = importDocx(bytes);
+    const edited = withStory(
+      opened.doc,
+      storyKey("header", "word/header1.xml"),
+      storyFromText("Rewritten header")
+    );
+    const exported = unzipSync(exportDocx(edited, opened.session));
+
+    const written = decode(exported["word/header1.xml"]);
+    expect(written).toContain("Rewritten header");
+    expect(written.startsWith("<w:hdr ")).toBe(true);
+    expect(written.endsWith("</w:hdr>")).toBe(true);
+    for (const path of [
+      "word/header2.xml",
+      "word/header3.xml",
+      "word/footer1.xml",
+      "word/footer2.xml",
+      "word/footer3.xml",
+    ]) {
+      expect(bytesEqual(exported[path], original[path]), path).toBe(true);
+    }
+  });
+
+  it("keeps the prolog and the byte order mark the part arrived with", () => {
+    const parts = unzipSync(makeHeadersFootersDocx());
+    parts["word/header1.xml"] = encoder.encode(
+      '\u{FEFF}<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+        `<w:hdr xmlns:w="${W_NS}"><w:p><w:r><w:t>Head</w:t></w:r></w:p></w:hdr>`
+    );
+    const opened = importDocx(zipSync(parts));
+    const edited = withStory(
+      opened.doc,
+      storyKey("header", "word/header1.xml"),
+      storyFromText("Rewritten")
+    );
+
+    const bytes = unzipSync(exportDocx(edited, opened.session))[
+      "word/header1.xml"
+    ];
+    expect(Array.from(bytes.slice(0, 3))).toEqual([0xef, 0xbb, 0xbf]);
+    const written = decode(bytes);
+    expect(written.startsWith('<?xml version="1.0"')).toBe(true);
+    expect(written).toContain("Rewritten");
+  });
+
+  it("shows the edited story in the preview the section draws", () => {
+    const opened = importDocx(makeHeadersFootersDocx());
+    const edited = withStory(
+      opened.doc,
+      storyKey("header", "word/header2.xml"),
+      storyFromText("Edited first header")
+    );
+
+    expect(shown(sectionStories(edited, opened.session), "headers", 1, 1)).toBe(
+      "Edited first header"
+    );
+  });
+
+  it("reads an edited header back as the story it was written as", () => {
+    const opened = importDocx(makeHeadersFootersDocx());
+    const edited = withStory(
+      opened.doc,
+      storyKey("header", "word/header1.xml"),
+      storyFromText("Round trip")
+    );
+    const again = importDocx(exportDocx(edited, opened.session));
+
+    expect(
+      shown(sectionStories(again.doc, again.session), "headers", 2, 1)
+    ).toBe("Round trip");
   });
 });
