@@ -3,18 +3,26 @@
  * collapsed-border resolution matches OOXML inheritance without changing exported XML.
  */
 
-import type {
-  CellFormat,
-  CellMargins,
-  CellVerticalAlign,
-  InsideBorders,
-  RowFormat,
-  RowHeight,
-  TableFormat,
-  TableWidth,
+import {
+  type BandSizes,
+  type CellFormat,
+  type CellMargins,
+  type CellStyleBorders,
+  type CellStyleFormat,
+  type CellVerticalAlign,
+  type InsideBorders,
+  type RowFormat,
+  type RowHeight,
+  type RunFormat,
+  TABLE_STYLE_CONDITIONS,
+  type TableFormat,
+  type TableStyleConditions,
+  type TableStyleOverrideType,
+  type TableWidth,
 } from "../../model/format";
 import { parsePropsXml } from "../../ooxml/props";
 import {
+  ST_DecimalNumber,
   ST_MeasurementOrPercent,
   ST_SignedTwipsMeasure,
   ST_TwipsMeasure,
@@ -23,7 +31,6 @@ import {
   ALIGN_BY_JC,
   type BorderLine,
   borderLineCss,
-  borderLineOfCss,
   borderSide,
   childValue,
   isOn,
@@ -32,24 +39,17 @@ import {
   wAttr,
 } from "../../ooxml/units";
 import { childByLocalName } from "../../ooxml/xml";
+import type { ParagraphPlacement } from "../formatting/resolve";
+import type { ParagraphFormatLayer } from "../formatting/tabStops";
 
-export type { CellMargins, InsideBorders } from "../../model/format";
-
-/** The parts of a table a table style formats conditionally (`w:tblStylePr/@w:type`, ST_TblStyleOverrideType) */
-export type TableStyleOverrideType =
-  | "wholeTable"
-  | "firstRow"
-  | "lastRow"
-  | "firstCol"
-  | "lastCol"
-  | "band1Vert"
-  | "band2Vert"
-  | "band1Horz"
-  | "band2Horz"
-  | "neCell"
-  | "nwCell"
-  | "seCell"
-  | "swCell";
+export type {
+  BandSizes,
+  CellMargins,
+  CellStyleFormat,
+  InsideBorders,
+  TableStyleConditions,
+  TableStyleOverrideType,
+} from "../../model/format";
 
 /** A `pct` width counts in fiftieths of a percent, so 2500 and `50%` are the same width */
 const FIFTIETHS_PER_PERCENT = 50;
@@ -212,7 +212,7 @@ export const NO_BORDER_DEFAULTS: CellBorderDefaults = {
   right: null,
 };
 
-/** Which sides of a cell lie on the edge of the table's grid */
+/** Which sides of a cell lie on the edge of a part of the table */
 export interface GridEdges {
   top: boolean;
   bottom: boolean;
@@ -234,45 +234,164 @@ export interface GridSize {
 }
 
 /**
- * Which sides of the block a cell covers lie on the edge of the grid, merges included.
- * Everything that works out a cell's lines asks this first, whether the cell is being imported,
- * created fresh, or looked up again in a table on screen.
+ * Everything one cell falls back on for what it did not write down itself, worked out from where
+ * it sits in the grid by `cellDefaultsFor`. Everything that reads or edits a cell takes one of
+ * these, so the lines a cell draws and the lines an edit measures against are always the same.
  */
-export function gridEdgesOf(rect: GridRect, grid: GridSize): GridEdges {
+export interface CellDefaults {
+  borders: CellBorderDefaults;
+  margins: CellMargins;
+  background: string | null;
+  verticalAlign: CellVerticalAlign | null;
+  /** What the paragraphs inside the cell resolve their formatting against */
+  placement: ParagraphPlacement;
+}
+
+export const NO_CELL_DEFAULTS: CellDefaults = {
+  borders: NO_BORDER_DEFAULTS,
+  margins: NO_CELL_MARGINS,
+  background: null,
+  verticalAlign: null,
+  placement: { tableStyleId: null, conditions: [] },
+};
+
+export const NO_BAND_SIZES: BandSizes = { row: null, col: null };
+
+/**
+ * A band is made of whole rows or whole columns, so a count that is not a positive whole number
+ * leaves the side unsaid and its bands are one row or one column wide (§17.7.6.5, §17.7.6.7).
+ */
+function bandSize(tblPr: Element, name: string): number | null {
+  const count = ST_DecimalNumber.parse(childValue(tblPr, name));
+  return count !== null && count > 0 ? count : null;
+}
+
+/** How many rows and columns one band of a table style is made of, read from the style's `w:tblPr` */
+export function readBandSizes(tblPr: Element | null): BandSizes {
+  if (!tblPr) return NO_BAND_SIZES;
   return {
-    top: rect.top === 0,
-    bottom: rect.bottom === grid.rows,
-    left: rect.left === 0,
-    right: rect.right === grid.cols,
+    row: bandSize(tblPr, "tblStyleRowBandSize"),
+    col: bandSize(tblPr, "tblStyleColBandSize"),
+  };
+}
+
+export function layerBandSizes(style: BandSizes, over: BandSizes): BandSizes {
+  return { row: over.row ?? style.row, col: over.col ?? style.col };
+}
+
+const NO_CELL_STYLE_BORDERS: CellStyleBorders = {
+  top: null,
+  bottom: null,
+  left: null,
+  right: null,
+};
+
+export const NO_CELL_STYLE_FORMAT: CellStyleFormat = {
+  background: null,
+  borders: NO_CELL_STYLE_BORDERS,
+  inside: NO_INSIDE_BORDERS,
+  margins: NO_CELL_MARGINS,
+  verticalAlign: null,
+};
+
+export const NO_TABLE_STYLE_CONDITIONS: TableStyleConditions = {};
+
+/**
+ * The formatting one conditional format of a table style lays down (`w:tblStylePr`).
+ * Its `w:tblPr` speaks for the region as a whole and its `w:tcPr` for the cells in it, so the
+ * cell values are read with the table values underneath them.
+ */
+export interface ConditionalTableFormat {
+  paragraph: ParagraphFormatLayer;
+  run: RunFormat;
+  table: TableFormat;
+  cell: CellStyleFormat;
+}
+
+/** The lines a conditional format draws around its region: what its `w:tcBorders` writes, over what its `w:tblBorders` did */
+function conditionBorders(
+  tcBorders: Element | null,
+  table: TableFormat
+): CellStyleBorders {
+  return {
+    top: borderSide(tcBorders, "top") ?? table.borderTop ?? null,
+    bottom: borderSide(tcBorders, "bottom") ?? table.borderBottom ?? null,
+    left:
+      borderSide(tcBorders, "left") ??
+      borderSide(tcBorders, "start") ??
+      table.borderLeft ??
+      null,
+    right:
+      borderSide(tcBorders, "right") ??
+      borderSide(tcBorders, "end") ??
+      table.borderRight ??
+      null,
   };
 }
 
 /**
- * The lines the four sides of one cell fall back on.
+ * What a conditional format lays down for the cells of its region.
  *
- * A side on the edge of the grid falls on the table's outer border, and one facing another cell on
- * the table's inside line. An outer side the document wrote as `none` is passed through as it is:
- * the table switched that line off, and nothing is to bring it back.
+ * The `w:tcPr` of a conditional format writes the lines of the region rather than of every cell in
+ * it: `insideH` and `insideV` are the lines between the cells it covers, which is how the header
+ * row of a style with `insideV` set to `nil` is drawn as one unbroken band.
  */
-export function cellBorderDefaults(
-  edges: GridEdges,
-  outer: TableFormat | null,
-  inside: InsideBorders
-): CellBorderDefaults {
+export function readCellStyleFormat(
+  tcPr: Element | null,
+  tblPr: Element | null
+): CellStyleFormat {
+  const table = readTableFormat(tblPr) ?? {};
+  const tcBorders = tcPr ? childByLocalName(tcPr, "tcBorders") : null;
   return {
-    top: borderLineOfCss(
-      edges.top ? (outer?.borderTop ?? null) : inside.horizontal
-    ),
-    bottom: borderLineOfCss(
-      edges.bottom ? (outer?.borderBottom ?? null) : inside.horizontal
-    ),
-    left: borderLineOfCss(
-      edges.left ? (outer?.borderLeft ?? null) : inside.vertical
-    ),
-    right: borderLineOfCss(
-      edges.right ? (outer?.borderRight ?? null) : inside.vertical
-    ),
+    background: (tcPr ? shadingOf(tcPr) : null) ?? table.background ?? null,
+    borders: conditionBorders(tcBorders, table),
+    inside: layerInsideBorders(readInsideBorders(tblPr), {
+      horizontal: borderSide(tcBorders, "insideH"),
+      vertical: borderSide(tcBorders, "insideV"),
+    }),
+    margins: readCellMarginsOf(tcPr, "tcMar"),
+    verticalAlign: tcPr ? cellVerticalAlignOf(tcPr) : null,
   };
+}
+
+function layerCellStyleBorders(
+  base: CellStyleBorders,
+  over: CellStyleBorders
+): CellStyleBorders {
+  return {
+    top: over.top ?? base.top,
+    bottom: over.bottom ?? base.bottom,
+    left: over.left ?? base.left,
+    right: over.right ?? base.right,
+  };
+}
+
+/** Lays one conditional format over the one a style further up the `basedOn` chain wrote for the same part */
+export function layerCellStyleFormat(
+  base: CellStyleFormat,
+  over: CellStyleFormat
+): CellStyleFormat {
+  return {
+    background: over.background ?? base.background,
+    borders: layerCellStyleBorders(base.borders, over.borders),
+    inside: layerInsideBorders(base.inside, over.inside),
+    margins: layerCellMargins(base.margins, over.margins),
+    verticalAlign: over.verticalAlign ?? base.verticalAlign,
+  };
+}
+
+/** The conditions a table style lays down for its cells alone, which is what a table carries for its cells to draw */
+export function cellConditionsOf(
+  conditions: Readonly<
+    Partial<Record<TableStyleOverrideType, ConditionalTableFormat>>
+  >
+): TableStyleConditions {
+  const cells: Partial<Record<TableStyleOverrideType, CellStyleFormat>> = {};
+  for (const type of TABLE_STYLE_CONDITIONS) {
+    const format = conditions[type];
+    if (format) cells[type] = format.cell;
+  }
+  return cells;
 }
 
 /** The name of the table style `w:tblStyle` points at. null if it points at none */
@@ -335,10 +454,15 @@ const CELL_VERTICAL_ALIGN_BY_VAL: Record<string, CellVerticalAlign> = {
   bottom: "bottom",
 };
 
+/** Where `w:vAlign` places the content of a cell. null for a cell that says nothing, and for a value we do not draw */
+function cellVerticalAlignOf(tcPr: Element): CellVerticalAlign | null {
+  return CELL_VERTICAL_ALIGN_BY_VAL[childValue(tcPr, "vAlign") ?? ""] ?? null;
+}
+
 /**
- * The padding of one cell: its own `w:tcMar` where it wrote one, and the table's cell margins on
- * the sides it did not. A side neither of them mentions is left absent, and the fallback on screen
- * is then the stylesheet's.
+ * The padding of one cell: its own `w:tcMar` where it wrote one, and the margins the table and its
+ * style laid down on the sides it did not. A side neither of them mentions is left absent, and the
+ * fallback on screen is then the stylesheet's.
  */
 function readCellPadding(
   tcPr: Element | null,
@@ -356,42 +480,43 @@ function readCellPadding(
 /**
  * Cell formatting.
  * A side for which the cell has not written down its own border uses the line that side falls on,
- * which is the table's outer border or its inside line depending on where the cell sits.
- * The padding works the same way: what the cell wrote down wins, and the table's cell margins lie
- * underneath it. null if there is nothing at all to draw.
+ * which is the table's outer border, its inside line, or the line a conditional format of its
+ * style draws there, depending on where the cell sits.
+ * The fill, the vertical alignment and the padding work the same way: what the cell wrote down
+ * wins, and what it falls back on lies underneath. null if there is nothing at all to draw.
  */
 export function readCellFormat(
   tcPr: Element | null,
-  defaults: CellBorderDefaults,
-  margins: CellMargins = NO_CELL_MARGINS
+  defaults: CellDefaults = NO_CELL_DEFAULTS
 ): CellFormat | null {
   const borders = tcPr ? childByLocalName(tcPr, "tcBorders") : null;
+  const lines = defaults.borders;
   const format: CellFormat = {};
-  const top = borderSide(borders, "top") ?? borderLineCss(defaults.top);
+  const top = borderSide(borders, "top") ?? borderLineCss(lines.top);
   if (top) format.borderTop = top;
-  const bottom =
-    borderSide(borders, "bottom") ?? borderLineCss(defaults.bottom);
+  const bottom = borderSide(borders, "bottom") ?? borderLineCss(lines.bottom);
   if (bottom) format.borderBottom = bottom;
   const left =
     borderSide(borders, "left") ??
     borderSide(borders, "start") ??
-    borderLineCss(defaults.left);
+    borderLineCss(lines.left);
   if (left) format.borderLeft = left;
   const right =
     borderSide(borders, "right") ??
     borderSide(borders, "end") ??
-    borderLineCss(defaults.right);
+    borderLineCss(lines.right);
   if (right) format.borderRight = right;
 
-  if (tcPr) {
-    const background = shadingOf(tcPr);
-    if (background) format.background = background;
-    const verticalAlign =
-      CELL_VERTICAL_ALIGN_BY_VAL[childValue(tcPr, "vAlign") ?? ""];
-    if (verticalAlign) format.verticalAlign = verticalAlign;
-  }
-  // The table's margins reach a cell that wrote no formatting of its own at all
-  const padded: CellFormat = { ...format, ...readCellPadding(tcPr, margins) };
+  const background = (tcPr ? shadingOf(tcPr) : null) ?? defaults.background;
+  if (background) format.background = background;
+  const verticalAlign =
+    (tcPr ? cellVerticalAlignOf(tcPr) : null) ?? defaults.verticalAlign;
+  if (verticalAlign) format.verticalAlign = verticalAlign;
+  // The margins reach a cell that wrote no formatting of its own at all
+  const padded: CellFormat = {
+    ...format,
+    ...readCellPadding(tcPr, defaults.margins),
+  };
   return Object.keys(padded).length > 0 ? padded : null;
 }
 
@@ -413,11 +538,10 @@ export function cellMarginsOf(tblPr: string | null): CellMargins {
  */
 export function readCellProps(
   tcPr: string | null,
-  defaults: CellBorderDefaults,
-  margins: CellMargins = NO_CELL_MARGINS
+  defaults: CellDefaults = NO_CELL_DEFAULTS
 ): CellFormat | null {
   const el = tcPr === null ? null : parsePropsXml(tcPr);
-  return readCellFormat(el, defaults, margins);
+  return readCellFormat(el, defaults);
 }
 
 /** The formatting a cell holds. The original XML and the display values read out of it form a pair */

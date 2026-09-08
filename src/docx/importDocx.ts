@@ -30,11 +30,9 @@ import {
   type FormattingContext,
   formattingContextOf,
   NO_DOCUMENT_DEFAULTS,
-  paragraphAttrsOf,
   readDocumentDefaults,
   readParagraphStyles,
-  resolveParagraph,
-  runMarkUnder,
+  styledParagraph,
 } from "./formatting";
 import { readHeadersFooters } from "./headersFooters";
 import { readLinkTargets } from "./hyperlink";
@@ -92,57 +90,26 @@ function buildBlock(
     if (paragraph) return paragraph;
   }
   if (el.localName === "tbl") {
-    const table = buildTable(
-      el,
-      srcId,
-      sources,
-      context.styles,
-      context.defaultTableStyleId
-    );
+    const table = buildTable(el, srcId, sources, context);
     if (table) return table;
   }
   return docxSchema.nodes.docxRaw.create({ srcId, name: el.nodeName });
 }
 
 /**
- * Lays the hierarchy underneath the display values of the paragraph and of the text inside it.
- *
- * The style's run values are also baked onto the paragraph itself, so that text carrying no run
- * of its own - typed in the editor - is drawn in them (`styleRun` in `schema`).
- */
-function styledParagraph(node: PMNode, context: FormattingContext): PMNode {
-  const pPr: unknown = node.attrs.pPr;
-  const paragraph = resolveParagraph(
-    typeof pPr === "string" ? pPr : null,
-    context
-  );
-  const inline = node.children.map((child) => {
-    const mark = runMarkUnder(
-      child.marks.find((entry) => entry.type === docxSchema.marks.run) ?? null,
-      child.isText,
-      paragraph,
-      context
-    );
-    return mark ? child.mark(mark.addToSet(child.marks)) : child;
-  });
-  return node.type.create(
-    { ...node.attrs, ...paragraphAttrsOf(paragraph) },
-    Fragment.fromArray(inline),
-    node.marks
-  );
-}
-
-/**
  * Folds the style chain into the display values.
  *
  * These values are used for display only, so the original XML fragments are left untouched.
- * We walk down through the blocks so that paragraphs inside table cells take the same path.
+ * A table is left alone: which part of it a cell belongs to is what its table style dresses the
+ * paragraphs inside by, and `buildTable` is where that is known.
  */
 function withStyleFormats(node: PMNode, context: FormattingContext): PMNode {
   if (node.type === docxSchema.nodes.paragraph) {
     return styledParagraph(node, context);
   }
-  if (node.childCount === 0) return node;
+  if (node.childCount === 0 || node.type === docxSchema.nodes.table) {
+    return node;
+  }
   const children = node.children.map((child) =>
     withStyleFormats(child, context)
   );

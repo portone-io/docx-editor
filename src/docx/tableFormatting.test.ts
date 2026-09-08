@@ -11,13 +11,19 @@ import { describe, expect, it } from "vitest";
 import { borderLineOfCss } from "../ooxml/units";
 import {
   ALL_CELL_SIDES,
+  type CellDefaults,
   type CellFormatEdit,
-  cellBorderDefaults,
+  cellDefaultsFor,
   drawsOwnCellBorder,
   editCellProps,
   editRowHeight,
+  type GridRect,
+  type GridSize,
   insideBordersOf,
   NO_BORDER_DEFAULTS,
+  NO_CELL_DEFAULTS,
+  NO_CELL_SOURCES,
+  type TableCellSources,
 } from "./tableFormatting";
 
 const ALL_BORDERS: CellFormatEdit = {
@@ -42,20 +48,28 @@ const SINGLE = 'w:val="single" w:sz="4" w:space="0" w:color="auto"';
 function edited(
   current: string | null,
   edit: CellFormatEdit,
-  defaults = NO_BORDER_DEFAULTS
+  defaults = NO_CELL_DEFAULTS
 ): string | null {
   const next = editCellProps(current, edit, defaults);
   if (!next) throw new Error("the edit was refused");
   return next.tcPr;
 }
 
+/** What the cell covering this block of a grid this size falls back on */
+const defaultsFor = (
+  rect: GridRect,
+  grid: GridSize,
+  sources: Partial<TableCellSources> = {}
+): CellDefaults =>
+  cellDefaultsFor(rect, grid, { ...NO_CELL_SOURCES, ...sources });
+
+const MIDDLE: GridRect = { top: 1, bottom: 2, left: 1, right: 2 };
+const TOP_LEFT: GridRect = { top: 0, bottom: 1, left: 0, right: 1 };
+const THREE_BY_THREE: GridSize = { rows: 3, cols: 3 };
+
 /** The lines a cell in the middle of such a table falls back on, none of its sides being on an edge */
 const insideOf = (tblPr: string) =>
-  cellBorderDefaults(
-    { top: false, bottom: false, left: false, right: false },
-    null,
-    insideBordersOf(tblPr)
-  );
+  defaultsFor(MIDDLE, THREE_BY_THREE, { inside: insideBordersOf(tblPr) });
 
 describe("drawing the borders of a cell", () => {
   it("writes the four sides in the order OOXML lays down, for a cell with no formatting yet", () => {
@@ -284,16 +298,18 @@ describe("clearing the borders of a cell", () => {
 
   it("pins it down on the sides that fall on the border around the table too", () => {
     const line = "0.5pt solid #000000";
-    const corner = cellBorderDefaults(
-      { top: true, bottom: false, left: true, right: false },
-      {
+    const corner = defaultsFor(TOP_LEFT, THREE_BY_THREE, {
+      outer: {
         borderTop: line,
         borderBottom: line,
         borderLeft: line,
         borderRight: line,
       },
-      { horizontal: "0.5pt solid #999999", vertical: "0.5pt solid #999999" }
-    );
+      inside: {
+        horizontal: "0.5pt solid #999999",
+        vertical: "0.5pt solid #999999",
+      },
+    });
     const next = editCellProps(null, NO_BORDERS, corner);
 
     expect(next?.format).toMatchObject({
@@ -317,14 +333,11 @@ describe("the lines a cell falls back on", () => {
     vertical: "0.5pt solid #999999",
   };
 
+  const linesOf = (rect: GridRect, sources: Partial<TableCellSources>) =>
+    defaultsFor(rect, THREE_BY_THREE, sources).borders;
+
   it("are the table's own lines, chosen by where the cell sits in the grid", () => {
-    expect(
-      cellBorderDefaults(
-        { top: true, bottom: false, left: true, right: false },
-        OUTER,
-        INSIDE
-      )
-    ).toEqual({
+    expect(linesOf(TOP_LEFT, { outer: OUTER, inside: INSIDE })).toEqual({
       top: borderLineOfCss("1pt solid #000000"),
       bottom: borderLineOfCss("0.5pt solid #999999"),
       left: borderLineOfCss("1pt solid #000000"),
@@ -334,21 +347,17 @@ describe("the lines a cell falls back on", () => {
 
   it("draw nothing around a table that only has lines between its cells", () => {
     expect(
-      cellBorderDefaults(
-        { top: true, bottom: true, left: true, right: true },
-        {},
-        INSIDE
+      linesOf(
+        { top: 0, bottom: 3, left: 0, right: 3 },
+        { outer: {}, inside: INSIDE }
       )
     ).toEqual(NO_BORDER_DEFAULTS);
   });
 
   it("keep an outer side the table switched off switched off", () => {
     expect(
-      cellBorderDefaults(
-        { top: true, bottom: false, left: false, right: false },
-        { borderTop: "none" },
-        INSIDE
-      ).top?.val
+      linesOf(TOP_LEFT, { outer: { borderTop: "none" }, inside: INSIDE }).top
+        ?.val
     ).toBe("none");
   });
 });
@@ -413,10 +422,13 @@ describe("coloring the borders of a cell", () => {
   it("materializes visible inherited sides without changing their width or style", () => {
     expect(
       edited(null, RED, {
-        top: borderLineOfCss("1.5pt double #A6B7C8"),
-        bottom: borderLineOfCss("none"),
-        left: null,
-        right: borderLineOfCss("0.5pt dotted #A6B7C8"),
+        ...NO_CELL_DEFAULTS,
+        borders: {
+          top: borderLineOfCss("1.5pt double #A6B7C8"),
+          bottom: borderLineOfCss("none"),
+          left: null,
+          right: borderLineOfCss("0.5pt dotted #A6B7C8"),
+        },
       })
     ).toBe(
       tcPr(
@@ -468,14 +480,44 @@ describe("coloring the borders of a cell", () => {
     ).toBe(tcPr(borders('<w:top x:val="none" w:val="none"/>')));
   });
 
+  it("writes down the line a part of the table laid down when it is recolored", () => {
+    // The middle row of a table taking its bands is banded, and the band draws a line under it
+    const banded = defaultsFor(MIDDLE, THREE_BY_THREE, {
+      conditions: {
+        band2Horz: {
+          background: null,
+          borders: {
+            top: null,
+            bottom: "1.5pt double #A6B7C8",
+            left: null,
+            right: null,
+          },
+          inside: { horizontal: null, vertical: null },
+          margins: { topPt: null, rightPt: null, bottomPt: null, leftPt: null },
+          verticalAlign: null,
+        },
+      },
+    });
+    expect(edited(null, RED, banded)).toBe(
+      tcPr(
+        borders(
+          '<w:bottom w:val="double" w:sz="12" w:space="0" w:color="FF0000"/>'
+        )
+      )
+    );
+    // Without that part reaching the cell there is no line to recolor at all
+    expect(editCellProps(null, RED, NO_CELL_DEFAULTS)).toBeNull();
+  });
+
   it("leaves an inherited border untouched when it already has the requested color", () => {
     expect(
-      editCellProps(null, RED, {
-        top: borderLineOfCss("0.5pt solid #FF0000"),
-        bottom: null,
-        left: null,
-        right: null,
-      })
+      editCellProps(
+        null,
+        RED,
+        defaultsFor(TOP_LEFT, THREE_BY_THREE, {
+          outer: { borderTop: "0.5pt solid #FF0000" },
+        })
+      )
     ).toBeNull();
   });
 });

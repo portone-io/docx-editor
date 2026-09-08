@@ -12,9 +12,16 @@ import type { Node as PMNode } from "prosemirror-model";
 import { type EditorState, TextSelection } from "prosemirror-state";
 import { CellSelection, TableMap } from "prosemirror-tables";
 import { describe, expect, it } from "vitest";
+import { makeStyledDocx } from "../__testing__/docx";
 import { runCommand } from "../__testing__/editing";
+import { NO_FORMATTING } from "../docx/formatting";
+import { importDocx } from "../docx/importDocx";
+import { NO_IMPORT_SOURCES } from "../docx/importParagraph";
 import { buildTable } from "../docx/importTable";
-import { createEditorState } from "../editor/createEditor";
+import {
+  createEditorState,
+  editorStateForSession,
+} from "../editor/createEditor";
 import { type CellFormat, toCellFormat } from "../model/format";
 import { parseXml } from "../ooxml/xml";
 import { docxSchema } from "../schema";
@@ -71,14 +78,18 @@ const cellXml = (text: string, { span = 1, props = "" }: CellXml = {}) =>
 
 const rowXml = (...cells: string[]) => `<w:tr>${cells.join("")}</w:tr>`;
 
-/** A document holding a single table of `cols` grid columns, one row per fragment */
-function tableDoc(cols: number, ...rows: string[]): PMNode {
-  const xml = `<w:tbl>${TBL_PR}${grid(cols)}${rows.join("")}</w:tbl>`;
+/** A document holding a single table built out of this XML, against these styles */
+function docOf(xml: string, context = NO_FORMATTING): PMNode {
   const wrapped = parseXml(`<w:wrap ${W_NS}>${xml}</w:wrap>`);
   const el = wrapped.documentElement.firstElementChild;
-  const table = el ? buildTable(el, null) : null;
+  const table = el ? buildTable(el, null, NO_IMPORT_SOURCES, context) : null;
   if (!table) throw new Error("the table could not be modelled");
   return docxSchema.nodes.doc.create(null, [table]);
+}
+
+/** A document holding a single table of `cols` grid columns, one row per fragment */
+function tableDoc(cols: number, ...rows: string[]): PMNode {
+  return docOf(`<w:tbl>${TBL_PR}${grid(cols)}${rows.join("")}</w:tbl>`);
 }
 
 /** A 3x3 table whose cells are named by column and row (`b2` is the middle one) */
@@ -399,5 +410,77 @@ describe("an edit that leaves the grid as it was", () => {
     expect(typed.doc.textContent).toContain("edit");
     // The cells of the rows below were not rewritten, so they are the very same nodes
     expect(firstTable(typed.doc).child(2)).toBe(firstTable(doc).child(2));
+  });
+});
+
+describe("a table whose style dresses its last row", () => {
+  /** A style that shades the header row and the last row, and nothing else */
+  const STYLE =
+    '<w:style w:type="table" w:styleId="Report">' +
+    '<w:tblStylePr w:type="firstRow"><w:tcPr>' +
+    '<w:shd w:val="clear" w:color="auto" w:fill="D9E2F3"/>' +
+    "</w:tcPr></w:tblStylePr>" +
+    '<w:tblStylePr w:type="lastRow"><w:tcPr>' +
+    '<w:shd w:val="clear" w:color="auto" w:fill="FFF2CC"/>' +
+    "</w:tcPr></w:tblStylePr></w:style>";
+
+  const HEADER = "#D9E2F3";
+  const TOTAL = "#FFF2CC";
+
+  function reportState(): EditorState {
+    const line = (...texts: string[]) =>
+      rowXml(...texts.map((t) => cellXml(t)));
+    return editorStateForSession(
+      importDocx(
+        makeStyledDocx(
+          '<w:tbl><w:tblPr><w:tblStyle w:val="Report"/>' +
+            '<w:tblLook w:firstRow="1" w:lastRow="1" w:noHBand="1" w:noVBand="1"/>' +
+            `</w:tblPr>${grid(2)}` +
+            line("a1", "b1") +
+            line("a2", "b2") +
+            line("a3", "b3") +
+            "</w:tbl>",
+          STYLE
+        )
+      )
+    );
+  }
+
+  function editReport(command: TableCommand): PMNode {
+    const state = reportState();
+    const map = TableMap.get(firstTable(state.doc));
+    const selected = state.apply(
+      state.tr.setSelection(
+        TextSelection.near(state.doc.resolve(2 + map.map[2 * map.width]))
+      )
+    );
+    return runCommand(selected, command).doc;
+  }
+
+  /** The fill every row of the table draws, by the row it stands in */
+  const fills = (table: PMNode): (string | undefined)[] =>
+    table.children.map(
+      (row) => toCellFormat(row.child(0).attrs.format)?.background
+    );
+
+  it("draws the shading of the parts the style dresses", () => {
+    expect(fills(firstTable(reportState().doc))).toEqual([
+      HEADER,
+      undefined,
+      TOTAL,
+    ]);
+  });
+
+  it("hands the last row's shading down to a row added under it", () => {
+    const table = firstTable(editReport(addRowAfter));
+
+    expect(table.childCount).toBe(4);
+    expect(fills(table)).toEqual([HEADER, undefined, undefined, TOTAL]);
+  });
+
+  it("hands it back up when the last row is deleted", () => {
+    const table = firstTable(editReport(deleteRow));
+
+    expect(fills(table)).toEqual([HEADER, TOTAL]);
   });
 });

@@ -14,6 +14,7 @@ import type { ParagraphProps } from "../docx/paraProps";
 import { docxSchema } from "../schema";
 import { editShut } from "../schema/guards";
 import { documentFormatting } from "./documentStyles";
+import { paragraphPlacementAt } from "./paragraphPlacement";
 
 export interface ParagraphSpot {
   pos: number;
@@ -76,7 +77,11 @@ function writeChanges(
     tr.setNodeMarkup(tr.mapping.map(spot.pos), undefined, {
       ...spot.node.attrs,
       pPr: props.pPr,
-      ...paragraphAttrsFor(props.pPr, formatting),
+      ...paragraphAttrsFor(
+        props.pPr,
+        formatting,
+        paragraphPlacementAt(state.doc, spot.pos)
+      ),
     });
   }
   return tr;

@@ -4,12 +4,6 @@
  */
 
 import type { Node as PMNode } from "prosemirror-model";
-import {
-  type CellMargins,
-  type TableFormat,
-  toCellMargins,
-  toInsideBorders,
-} from "../model/format";
 import { childValue, wAttr } from "../ooxml/units";
 import {
   attrString,
@@ -19,10 +13,13 @@ import {
 } from "../ooxml/xml";
 import { docxSchema } from "../schema";
 import {
+  type FormattingContext,
   layerTableFormat,
-  NO_STYLES,
-  type StyleFormat,
-  type StyleTable,
+  NO_FORMATTING,
+  type ParagraphPlacement,
+  styledParagraph,
+  tableStyleAttrs,
+  tableStyleFor,
 } from "./formatting";
 import {
   buildParagraph,
@@ -31,22 +28,26 @@ import {
 } from "./importParagraph";
 import { readSdtWrapper } from "./sdt";
 import {
-  type CellBorderDefaults,
-  cellBorderDefaults,
+  cellConditionsOf,
+  cellDefaultsFor,
+  type GridRect,
   type GridSize,
-  gridEdgesOf,
-  type InsideBorders,
+  layerBandSizes,
   layerCellMargins,
   layerInsideBorders,
+  NO_BAND_SIZES,
   NO_CELL_MARGINS,
   NO_INSIDE_BORDERS,
+  readBandSizes,
   readCellFormat,
   readCellMarginsOf,
   readGridCols,
   readInsideBorders,
   readRowFormat,
   readTableFormat,
+  readTableLook,
   readTableWidth,
+  type TableCellSources,
   tblStyleIdOf,
 } from "./tableFormatting";
 
@@ -277,11 +278,20 @@ function gridWidthOf(rows: RawRow[]): number | null {
   return widths.every((width) => width === first) ? first : null;
 }
 
-/** A single block inside a cell. If it is not a paragraph, or the paragraph cannot be modelled, it holds on to its original XML as is */
-function buildCellBlock(el: Element, sources: ImportSources): PMNode {
+/**
+ * A single block inside a cell, dressed by the parts of the table the cell belongs to.
+ * If it is not a paragraph, or the paragraph cannot be modelled, it holds on to its original XML
+ * as is.
+ */
+function buildCellBlock(
+  el: Element,
+  sources: ImportSources,
+  context: FormattingContext,
+  placement: ParagraphPlacement
+): PMNode {
   if (el.localName === "p") {
     const paragraph = buildParagraph(el, null, sources);
-    if (paragraph) return paragraph;
+    if (paragraph) return styledParagraph(paragraph, context, placement);
   }
   return docxSchema.nodes.rawBlock.create({
     xml: serializeXml(el),
@@ -289,48 +299,29 @@ function buildCellBlock(el: Element, sources: ImportSources): PMNode {
   });
 }
 
-/**
- * The lines of one table, and the size of the grid they are laid over.
- * A cell reads its own four defaults out of these, according to where in the grid it sits.
- * The cell margins are the same for every cell, so they come along for the ride.
- */
-interface TableLines extends GridSize {
-  outer: TableFormat | null;
-  inside: InsideBorders;
-  margins: CellMargins;
-}
-
-/** The lines the four sides of one cell fall back on, merges included in where its edges lie */
-function cellBorderDefaultsFor(
-  draft: CellDraft,
-  lines: TableLines
-): CellBorderDefaults {
-  return cellBorderDefaults(
-    gridEdgesOf(
-      {
-        top: draft.row,
-        bottom: draft.row + draft.rowspan,
-        left: draft.col,
-        right: draft.col + draft.colspan,
-      },
-      lines
-    ),
-    lines.outer,
-    lines.inside
-  );
+/** The block of the grid one cell covers, merges included */
+function cellRect(draft: CellDraft): GridRect {
+  return {
+    top: draft.row,
+    bottom: draft.row + draft.rowspan,
+    left: draft.col,
+    right: draft.col + draft.colspan,
+  };
 }
 
 /** Builds a cell. null if there is no block inside it at all */
 function buildCell(
   draft: CellDraft,
-  lines: TableLines,
-  sources: ImportSources
+  table: TableCells,
+  sources: ImportSources,
+  context: FormattingContext
 ): PMNode | null {
   const tcPr = childByLocalName(draft.el, "tcPr");
+  const defaults = cellDefaultsFor(cellRect(draft), table.grid, table.sources);
   const blocks: PMNode[] = [];
   for (const child of elementChildren(draft.el)) {
     if (child.localName === "tcPr") continue;
-    blocks.push(buildCellBlock(child, sources));
+    blocks.push(buildCellBlock(child, sources, context, defaults.placement));
   }
   if (blocks.length === 0) return null;
 
@@ -342,11 +333,7 @@ function buildCell(
       tcAttrs: attrString(draft.el),
       tcPr: tcPr ? serializeXml(tcPr) : null,
       tcW: readTableWidth(tcPr, "tcW"),
-      format: readCellFormat(
-        tcPr,
-        cellBorderDefaultsFor(draft, lines),
-        lines.margins
-      ),
+      format: readCellFormat(tcPr, defaults),
       sdtPrefix: draft.control?.prefix ?? null,
       sdtContentsLocked: draft.control?.contentsLocked ?? false,
       sdtDeletionLocked: draft.control?.deletionLocked ?? false,
@@ -355,15 +342,22 @@ function buildCell(
   );
 }
 
+/** The size of a table's grid and what it lays down for the cells laid over it */
+interface TableCells {
+  grid: GridSize;
+  sources: TableCellSources;
+}
+
 function buildRow(
   row: RawRow,
   drafts: CellDraft[],
-  lines: TableLines,
-  sources: ImportSources
+  table: TableCells,
+  sources: ImportSources,
+  context: FormattingContext
 ): PMNode | null {
   const cells: PMNode[] = [];
   for (const draft of drafts) {
-    const cell = buildCell(draft, lines, sources);
+    const cell = buildCell(draft, table, sources, context);
     if (!cell) return null;
     cells.push(cell);
   }
@@ -379,39 +373,12 @@ function buildRow(
   );
 }
 
-/**
- * The style whose values lie underneath this table's own formatting.
- *
- * A table that points at no style, or at one that is not defined, falls back on the document's
- * default table style, which is what OOXML applies to an object with no style of its own.
- * A style that does resolve needs no fallback underneath it, because a real table style is based on
- * the default one anyway.
- *
- * Only what the style wrote in its `w:tblPr` reaches the table. Its conditional formatting
- * (`w:tblStylePr`, which dresses the header row, the first column and the banded rows differently),
- * the `w:tblLook` saying which of those parts are switched on, and the paragraph and run formatting
- * it carries for the text inside the cells are all left unread. Nothing is lost on the way out,
- * because export never rebuilds a style.
- */
-function tableStyleOf(
-  tblPr: Element | null,
-  styles: StyleTable,
-  defaultTableStyleId: string | null
-): StyleFormat | undefined {
-  const styleId = tblStyleIdOf(tblPr);
-  return (
-    (styleId !== null ? styles.get(styleId) : undefined) ??
-    (defaultTableStyleId !== null ? styles.get(defaultTableStyleId) : undefined)
-  );
-}
-
 /** Moves a `<w:tbl>` into a table node. null if it cannot be modelled */
 export function buildTable(
   el: Element,
   srcId: string | null,
   sources: ImportSources = NO_IMPORT_SOURCES,
-  styles: StyleTable = NO_STYLES,
-  defaultTableStyleId: string | null = null
+  context: FormattingContext = NO_FORMATTING
 ): PMNode | null {
   const parts = readTableParts(el);
   if (!parts) return null;
@@ -425,28 +392,40 @@ export function buildTable(
   const drafts = resolveVerticalMerges(parts.rows, width);
   if (!drafts) return null;
 
-  const style = tableStyleOf(parts.tblPr, styles, defaultTableStyleId);
+  const styleId = tblStyleIdOf(parts.tblPr);
+  const style = tableStyleFor(styleId, context);
   const tableFormat = layerTableFormat(
     style?.table ?? {},
     readTableFormat(parts.tblPr)
   );
-  const lines: TableLines = {
-    rows: parts.rows.length,
-    cols: width,
-    outer: tableFormat,
-    inside: layerInsideBorders(
-      style?.tableInside ?? NO_INSIDE_BORDERS,
-      readInsideBorders(parts.tblPr)
-    ),
-    margins: layerCellMargins(
-      style?.tableCellMargins ?? NO_CELL_MARGINS,
-      readCellMarginsOf(parts.tblPr, "tblCellMar")
-    ),
+  // A band size is normally written in the style, but a table may state one of its own
+  const bands = layerBandSizes(
+    style?.tableBands ?? NO_BAND_SIZES,
+    readBandSizes(parts.tblPr)
+  );
+  const conditions = cellConditionsOf(style?.tableConditions ?? {});
+  const table: TableCells = {
+    grid: { rows: parts.rows.length, cols: width },
+    sources: {
+      outer: tableFormat,
+      inside: layerInsideBorders(
+        style?.tableInside ?? NO_INSIDE_BORDERS,
+        readInsideBorders(parts.tblPr)
+      ),
+      margins: layerCellMargins(
+        style?.tableCellMargins ?? NO_CELL_MARGINS,
+        readCellMarginsOf(parts.tblPr, "tblCellMar")
+      ),
+      look: readTableLook(parts.tblPr),
+      bands,
+      conditions,
+      styleId,
+    },
   };
 
   const rows: PMNode[] = [];
   for (const [index, row] of parts.rows.entries()) {
-    const built = buildRow(row, drafts[index], lines, sources);
+    const built = buildRow(row, drafts[index], table, sources, context);
     if (!built) return null;
     rows.push(built);
   }
@@ -459,10 +438,7 @@ export function buildTable(
       tblW: readTableWidth(parts.tblPr, "tblW"),
       gridCols,
       gridChange: parts.gridChange,
-      format: tableFormat,
-      // The cells need these again whenever an edit derives their display values afresh
-      styleInside: toInsideBorders(style?.tableInside),
-      styleCellMargins: toCellMargins(style?.tableCellMargins),
+      ...tableStyleAttrs(parts.tblPr, context),
     },
     rows
   );

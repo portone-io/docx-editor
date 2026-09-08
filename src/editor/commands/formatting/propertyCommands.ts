@@ -24,6 +24,7 @@ import {
 import { docxSchema } from "../../../schema";
 import { editShut, openStretches } from "../../../schema/guards";
 import { documentFormatting } from "../../documentStyles";
+import { paragraphPlacementAt } from "../../paragraphPlacement";
 import {
   activePieces,
   caretPiece,
@@ -39,7 +40,11 @@ function editedMark<K extends EditableRunKey>(
 ): Mark | null {
   const context = documentFormatting(state);
   const rPr = text(target.mark?.attrs.rPr);
-  const paragraph = resolveParagraph(target.pPr, context);
+  const paragraph = resolveParagraph(
+    target.pPr,
+    context,
+    paragraphPlacementAt(state.doc, target.from)
+  );
   const next = editRunProps(
     { rPr, format: target.format },
     inheritedRunFormat(rPr, paragraph, context),

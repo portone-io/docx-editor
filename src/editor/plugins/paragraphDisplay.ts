@@ -13,6 +13,7 @@ import {
 import { docxSchema } from "../../schema";
 import type { DisplayAttrs } from "../../schema/displayDerivation";
 import { paragraphPPr } from "../paragraphEdits";
+import { paragraphPlacementAt } from "../paragraphPlacement";
 import type { DocumentDeriver } from "./displayDerivation";
 
 /** Whether the paragraph carries no values at all, which is one the styles were never read into */
@@ -47,15 +48,21 @@ function holdsComposition(
 export const paragraphDisplay: DocumentDeriver = {
   name: "paragraph",
   nodeTypes: ["paragraph"],
-  derive(node, pos, _doc, context, previous) {
+  derive(node, pos, doc, context, previous) {
+    // An unchanged pPr can move into another table condition after a grid edit.
+    const placement = paragraphPlacementAt(doc, pos);
     if (
-      stands(node, previous) ||
+      (placement === null && stands(node, previous)) ||
       holdsComposition(node, pos, context.composingAt)
     ) {
       return [];
     }
     const formatting = context.document.formatting;
-    const paragraph = resolveParagraph(paragraphPPr(node), formatting);
+    const paragraph = resolveParagraph(
+      paragraphPPr(node),
+      formatting,
+      placement
+    );
     const derived: DisplayAttrs[] = [
       { pos, attrs: paragraphAttrsOf(paragraph) },
     ];

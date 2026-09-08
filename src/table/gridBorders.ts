@@ -1,11 +1,12 @@
 /**
- * The lines a cell draws because of where it sits in the grid.
+ * The lines and the fill a cell draws because of where it sits in the grid.
  *
  * Every line of a table is drawn by its cells (see `docx/tableFormatting`), so which line a side
- * falls back on depends on where in the grid the cell sits. A new cell inherits its neighbour's
- * formatting, which is what a background has to do but not a line: the row appended under the last
- * one would draw the table's outer line against the row above it, and deleting the last row would
- * leave the table with no line along its bottom.
+ * falls back on depends on where in the grid the cell sits, and so does which parts of the table
+ * style dress it. A new cell inherits its neighbour's formatting, which is what a background has to
+ * do but not a line: the row appended under the last one would draw the table's outer line against
+ * the row above it, and deleting the last row would leave the table with no line along its bottom.
+ * A row added under the header row is likewise no header row.
  *
  * So the cells of a table whose grid moved derive their display values again, along the same path
  * the import takes. What a cell wrote down itself lives in its `w:tcPr` and is read straight back
@@ -17,29 +18,33 @@
 import type { Node as PMNode } from "prosemirror-model";
 import { TableMap } from "prosemirror-tables";
 import {
-  type CellBorderDefaults,
-  cellBorderDefaults,
+  type CellDefaults,
+  cellDefaultsFor,
   cellMarginsOf,
-  gridEdgesOf,
   insideBordersOf,
   layerCellMargins,
   layerInsideBorders,
-  NO_BORDER_DEFAULTS,
+  NO_BAND_SIZES,
+  NO_CELL_DEFAULTS,
   NO_CELL_MARGINS,
   NO_INSIDE_BORDERS,
+  NO_TABLE_STYLE_CONDITIONS,
   readCellProps,
+  readTableLook,
+  type TableCellSources,
+  tblStyleIdOf,
 } from "../docx/tableFormatting";
 import {
   type CellFormat,
-  type CellMargins,
-  type InsideBorders,
   spanCount,
-  type TableFormat,
+  toBandSizes,
   toCellFormat,
   toCellMargins,
   toInsideBorders,
   toTableFormat,
+  toTableStyleConditions,
 } from "../model/format";
+import { parsePropsXml } from "../ooxml/props";
 import type { NodeAttrs, TableGridMap } from "./format";
 
 function text(value: unknown): string | null {
@@ -47,18 +52,16 @@ function text(value: unknown): string | null {
 }
 
 /**
- * What a table lays down for its cells to draw.
+ * What this table lays down for its cells to draw.
  * The values a table style laid down are not in the `tblPr`, so the table carries them separately.
+ * A node never changes once it is built, so what is read out of one is read once.
  */
-export interface TableCellSources {
-  outer: TableFormat | null;
-  inside: InsideBorders;
-  margins: CellMargins;
-}
-
 export function tableCellSources(table: PMNode): TableCellSources {
+  const known = sourcesByTable.get(table);
+  if (known) return known;
   const tblPr = text(table.attrs.tblPr);
-  return {
+  const props = tblPr === null ? null : parsePropsXml(tblPr);
+  const sources: TableCellSources = {
     outer: toTableFormat(table.attrs.format),
     inside: layerInsideBorders(
       toInsideBorders(table.attrs.styleInside) ?? NO_INSIDE_BORDERS,
@@ -68,19 +71,31 @@ export function tableCellSources(table: PMNode): TableCellSources {
       toCellMargins(table.attrs.styleCellMargins) ?? NO_CELL_MARGINS,
       cellMarginsOf(tblPr)
     ),
+    look: readTableLook(props),
+    bands: toBandSizes(table.attrs.styleBands) ?? NO_BAND_SIZES,
+    conditions:
+      toTableStyleConditions(table.attrs.styleConditions) ??
+      NO_TABLE_STYLE_CONDITIONS,
+    // The style the paragraphs inside resolve against; what it lays down for the cells is already
+    // in `styleConditions`
+    styleId: tblStyleIdOf(props),
   };
+  sourcesByTable.set(table, sources);
+  return sources;
 }
 
-/** The lines the cell at this position falls back on for the sides it draws no border of its own on */
+const sourcesByTable = new WeakMap<PMNode, TableCellSources>();
+
+/** What the cell at this position falls back on for everything it did not write down itself */
 export function cellDefaultsAt(
   map: TableGridMap,
   pos: number,
   sources: TableCellSources
-): CellBorderDefaults {
-  return cellBorderDefaults(
-    gridEdgesOf(map.findCell(pos), { rows: map.height, cols: map.width }),
-    sources.outer,
-    sources.inside
+): CellDefaults {
+  return cellDefaultsFor(
+    map.findCell(pos),
+    { rows: map.height, cols: map.width },
+    sources
   );
 }
 
@@ -188,16 +203,12 @@ export function cellFixes(table: PMNode): CellFix[] {
     const cell = table.nodeAt(pos);
     if (!cell) continue;
     const tcPr = text(cell.attrs.tcPr);
-    const format = readCellProps(
-      tcPr,
-      cellDefaultsAt(map, pos, sources),
-      sources.margins
-    );
+    const format = readCellProps(tcPr, cellDefaultsAt(map, pos, sources));
     cells.set(pos, {
       pos,
       attrs: cell.attrs,
       format: { ...format },
-      direct: readCellProps(tcPr, NO_BORDER_DEFAULTS),
+      direct: readCellProps(tcPr, NO_CELL_DEFAULTS),
     });
   }
   reconcileSharedBorders(map, cells);
@@ -250,6 +261,8 @@ export function sameFormattingInputs(a: PMNode, b: PMNode): boolean {
     a.attrs.format === b.attrs.format &&
     a.attrs.styleInside === b.attrs.styleInside &&
     a.attrs.styleCellMargins === b.attrs.styleCellMargins &&
+    a.attrs.styleConditions === b.attrs.styleConditions &&
+    a.attrs.styleBands === b.attrs.styleBands &&
     sameCellFormattingInputs(a, b)
   );
 }

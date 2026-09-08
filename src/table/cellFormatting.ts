@@ -86,8 +86,7 @@ function planChanges(
     const next = editCellProps(
       text(cell.attrs.tcPr),
       edit(rect, pos),
-      cellDefaultsAt(rect.map, pos, sources),
-      sources.margins
+      cellDefaultsAt(rect.map, pos, sources)
     );
     if (!next) continue;
     changes.push({

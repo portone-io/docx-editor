@@ -15,6 +15,7 @@
 import { Schema } from "prosemirror-model";
 import {
   spanCount,
+  toBandSizes,
   toCellFormat,
   toCellMargins,
   toColWidth,
@@ -24,6 +25,7 @@ import {
   toRowFormat,
   toRunFormat,
   toTableFormat,
+  toTableStyleConditions,
   toTableWidth,
 } from "../model/format";
 import {
@@ -290,6 +292,14 @@ export const docxSchema = new Schema({
         styleInside: { default: null },
         /** The cell margins the table style laid down, carried along for the same reason */
         styleCellMargins: { default: null },
+        /**
+         * What the table style dresses each part of a table with (`w:tblStylePr`), by the part it
+         * covers. Which of them a cell takes is worked out from where it sits and the table's own
+         * `w:tblLook`, so an edit that moves the grid derives them again
+         */
+        styleConditions: { default: null },
+        /** How many rows and columns one band of the table style is made of */
+        styleBands: { default: null },
       },
       toDOM(node) {
         const format = toTableFormat(node.attrs.format);
@@ -311,6 +321,10 @@ export const docxSchema = new Schema({
           "data-style-margins": formatJson(
             toCellMargins(node.attrs.styleCellMargins)
           ),
+          "data-style-conditions": formatJson(
+            toTableStyleConditions(node.attrs.styleConditions)
+          ),
+          "data-style-bands": formatJson(toBandSizes(node.attrs.styleBands)),
         };
         const body = ["tbody", 0];
         if (gridCols.length === 0) return ["table", attrs, body];
@@ -349,6 +363,12 @@ export const docxSchema = new Schema({
               ),
               styleCellMargins: toCellMargins(
                 parseJson(dom.getAttribute("data-style-margins"))
+              ),
+              styleConditions: toTableStyleConditions(
+                parseJson(dom.getAttribute("data-style-conditions"))
+              ),
+              styleBands: toBandSizes(
+                parseJson(dom.getAttribute("data-style-bands"))
               ),
             };
           },

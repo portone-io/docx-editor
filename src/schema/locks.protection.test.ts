@@ -182,7 +182,8 @@ describe("the display-only pass", () => {
     const tr = rewritten(state, CENTERED).setMeta(displayOnly, true);
 
     expect(transactionAllowed(tr, state)).toBe(true);
-    expect(state.apply(tr).doc.eq(state.doc)).toBe(false);
+    // The deriver may immediately restore a display value unsupported by the source.
+    expect(state.applyTransaction(tr).transactions[0]).toBe(tr);
   });
 
   it("judges the same change as an edit when nothing claims it is a re-derivation", () => {
