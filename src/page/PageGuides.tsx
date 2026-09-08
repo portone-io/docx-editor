@@ -63,12 +63,12 @@ export function PageGuides({
           const header = headerFooterOn(
             headersFooters.headers,
             headersFooters,
-            page.page
+            page.pageInSection
           );
           const footer = headerFooterOn(
             headersFooters.footers,
             headersFooters,
-            page.page
+            page.pageInSection
           );
           return [
             header === null ? null : (

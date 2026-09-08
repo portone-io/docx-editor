@@ -6,6 +6,7 @@ import {
   bytesEqual,
   decode,
   makeHeadersFootersDocx,
+  makeTwoSectionHeadersFootersDocx,
 } from "../__testing__/docx";
 import { docxSchema } from "../schema";
 import {
@@ -51,40 +52,27 @@ function openedStories(bytes: Uint8Array, index = 0): HeadersFooters {
   return sectionStories(doc, session, index);
 }
 
-/** What one visual page's header or footer reads as, and null where the section declares none */
+/**
+ * What one visual page's header or footer reads as, and null where the section declares none.
+ *
+ * `page` is the page's place in the whole document, which is what a `PAGE` field prints, and
+ * `pageInSection` its place within its own section, which is what the variant is chosen by. The
+ * two are the same number only while the document is written in one section.
+ */
 function shown(
   stories: HeadersFooters,
   kind: "headers" | "footers",
   page: number,
-  totalPages: number
+  totalPages: number,
+  pageInSection = page
 ): string | null {
-  const content = headerFooterOn(stories[kind], stories, page);
+  const content = headerFooterOn(stories[kind], stories, pageInSection);
   if (content === null) return null;
   return headerFooterText(
     content.story,
     displayPageNumber(stories, page),
     totalPages
   );
-}
-
-/**
- * The same package with a second section, closed by its own paragraph, naming header3 where the
- * first section names header1. §17.6.17: the section a paragraph closes is written in its `w:pPr`.
- */
-function twoSections(): Uint8Array {
-  const parts = unzipSync(makeHeadersFootersDocx());
-  parts["word/document.xml"] = encoder.encode(
-    decode(parts["word/document.xml"]).replace(
-      "<w:p><w:r><w:t>Body</w:t></w:r></w:p>",
-      "<w:p><w:pPr><w:sectPr" +
-        ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
-        '<w:headerReference w:type="default" r:id="rId12"/>' +
-        '<w:footerReference w:type="default" r:id="rId15"/>' +
-        "</w:sectPr></w:pPr><w:r><w:t>First section</w:t></w:r></w:p>" +
-        "<w:p><w:r><w:t>Second section</w:t></w:r></w:p>"
-    )
-  );
-  return zipSync(parts);
 }
 
 describe("header and footer stories", () => {
@@ -293,16 +281,35 @@ describe("header and footer stories", () => {
   });
 
   it("a second section selects its own header parts", () => {
-    const bytes = twoSections();
+    const bytes = makeTwoSectionHeadersFootersDocx();
     const first = openedStories(bytes, 0);
     const second = openedStories(bytes, 1);
 
     // The first section names header3 and footer3 as its own default, where the body's section
     // names header1 and footer1 and starts its page numbering at four
-    expect(shown(first, "headers", 1, 2)).toBe("Even header");
-    expect(shown(first, "footers", 1, 2)).toBe("Even footer");
-    expect(shown(second, "headers", 2, 2)).toBe("Default 5 of 2");
-    expect(shown(second, "footers", 2, 2)).toBe("Default footer");
+    expect(shown(first, "headers", 1, 3)).toBe("Even header");
+    expect(shown(first, "footers", 1, 3)).toBe("Even footer");
+    expect(shown(second, "headers", 3, 3, 2)).toBe("Default 6 of 3");
+    expect(shown(second, "footers", 3, 3, 2)).toBe("Default footer");
+  });
+
+  it("a later section's own first page shows its first-page story", () => {
+    const bytes = makeTwoSectionHeadersFootersDocx();
+    const second = openedStories(bytes, 1);
+
+    // The body's section declares w:titlePg and opens on the document's second page, so that page
+    // is a first page even though it is not the first page of the document
+    expect(shown(second, "headers", 2, 3, 1)).toBe("First header");
+    expect(shown(second, "footers", 2, 3, 1)).toBe("First footer");
+  });
+
+  it("a later section's even story follows the page's place in that section", () => {
+    const second = openedStories(makeTwoSectionHeadersFootersDocx(), 1);
+
+    // Counted from the section's own start of four, its third page is page six and even, while
+    // the number the page shows still counts on from the document's first page
+    expect(shown(second, "headers", 4, 4, 3)).toBe("Even header");
+    expect(shown(second, "headers", 5, 5, 4)).toBe("Default 8 of 5");
   });
 
   it("passes over a header part no section names", () => {

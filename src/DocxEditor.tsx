@@ -524,29 +524,45 @@ function DocxEditorSurface(
     };
   }, [opened]);
 
+  // The section table is read once per document rather than once per page: reading it walks every
+  // block, and both the layout and the preview ask about it for each page drawn
+  const doc = live?.state.doc ?? null;
+  const session = opened?.status === "opened" ? opened.session : null;
+  const sections = useMemo(
+    () => (doc === null ? null : sectionsOf(doc)),
+    [doc]
+  );
+  const sectionAt = useMemo(() => {
+    if (doc === null || sections === null) return undefined;
+    return (pos: number): number => sectionIn(sections, doc, pos).index;
+  }, [doc, sections]);
+
   const overlay = usePageLayout({
     view: live?.view ?? null,
     layer: layerRef,
     enabled: showPageGuides,
     revision: live?.state.doc,
     geometry: opened?.status === "opened" ? opened.session.geometry : undefined,
+    sectionAt,
   });
 
-  // The section table is read once per document rather than once per page: reading it walks every
-  // block, and a preview asks about it for each page it draws
-  const doc = live?.state.doc ?? null;
-  const session = opened?.status === "opened" ? opened.session : null;
   const headersFootersFor = useMemo(() => {
-    if (doc === null || session === null) return undefined;
-    const sections = sectionsOf(doc);
+    if (
+      doc === null ||
+      sections === null ||
+      sectionAt === undefined ||
+      session === null
+    ) {
+      return undefined;
+    }
     const shown = sections.map((section) =>
       variantsFor(section, session.headerFooterStories, (key) =>
         storyNodeOf(doc, key)
       )
     );
     return (face: PageFace): HeadersFooters | null =>
-      shown[sectionIn(sections, doc, face.pos).index] ?? null;
-  }, [doc, session]);
+      shown[sectionAt(face.pos)] ?? null;
+  }, [doc, sections, sectionAt, session]);
 
   if (opened?.status === "rejected") {
     return renderImportError ? (

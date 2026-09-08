@@ -43,6 +43,11 @@ export interface PageFace {
   page: number;
   /** The position of the block this page opens with, which says which section it belongs to */
   pos: number;
+  /**
+   * The place this page takes within that section, counted from 1 again at every section, which is
+   * what its header and footer variant is chosen by (`docx/headersFooters`)
+   */
+  pageInSection: number;
   headerTop: number;
   footerTop: number;
   left: number;
@@ -68,6 +73,11 @@ interface PageLayoutOptions {
   revision: unknown;
   /** The paper the open document names. A4 where a document names none */
   geometry?: PageGeometry;
+  /**
+   * Which section the block at a position belongs to. Left out while no document is open, which
+   * reads the sheet as the single section it then is
+   */
+  sectionAt?: (pos: number) => number;
 }
 
 /**
@@ -131,6 +141,7 @@ export function usePageLayout({
   enabled,
   revision,
   geometry,
+  sectionAt,
 }: PageLayoutOptions): PageOverlay | null {
   const [overlay, setOverlay] = useState<PageOverlay | null>(null);
   // The paper is fixed the moment the document is opened, so the pixels are worked out once
@@ -149,6 +160,7 @@ export function usePageLayout({
         blocks: measured.blocks,
         pageBodyHeight: page.bodyHeight,
         pageStep: page.pageStep,
+        sectionAt,
       });
       setPageMarks(view, { pushes: layout.pushes, cuts: layout.cuts });
 
@@ -180,6 +192,7 @@ export function usePageLayout({
           return {
             page: start.page,
             pos: start.pos,
+            pageInSection: start.pageInSection,
             headerTop: paperTop + page.marginTop / 2,
             footerTop: paperTop + page.pageHeight - page.marginBottom / 2,
             left: page.marginLeft,

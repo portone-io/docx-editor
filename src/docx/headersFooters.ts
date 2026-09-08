@@ -216,6 +216,12 @@ export function variantsFor(
   };
 }
 
+/**
+ * The number this visual page shows, counted from the start its section declares.
+ *
+ * `page` is the page's place in the whole document: the count is not restarted at a section
+ * boundary, which is what the editor's documented page numbering says.
+ */
 export function displayPageNumber(
   headersFooters: HeadersFooters,
   page: number
@@ -223,19 +229,25 @@ export function displayPageNumber(
   return headersFooters.pageNumberStart + page - 1;
 }
 
-/** The story this visual page shows, and null where the section declares none for it */
+/**
+ * The story this page of a section shows, and null where the section declares none for it.
+ *
+ * `pageInSection` is the page's place within its own section rather than in the document:
+ * `w:titlePg` selects the `first` story for the first page of every section it is written in
+ * (§17.10.1), and the odd or even story follows the number that page would carry counting from
+ * the section's own start (§17.10.6), so a second section opening halfway down a document draws
+ * its own first page as a first page.
+ */
 export function headerFooterOn(
   variants: HeaderFooterVariants,
   headersFooters: HeadersFooters,
-  page: number
+  pageInSection: number
 ): HeaderFooterContent | null {
-  if (page === 1 && headersFooters.firstPageDifferent) return variants.first;
-  if (
-    headersFooters.evenAndOdd &&
-    displayPageNumber(headersFooters, page) % 2 === 0
-  ) {
-    return variants.even;
+  if (pageInSection === 1 && headersFooters.firstPageDifferent) {
+    return variants.first;
   }
+  const number = headersFooters.pageNumberStart + pageInSection - 1;
+  if (headersFooters.evenAndOdd && number % 2 === 0) return variants.even;
   return variants.default;
 }
 

@@ -132,6 +132,12 @@ export interface PageStart {
    */
   pos: number;
   /**
+   * The place this page takes within its own section, counted from 1 again at every section it
+   * opens. A document read with no section table at all is one section, so this counts the whole
+   * of it
+   */
+  pageInSection: number;
+  /**
    * Whether text crosses over from the previous page, so this page continues with no top
    * margin
    */
@@ -155,10 +161,36 @@ export interface PageLayoutInput {
   pageBodyHeight: number;
   /** From the end of the previous page's body to the top of the next page's body */
   pageStep: number;
+  /**
+   * Which section the block at a position belongs to (`docx/sections`). Left out where the caller
+   * holds no section table, which reads the document as the single section it then is
+   */
+  sectionAt?: (pos: number) => number;
 }
 
 function round(value: number): number {
   return Math.round(value * 100) / 100;
+}
+
+/**
+ * The pages numbered again from one at the top of every section they open.
+ *
+ * Pages come in the order they are drawn and a section covers a run of blocks, so a page belongs
+ * to the section the block it opens with belongs to, and a new section starts wherever that answer
+ * changes.
+ */
+function withinSections(
+  pages: readonly Omit<PageStart, "pageInSection">[],
+  sectionAt: (pos: number) => number
+): PageStart[] {
+  let section: number | null = null;
+  let within = 0;
+  return pages.map((page) => {
+    const index = sectionAt(page.pos);
+    within = index === section ? within + 1 : 1;
+    section = index;
+    return { ...page, pageInSection: within };
+  });
 }
 
 /**
@@ -231,21 +263,25 @@ export function pageLayout({
   blocks,
   pageBodyHeight,
   pageStep,
+  sectionAt = () => 0,
 }: PageLayoutInput): PageLayout {
   const pushes: BlockPush[] = [];
   const cuts: PageCut[] = [];
   const splits: PageSplit[] = [];
   /** The block being placed, which is the one a page opened along the way starts with */
   let blockPos = blocks[0]?.pos ?? 0;
-  const firstPage: PageStart = {
-    page: 1,
-    bodyStart: 0,
-    pos: blockPos,
-    crossed: false,
-  };
-  const pages: PageStart[] = [firstPage];
+  type PageOpening = Omit<PageStart, "pageInSection">;
+  const opened: PageOpening[] = [
+    { page: 1, bodyStart: 0, pos: blockPos, crossed: false },
+  ];
   if (!(pageBodyHeight > 0)) {
-    return { pushes, cuts, splits, pages, bodyHeight: 0 };
+    return {
+      pushes,
+      cuts,
+      splits,
+      pages: withinSections(opened, sectionAt),
+      bodyHeight: 0,
+    };
   }
 
   let pageStart = 0;
@@ -255,7 +291,7 @@ export function pageLayout({
     const page = splits.length + 2;
     splits.push({ y: round(y), page, forced, crossed });
     pageStart = crossed ? y : y + pageStep;
-    pages.push({ page, bodyStart: round(pageStart), pos: blockPos, crossed });
+    opened.push({ page, bodyStart: round(pageStart), pos: blockPos, crossed });
   };
 
   // No gap is placed along a stretch the text crosses: what a block taller than one page covers,
@@ -335,7 +371,7 @@ export function pageLayout({
     pushes,
     cuts,
     splits,
-    pages,
+    pages: withinSections(opened, sectionAt),
     bodyHeight: round(pageStart + pageBodyHeight),
   };
 }

@@ -70,7 +70,7 @@ binding such as `Mod+K` without replacing the editor.
 - Tab leader glyphs and bar lines remain preserved in OOXML but are not drawn.
 - Visual page boundaries are approximate and may differ from Word or printed output. Keep lines together and widow control are preserved but not reflected in them.
 - Every page is drawn on the first section's paper, whatever the later sections name. Their own page setup is preserved and goes back out untouched.
-- A page number begins at the start its own section declares, but the count is not restarted at a section boundary: a later section's number carries on from the page's place in the whole document.
+- Page numbers are counted from the start the first section declares and run on through the whole document. A later section's own `w:pgNumType` start is preserved but does not restart the count, so the number a later section's header shows is that section's start plus the page's place in the document rather than its place in the section. Which header a page shows - first, even, or default - is chosen from the page's place in its own section, so every section's own first page is drawn as a first page.
 - A selection running across the last paragraph of a section cannot be deleted, even when the section break is not what you meant to remove. Move the selection clear of that paragraph's boundary to edit the text around it.
 - The cached result text of a complex field can be edited, but nothing recalculates the field. A page number or a total that the document already drew stays as it was written.
 - A table is shown as a placeholder when its row wrapper cannot be read or a marker follows a cell that only continues a vertical merge. Other markers between rows or cells are preserved while the table remains editable.
