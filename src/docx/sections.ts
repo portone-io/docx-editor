@@ -3,12 +3,15 @@
  *
  * A document is a sequence of sections. Every section but the last is closed by the paragraph that
  * ends it, which carries that section's `w:sectPr` inside its own `w:pPr` (§17.6.17); the last one
- * is closed by the body, whose `w:sectPr` stands after the final block (§17.6.18).
+ * is closed by the body, whose `w:sectPr` stands after the final block (§17.6.18). The body's is
+ * the one the document node carries as `sectPr`, so an edit to it goes through a transaction and
+ * select-all + delete cannot take it away along with the blocks.
  *
- * A fragment is only ever sliced, never rebuilt, so an untouched section goes back out as the
- * bytes it arrived as.
+ * A fragment is only ever sliced, never rebuilt: an untouched section goes back out as the bytes it
+ * arrived as, and a rewritten child is swapped into the spot `CT_SectPr` lays down.
  */
 
+import type { Node as PMNode } from "prosemirror-model";
 import {
   type Props,
   parseProps,
@@ -16,6 +19,7 @@ import {
   renderElement,
   renderProps,
   setChild,
+  setChildren,
 } from "../ooxml/props";
 import { isOnElement } from "../ooxml/units";
 import {
@@ -24,7 +28,11 @@ import {
   elementChildren,
   R_NS,
 } from "../ooxml/xml";
-import { type PageGeometry, readPageGeometry } from "./pageGeometry";
+import {
+  A4_PORTRAIT,
+  type PageGeometry,
+  readPageGeometry,
+} from "./pageGeometry";
 
 export type HeaderFooterVariant = "default" | "first" | "even";
 
@@ -66,6 +74,31 @@ export interface SectionProperties {
     | "oddPage"
     | "nextColumn"
     | null;
+}
+
+/** What a section the document does not spell out lays down: the paper every document used to be drawn on */
+export const DEFAULT_SECTION: SectionProperties = {
+  xml: "",
+  geometry: A4_PORTRAIT,
+  headerRefs: NO_REFS,
+  footerRefs: NO_REFS,
+  titlePg: false,
+  pageNumberStart: null,
+  type: null,
+};
+
+/** Which `w:sectPr` closes a section: the paragraph carrying it, or the body itself */
+export type SectionAnchor =
+  | { kind: "paragraph"; pos: number }
+  | { kind: "body" };
+
+export interface DocumentSection {
+  index: number;
+  /** Top-level block indexes this section covers, inclusive */
+  firstBlock: number;
+  lastBlock: number;
+  anchor: SectionAnchor;
+  props: SectionProperties;
 }
 
 const SECTION_TYPES: readonly NonNullable<SectionProperties["type"]>[] = [
@@ -162,6 +195,11 @@ export function firstSectPrElement(body: Element): Element | null {
   return null;
 }
 
+function pPrText(node: PMNode): string | null {
+  const pPr: unknown = node.attrs.pPr;
+  return typeof pPr === "string" ? pPr : null;
+}
+
 /** The `w:sectPr` this paragraph's properties carry, and null for a paragraph that ends no section */
 export function sectionBreakOf(pPr: string | null): string | null {
   if (pPr === null) return null;
@@ -194,3 +232,111 @@ export function withSectionBreak(pPr: string | null, sectPr: string): string {
 }
 
 const EMPTY_P_PR: Props = { tag: "w:pPr", attrs: null, children: [] };
+
+/**
+ * The children `CT_SectPr` lets a section carry more than one of, which are told apart by the
+ * variant they name rather than by their element name alone.
+ */
+const REFERENCE_CHILDREN: readonly string[] = [
+  "headerReference",
+  "footerReference",
+];
+
+function referenceVariant(xml: string): string {
+  const el = parsePropsXml(xml);
+  return (el && attributeByLocalName(el, "type")) ?? "default";
+}
+
+/**
+ * The references of this kind with the one naming the same variant swapped for `childXml`, and
+ * `childXml` on the end where the section names that variant for the first time.
+ */
+function withReference(props: Props, name: string, childXml: string): string[] {
+  const variant = referenceVariant(childXml);
+  const existing = props.children
+    .filter((child) => child.name === name)
+    .map((child) => child.xml);
+  const replaced = existing.map((xml) =>
+    referenceVariant(xml) === variant ? childXml : xml
+  );
+  return replaced.includes(childXml) ? replaced : [...replaced, childXml];
+}
+
+/**
+ * One child of a section swapped for new XML, or taken away with a null.
+ *
+ * A child that was not there goes into the spot `CT_SectPr` lays down, and every other child of
+ * the section keeps the text it was written as, whitespace between them included. A header or
+ * footer reference names one variant of one story, so writing one leaves the section's references
+ * to the other variants where they stand.
+ *
+ * A fragment whose shape cannot be made out is handed back untouched, which leaves the caller with
+ * the section the document wrote rather than one written over a guess.
+ */
+export function setSectionChild(
+  sectPrXml: string,
+  name: string,
+  childXml: string | null
+): string {
+  const start = sectPrXml.indexOf("<");
+  if (start === -1) return sectPrXml;
+  // What stood between the block before it and the section itself belongs to the document rather
+  // than to the section, so it rides along instead of being written again
+  const gap = sectPrXml.slice(0, start);
+  const props = parseProps(sectPrXml.slice(start));
+  if (props === null) return sectPrXml;
+  const written =
+    childXml !== null && REFERENCE_CHILDREN.includes(name)
+      ? setChildren(props, name, withReference(props, name, childXml))
+      : setChild(props, name, childXml);
+  return gap + renderElement(written);
+}
+
+/**
+ * Every section of the document in order, the last of them the one the document node carries.
+ *
+ * A document naming no section at all still has one, drawn on the paper `DEFAULT_SECTION` lays
+ * down. The last section covers no block where the final paragraph itself ends a section, which
+ * leaves `firstBlock` past `lastBlock`.
+ */
+export function sectionsOf(doc: PMNode): readonly DocumentSection[] {
+  const sections: DocumentSection[] = [];
+  let firstBlock = 0;
+  doc.forEach((child, offset, index) => {
+    const brk = sectionBreakOf(pPrText(child));
+    if (brk === null) return;
+    sections.push({
+      index: sections.length,
+      firstBlock,
+      lastBlock: index,
+      anchor: { kind: "paragraph", pos: offset },
+      props: parseSectionProperties(brk) ?? { ...DEFAULT_SECTION, xml: brk },
+    });
+    firstBlock = index + 1;
+  });
+  const body: unknown = doc.attrs.sectPr;
+  const xml = typeof body === "string" ? body : null;
+  sections.push({
+    index: sections.length,
+    firstBlock,
+    lastBlock: doc.childCount - 1,
+    anchor: { kind: "body" },
+    props:
+      xml === null
+        ? DEFAULT_SECTION
+        : (parseSectionProperties(xml) ?? { ...DEFAULT_SECTION, xml }),
+  });
+  return sections;
+}
+
+/** The section the block at this position belongs to */
+export function sectionAt(doc: PMNode, pos: number): DocumentSection {
+  const sections = sectionsOf(doc);
+  const index = doc
+    .resolve(Math.min(Math.max(pos, 0), doc.content.size))
+    .index(0);
+  return (
+    sections.find((section) => index <= section.lastBlock) ??
+    sections[sections.length - 1]
+  );
+}

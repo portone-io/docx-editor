@@ -86,6 +86,9 @@ function buildDocumentXml(
   withUniqueIdentities(doc).forEach((child) => {
     pieces.push(blockXml(child, session, refs));
   });
+  // The body's own section closes the blocks and stands ahead of the tail (§17.6.18)
+  const sectPr: unknown = doc.attrs.sectPr;
+  if (typeof sectPr === "string") pieces.push(sectPr);
   pieces.push(session.documentSuffix);
   return pieces.join("");
 }

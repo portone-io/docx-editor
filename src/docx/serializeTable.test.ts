@@ -9,6 +9,7 @@ import {
   fixtureNames,
   makeDocx,
   readFixture,
+  surroundings,
 } from "../__testing__/docx";
 import { createEditorState } from "../editor/createEditor";
 import { docxSchema } from "../schema";
@@ -496,17 +497,7 @@ describe("locality of an edit inside a table cell", () => {
     const exported = unzipSync(out);
     const documentXml = decode(exported[session.mainPartPath]);
 
-    const head =
-      session.documentPrefix +
-      session.blocks
-        .slice(0, spot.index)
-        .map((block) => block.xml)
-        .join("");
-    const tail =
-      session.blocks
-        .slice(spot.index + 1)
-        .map((block) => block.xml)
-        .join("") + session.documentSuffix;
+    const { head, tail } = surroundings(edited.doc, session, spot.index);
     expect(documentXml.startsWith(head)).toBe(true);
     expect(documentXml.endsWith(tail)).toBe(true);
 

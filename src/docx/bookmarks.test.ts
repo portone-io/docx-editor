@@ -2,7 +2,7 @@
 import { unzipSync } from "fflate";
 import { Fragment, type Node as PMNode } from "prosemirror-model";
 import { describe, expect, it } from "vitest";
-import { bytesEqual, decode, makeDocx } from "../__testing__/docx";
+import { bytesEqual, decode, makeDocx, withBlocks } from "../__testing__/docx";
 import { createEditorState } from "../editor/createEditor";
 import type { DocxExportError } from "../ooxml/errors";
 import { docxSchema } from "../schema";
@@ -58,7 +58,7 @@ function editParagraph(doc: PMNode, index: number, text: string): PMNode {
     blocks.push(block.copy(Fragment.from(inline)));
     paragraphIndex += 1;
   });
-  return docxSchema.nodes.doc.create(null, blocks);
+  return withBlocks(doc, blocks);
 }
 
 function documentXml(bytes: Uint8Array): string {
@@ -182,7 +182,7 @@ describe("body-level bookmarks", () => {
     const blocks = opened.doc.children.filter(
       (node, index) => !(index === 0 && node.type.name === "rawBlock")
     );
-    const malformed = docxSchema.nodes.doc.create(null, blocks);
+    const malformed = withBlocks(opened.doc, blocks);
 
     expect(() => exportDocx(malformed, opened.session)).toThrowError(
       expect.objectContaining<Partial<DocxExportError>>({

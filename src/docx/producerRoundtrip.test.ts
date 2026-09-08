@@ -79,11 +79,12 @@ describe("a document a word processor saved", () => {
       const { doc, session } = importDocx(bytes);
       const index = firstBlockIndex(doc, kind);
 
-      const out = exportDocx(withEditedBlock(doc, index, EDIT), session);
+      const edited = withEditedBlock(doc, index, EDIT);
+      const out = exportDocx(edited, session);
       const exported = unzipSync(out);
       const documentXml = decode(exported[session.mainPartPath]);
 
-      const { head, tail } = surroundings(session, index);
+      const { head, tail } = surroundings(edited, session, index);
       expect(documentXml.startsWith(head)).toBe(true);
       expect(documentXml.endsWith(tail)).toBe(true);
 

@@ -7,7 +7,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { unzipSync, zipSync } from "fflate";
-import type { Node as PMNode } from "prosemirror-model";
+import { Fragment, type Node as PMNode } from "prosemirror-model";
 import { exportDocx } from "../docx/exportDocx";
 import type { PageGeometry } from "../docx/pageGeometry";
 import type { SessionStore } from "../docx/session";
@@ -559,12 +559,25 @@ export function documentXmlOf(doc: PMNode, session: SessionStore): string {
   return decode(unzipSync(exportDocx(doc, session))[session.mainPartPath]);
 }
 
+/**
+ * The document with these blocks in place of its own, and everything it holds beyond them - the
+ * section that closes the body among it - carried over.
+ *
+ * A document built with `doc.create` instead starts from the schema's defaults, which is a
+ * document whose last section the export has nothing to write.
+ */
+export function withBlocks(doc: PMNode, blocks: readonly PMNode[]): PMNode {
+  return doc.copy(Fragment.fromArray([...blocks]));
+}
+
 /** The original bytes that have to remain on either side of the edited block */
 export function surroundings(
+  doc: PMNode,
   session: SessionStore,
   index: number
 ): { head: string; tail: string } {
   const xmlOf = (block: { xml: string }) => block.xml;
+  const sectPr: unknown = doc.attrs.sectPr;
   return {
     head:
       session.documentPrefix +
@@ -573,6 +586,8 @@ export function surroundings(
       session.blocks
         .slice(index + 1)
         .map(xmlOf)
-        .join("") + session.documentSuffix,
+        .join("") +
+      (typeof sectPr === "string" ? sectPr : "") +
+      session.documentSuffix,
   };
 }

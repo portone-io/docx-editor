@@ -17,6 +17,7 @@ import {
   makeNumberedDocx,
   ONE_LIST_NUMBERING,
   readFixture,
+  surroundings,
 } from "../__testing__/docx";
 import { runCommand } from "../__testing__/editing";
 import { canExport } from "../editor/commands/exportQueries";
@@ -88,6 +89,7 @@ function exportWithNewList(name: string): {
   /** Which block in the body the paragraph that became a list is */
   index: number;
   out: Uint8Array;
+  numbered: PMNode;
 } {
   const { bytes, doc, session, state } = open(name);
   const spot = plainParagraph(doc);
@@ -102,6 +104,7 @@ function exportWithNewList(name: string): {
     bytes,
     session,
     index: spot.index,
+    numbered: listed.doc,
     out: exportDocx(listed.doc, session),
   };
 }
@@ -159,20 +162,10 @@ describe("editing that starts a new list", () => {
   it.each(fixtureNames)(
     "%s: the body regenerates only that paragraph",
     (name) => {
-      const { out, session, index } = exportWithNewList(name);
+      const { out, session, index, numbered } = exportWithNewList(name);
       const documentXml = decode(partsOf(out)[session.mainPartPath]);
 
-      const head =
-        session.documentPrefix +
-        session.blocks
-          .slice(0, index)
-          .map((block) => block.xml)
-          .join("");
-      const tail =
-        session.blocks
-          .slice(index + 1)
-          .map((block) => block.xml)
-          .join("") + session.documentSuffix;
+      const { head, tail } = surroundings(numbered, session, index);
       expect(documentXml.startsWith(head)).toBe(true);
       expect(documentXml.endsWith(tail)).toBe(true);
       expect(

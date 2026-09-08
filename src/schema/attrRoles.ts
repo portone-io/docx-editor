@@ -33,6 +33,9 @@ export const NODE_ATTR_ROLES: AttrTable = {
     // The definitions of the lists started while editing. The export writes numbering.xml from
     // them and nothing derives them again, so they are a source value the document node holds
     newLists: { role: "source", class: "model" },
+    // The section that closes the body, as the document wrote it. The export writes it back out
+    // between the blocks and the tail, so a change to it is a change to the document
+    sectPr: { role: "source", class: "preserved" },
   },
   paragraph: {
     srcId: { role: "session", class: "identity" },

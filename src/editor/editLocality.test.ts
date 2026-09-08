@@ -165,7 +165,7 @@ describe.each(LOCAL_EDITS)("%s", (_move, move) => {
       const edited = move.edit(doc, state);
 
       const documentXml = documentXmlOf(edited.doc, session);
-      const { head, tail } = surroundings(session, edited.index);
+      const { head, tail } = surroundings(edited.doc, session, edited.index);
       expect(documentXml.startsWith(head)).toBe(true);
       expect(documentXml.endsWith(tail)).toBe(true);
       move.rebuilt?.(
