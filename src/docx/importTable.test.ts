@@ -327,6 +327,107 @@ describe("a content control we could not write back out is left preserved", () =
   });
 });
 
+/**
+ * `w:tbl` and `w:tr` have no node to keep a stranger in, so what `docx/importPolicy` calls
+ * invisible there rides on the child before it rather than standing the whole table down.
+ */
+describe("a marker standing between a table's own children", () => {
+  const BOOKMARK_START =
+    '<w:bookmarkStart w:id="1" w:name="b" w:colFirst="0" w:colLast="0"/>';
+  const BOOKMARK_END = '<w:bookmarkEnd w:id="1"/>';
+
+  it("a row-level bookmark rides on the cells around it instead of preserving the table", () => {
+    const node = requireTable(
+      "<w:tbl>" +
+        grid(1000, 1000) +
+        `<w:tr>${BOOKMARK_START}${cell("", "a")}${cell("", "b")}${BOOKMARK_END}</w:tr>` +
+        "</w:tbl>"
+    );
+    const row = node.child(0);
+
+    expect(node.type.name).toBe("table");
+    expect(row.attrs.leadingXml).toBe(BOOKMARK_START);
+    expect(row.child(0).attrs.trailingXml).toBeNull();
+    expect(row.child(1).attrs.trailingXml).toBe(BOOKMARK_END);
+  });
+
+  it("a marker between two cells rides on the cell before it", () => {
+    const node = requireTable(
+      "<w:tbl>" +
+        grid(1000, 1000) +
+        `<w:tr>${cell("", "a")}${BOOKMARK_START}${cell("", "b")}</w:tr>` +
+        "</w:tbl>"
+    );
+    const row = node.child(0);
+
+    expect(row.child(0).attrs.trailingXml).toBe(BOOKMARK_START);
+    expect(row.child(1).attrs.trailingXml).toBeNull();
+  });
+
+  it("a table-level bookmark rides on the table and on the row before it", () => {
+    const node = requireTable(
+      "<w:tbl>" +
+        grid(1000) +
+        BOOKMARK_START +
+        row(cell("", "a")) +
+        BOOKMARK_END +
+        row(cell("", "b")) +
+        "</w:tbl>"
+    );
+
+    expect(node.attrs.leadingXml).toBe(BOOKMARK_START);
+    expect(node.child(0).attrs.trailingXml).toBe(BOOKMARK_END);
+    expect(node.child(1).attrs.trailingXml).toBeNull();
+  });
+
+  it("keeps a run of them together, in the order they stood in", () => {
+    const node = requireTable(
+      "<w:tbl>" +
+        grid(1000) +
+        `<w:tr>${cell("", "a")}${BOOKMARK_END}${BOOKMARK_START}</w:tr>` +
+        "</w:tbl>"
+    );
+
+    expect(node.child(0).child(0).attrs.trailingXml).toBe(
+      BOOKMARK_END + BOOKMARK_START
+    );
+  });
+
+  it("a marker beside a continued merge cell stands the table down instead", () => {
+    // The cells that only continue a merge are made fresh on export, so there is no node the
+    // marker could be written back from
+    expect(
+      table(
+        "<w:tbl>" +
+          grid(1000) +
+          row(cell('<w:vMerge w:val="restart"/>', "top")) +
+          `<w:tr>${cell("<w:vMerge/>")}${BOOKMARK_END}</w:tr>` +
+          "</w:tbl>"
+      )
+    ).toBeNull();
+  });
+
+  it("a customXml block inside a cell is a hidden or visible raw block by its policy", () => {
+    const node = requireTable(
+      "<w:tbl>" +
+        grid(1000) +
+        "<w:tr><w:tc>" +
+        '<w:customXml w:uri="urn:x" w:element="e"><w:p/></w:customXml>' +
+        BOOKMARK_START +
+        "</w:tc></w:tr></w:tbl>"
+    );
+    const blocks = node.child(0).child(0).children;
+
+    expect(
+      blocks.map((block) => [block.type.name, block.attrs.display])
+    ).toEqual([
+      ["rawBlock", "chip"],
+      ["rawBlock", "hidden"],
+    ]);
+    expect(blocks[1].attrs.guarded).toBe(true);
+  });
+});
+
 describe("a table that cannot be modelled is left preserved", () => {
   it.each([
     [
@@ -1344,18 +1445,6 @@ describe("the table styles of table-styles.docx", () => {
   });
 });
 
-/**
- * How many tables each fixture deliberately holds that this reader cannot take apart.
- *
- * A marker standing under a row has no node to go in (`docx/importPolicy` demotes at `tbl` and
- * `tr` for that reason), so the table around it is stood down and `preserved-markup.docx` carries
- * one on purpose. Counted per file rather than allowed everywhere, so a table quietly demoting
- * anywhere else fails here.
- */
-const DEMOTED_TABLES: Readonly<Record<string, number>> = {
-  "preserved-markup.docx": 1,
-};
-
 describe("a cell paragraph carrying markup the editor does not model", () => {
   it("stays an editable paragraph, keeping the element inside its run", () => {
     const node = requireTable(
@@ -1373,20 +1462,17 @@ describe("a cell paragraph carrying markup the editor does not model", () => {
 });
 
 describe("tables in the fixtures", () => {
-  it.each(fixtureNames)(
-    "%s: leaves as preserved blocks only the tables it is written to",
-    (name) => {
-      const { doc } = importDocx(readFixture(name));
-      let tables = 0;
-      let demoted = 0;
-      doc.forEach((block) => {
-        if (block.attrs.name === "w:tbl") demoted += 1;
-        if (block.type.name === "table") tables += 1;
-      });
-      expect(demoted).toBe(DEMOTED_TABLES[name] ?? 0);
-      expect(tables).toBeGreaterThan(0);
-    }
-  );
+  it.each(fixtureNames)("%s: no table is left as a preserved block", (name) => {
+    const { doc } = importDocx(readFixture(name));
+    let tables = 0;
+    let demoted = 0;
+    doc.forEach((block) => {
+      if (block.attrs.name === "w:tbl") demoted += 1;
+      if (block.type.name === "table") tables += 1;
+    });
+    expect(demoted).toBe(0);
+    expect(tables).toBeGreaterThan(0);
+  });
 
   it.each(fixtureNames)(
     "%s: prosemirror-tables finds nothing to repair",

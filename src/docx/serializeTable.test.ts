@@ -555,6 +555,68 @@ describe("locality of an edit inside a table cell", () => {
   );
 });
 
+describe("the markers a table and a row carry", () => {
+  const BOOKMARK_START =
+    '<w:bookmarkStart w:id="1" w:name="b" w:colFirst="0" w:colLast="0"/>';
+  const BOOKMARK_END = '<w:bookmarkEnd w:id="1"/>';
+
+  it("writes the marker back after its cell when the row is rebuilt", () => {
+    const table = openTable(
+      "<w:tbl><w:tblPr/>" +
+        grid(1000, 1000) +
+        BOOKMARK_START +
+        `<w:tr>${cell("", "a")}${BOOKMARK_END}${cell("", "b")}</w:tr>` +
+        "</w:tbl>"
+    );
+    const xml = serializeTable(editCells(table, () => true, {}));
+
+    expect(xml).toContain(`</w:tblGrid>${BOOKMARK_START}<w:tr`);
+    expect(xml).toContain(`>a</w:t></w:r></w:p></w:tc>${BOOKMARK_END}<w:tc`);
+  });
+
+  it("writes a row's own markers ahead of its cells and after the row", () => {
+    const table = openTable(
+      "<w:tbl><w:tblPr/>" +
+        grid(1000) +
+        `<w:tr>${BOOKMARK_START}${cell("", "a")}</w:tr>` +
+        BOOKMARK_END +
+        row(cell("", "b")) +
+        "</w:tbl>"
+    );
+    const xml = serializeTable(editCells(table, () => true, {}));
+
+    expect(xml).toContain(`<w:tr>${BOOKMARK_START}<w:tc`);
+    expect(xml).toContain(`</w:tr>${BOOKMARK_END}<w:tr`);
+  });
+
+  it("does not write a marker twice for a cell that spans several rows", () => {
+    const table = openTable(
+      "<w:tbl><w:tblPr/>" +
+        grid(1000, 1000) +
+        `<w:tr>${cell('<w:vMerge w:val="restart"/>', "top")}${cell("", "a")}${BOOKMARK_END}</w:tr>` +
+        row(cell("<w:vMerge/>"), cell("", "b")) +
+        "</w:tbl>"
+    );
+    const xml = serializeTable(editCells(table, () => true, {}));
+
+    expect(xml.match(new RegExp(BOOKMARK_END, "g"))).toHaveLength(1);
+  });
+
+  it("a raw block with its own xml goes inside a cell without an error", () => {
+    const table = openTable(
+      "<w:tbl><w:tblPr/>" +
+        grid(1000) +
+        "<w:tr><w:tc>" +
+        '<w:customXml w:uri="urn:x" w:element="e"><w:p/></w:customXml>' +
+        "</w:tc></w:tr></w:tbl>"
+    );
+
+    expect(serializeTable(editCells(table, () => true, {}))).toContain(
+      '<w:customXml w:uri="urn:x" w:element="e"><w:p/></w:customXml>'
+    );
+  });
+});
+
 describe("a node that came from outside a table", () => {
   it("does not pass over a preserved block with no original quietly", () => {
     const table = openTable(

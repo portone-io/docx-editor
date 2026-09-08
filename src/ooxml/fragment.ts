@@ -25,6 +25,7 @@ import {
  * What a raw XML string has to look like to be let into the attr that carries it.
  *
  * `element` is a whole element: a properties fragment, a drawing, an annotation reference.
+ * `elements` is a run of them standing side by side, as a table carries between its rows.
  * `attributes` is what stood inside an opening tag, as `attrString` writes it.
  * `openTag` is an opening tag with everything it wrapped cut away, which the writer puts back by
  * appending the closing text `closedBy` names. `head` is what may still stand between the two:
@@ -32,6 +33,7 @@ import {
  */
 export type RawXmlShape =
   | { kind: "element"; names: readonly string[] | "any" }
+  | { kind: "elements" }
   | { kind: "attributes" }
   | {
       kind: "openTag";
@@ -56,27 +58,42 @@ export function ELEMENT(...names: string[]): RawXmlShape {
  */
 export const ANY_ELEMENT: RawXmlShape = { kind: "element", names: "any" };
 
+/**
+ * A run of one or more elements standing side by side, of any name, in any namespace.
+ *
+ * A table carries the markers that stood between its rows, and a row those between its cells
+ * (`docx/importTable`), and there may be several of them in a row: the end of one bookmark and the
+ * start of the next stand together with nothing between them.
+ */
+export const ANY_ELEMENTS: RawXmlShape = { kind: "elements" };
+
 /** The attributes of an opening tag, with neither the tag nor anything it held */
 export const ATTRIBUTES: RawXmlShape = { kind: "attributes" };
 
 /**
- * The one element this fragment holds. null when it holds anything else: nothing, more than one
- * element, or a sibling of any other kind beside it.
+ * The elements this fragment holds, side by side. null when it holds anything besides elements:
+ * text, a comment, or markup that closes a tag the fragment never opened.
  *
  * The wrapper is what makes a fragment parseable at all, since it carries no namespace
  * declarations of its own, and it is also what catches a fragment that closes its own parent:
  * that one no longer nests inside the wrapper and does not parse.
  */
-function loneElement(xml: string): Element | null {
+function wrappedElements(xml: string): Element[] | null {
   let root: Element;
   try {
     root = parseXml(`<x ${namespaceDecls(xml)}>${xml}</x>`).documentElement;
   } catch {
     return null;
   }
-  if (root.childNodes.length !== 1) return null;
-  const el = elementChildren(root)[0];
-  return el === undefined || rebindsReservedPrefix(el) ? null : el;
+  const elements = elementChildren(root);
+  // Anything else the wrapper holds is text, a comment or a section the writer never wrote
+  if (root.childNodes.length !== elements.length) return null;
+  return elements.some(rebindsReservedPrefix) ? null : elements;
+}
+
+function loneElement(xml: string): Element | null {
+  const elements = wrappedElements(xml);
+  return elements?.length === 1 ? elements[0] : null;
 }
 
 function isNamed(el: Element, names: readonly string[]): boolean {
@@ -144,6 +161,10 @@ function holdsShape(shape: RawXmlShape, value: string): boolean {
       const el = loneElement(value);
       if (el === null) return false;
       return shape.names === "any" || isNamed(el, shape.names);
+    }
+    case "elements": {
+      const elements = wrappedElements(value);
+      return elements !== null && elements.length > 0;
     }
     case "attributes": {
       // The list is read on a tag of its own rather than beside the declarations that make it

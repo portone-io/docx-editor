@@ -34,6 +34,7 @@ import {
 } from "../model/format";
 import {
   ANY_ELEMENT,
+  ANY_ELEMENTS,
   ATTRIBUTES,
   acceptRawXml,
   ELEMENT,
@@ -380,6 +381,12 @@ export const docxSchema = new Schema({
         styleConditions: { default: null },
         /** How many rows and columns one band of the table style is made of */
         styleBands: { default: null },
+        /**
+         * The markers that stood between this table's rows: the ones ahead of the first row
+         * (`docx/importTable`). They are invisible and belong to no row, so they ride along on
+         * the table and go back where they stood
+         */
+        leadingXml: { default: null },
       },
       toDOM(node) {
         const format = toTableFormat(node.attrs.format);
@@ -405,6 +412,7 @@ export const docxSchema = new Schema({
             toTableStyleConditions(node.attrs.styleConditions)
           ),
           "data-style-bands": formatJson(toBandSizes(node.attrs.styleBands)),
+          "data-leading": text(node.attrs.leadingXml),
         };
         const body = ["tbody", 0];
         if (gridCols.length === 0) return ["table", attrs, body];
@@ -427,7 +435,13 @@ export const docxSchema = new Schema({
               "data-gridchange",
               ELEMENT("tblGridChange")
             );
-            if (tblAttrs === false || tblPr === false || gridChange === false) {
+            const leadingXml = rawXml(dom, "data-leading", ANY_ELEMENTS);
+            if (
+              tblAttrs === false ||
+              tblPr === false ||
+              gridChange === false ||
+              leadingXml === false
+            ) {
               return false;
             }
             return {
@@ -450,6 +464,7 @@ export const docxSchema = new Schema({
               styleBands: toBandSizes(
                 parseJson(dom.getAttribute("data-style-bands"))
               ),
+              leadingXml,
             };
           },
         },
@@ -466,6 +481,10 @@ export const docxSchema = new Schema({
         /** The whole `<w:trPr>...</w:trPr>` XML */
         trPr: { default: null },
         format: { default: null },
+        /** The markers that stood ahead of this row's first cell (`docx/importTable`) */
+        leadingXml: { default: null },
+        /** The markers that stood between this row and the next one, under the table */
+        trailingXml: { default: null },
       },
       toDOM(node) {
         const format = toRowFormat(node.attrs.format);
@@ -478,6 +497,8 @@ export const docxSchema = new Schema({
             "data-tblprex": text(node.attrs.tblPrEx),
             "data-trpr": text(node.attrs.trPr),
             "data-fmt": formatJson(format),
+            "data-leading": text(node.attrs.leadingXml),
+            "data-trailing": text(node.attrs.trailingXml),
           },
           0,
         ];
@@ -489,7 +510,15 @@ export const docxSchema = new Schema({
             const trAttrs = rawXml(dom, "data-trattrs", ATTRIBUTES);
             const tblPrEx = rawXml(dom, "data-tblprex", ELEMENT("tblPrEx"));
             const trPr = rawXml(dom, "data-trpr", ELEMENT("trPr"));
-            if (trAttrs === false || tblPrEx === false || trPr === false) {
+            const leadingXml = rawXml(dom, "data-leading", ANY_ELEMENTS);
+            const trailingXml = rawXml(dom, "data-trailing", ANY_ELEMENTS);
+            if (
+              trAttrs === false ||
+              tblPrEx === false ||
+              trPr === false ||
+              leadingXml === false ||
+              trailingXml === false
+            ) {
               return false;
             }
             return {
@@ -497,6 +526,8 @@ export const docxSchema = new Schema({
               tblPrEx,
               trPr,
               format: toRowFormat(parseJson(dom.getAttribute("data-fmt"))),
+              leadingXml,
+              trailingXml,
             };
           },
         },
@@ -531,6 +562,8 @@ export const docxSchema = new Schema({
          */
         sdtContentsLocked: { default: false },
         sdtDeletionLocked: { default: false },
+        /** The markers that stood between this cell and the next one, under the row */
+        trailingXml: { default: null },
       },
       toDOM(node) {
         const format = toCellFormat(node.attrs.format);
@@ -556,6 +589,7 @@ export const docxSchema = new Schema({
             "data-sdt-contents-locked": locked ? "1" : undefined,
             "data-sdt-deletion-locked":
               node.attrs.sdtDeletionLocked === true ? "1" : undefined,
+            "data-trailing": text(node.attrs.trailingXml),
           },
           0,
         ];
@@ -567,7 +601,13 @@ export const docxSchema = new Schema({
             const tcAttrs = rawXml(dom, "data-tcattrs", ATTRIBUTES);
             const tcPr = rawXml(dom, "data-tcpr", ELEMENT("tcPr"));
             const sdtPrefix = rawXml(dom, "data-sdt-prefix", SDT_PREFIX);
-            if (tcAttrs === false || tcPr === false || sdtPrefix === false) {
+            const trailingXml = rawXml(dom, "data-trailing", ANY_ELEMENTS);
+            if (
+              tcAttrs === false ||
+              tcPr === false ||
+              sdtPrefix === false ||
+              trailingXml === false
+            ) {
               return false;
             }
             return {
@@ -585,6 +625,7 @@ export const docxSchema = new Schema({
                 dom.getAttribute("data-sdt-contents-locked") === "1",
               sdtDeletionLocked:
                 dom.getAttribute("data-sdt-deletion-locked") === "1",
+              trailingXml,
             };
           },
         },

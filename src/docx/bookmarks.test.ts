@@ -6,6 +6,7 @@ import { bytesEqual, decode, makeDocx } from "../__testing__/docx";
 import { createEditorState } from "../editor/createEditor";
 import type { DocxExportError } from "../ooxml/errors";
 import { docxSchema } from "../schema";
+import { withEditedFirst } from "./__testing__/blockEdits";
 import { exportDocx } from "./exportDocx";
 import { importDocx } from "./importDocx";
 
@@ -23,6 +24,15 @@ const BODY_RANGE =
   `<w:p>${run("First")}</w:p>` +
   `<w:p>${run("Second")}</w:p>` +
   '<w:bookmarkEnd w:id="8"/>';
+
+/** A bookmark over a column, which stands under the row rather than inside any cell */
+const COLUMN_RANGE =
+  '<w:tbl><w:tblPr/><w:tblGrid><w:gridCol w:w="1000"/>' +
+  '<w:gridCol w:w="1000"/></w:tblGrid><w:tr>' +
+  '<w:bookmarkStart w:id="6" w:name="Column" w:colFirst="0" w:colLast="0"/>' +
+  `<w:tc><w:p>${run("First")}</w:p></w:tc>` +
+  `<w:tc><w:p>${run("Second")}</w:p></w:tc>` +
+  '<w:bookmarkEnd w:id="6"/></w:tr></w:tbl>';
 
 const MIXED_RANGE =
   '<w:bookmarkStart w:id="9" w:name="Mixed"/>' +
@@ -54,6 +64,37 @@ function editParagraph(doc: PMNode, index: number, text: string): PMNode {
 function documentXml(bytes: Uint8Array): string {
   return decode(unzipSync(bytes)["word/document.xml"]);
 }
+
+describe("a bookmark over a column", () => {
+  it("opens as a table rather than standing the table down", () => {
+    const { doc } = importDocx(makeDocx(COLUMN_RANGE));
+
+    expect(doc.child(0).type.name).toBe("table");
+    expect(doc.child(0).textContent).toBe("FirstSecond");
+  });
+
+  it("keeps the untouched table byte-identical", () => {
+    const bytes = makeDocx(COLUMN_RANGE);
+    const opened = importDocx(bytes);
+    const before = unzipSync(bytes)["word/document.xml"];
+    const after = unzipSync(exportDocx(opened.doc, opened.session))[
+      "word/document.xml"
+    ];
+
+    expect(bytesEqual(after, before)).toBe(true);
+  });
+
+  it("keeps both markers around the same cells once the table is rebuilt", () => {
+    const opened = importDocx(makeDocx(COLUMN_RANGE));
+    const xml = documentXml(
+      exportDocx(withEditedFirst(opened.doc, "table", "Edited"), opened.session)
+    );
+
+    expect(xml).toMatch(
+      /<w:tr><w:bookmarkStart w:id="6" .*Edited.*Second.*<w:bookmarkEnd w:id="6"\/><\/w:tr>/
+    );
+  });
+});
 
 describe("body-level bookmarks", () => {
   it("imports a zero-length bookmark as invisible preservation nodes", () => {

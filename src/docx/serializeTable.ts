@@ -192,6 +192,17 @@ function cellBlockXml(block: PMNode, refs: ExportRefs): string {
 }
 
 /**
+ * The markers a table, a row or a cell carries, or nothing where it carries none.
+ *
+ * `w:tbl` and `w:tr` have no node to keep such an element in (`docx/importPolicy`), so it rides on
+ * the child before it and goes back exactly where it stood: after that child, ahead of the next.
+ */
+function markerXml(node: PMNode, attr: "leadingXml" | "trailingXml"): string {
+  const xml: unknown = node.attrs[attr];
+  return typeof xml === "string" ? xml : "";
+}
+
+/**
  * Puts the content control that wrapped this cell in the original back around it.
  *
  * Only a cell that starts where it stands carries the wrapper. The empty cells rebuilt on the
@@ -214,7 +225,12 @@ function cellXml(cell: PMNode, role: CellRole, refs: ExportRefs): string {
     cellPropsXml(cell, role) +
     body +
     "</w:tc>";
-  return wrapInSdt(xml, cell, role);
+  // The markers this cell carries stood after the cell itself, outside whatever wrapped it, and
+  // only where the cell itself stands: a continuing cell is a fresh one and carries none
+  return (
+    wrapInSdt(xml, cell, role) +
+    (role === "start" ? markerXml(cell, "trailingXml") : "")
+  );
 }
 
 interface Placed {
@@ -269,13 +285,16 @@ function rowXml(row: PMNode, covering: Covering[], refs: ExportRefs): string {
     .join("");
   const tblPrEx: unknown = row.attrs.tblPrEx;
   const trPr: unknown = row.attrs.trPr;
-  // Inside a row the table property exceptions come ahead of the row properties
+  // Inside a row the table property exceptions come ahead of the row properties, and CT_Row takes
+  // its markers only after both of them
   return (
     openTagXml(wName("tr"), rawAttrsOf(row.attrs.trAttrs)) +
     (typeof tblPrEx === "string" ? tblPrEx : "") +
     (typeof trPr === "string" ? trPr : "") +
+    markerXml(row, "leadingXml") +
     cells +
-    "</w:tr>"
+    "</w:tr>" +
+    markerXml(row, "trailingXml")
   );
 }
 
@@ -298,6 +317,7 @@ export function serializeTable(
     openTagXml(wName("tbl"), rawAttrsOf(table.attrs.tblAttrs)) +
     tablePropsXml(table) +
     tableGridXml(table) +
+    markerXml(table, "leadingXml") +
     rows +
     "</w:tbl>"
   );

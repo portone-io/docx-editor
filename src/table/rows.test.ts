@@ -334,6 +334,47 @@ describe("buildAddRowAfterTransaction - colspan not at the row end", () => {
  * the full height of the table. Placing the cursor in a merged cell makes the rectangle
  * that whole cell, so the outcome branches three ways.
  */
+/**
+ * A marker rides on the cell it stood after (`docx/importTable`), so a cell copied from that one
+ * would put a second copy of that marker into the file.
+ */
+describe("a new row beside a cell carrying a marker", () => {
+  const MARKER = '<w:bookmarkEnd w:id="1"/>';
+
+  it("does not copy the marker onto the cell it inherits from", () => {
+    const doc = tableDoc([
+      row(
+        cell("A", { trailingXml: MARKER, tcPr: "<w:tcPr><w:vAlign/></w:tcPr>" })
+      ),
+    ]);
+    const state = addRowAfterCellWith(doc, "A");
+    const { table } = firstTable(state.doc);
+    const inserted = table.child(1).child(0);
+
+    // The formatting it does inherit is what says the copy happened at all
+    expect(inserted.attrs.tcPr).toBe("<w:tcPr><w:vAlign/></w:tcPr>");
+    expect(inserted.attrs.trailingXml).toBeNull();
+  });
+
+  it("does not copy the markers the row it was made from carries", () => {
+    const doc = tableDoc([
+      rowWith(
+        { leadingXml: MARKER, trailingXml: MARKER, trPr: "<w:trPr/>" },
+        cell("A")
+      ),
+    ]);
+    const state = addRowAfterCellWith(doc, "A");
+    const { table } = firstTable(state.doc);
+    const inserted = table.child(1);
+
+    expect(inserted.attrs.trPr).toBe("<w:trPr/>");
+    expect(inserted.attrs).toMatchObject({
+      leadingXml: null,
+      trailingXml: null,
+    });
+  });
+});
+
 describe("buildDeleteRowTransaction", () => {
   it("deletes only the cursor row and shrinks both covering rowspans", () => {
     const state = deleteRowOfCellWith(sampleContractDoc(), "555-0100");

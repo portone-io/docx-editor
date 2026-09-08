@@ -174,6 +174,24 @@ describe("bookmark pairs", () => {
     ]);
   });
 
+  it("a row-level marker that ends what nothing started is reported at the table", () => {
+    const opened = importDocx(
+      makeDocx(
+        '<w:tbl><w:tblPr/><w:tblGrid><w:gridCol w:w="1000"/></w:tblGrid>' +
+          `<w:tr><w:tc>${paragraph("a")}</w:tc>` +
+          '<w:bookmarkEnd w:id="4"/></w:tr></w:tbl>'
+      )
+    );
+
+    expect(exportProblems(opened.doc, opened.session)).toEqual([
+      {
+        code: "malformed-xml",
+        message: "bookmark 4 ends without an earlier start marker",
+        pos: 0,
+      },
+    ]);
+  });
+
   it("a marker inside a paragraph that ends what nothing started is reported where the marker stands", () => {
     const opened = importDocx(
       makeDocx(`<w:p>${run("Inside")}<w:bookmarkEnd w:id="9"/></w:p>`)

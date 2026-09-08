@@ -26,6 +26,8 @@ import {
   type ImportSources,
   NO_IMPORT_SOURCES,
 } from "./importParagraph";
+import { policyFor } from "./importPolicy";
+import { buildPreservedBlock } from "./importPreserved";
 import { readSdtWrapper } from "./sdt";
 import {
   cellConditionsOf,
@@ -68,12 +70,18 @@ interface RawCell {
   gridSpan: number;
   vMerge: VerticalMerge;
   control: CellControl | null;
+  /** The markers that stood between this cell and the next one */
+  trailingXml: string | null;
 }
 
 interface RawRow {
   el: Element;
   tblPrEx: Element | null;
   cells: RawCell[];
+  /** The markers that stood ahead of the row's first cell */
+  leadingXml: string | null;
+  /** The markers that stood between this row and the next one */
+  trailingXml: string | null;
 }
 
 /** One cell to be built. Its rowspan grows as the continuing cells are counted */
@@ -85,6 +93,28 @@ interface CellDraft {
   colspan: number;
   rowspan: number;
   control: CellControl | null;
+  trailingXml: string | null;
+}
+
+/**
+ * Whether an element at this level is carried along rather than read or demoted over.
+ *
+ * `w:tbl` and `w:tr` are the two levels with no node to keep a stranger in (`./importPolicy`), so
+ * what a rule there says is invisible rides on the child before it and goes back out from there.
+ */
+function isTransparent(el: Element, level: "tbl" | "tr"): boolean {
+  const tier = policyFor(el, level).tier;
+  return tier === "marker" || tier === "ignorable";
+}
+
+/**
+ * Everything gathered since the last time it was emptied, as one string, and nothing next time.
+ *
+ * A run of them is one value because they stand together: the end of one bookmark and the start
+ * of the next have nothing between them.
+ */
+function takeGathered(gathered: string[]): string | null {
+  return gathered.length === 0 ? null : gathered.splice(0).join("");
 }
 
 /** The horizontal merge count `w:gridSpan` states. One cell if it is absent */
@@ -139,23 +169,49 @@ function readSdtCell(el: Element): SdtCell | null {
 }
 
 /**
- * Reads a single row. null if there is any child other than `w:tc`, `w:trPr` and `w:tblPrEx`,
- * or a content control we could not write back out.
+ * Hangs the markers gathered so far off the cell they stood after. false when there is no cell to
+ * hang them on.
+ *
+ * The cells that only continue a vertical merge are made fresh on export rather than written from
+ * a node of the model, so a marker standing after one has nowhere to go back to and the table is
+ * stood down instead of quietly losing it.
+ */
+function trailCell(cells: RawCell[], gathered: string[]): boolean {
+  const xml = takeGathered(gathered);
+  if (xml === null) return true;
+  const last = cells.at(-1);
+  if (!last || last.vMerge === "continue") return false;
+  last.trailingXml = (last.trailingXml ?? "") + xml;
+  return true;
+}
+
+/**
+ * Reads a single row. null if there is any child other than `w:tc`, `w:trPr`, `w:tblPrEx` and
+ * what `./importPolicy` carries along at this level, or a content control we could not write out.
  *
  * A `w:tblPrEx` states the table properties this one row departs from. We do not read it, so
  * the row is drawn with the table's own values, but it is carried along to go back out untouched.
  */
 function readRow(el: Element): RawRow | null {
   const cells: RawCell[] = [];
+  const gathered: string[] = [];
   let tblPrEx: Element | null = null;
+  let leadingXml: string | null = null;
   for (const child of elementChildren(el)) {
     if (child.localName === "trPr") continue;
     if (child.localName === "tblPrEx") {
       tblPrEx = child;
       continue;
     }
+    if (isTransparent(child, "tr")) {
+      gathered.push(serializeXml(child));
+      continue;
+    }
     const sdt = child.localName === "sdt" ? readSdtCell(child) : null;
     if (!sdt && child.localName !== "tc") return null;
+    // What stood ahead of the first cell belongs to the row; the rest to the cell before it
+    if (cells.length === 0) leadingXml = takeGathered(gathered);
+    else if (!trailCell(cells, gathered)) return null;
     const tc = sdt ? sdt.el : child;
     const tcPr = childByLocalName(tc, "tcPr");
     cells.push({
@@ -163,9 +219,11 @@ function readRow(el: Element): RawRow | null {
       gridSpan: readGridSpan(tcPr),
       vMerge: readVerticalMerge(tcPr),
       control: sdt ? sdt.control : null,
+      trailingXml: null,
     });
   }
-  return cells.length > 0 ? { el, tblPrEx, cells } : null;
+  if (cells.length === 0 || !trailCell(cells, gathered)) return null;
+  return { el, tblPrEx, cells, leadingXml, trailingXml: null };
 }
 
 interface TableParts {
@@ -174,6 +232,8 @@ interface TableParts {
   /** The `w:tblGridChange` the grid closed with, as it stood */
   gridChange: string | null;
   rows: RawRow[];
+  /** The markers that stood ahead of the first row */
+  leadingXml: string | null;
 }
 
 /** Keeps the revision's namespace context when its parent grid is rebuilt. */
@@ -196,12 +256,19 @@ function gridRevisionXml(grid: Element): string | null {
   return serializeXml(preserved);
 }
 
-/** Splits a table into the three pieces it is made of. null if a child we do not know is mixed in */
+/**
+ * Splits a table into the pieces it is made of. null if a child we do not know is mixed in.
+ *
+ * A marker standing between two rows rides on the row before it, and one ahead of the first row on
+ * the table itself, so a bookmark spanning a column no longer stands the whole table down.
+ */
 function readTableParts(el: Element): TableParts | null {
   let tblPr: Element | null = null;
   let tblGrid: Element | null = null;
   let gridChange: string | null = null;
   const rows: RawRow[] = [];
+  const gathered: string[] = [];
+  let leadingXml: string | null = null;
   for (const child of elementChildren(el)) {
     if (child.localName === "tblPr") {
       tblPr = child;
@@ -212,12 +279,22 @@ function readTableParts(el: Element): TableParts | null {
       gridChange = gridRevisionXml(child);
       continue;
     }
+    if (isTransparent(child, "tbl")) {
+      gathered.push(serializeXml(child));
+      continue;
+    }
     if (child.localName !== "tr") return null;
     const row = readRow(child);
     if (!row) return null;
+    const previous = rows.at(-1);
+    if (previous) previous.trailingXml = takeGathered(gathered);
+    else leadingXml = takeGathered(gathered);
     rows.push(row);
   }
-  return rows.length > 0 ? { tblPr, tblGrid, gridChange, rows } : null;
+  const last = rows.at(-1);
+  if (!last) return null;
+  last.trailingXml = takeGathered(gathered);
+  return { tblPr, tblGrid, gridChange, rows, leadingXml };
 }
 
 /**
@@ -252,6 +329,7 @@ function resolveVerticalMerges(
           colspan: cell.gridSpan,
           rowspan: 1,
           control: cell.control,
+          trailingXml: cell.trailingXml,
         };
         rowDrafts.push(draft);
         if (cell.vMerge === "restart") next.set(col, draft);
@@ -280,8 +358,8 @@ function gridWidthOf(rows: RawRow[]): number | null {
 
 /**
  * A single block inside a cell, dressed by the parts of the table the cell belongs to.
- * If it is not a paragraph, or the paragraph cannot be modelled, it holds on to its original XML
- * as is.
+ * If it is not a paragraph, it is kept as the XML it came as, drawn by whatever
+ * `./importPolicy` says is on screen of it at this level.
  */
 function buildCellBlock(
   el: Element,
@@ -296,10 +374,7 @@ function buildCellBlock(
       placement
     );
   }
-  return docxSchema.nodes.rawBlock.create({
-    xml: serializeXml(el),
-    name: el.nodeName,
-  });
+  return buildPreservedBlock(el, null, "tc");
 }
 
 /** The block of the grid one cell covers, merges included */
@@ -340,6 +415,7 @@ function buildCell(
       sdtPrefix: draft.control?.prefix ?? null,
       sdtContentsLocked: draft.control?.contentsLocked ?? false,
       sdtDeletionLocked: draft.control?.deletionLocked ?? false,
+      trailingXml: draft.trailingXml,
     },
     blocks
   );
@@ -371,6 +447,8 @@ function buildRow(
       tblPrEx: row.tblPrEx ? serializeXml(row.tblPrEx) : null,
       trPr: trPr ? serializeXml(trPr) : null,
       format: readRowFormat(trPr),
+      leadingXml: row.leadingXml,
+      trailingXml: row.trailingXml,
     },
     cells
   );
@@ -441,6 +519,7 @@ export function buildTable(
       tblW: readTableWidth(parts.tblPr, "tblW"),
       gridCols,
       gridChange: parts.gridChange,
+      leadingXml: parts.leadingXml,
       ...tableStyleAttrs(parts.tblPr, context),
     },
     rows
