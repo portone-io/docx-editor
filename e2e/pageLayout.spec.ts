@@ -11,6 +11,7 @@
  */
 
 import { expect, test } from "@playwright/test";
+import { editorClassNames } from "../src/styles/classNames";
 import {
   blocks,
   caretAt,
@@ -102,4 +103,36 @@ test("each section is paginated on the paper it names", async ({ page }) => {
   // One sheet is drawn at one width, which is the first section's: the landscape section is
   // paginated on its own height but drawn on the paper the sheet holds
   expect(await sheetWidth(page)).toBeCloseTo(PORTRAIT_WIDTH, 0);
+});
+
+/** The body of each paper across the sheet, which is the width a table there is fitted to */
+const PORTRAIT_BODY_WIDTH = (11906 - 1361 - 1247) * PX_PER_TWIP;
+const LANDSCAPE_BODY_WIDTH = (16838 - 1361 - 1247) * PX_PER_TWIP;
+
+test("a column drag in a landscape section is held to that section's body", async ({
+  page,
+}) => {
+  await openHarness(page, "two-sections");
+  const table = page.locator(`.${editorClassNames.table}`).first();
+  await table.scrollIntoViewIfNeeded();
+  const cell = table.getByRole("cell").last();
+  const edge = await cell.boundingBox();
+  if (!edge) throw new Error("the table was not drawn");
+
+  // Past the body of the first section's paper, and short of the landscape section's own
+  await page.mouse.move(edge.x + edge.width - 1, edge.y + edge.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(
+    edge.x + edge.width + (PORTRAIT_BODY_WIDTH - 8000 * PX_PER_TWIP) + 200,
+    edge.y + edge.height / 2
+  );
+  await page.mouse.up();
+
+  // The paper is drawn at the first section's width and a table wider than the sheet's body is
+  // drawn shrunk to fit it (`styles/editor.css`), so it is the width the document now holds
+  const width = await table.evaluate(
+    (drawn) => Number.parseFloat((drawn as HTMLElement).style.width) || 0
+  );
+  expect(width).toBeGreaterThan(PORTRAIT_BODY_WIDTH + TOLERANCE);
+  expect(width).toBeLessThanOrEqual(LANDSCAPE_BODY_WIDTH + TOLERANCE);
 });

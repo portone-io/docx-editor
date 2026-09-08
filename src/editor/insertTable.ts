@@ -12,7 +12,7 @@ import {
 } from "prosemirror-state";
 import { createTableNode, isTableSide } from "../docx/tableTemplate";
 import { editShut } from "../schema/guards";
-import { documentGeometry } from "./documentStyles";
+import { sectionGeometryAt } from "./documentStyles";
 
 /** Whether this position is inside a table */
 function isInTable($pos: ResolvedPos): boolean {
@@ -48,7 +48,7 @@ export interface TableSize {
 
 /**
  * Inserts a table of empty cells and moves the caret into the first cell.
- * The table is as wide as one line of body text on the paper the open document names
+ * The table is as wide as one line of body text on the paper of the section it goes into
  */
 export function insertTable({ rows, columns }: TableSize): Command {
   return (state, dispatch) => {
@@ -59,7 +59,7 @@ export function insertTable({ rows, columns }: TableSize): Command {
       const tr = state.tr.insert(
         at,
         Fragment.fromArray([
-          createTableNode(rows, columns, documentGeometry(state)),
+          createTableNode(rows, columns, sectionGeometryAt(state, at)),
           state.schema.nodes.paragraph.create(),
         ])
       );

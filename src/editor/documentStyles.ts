@@ -20,6 +20,7 @@ import {
   type PageGeometry,
   twipsToPx,
 } from "../docx/pageGeometry";
+import { sectionAt } from "../docx/sections";
 import type { DocumentDefaults } from "../model/format";
 import { documentOf } from "./editorDocument";
 
@@ -41,11 +42,31 @@ export function documentParagraphStyles(
 }
 
 /**
- * The paper the document is written on. A document the editor knows no paper for is drawn on
- * the same A4 every document was drawn on before the geometry was read
+ * The paper the sheet is drawn on: the first section's, since one sheet is drawn at one paper
+ * (`page/pageLayout`). A document the editor knows no paper for is drawn on the same A4 every
+ * document was drawn on before the geometry was read.
+ *
+ * Anything deciding a value for one spot in the document - the width of a table put there - asks
+ * `sectionGeometryAt` instead, since a later section may be written on another paper.
  */
 export function documentGeometry(state: EditorState): PageGeometry {
   return documentOf(state).geometry;
+}
+
+/**
+ * The paper the block at this position is written on: the paper of the section that block belongs
+ * to (`docx/sections`), which is the width a table inserted or resized there is fitted to.
+ *
+ * The section table is read off the document rather than off the snapshot the state carries: a
+ * section is where the document says it is, and the snapshot holds the first section's paper
+ * alone. Reading it walks every block, so a caller drawing a whole document asks once and looks
+ * its positions up (`page/pageLayout`) rather than calling this per block.
+ */
+export function sectionGeometryAt(
+  state: EditorState,
+  pos: number
+): PageGeometry {
+  return sectionAt(state.doc, pos).props.geometry;
 }
 
 /** The document-wide interval between automatic tab stops, in points. */
