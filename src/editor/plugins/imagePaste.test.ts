@@ -163,7 +163,7 @@ describe("pasting images carried by HTML", () => {
     ["readable", TINY_PNG_DATA_URL],
     ["unreadable", "https://cdn.example/missing.png"],
   ])(
-    "leaves a %s image over multiple cells to the regular clipboard path",
+    "leaves a %s image over multiple cells to the table's own paste",
     (_kind, source) => {
       const fetch = vi.fn();
       vi.stubGlobal("fetch", fetch);
@@ -177,7 +177,9 @@ describe("pasting images carried by HTML", () => {
 
       expect(paste(view, `<p>replacement<img src="${source}"></p>`)).toBe(true);
 
-      expect(cellTexts(view.state.doc)).toEqual(["", "replacement"]);
+      // What the table does with a paste over a cell selection is the table's rule: text that is
+      // no grid of cells goes into every cell selected (`prosemirror-tables`)
+      expect(cellTexts(view.state.doc)).toEqual(["replacement", "replacement"]);
       expect(firstImage(view.state.doc)).toBeNull();
       expect(fetch).not.toHaveBeenCalled();
       view.destroy();

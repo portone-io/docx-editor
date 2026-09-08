@@ -21,6 +21,7 @@ import {
   type FontFallbacks,
 } from "../styles/fontStack";
 import { documentDefaultsStyle } from "../styles/inlineStyle";
+import { docxClipboard } from "./clipboard/plugin";
 import type { CommentAuthor } from "./commands/comments/model";
 import { noteProjection } from "./commands/noteQueries";
 import {
@@ -30,7 +31,6 @@ import {
   editorDocumentOf,
   NO_DOCUMENT,
 } from "./editorDocument";
-import { externalClipboard } from "./externalClipboard";
 import { imageFiles } from "./imageFiles";
 import { columnResize } from "./plugins/columnResize";
 import { commentComposer } from "./plugins/commentComposer";
@@ -125,15 +125,16 @@ export function createEditorState(
       // above, is what takes such a conversion back
       listInputRules(),
       dropCursor(),
-      // Clipboard priority is files, resolvable HTML images, then regular HTML or plain text.
+      // Clipboard priority is files, resolvable HTML images, table cells, then the clipboard
+      // plugin, which reads and writes the clipboard itself and answers for no paste of its own.
       imageFiles(),
       imagePaste(),
-      externalClipboard(),
       // A press that grabs a table edge must be intercepted before a cell-selection drag starts.
       // For DOM events the plugin registered first wins, so both resizers precede `tableEditing`.
       columnResize(),
       rowResize(),
       tableEditing(),
+      docxClipboard(),
       // Comment anchors live in the model; this paints their ranges without changing document XML.
       // The list beside the page, the lookup the comment commands ask, and these ranges are the
       // one walk this plugin holds (`plugins/commentDecorations`)

@@ -3,7 +3,7 @@ import type { EditorView } from "prosemirror-view";
 import { docxSchema } from "../schema";
 
 /** A single character that becomes an element, or text that goes in as it is */
-type Piece = { text: string } | { node: "hardBreak" | "tab" };
+export type Piece = { text: string } | { node: "hardBreak" | "tab" };
 
 /**
  * Control characters that become elements because they do not exist as characters in docx.
@@ -29,7 +29,7 @@ const FORBIDDEN = /[\u0000-\u0008\u000E-\u001F]/g;
  * Control characters that carry meaning become elements, and the rest are stripped because they
  * would make the file impossible to open.
  */
-function toPieces(source: string): Piece[] {
+export function toPieces(source: string): Piece[] {
   return source
     .replace(/\r\n?/g, "\n")
     .replace(FORBIDDEN, "")
