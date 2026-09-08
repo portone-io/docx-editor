@@ -23,6 +23,7 @@ import {
   unlockSelection,
 } from "../editor/commands/lockCommands";
 import { insertClipboardData } from "../editor/externalClipboard";
+import { openCommentComposer } from "../editor/plugins/commentComposer";
 import {
   closeTextMenu,
   type TextMenuAnchor,
@@ -127,8 +128,6 @@ export interface TextMenuProps {
   anchor: TextMenuAnchor;
   /** Whether the entries that lock and unlock a stretch of text are offered */
   allowLocking?: boolean;
-  /** Opens the built-in composer for the selected text. */
-  onAddComment?: () => void;
 }
 
 export function TextMenu({
@@ -136,7 +135,6 @@ export function TextMenu({
   state,
   anchor,
   allowLocking = false,
-  onAddComment,
 }: TextMenuProps): ReactElement {
   const box = useRef<HTMLDivElement | null>(null);
   const placement = usePanelAtPoint(box, anchor);
@@ -195,8 +193,8 @@ export function TextMenu({
     {
       label: "Add comment",
       icon: MessageSquarePlus,
-      enabled: !!onAddComment && canAddComment(state),
-      run: () => onAddComment?.(),
+      enabled: canAddComment(state),
+      run: () => run(openCommentComposer),
     },
   ]);
   if (allowLocking && bodyOpen) {

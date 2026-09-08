@@ -15,6 +15,10 @@ import {
   updateComment,
   updateCommentReply,
 } from "../editor/commands/commentCommands";
+import {
+  closeCommentComposer,
+  commentComposerRange,
+} from "../editor/plugins/commentComposer";
 import { commentOwned } from "../schema/protection";
 import { protectionOf } from "../schema/protectionState";
 import { editorClassNames } from "../styles/classNames";
@@ -42,6 +46,16 @@ function run(view: EditorView, command: Command): boolean {
   return applied;
 }
 
+/**
+ * What a refused write says. The composer holds the text on screen with it, so the reader can put
+ * the comment somewhere it is taken rather than losing what they wrote to a form that closed or
+ * to one that stood there answering nothing.
+ */
+const REFUSED_COMMENT =
+  "This comment could not be added. The text it was written for may have been changed or locked since.";
+const REFUSED_REPLY =
+  "This reply could not be added. The comment it answers may have been changed or deleted since.";
+
 interface EditTarget {
   commentId: string;
   replyId: string | null;
@@ -54,10 +68,8 @@ function sameTarget(left: EditTarget | null, right: EditTarget): boolean {
 export interface CommentsPanelProps {
   view: EditorView;
   state: EditorState;
-  composerOpen: boolean;
   /** Whose comments the composers write. Null for a reader, who is offered none */
   author: CommentAuthor | null;
-  closeComposer: () => void;
   scrollContainer: HTMLElement | null;
   allCommentsOpen: boolean;
 }
@@ -65,9 +77,7 @@ export interface CommentsPanelProps {
 export function CommentsPanel({
   view,
   state,
-  composerOpen,
   author,
-  closeComposer,
   scrollContainer,
   allCommentsOpen,
 }: CommentsPanelProps): ReactElement {
@@ -86,7 +96,11 @@ export function CommentsPanel({
   const [editing, setEditing] = useState<EditTarget | null>(null);
   const [draft, setDraft] = useState("");
   const [replying, setReplying] = useState<string | null>(null);
-  const composerSelectionPos = composerOpen ? state.selection.from : -1;
+  // The stretch the composer was opened over, which the editor state holds and moves along with
+  // every edit meanwhile (`editor/plugins/commentComposer`)
+  const composerRange = commentComposerRange(state);
+  const composerOpen = composerRange !== null;
+  const composerSelectionPos = composerRange?.from ?? -1;
   const visible = useMemo(
     () =>
       allCommentsOpen
@@ -160,7 +174,7 @@ export function CommentsPanel({
         className={editorClassNames.commentsCanvas}
         style={{ height: allCommentsOpen ? undefined : `${canvasHeight}px` }}
       >
-        {composerOpen && writer !== null && (
+        {composerRange !== null && writer !== null && (
           <div
             className={editorClassNames.commentPosition}
             data-comment-position={COMPOSER_POSITION}
@@ -176,17 +190,22 @@ export function CommentsPanel({
               author={writer}
               label="Comment text"
               submitLabel="Comment"
-              onClose={closeComposer}
+              onClose={() => run(view, closeCommentComposer)}
               onSubmit={(text) =>
                 run(
                   view,
-                  addComment({
-                    text,
-                    author: writer.name,
-                    authorId: writer.id,
-                    initials: writer.initials,
-                  })
+                  addComment(
+                    {
+                      text,
+                      author: writer.name,
+                      authorId: writer.id,
+                      initials: writer.initials,
+                    },
+                    composerRange
+                  )
                 )
+                  ? null
+                  : REFUSED_COMMENT
               }
             />
           </div>
@@ -414,6 +433,8 @@ export function CommentsPanel({
                             initials: writer.initials,
                           })
                         )
+                          ? null
+                          : REFUSED_REPLY
                       }
                     />
                   )}

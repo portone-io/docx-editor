@@ -14,17 +14,40 @@ import {
   reservedCommentIds,
   reservedCommentParaIds,
 } from "../../editorDocument";
-import type { NewComment } from "./model";
+import type { CommentRange, NewComment } from "./model";
 import { documentComments, repliesAttr, stringAttr } from "./reading";
 
-function validCommentSelection(state: EditorState): boolean {
+/**
+ * The stretch as a comment anchor may stand over it, or null where one may not: a comment marks a
+ * run of text inside one paragraph, so an empty stretch, one reaching past the paragraph it starts
+ * in, or one naming positions the document does not have takes none.
+ */
+function anchorableRange(
+  doc: PMNode,
+  { from, to }: CommentRange
+): CommentRange | null {
+  if (from >= to || from < 0 || to > doc.content.size) return null;
+  const $from = doc.resolve(from);
+  if (!$from.sameParent(doc.resolve(to))) return null;
+  if ($from.parent.type.name !== "paragraph") return null;
+  return { from, to };
+}
+
+/**
+ * The stretch this comment is written for: the one named, or the selected text when none is.
+ *
+ * A selection that is not a run of text - a picture, a block of table cells - is no stretch to
+ * comment on, while a range named outright is the caller's own reading of the document and is
+ * judged on where it lands alone.
+ */
+function commentedRange(
+  state: EditorState,
+  at: CommentRange | undefined
+): CommentRange | null {
+  if (at) return anchorableRange(state.doc, at);
   const { selection } = state;
-  return (
-    selection instanceof TextSelection &&
-    !selection.empty &&
-    selection.$from.sameParent(selection.$to) &&
-    selection.$from.parent.type.name === "paragraph"
-  );
+  if (!(selection instanceof TextSelection)) return null;
+  return anchorableRange(state.doc, selection);
 }
 
 function nextCommentId(state: EditorState): string {
@@ -103,15 +126,15 @@ function wrapperMarksAt(
 
 function addCommentTransaction(
   state: EditorState,
-  comment: NewComment
+  comment: NewComment,
+  at: CommentRange | undefined
 ): Transaction | null {
-  if (!validCommentSelection(state) || comment.text.trim().length === 0) {
-    return null;
-  }
+  const range = commentedRange(state, at);
+  if (range === null || comment.text.trim().length === 0) return null;
   const id = nextCommentId(state);
   const date = comment.date ?? new Date().toISOString();
   const paraId = nextCommentParaId(state, `comment-${id}-${date}`);
-  const { from, to } = state.selection;
+  const { from, to } = range;
   const startMarks = wrapperMarksAt(state, from, "after");
   const endMarks = wrapperMarksAt(state, to, "before");
   const end = docxSchema.nodes.commentEnd.create(
@@ -150,22 +173,30 @@ function addCommentTransaction(
     .insert(from, start);
 }
 
-/** Adds a plain-text comment to the current text selection. */
-export function addComment(comment: NewComment): Command {
-  return guardedCommand((state) => addCommentTransaction(state, comment));
+/**
+ * Adds a plain-text comment to a stretch of text: the one given, or the current text selection.
+ *
+ * A composer that was opened over one stretch and submitted later names it, so that what the
+ * comment marks is the text it was written about rather than wherever the caret has since gone.
+ */
+export function addComment(comment: NewComment, at?: CommentRange): Command {
+  return guardedCommand((state) => addCommentTransaction(state, comment, at));
 }
 
 /**
- * Whether a non-empty selection in one paragraph can receive a comment.
+ * Whether that stretch of text, or the current selection, can receive a comment.
  * This is the command itself asked without a dispatch, over a comment standing in for the one the
  * user would write, so the button and the click cannot answer differently.
  */
-export function canAddComment(state: EditorState): boolean {
-  return addComment({
-    text: "comment",
-    author: "Author",
-    date: "1970-01-01T00:00:00.000Z",
-  })(state);
+export function canAddComment(state: EditorState, at?: CommentRange): boolean {
+  return addComment(
+    {
+      text: "comment",
+      author: "Author",
+      date: "1970-01-01T00:00:00.000Z",
+    },
+    at
+  )(state);
 }
 
 /** Replaces the plain-text body of one comment, retaining its author and anchor. */
