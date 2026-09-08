@@ -251,9 +251,11 @@ function expectPartsValidate(name: string, parts: Map<string, string>): void {
  * by nothing. Reading each one back is the least that can be said of them, and it is what catches
  * a writer that emitted a package no reader gets past at all.
  */
-function xmlParts(bytes: Uint8Array): Map<string, string> {
+function xmlParts(
+  unzipped: Readonly<Record<string, Uint8Array>>
+): Map<string, string> {
   const parts = new Map<string, string>();
-  for (const [path, data] of Object.entries(unzipSync(bytes))) {
+  for (const [path, data] of Object.entries(unzipped)) {
     if (path.endsWith(".xml") || path.endsWith(".rels")) {
       parts.set(path, decode(data));
     }
@@ -277,9 +279,8 @@ const UNDESCRIBED_PARTS: readonly string[] = [
 
 function expectEveryXmlPartParses(
   name: string,
-  bytes: Uint8Array
+  parts: ReadonlyMap<string, string>
 ): Map<string, Document> {
-  const parts = xmlParts(bytes);
   expect(parts.size).toBeGreaterThan(0);
   const documents = new Map<string, Document>();
   const unreadable = Array.from(parts).flatMap(([path, xml]) => {
@@ -380,13 +381,17 @@ function expectBatteryValidates(
   // What a probe is handed is what the one before it left, apart from the caret, so the package
   // it is measured against is the one already written out for that probe. Only the table probes,
   // which prepare the state by inserting a table, are handed a document nothing has exported.
-  let written: { doc: PMNode; exported: ExportedPackage } | undefined;
+  const untouched = exportedPackage(name, doc, session);
+  let written: { doc: PMNode; exported: ExportedPackage } = {
+    doc,
+    exported: untouched,
+  };
   const final = afterTheBattery(
     openState(doc, session),
     (probe, before, after) => {
       const label = `${name}: ${probe.name}`;
       const previous =
-        written !== undefined && written.doc === before.doc
+        written.doc === before.doc
           ? written.exported
           : exportedPackage(label, before.doc, session);
       const current = exportedPackage(label, after.doc, session);
@@ -402,7 +407,10 @@ function expectBatteryValidates(
             Object.keys(previous.parts).length,
         `${label}: no exported part changed`
       ).toBe(false);
-      const documents = expectEveryXmlPartParses(label, current.bytes);
+      const documents = expectEveryXmlPartParses(
+        label,
+        xmlParts(current.parts)
+      );
       // All intermediate outputs reach xmllint. Identical parts need only one validation, and
       // batching them compiles the schema set once instead of once per command.
       for (const [path, xml] of wordprocessingPartsOf(documents)) {
@@ -419,8 +427,10 @@ function expectBatteryValidates(
   );
   expectPartsValidate(name, snapshots);
   expectProbesWrote(
-    exportedPackage(name, final.doc, session),
-    exportedPackage(name, doc, session)
+    written.doc === final.doc
+      ? written.exported
+      : exportedPackage(name, final.doc, session),
+    untouched
   );
 }
 
@@ -588,7 +598,10 @@ describe("the exported package against the OOXML schemas", () => {
     const parts = wordprocessingParts(written);
     expect(parts.has("word/numbering.xml")).toBe(true);
     expectPartsValidate("a numbering part written from scratch", parts);
-    expectEveryXmlPartParses("a numbering part written from scratch", written);
+    expectEveryXmlPartParses(
+      "a numbering part written from scratch",
+      xmlParts(unzipSync(written))
+    );
   });
 
   it("cell padding remains valid beside strict leading and trailing margins", () => {
@@ -1162,7 +1175,10 @@ describe("the markup-compatibility preprocessing", () => {
     expect(commentsXml, "the export wrote no comments part").toBeDefined();
     expect(commentsXml).toContain("A note in a plainly declared package");
     expectPartsValidate("a plainly declared package", parts);
-    expectEveryXmlPartParses("a plainly declared package", written);
+    expectEveryXmlPartParses(
+      "a plainly declared package",
+      xmlParts(unzipSync(written))
+    );
   });
 
   /**
@@ -1286,11 +1302,11 @@ describe("the exported package after an edit battery", () => {
         session
       );
 
-      const parts = xmlParts(bytes);
+      const parts = xmlParts(unzipSync(bytes));
       for (const path of UNDESCRIBED_PARTS) {
         expect(parts.has(path), `${name} wrote no ${path}`).toBe(true);
       }
-      expectEveryXmlPartParses(name, bytes);
+      expectEveryXmlPartParses(name, parts);
     }
   );
 
