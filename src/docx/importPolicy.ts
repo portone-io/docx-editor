@@ -294,9 +294,11 @@ export function policyFor(
 /**
  * The text one run child puts on screen, or null for a child that puts nothing there.
  *
- * Everything that reads a story as plain text - a footnote body, a comment body, a header -
- * asks this rather than keeping a vocabulary of its own, so the three of them cannot disagree
- * about what a `w:cr` or a `w:noBreakHyphen` reads as.
+ * This is where the table's answer becomes text, and a preserved fragment carries it along as the
+ * `text` a reader wrote onto it. Everything reading a story as plain text afterwards - a footnote
+ * body, a comment body, a header - asks `docx/story`'s `storyLeafText` for that same answer rather
+ * than keeping a vocabulary of its own, so the three of them cannot disagree about what a `w:cr`
+ * or a `w:noBreakHyphen` reads as.
  */
 export function runContentText(el: Element): string | null {
   const policy = policyFor(el, "r");
