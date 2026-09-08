@@ -42,6 +42,11 @@ export interface PageFace {
   page: number;
   /** The position of the block this page opens with, which says which section it belongs to */
   pos: number;
+  /**
+   * The place this page takes within that section, counted from 1 again at every section, which is
+   * what its header and footer variant is chosen by (`docx/headersFooters`)
+   */
+  pageInSection: number;
   headerTop: number;
   footerTop: number;
   left: number;
@@ -192,6 +197,7 @@ export function usePageLayout({
           return {
             page: start.page,
             pos: start.pos,
+            pageInSection: start.pageInSection,
             headerTop: paperTop + paper.marginTop / 2,
             footerTop: paperTop + paper.pageHeight - paper.marginBottom / 2,
             left: sheet.marginLeft,

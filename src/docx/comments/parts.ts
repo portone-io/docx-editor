@@ -53,7 +53,8 @@ import {
   COMMENT_ATTRIBUTES,
   declarationsWritten,
   declarationWritten,
-  holdsElementsOnly,
+  holdsElementsAndLayout,
+  isLayoutText,
   lastBodyParagraph,
   recordedIdentity,
   wellFormedCommentExtension,
@@ -142,14 +143,15 @@ function writtenBlock(el: Element): boolean {
  *
  * Every block is either the writer's own output or a block of the original passed through
  * untouched, which is exactly what `serializeStory` writes: an edit of one paragraph leaves the
- * others as their bytes. Whitespace and comments between blocks are not something it writes at
- * all, so a body carrying any is not one it wrote.
+ * others as their bytes, the whitespace a producer laid them out over included (`./grammar`).
+ * Nothing else stands between the blocks: anything a reader would show is a place to put bytes no
+ * block comparison looks at.
  */
 function wellFormedStoryBody(
   entry: Element,
   original: Element | null
 ): boolean {
-  if (!holdsElementsOnly(entry)) return false;
+  if (!holdsElementsAndLayout(entry)) return false;
   const kept = new Set(
     original === null ? [] : Array.from(original.children, serializeXml)
   );
@@ -293,8 +295,6 @@ interface CommentPartShape {
   referents(story: Story): ReadonlySet<string>;
 }
 
-const TEXT_NODE = 3;
-
 /** The compatibility declarations the writer adds to a part it writes a thread key into */
 const COMPATIBILITY: ReadonlyMap<string, string> = new Map([
   ["xmlns:w14", NAMESPACES.w14],
@@ -307,19 +307,12 @@ const IGNORABLE = "mc:Ignorable";
 /** The one thing the writer adds to it */
 const IGNORED = "w14";
 
-/** XML layout whitespace carries no payload; other text is compared with what arrived. */
-function isLayout(node: Node): boolean {
-  return (
-    node.nodeType === TEXT_NODE && /^[ \t\r\n]*$/.test(node.nodeValue ?? "")
-  );
-}
-
 /** Content an entry comparison cannot see, inside or outside the part root. */
 function surroundingNodes(parent: Node | null): readonly Node[] {
   return parent === null
     ? []
     : Array.from(parent.childNodes).filter(
-        (node) => !isElement(node) && !isLayout(node)
+        (node) => !isElement(node) && !isLayoutText(node)
       );
 }
 

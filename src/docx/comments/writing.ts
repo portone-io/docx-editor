@@ -67,16 +67,48 @@ function importedBody(session: SessionStore, id: string): ImportedStory | null {
   return session.stories.get(storyKey("comment", id)) ?? null;
 }
 
-/** Whether this body still says what the entry that arrived said */
+/**
+ * The entry this comment arrived as, and null for a comment the package did not arrive holding.
+ *
+ * An id alone does not claim an entry. The identity on one that arrived is nobody's to rewrite,
+ * its own author's included (`./parts`), so an entry naming somebody else is one this comment
+ * never stood in - a comment written this session onto an id the part had already spent, say.
+ * Writing into it would put that comment out under whoever the file already named there.
+ */
+function importedEntry(
+  comment: CommentReferenceData | CommentReplyData,
+  session: SessionStore
+): ImportedStory | null {
+  const arrived = session.comments.byId.get(comment.id);
+  if (
+    arrived === undefined ||
+    arrived.author !== comment.author ||
+    arrived.date !== comment.date ||
+    arrived.initials !== comment.initials
+  ) {
+    return null;
+  }
+  return importedBody(session, comment.id);
+}
+
+/**
+ * Whether this body still says what the entry that arrived said.
+ *
+ * A document holding no story for the comment says nothing about its body rather than saying it
+ * has none, so a reference that reached this document by another road - restored from a document
+ * node written without its stories - keeps the body the package arrived with.
+ */
 function bodyKept(
   doc: PMNode,
-  session: SessionStore,
-  id: string
+  comment: CommentReferenceData | CommentReplyData,
+  session: SessionStore
 ): ImportedStory | null {
-  const imported = importedBody(session, id);
-  const current = bodyStory(doc, id);
-  if (imported === null || current === null) return null;
-  return sameSource(current, imported.doc) ? imported : null;
+  const imported = importedEntry(comment, session);
+  if (imported === null) return null;
+  const current = bodyStory(doc, comment.id);
+  return current === null || sameSource(current, imported.doc)
+    ? imported
+    : null;
 }
 
 /**
@@ -96,8 +128,8 @@ export function commentsChanged(doc: PMNode, session: SessionStore): boolean {
   for (const id of originalBodies) {
     if (!currentBodies.has(id)) return true;
   }
-  for (const id of currentBodies.keys()) {
-    if (bodyKept(doc, session, id) === null) return true;
+  for (const comment of currentBodies.values()) {
+    if (bodyKept(doc, comment, session) === null) return true;
   }
   for (const [id, comment] of current) {
     if (needsThreadKey(id, comment, session)) return true;
@@ -255,17 +287,17 @@ function renderedComment(
   doc: PMNode,
   session: SessionStore
 ): string {
-  const paraId = keyedEntry(comment, arrivedKeyed) ? comment.paraId : null;
-  const kept = bodyKept(doc, session, comment.id);
+  const kept = bodyKept(doc, comment, session);
   if (kept !== null) {
     return carriesThreadMetadata(comment)
       ? withThreadKey(kept.xml, comment.paraId, arrived.get(comment.id) ?? null)
       : kept.xml;
   }
-  const imported = importedBody(session, comment.id);
+  const paraId = keyedEntry(comment, arrivedKeyed) ? comment.paraId : null;
+  const entry = importedEntry(comment, session);
   const said = bodyStory(doc, comment.id) ?? storyFromText("");
   const body = paraId === null ? said : withThreadKeyOn(said, paraId);
-  return serializeStory(body, null, imported ?? writtenContainer(comment), {
+  return serializeStory(body, null, entry ?? writtenContainer(comment), {
     ...NO_EXPORT_REFS,
     session,
   });
@@ -337,6 +369,10 @@ function commentsXml(
   const written = new Set<string>();
 
   for (const original of comments.ordered) {
+    // A part naming one id twice holds one comment as far as anything reading it is concerned: the
+    // entry lookup, the story reader and the verifier all take the entry standing first. Writing
+    // the second as well would put back a pair no reader can tell apart
+    if (written.has(original.id)) continue;
     const current = currentBodies.get(original.id);
     if (current) {
       pieces.push(

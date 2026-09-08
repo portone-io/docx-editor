@@ -198,6 +198,12 @@ export interface PageStart {
    */
   pos: number;
   /**
+   * The place this page takes within its own section, counted from 1 again at every section it
+   * opens. A document read with no section table at all is one section, so this counts the whole
+   * of it
+   */
+  pageInSection: number;
+  /**
    * Whether text crosses over from the previous page, so this page continues with no top
    * margin
    */
@@ -242,8 +248,33 @@ interface BlockPaper {
   opensPage: boolean;
 }
 
+/** A page as the pass opens it, before the sections number it */
+type PageOpening = Omit<PageStart, "pageInSection">;
+
 function round(value: number): number {
   return Math.round(value * 100) / 100;
+}
+
+/**
+ * The pages numbered again from one at the top of every section they open.
+ *
+ * Pages come in the order they are drawn and a section covers a run of blocks, so a page belongs
+ * to the section the block it opens with belongs to, and a new section starts wherever that answer
+ * changes. A `continuous` section opens no page of its own, so the page it starts partway down
+ * stays with the section that opened that page and the count restarts only on the page after.
+ */
+function withinSections(
+  pages: readonly PageOpening[],
+  sections: readonly SectionPixels[]
+): PageStart[] {
+  let section: number | null = null;
+  let within = 0;
+  return pages.map((page) => {
+    const index = sectionIndexAt(sections, page.pos);
+    within = index === section ? within + 1 : 1;
+    section = index;
+    return { ...page, pageInSection: within };
+  });
 }
 
 /**
@@ -331,13 +362,9 @@ export function pageLayout({ blocks, sections }: PageLayoutInput): PageLayout {
   const splits: PageSplit[] = [];
   /** The block being placed, which is the one a page opened along the way starts with */
   let blockPos = blocks[0]?.pos ?? 0;
-  const firstPage: PageStart = {
-    page: 1,
-    bodyStart: 0,
-    pos: blockPos,
-    crossed: false,
-  };
-  const pages: PageStart[] = [firstPage];
+  const opened: PageOpening[] = [
+    { page: 1, bodyStart: 0, pos: blockPos, crossed: false },
+  ];
   // A section is read into a geometry that always leaves a body to draw on
   // (`docx/pageGeometry`), so a paper with no body is a hand-built one; a list with no such paper
   // at all cannot hold a single page, let alone a boundary between two
@@ -345,7 +372,14 @@ export function pageLayout({ blocks, sections }: PageLayoutInput): PageLayout {
     (section) => section.pixels.bodyHeight > 0
   )?.pixels;
   if (roomy === undefined) {
-    return { pushes, cuts, splits, pages, bodyHeight: 0, marginBottom: 0 };
+    return {
+      pushes,
+      cuts,
+      splits,
+      pages: withinSections(opened, sections),
+      bodyHeight: 0,
+      marginBottom: 0,
+    };
   }
 
   /** The section each block sits in, in document order */
@@ -386,7 +420,7 @@ export function pageLayout({ blocks, sections }: PageLayoutInput): PageLayout {
     const page = splits.length + 2;
     splits.push({ y: round(y), page, forced, crossed });
     pageStart = crossed ? y : y + stepTo(opening);
-    pages.push({ page, bodyStart: round(pageStart), pos: blockPos, crossed });
+    opened.push({ page, bodyStart: round(pageStart), pos: blockPos, crossed });
   };
 
   // No gap is placed along a stretch the text crosses: what a block taller than one page covers,
@@ -474,7 +508,7 @@ export function pageLayout({ blocks, sections }: PageLayoutInput): PageLayout {
     pushes,
     cuts,
     splits,
-    pages,
+    pages: withinSections(opened, sections),
     // The last page is filled out in full on the paper of the section it opens with
     bodyHeight: round(pageStart + paper.bodyHeight),
     marginBottom: paper.marginBottom,

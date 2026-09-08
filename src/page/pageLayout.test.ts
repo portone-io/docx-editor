@@ -127,7 +127,7 @@ describe("pageLayout", () => {
     expect(result.pushes).toEqual([]);
     expect(result.splits).toEqual([]);
     expect(result.pages).toEqual([
-      { page: 1, bodyStart: 0, pos: 0, crossed: false },
+      { page: 1, bodyStart: 0, pos: 0, pageInSection: 1, crossed: false },
     ]);
     expect(result.bodyHeight).toBe(PAGE);
   });
@@ -224,9 +224,51 @@ describe("pageLayout", () => {
   it("reports where each page starts and which block it opens with", () => {
     const result = layout(blocks(900, 300));
     expect(result.pages).toEqual([
-      { page: 1, bodyStart: 0, pos: 0, crossed: false },
-      { page: 2, bodyStart: PAGE + STEP, pos: 10, crossed: false },
+      { page: 1, bodyStart: 0, pos: 0, pageInSection: 1, crossed: false },
+      {
+        page: 2,
+        bodyStart: PAGE + STEP,
+        pos: 10,
+        pageInSection: 2,
+        crossed: false,
+      },
     ]);
+  });
+
+  it("counts each page again from one at the top of the section it opens", () => {
+    // The third block opens the landscape section and is taller than its 1600 of body, so it
+    // crosses from that section's first page onto its second
+    const result = pageLayout({
+      blocks: blocks(300, 300, 2000),
+      sections: TWO_SECTIONS,
+    });
+
+    expect(result.pages.map((page) => [page.pos, page.pageInSection])).toEqual([
+      [0, 1],
+      [20, 1],
+      [20, 2],
+    ]);
+  });
+
+  it("a continuous section does not restart the count on the page it shares", () => {
+    // The third block opens the continuous section partway down page 2, so that page stays with
+    // the section that opened it and only the page after it starts the new section's count
+    const result = pageLayout({
+      blocks: blocks(900, 300, 300, 900),
+      sections: CONTINUOUS_SECTIONS,
+    });
+
+    expect(result.pages.map((page) => [page.pos, page.pageInSection])).toEqual([
+      [0, 1],
+      [10, 2],
+      [30, 1],
+    ]);
+  });
+
+  it("counts every page of a document written in one section", () => {
+    expect(
+      layout(blocks(900, 300, 900)).pages.map((page) => page.pageInSection)
+    ).toEqual([1, 2, 3]);
   });
 
   it("names the block a page continues, not the one after it", () => {
@@ -238,8 +280,8 @@ describe("pageLayout", () => {
   it("a page reached by crossing joins onto the previous page with no top margin", () => {
     const result = layout(blocks(1500));
     expect(result.pages).toEqual([
-      { page: 1, bodyStart: 0, pos: 0, crossed: false },
-      { page: 2, bodyStart: PAGE, pos: 0, crossed: true },
+      { page: 1, bodyStart: 0, pos: 0, pageInSection: 1, crossed: false },
+      { page: 2, bodyStart: PAGE, pos: 0, pageInSection: 2, crossed: true },
     ]);
   });
 
@@ -525,8 +567,14 @@ describe("pageLayout", () => {
       { y: PAGE, page: 2, forced: true, crossed: false },
     ]);
     expect(result.pages).toEqual([
-      { page: 1, bodyStart: 0, pos: 0, crossed: false },
-      { page: 2, bodyStart: PAGE + STEP, pos: 20, crossed: false },
+      { page: 1, bodyStart: 0, pos: 0, pageInSection: 1, crossed: false },
+      {
+        page: 2,
+        bodyStart: PAGE + STEP,
+        pos: 20,
+        pageInSection: 1,
+        crossed: false,
+      },
     ]);
     // The last page is filled out on the paper it opens with, which is the landscape one
     expect(result.bodyHeight).toBe(PAGE + STEP + LANDSCAPE_PAGE);

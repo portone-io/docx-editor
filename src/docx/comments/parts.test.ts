@@ -183,6 +183,23 @@ describe("the shape this editor writes", () => {
     expect(wellFormedEntry(edited, null)).toBe(false);
   });
 
+  /**
+   * A producer that lays its part out over several lines - LibreOffice writes one that way - puts
+   * whitespace between the blocks of a body, and the slice of a block carries the whitespace ahead
+   * of it (`docx/scan`), so the writer hands that layout back beside the block it left untouched.
+   */
+  it("takes the layout whitespace a body arrived written over", () => {
+    const second = `<w:p>${run("second")}</w:p>`;
+    const arrived = comment('w:id="0"', `\n  ${BODY}\n  ${second}\n`);
+    const edited = comment(
+      'w:id="0"',
+      `<w:p>${run("rewritten")}</w:p>\n  ${second}\n`
+    );
+
+    expect(wellFormedEntry(arrived, arrived)).toBe(true);
+    expect(wellFormedEntry(edited, arrived)).toBe(true);
+  });
+
   it("refuses an attribute this editor does not write on a comment", () => {
     for (const attrs of [
       'w:id="0" w:done="1"',
@@ -199,6 +216,8 @@ describe("the shape this editor writes", () => {
       '<w:p><w:r>payload<w:t xml:space="preserve">a</w:t></w:r></w:p>',
       '<w:p><w:r><w:t xml:space="preserve">a<!-- payload --></w:t></w:r></w:p>',
       `payload<w:p>${run("a")}</w:p>`,
+      // A no-break space is text a reader shows, whatever it looks like from here
+      `\u00a0<w:p>${run("a")}</w:p>`,
     ]) {
       expect(wellFormedEntry(comment('w:id="0"', body), null)).toBe(false);
     }
@@ -465,6 +484,30 @@ describe("over the comment parts of a submitted file", () => {
     const { bytes, commented } = commentedBy("me");
 
     expect(verdict(bytes, commented, "me")).toEqual(allowed);
+  });
+
+  /** The same for a file whose entries arrived laid out over several lines, edited since */
+  it("holds for an edit of a comment a producer laid out over several lines", () => {
+    const { commented } = commentedBy("me");
+    const pretty = repacked(
+      commented,
+      COMMENTS_PART,
+      partText(commented, COMMENTS_PART)
+        .replace(/<w:comment /, "\n  <w:comment ")
+        .replace(/(<w:comment [^>]*>)/, "$1\n    ")
+        .replace("</w:comment>", "\n  </w:comment>")
+    );
+    const opened = importDocx(pretty);
+    const edited = applied(
+      createEditorState(opened.doc, {
+        author: { id: "me", name: "Someone" },
+      }),
+      updateComment("0", "rewritten")
+    );
+
+    expect(
+      verdict(pretty, exportDocx(edited.doc, opened.session), "me")
+    ).toEqual(allowed);
   });
 
   it("refuses an INCLUDEPICTURE field forged into a comment", () => {

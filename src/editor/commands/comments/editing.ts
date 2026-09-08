@@ -9,6 +9,7 @@ import {
 } from "prosemirror-state";
 import { commentParaId } from "../../../docx/comments";
 import {
+  sameStory,
   setStory,
   storyFromText,
   storyKey,
@@ -260,8 +261,10 @@ function bodyTransaction(
   const reference = at === null ? null : state.doc.nodeAt(at);
   if (at === null || reference === null) return null;
   const key = storyKey("comment", bodyId);
-  const held = storyOf(state.doc, key);
-  if (held !== null && held.eq(body)) return null;
+  // What a block would be written back as, rather than `Node.eq`: opening a file works the display
+  // values out again (`schema/attrRoles`), and a body rebuilt over that would lose the markup the
+  // writer does not model
+  if (sameStory(storyOf(state.doc, key), body)) return null;
   return setStory(state.tr, key, body).setNodeMarkup(
     at,
     null,
@@ -270,11 +273,28 @@ function bodyTransaction(
   );
 }
 
+/**
+ * The same for a body given as plain text, which is a no-op where the body already reads as that
+ * text.
+ *
+ * Text says what a comment should read as and nothing about how it is written, so a body that
+ * already reads this way is left as it stands, its run formatting and its second paragraph with
+ * it. Writing how a body is put together is `setCommentBody`'s.
+ */
+function textBodyTransaction(
+  state: EditorState,
+  referenceId: string,
+  bodyId: string,
+  text: string
+): Transaction | null {
+  const held = storyOf(state.doc, storyKey("comment", bodyId));
+  if (held !== null && storyText(held) === text) return null;
+  return bodyTransaction(state, referenceId, bodyId, storyFromText(text));
+}
+
 /** Replaces the plain-text body of one comment, retaining its author and anchor. */
 export function updateComment(id: string, text: string): Command {
-  return guardedCommand((state) =>
-    bodyTransaction(state, id, id, storyFromText(text))
-  );
+  return guardedCommand((state) => textBodyTransaction(state, id, id, text));
 }
 
 /**
@@ -391,7 +411,7 @@ export function updateCommentReply(
       (reply) => reply.id === replyId
     );
     if (!holdsReply) return null;
-    return bodyTransaction(state, commentId, replyId, storyFromText(text));
+    return textBodyTransaction(state, commentId, replyId, text);
   });
 }
 
@@ -428,41 +448,46 @@ export function removeCommentReply(
   commentId: string,
   replyId: string
 ): Command {
-  const removedReplyIds = new Set<string>();
-  return updateReference(
-    commentId,
-    (node) => {
-      const replies = repliesAttr(node.attrs.replies);
-      if (!replies.some((reply) => reply.id === replyId)) return null;
-      const removedIds = new Set([replyId]);
-      const removedParaIds = new Set(
-        replies
-          .filter((reply) => removedIds.has(reply.id))
-          .map((reply) => reply.paraId)
-      );
-      let changed = true;
-      while (changed) {
-        changed = false;
-        for (const reply of replies) {
-          if (
-            !removedIds.has(reply.id) &&
-            removedParaIds.has(reply.parentParaId)
-          ) {
-            removedIds.add(reply.id);
-            removedParaIds.add(reply.paraId);
-            changed = true;
+  return (state, dispatch) => {
+    // What comes down with the reply is worked out against the document this run is made over. A
+    // command is asked whether it applies and then asked to run, so a set the command itself held
+    // would carry one document's answer into the next
+    const removedReplyIds = new Set<string>();
+    return updateReference(
+      commentId,
+      (node) => {
+        const replies = repliesAttr(node.attrs.replies);
+        if (!replies.some((reply) => reply.id === replyId)) return null;
+        const removedIds = new Set([replyId]);
+        const removedParaIds = new Set(
+          replies
+            .filter((reply) => removedIds.has(reply.id))
+            .map((reply) => reply.paraId)
+        );
+        let changed = true;
+        while (changed) {
+          changed = false;
+          for (const reply of replies) {
+            if (
+              !removedIds.has(reply.id) &&
+              removedParaIds.has(reply.parentParaId)
+            ) {
+              removedIds.add(reply.id);
+              removedParaIds.add(reply.paraId);
+              changed = true;
+            }
           }
         }
-      }
-      for (const id of removedIds) removedReplyIds.add(id);
-      return {
-        ...node.attrs,
-        replies: replies.filter((reply) => !removedIds.has(reply.id)),
-        threadImported: false,
-      };
-    },
-    dropBodies(removedReplyIds)
-  );
+        for (const id of removedIds) removedReplyIds.add(id);
+        return {
+          ...node.attrs,
+          replies: replies.filter((reply) => !removedIds.has(reply.id)),
+          threadImported: false,
+        };
+      },
+      dropBodies(removedReplyIds)
+    )(state, dispatch);
+  };
 }
 
 /**

@@ -403,6 +403,30 @@ export function makeHeadersFootersDocx(): Uint8Array {
 }
 
 /**
+ * The same package written in two sections, the first closed by a paragraph of its own.
+ *
+ * §17.6.17: the section a paragraph closes is written in that paragraph's `w:pPr`. The first
+ * section names header3 and footer3 as its default story, where the body's section keeps every
+ * variant `makeHeadersFootersDocx` declares.
+ */
+export function makeTwoSectionHeadersFootersDocx(): Uint8Array {
+  const encoder = new TextEncoder();
+  const parts = unzipSync(makeHeadersFootersDocx());
+  parts["word/document.xml"] = encoder.encode(
+    decode(parts["word/document.xml"]).replace(
+      "<w:p><w:r><w:t>Body</w:t></w:r></w:p>",
+      "<w:p><w:pPr><w:sectPr" +
+        ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+        '<w:headerReference w:type="default" r:id="rId12"/>' +
+        '<w:footerReference w:type="default" r:id="rId15"/>' +
+        "</w:sectPr></w:pPr><w:r><w:t>First section</w:t></w:r></w:p>" +
+        "<w:p><w:r><w:t>Second section</w:t></w:r></w:p>"
+    )
+  );
+  return zipSync(parts);
+}
+
+/**
  * A 1x1 fully transparent PNG, the smallest image a document can carry.
  * Written as base64 because that is the form both a data URL and this literal need
  */

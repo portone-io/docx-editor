@@ -1,20 +1,25 @@
 // @vitest-environment jsdom
 import { act } from "react";
-import { createRoot } from "react-dom/client";
+import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
-import { makeHeadersFootersDocx } from "../__testing__/docx";
+import {
+  makeHeadersFootersDocx,
+  makeTwoSectionHeadersFootersDocx,
+} from "../__testing__/docx";
 import { type HeadersFooters, variantsFor } from "../docx/headersFooters";
 import { importDocx } from "../docx/importDocx";
-import { sectionsOf } from "../docx/sections";
+import { sectionIn, sectionsOf } from "../docx/sections";
 import { storyNodeOf } from "../schema/stories";
 import { editorClassNames } from "../styles/classNames";
 import { PageGuides } from "./PageGuides";
-import type { PageOverlay } from "./usePageLayout";
+import type { PageFace, PageOverlay } from "./usePageLayout";
 
-function face(page: number, top: number) {
+/** One page of a document written in a single section, where the two counts are the same number */
+function face(page: number, top: number): PageFace {
   return {
     page,
     pos: 0,
+    pageInSection: page,
     headerTop: top,
     footerTop: top + 920,
     left: 80,
@@ -43,8 +48,11 @@ function openedStories(): HeadersFooters {
 }
 
 let host: HTMLDivElement | null = null;
+let root: Root | null = null;
 
 afterEach(() => {
+  if (root) act(() => root?.unmount());
+  root = null;
   host?.remove();
   host = null;
 });
@@ -52,9 +60,17 @@ afterEach(() => {
 function render(element: React.ReactElement): HTMLDivElement {
   host = document.createElement("div");
   document.body.appendChild(host);
-  const root = createRoot(host);
-  act(() => root.render(element));
+  root = createRoot(host);
+  const live = root;
+  act(() => live.render(element));
   return host;
+}
+
+/** What every page of the rendered overlay draws as its header */
+function headers(drawn: HTMLDivElement): (string | null)[] {
+  return Array.from(
+    drawn.querySelectorAll(`.${editorClassNames.pageHeader}`)
+  ).map((element) => element.textContent);
 }
 
 describe("page header and footer guides", () => {
@@ -64,11 +80,11 @@ describe("page header and footer guides", () => {
       <PageGuides overlay={overlay} headersFootersFor={() => headersFooters} />
     );
 
-    expect(
-      Array.from(drawn.querySelectorAll(`.${editorClassNames.pageHeader}`)).map(
-        (element) => element.textContent
-      )
-    ).toEqual(["First header", "Default 5 of 3", "Even header"]);
+    expect(headers(drawn)).toEqual([
+      "First header",
+      "Default 5 of 3",
+      "Even header",
+    ]);
     expect(
       Array.from(drawn.querySelectorAll(`.${editorClassNames.pageFooter}`)).map(
         (element) => element.textContent
@@ -95,11 +111,35 @@ describe("page header and footer guides", () => {
       />
     );
 
-    expect(
-      Array.from(drawn.querySelectorAll(`.${editorClassNames.pageHeader}`)).map(
-        (element) => element.textContent
+    expect(headers(drawn)).toEqual(["First header", "Even header"]);
+  });
+
+  it("asks the section the block each page opens with belongs to", () => {
+    const { doc, session } = importDocx(makeTwoSectionHeadersFootersDocx());
+    const sections = sectionsOf(doc);
+    const shown = sections.map((section) =>
+      variantsFor(section, session.headerFooterStories, (key) =>
+        storyNodeOf(doc, key)
       )
-    ).toEqual(["First header", "Even header"]);
+    );
+    // The second paragraph opens the body's section, which is the one that declares w:titlePg
+    const secondSection: PageFace = {
+      ...face(2, 1040),
+      pos: doc.child(0).nodeSize,
+      pageInSection: 1,
+    };
+    const drawn = render(
+      <PageGuides
+        overlay={{ ...overlay, pages: [face(1, 40), secondSection] }}
+        headersFootersFor={(page) =>
+          shown[sectionIn(sections, doc, page.pos).index] ?? null
+        }
+      />
+    );
+
+    // The first section draws its own default story, and the second draws the first-page story
+    // of its own first page even though that page is the document's second
+    expect(headers(drawn)).toEqual(["Even header", "First header"]);
   });
 
   it("projects a story's direct paragraph alignment", () => {

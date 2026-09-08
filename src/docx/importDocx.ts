@@ -51,7 +51,11 @@ import { readPart, relatedPartPath } from "./packageParts";
 import { A4_PORTRAIT } from "./pageGeometry";
 import { readRelationships } from "./relationships";
 import { type BlockScan, scanBody } from "./scan";
-import { firstSectPrElement, readSectionProperties } from "./sections";
+import {
+  firstSectPrElement,
+  readSectionProperties,
+  storyReferenceIds,
+} from "./sections";
 import {
   BODY_STORY_KEY,
   blockKey,
@@ -344,6 +348,7 @@ function readDocx(input: DocxBytes): {
   const headerFooters = readHeaderFooterStories(
     parts,
     mainPartPath,
+    storyReferenceIds(body),
     (partPath) => storyDeps(parts, partPath, sessionId, formatting)
   );
   const stories = storiesByKey([
