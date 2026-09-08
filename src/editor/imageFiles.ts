@@ -23,6 +23,7 @@ import {
   pxToEmu,
   toImageSrc,
 } from "../ooxml/image";
+import { plainTextPaste } from "./clipboard/parser";
 import { documentBodyWidthPx } from "./documentStyles";
 import { type ImageToInsert, insertImage } from "./insertImage";
 import { moveCaretToDrop } from "./plugins/dropCaret";
@@ -254,8 +255,8 @@ export async function insertImageFiles(
 /**
  * The plugin that takes image files pasted or dropped onto the paper.
  *
- * It has to sit ahead of the plain-text plugin, which answers for every paste and drop
- * whether or not it has anything to insert (see the plugin order in `createEditor.ts`).
+ * It runs before clipboard fallback and table insertion (see the order in `createEditor.ts`).
+ * A paste that chose plain text leaves any accompanying image file alone.
  * An event carrying no image file is passed on untouched, so text keeps coming in exactly
  * as it did.
  */
@@ -263,6 +264,7 @@ export function imageFiles(): Plugin {
   return new Plugin({
     props: {
       handlePaste(view, event) {
+        if (plainTextPaste(view, event)) return false;
         const files = imageFilesIn(event.clipboardData);
         if (files.length === 0) return false;
         void insertImageFiles(view, files);

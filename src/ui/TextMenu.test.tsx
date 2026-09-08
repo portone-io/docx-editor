@@ -2,7 +2,7 @@
 import { unzipSync } from "fflate";
 import { TextSelection } from "prosemirror-state";
 import { act, type ReactNode } from "react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { decode, makeDocx } from "../__testing__/docx";
 import { AUTHOR, EDITING } from "../__testing__/mode";
 import { renderInto } from "../__testing__/react";
@@ -11,6 +11,7 @@ import {
   type DocxEditorHandle,
   type DocxEditorMode,
 } from "../DocxEditor";
+import { defineClipboardEvent } from "../editor/clipboard/__testing__/clipboardEvent";
 import { toRunFormat } from "../model/format";
 
 declare global {
@@ -33,6 +34,9 @@ let handedOver: string[];
 
 beforeEach(() => {
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+  // The menu's Paste runs the editor's own paste path, which builds a paste event when it is
+  // handed none
+  defineClipboardEvent();
   host = document.createElement("div");
   document.body.appendChild(host);
   handedOver = [];
@@ -44,6 +48,7 @@ beforeEach(() => {
 
 afterEach(() => {
   host.remove();
+  vi.unstubAllGlobals();
 });
 
 const run = (text: string) =>
@@ -259,6 +264,38 @@ describe("the text right click menu", () => {
       fontFamily: '"Arial"',
       color: "#123456",
     });
+    unmount();
+  });
+
+  it("passes the menu's clipboard formats to image handlers and their text fallback", async () => {
+    const html = '<img src="https://cdn.example/missing.png">';
+    const fetch = vi.fn(async () => {
+      throw new Error("unavailable");
+    });
+    vi.stubGlobal("fetch", fetch);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        read: async () => [
+          {
+            types: ["text/html", "text/plain"],
+            getType: async (type: string) => ({
+              text: async () => (type === "text/html" ? html : "Fallback"),
+            }),
+          },
+        ],
+      },
+    });
+    const { handle, unmount } = mount(PARAGRAPH);
+    select(handle, 1, 7);
+    rightClickText();
+    await act(async () => {
+      item("Paste").click();
+      await vi.waitFor(() =>
+        expect(handle.view.state.doc.textContent).toBe("Fallback")
+      );
+    });
+    expect(fetch).toHaveBeenCalledTimes(1);
     unmount();
   });
 

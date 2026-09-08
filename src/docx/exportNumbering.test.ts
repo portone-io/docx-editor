@@ -20,6 +20,11 @@ import {
   surroundings,
 } from "../__testing__/docx";
 import { runCommand } from "../__testing__/editing";
+import {
+  readHtmlSlice,
+  withPastedContent,
+} from "../editor/clipboard/htmlReader";
+import { readContextOf } from "../editor/clipboard/readContext";
 import { canExport } from "../editor/commands/exportQueries";
 import {
   toggleBulletList,
@@ -29,7 +34,6 @@ import {
   createEditorState,
   editorStateForSession,
 } from "../editor/createEditor";
-import { richHtmlSlice, withPastedContent } from "../editor/externalClipboard";
 import {
   canStartNewList,
   paragraphMarkers,
@@ -535,9 +539,8 @@ describe("the definition a new list is exported with", () => {
     const all = opened.apply(
       opened.tr.setSelection(new AllSelection(opened.doc))
     );
-    const content = richHtmlSlice(
-      all,
-      document,
+    const content = readHtmlSlice(
+      readContextOf(all, document),
       "<ol><li>One</li><li>Two</li></ol>"
     );
     if (content === null) throw new Error("the markup read as nothing");

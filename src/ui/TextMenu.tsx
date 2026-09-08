@@ -22,7 +22,6 @@ import {
   selectionTouchesLocked,
   unlockSelection,
 } from "../editor/commands/lockCommands";
-import { insertClipboardData } from "../editor/externalClipboard";
 import { openCommentComposer } from "../editor/plugins/commentComposer";
 import {
   closeTextMenu,
@@ -83,11 +82,23 @@ async function clipboardContent(): Promise<ClipboardContent> {
   };
 }
 
+/**
+ * The menu's Paste, put in the way Ctrl+V puts one in.
+ *
+ * The editor's own paste path reads what the clipboard holds, so what the menu inserts and what
+ * the keystroke inserts are the same thing, images and table cells included. The HTML decides
+ * when there is any; the text is what a clipboard holding no markup leaves.
+ */
 async function pasteFromClipboard(view: EditorView): Promise<void> {
   const content = await clipboardContent();
   if (!content.html && !content.text) return;
+  const data = new DataTransfer();
+  if (content.html) data.setData("text/html", content.html);
+  if (content.text) data.setData("text/plain", content.text);
+  const event = new ClipboardEvent("paste", { clipboardData: data });
   view.focus();
-  insertClipboardData(view, content);
+  if (content.html && view.pasteHTML(content.html, event)) return;
+  if (content.text) view.pasteText(content.text, event);
 }
 
 interface MenuItem {

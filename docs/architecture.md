@@ -12,6 +12,8 @@ The final body section is held in `doc.attrs.sectPr` and written after the block
 Paragraphs and runs retain their original formatting XML while supported edits replace only the relevant values. Package parts outside the supported editing surface are repacked unchanged.
 
 Raw XML reaches the model from three directions: import puts what it cut out of the file straight into the attrs, a command builds a fragment of its own (`editor/commands/lockCommands` writes a control's opening tag), and the page is read back. The last of those is the only one that carries a string from outside, so every raw attr the schema's `parseDOM` rules read goes through `ooxml/fragment`, which holds a fragment against the shape the attr carrying it goes back out as. A rule that meets a refusal gives up, so the content settles one level plainer instead of carrying a fragment the writer would splice into the exported file.
+What arrives on the clipboard is not one of those directions: `editor/clipboard` reads it with readers of its own, so a paste never reaches a `parseDOM` rule and a copy carries no raw XML for one to read.
+Image handlers honor the text-only mode selected by the clipboard pipeline. An empty reading falls back to clipboard text or leaves the selection intact; every nonempty slice reaches ProseMirror's insertion or the table's cell-selection handler.
 
 The fragment gate checks every explicit namespace declaration in the parsed subtree, so a nested declaration cannot hide a rebinding of `w` or `r`. A fragment whose namespace declaration stayed on the original part is checked by local name; the wrapper's placeholder namespace is not evidence of a foreign namespace. Explicit foreign bindings remain rejected for named element shapes.
 
@@ -63,7 +65,8 @@ Folders at the same rank cannot import each other, so `page` and `table` share p
 Subfolders are organizational and inherit the rank of their top-level folder. They split a feature's
 parsing, writing, rendering, or interaction responsibilities without creating another layer.
 For example, `docx/formatting` separates direct-format parsing, the run property table, style layering, and the hierarchy resolver, `page/kinds`
-gives each breakable block shape its own measurer and decorator, while
+gives each breakable block shape its own measurer and decorator, `editor/clipboard` holds everything the clipboard carries in or out
+in one plugin, while
 `editor/commands/comments` and `editor/commands/formatting` separate shared models, reads, and edits.
 
 `src/folderBoundaries.test.ts` enforces the ranks, requires every production file to be reachable from an entry point, and rejects an unranked folder. The dependency direction keeps file processing independent from the view layer.
