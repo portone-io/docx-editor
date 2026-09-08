@@ -1344,16 +1344,33 @@ describe("the table styles of table-styles.docx", () => {
   });
 });
 
+/**
+ * How many tables each fixture deliberately holds that this reader cannot take apart.
+ *
+ * A marker standing under a row has no node to go in (`docx/importPolicy` demotes at `tbl` and
+ * `tr` for that reason), so the table around it is stood down and `preserved-markup.docx` carries
+ * one on purpose. Counted per file rather than allowed everywhere, so a table quietly demoting
+ * anywhere else fails here.
+ */
+const DEMOTED_TABLES: Readonly<Record<string, number>> = {
+  "preserved-markup.docx": 1,
+};
+
 describe("tables in the fixtures", () => {
-  it.each(fixtureNames)("%s: no table is left as a preserved block", (name) => {
-    const { doc } = importDocx(readFixture(name));
-    let tables = 0;
-    doc.forEach((block) => {
-      expect(block.attrs.name).not.toBe("w:tbl");
-      if (block.type.name === "table") tables += 1;
-    });
-    expect(tables).toBeGreaterThan(0);
-  });
+  it.each(fixtureNames)(
+    "%s: leaves as preserved blocks only the tables it is written to",
+    (name) => {
+      const { doc } = importDocx(readFixture(name));
+      let tables = 0;
+      let demoted = 0;
+      doc.forEach((block) => {
+        if (block.attrs.name === "w:tbl") demoted += 1;
+        if (block.type.name === "table") tables += 1;
+      });
+      expect(demoted).toBe(DEMOTED_TABLES[name] ?? 0);
+      expect(tables).toBeGreaterThan(0);
+    }
+  );
 
   it.each(fixtureNames)(
     "%s: prosemirror-tables finds nothing to repair",
