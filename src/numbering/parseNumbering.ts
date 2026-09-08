@@ -88,15 +88,44 @@ export type ReadLevelRun = (rPr: Element) => RunFormat | null;
 
 export interface NumberingList {
   /** The shape for each level (ilvl) */
-  levels: Map<number, NumberingLevel>;
+  levels: ReadonlyMap<number, NumberingLevel>;
+}
+
+/**
+ * A level a list started while editing is registered with.
+ *
+ * It is a level minus the two things the writer of a new definition cannot spell where it stands:
+ * the formatting of the number (`w:rPr`) and the tab stops its paragraphs contribute (`w:tabs`)
+ * are written by `docx/`, which stands above this folder. Leaving them out of what may be
+ * registered is what keeps a registered definition from reaching the file with a part of it
+ * silently dropped.
+ */
+export interface NewListLevel extends NumberingLevel {
+  readonly run: null;
+  readonly tabStops?: undefined;
+}
+
+/** A list started while editing, whose definition the export writes into numbering.xml as it stands */
+export interface NewList {
+  levels: ReadonlyMap<number, NewListLevel>;
 }
 
 export interface Numbering {
   /** The list for each numId */
   lists: Map<number, NumberingList>;
+  /**
+   * The lists started while editing, by the number each was given. numbering.xml defines none of
+   * them yet; the export writes the definition registered here.
+   */
+  added: ReadonlyMap<number, NewList>;
 }
 
-export const EMPTY_NUMBERING: Numbering = { lists: new Map() };
+const NO_ADDED_LISTS: ReadonlyMap<number, NewList> = new Map();
+
+export const EMPTY_NUMBERING: Numbering = {
+  lists: new Map(),
+  added: NO_ADDED_LISTS,
+};
 
 function indentOf(lvl: Element): LevelIndent | null {
   const pPr = childByLocalName(lvl, "pPr");
@@ -158,7 +187,14 @@ export function levelIndentPt(indent: LevelIndent | null): LevelIndentPt {
   };
 }
 
-const LEVEL_SUFFIXES: readonly LevelSuffix[] = ["tab", "space", "nothing"];
+export const LEVEL_SUFFIXES: readonly LevelSuffix[] = [
+  "tab",
+  "space",
+  "nothing",
+];
+
+/** The justifications a number can take, which are the ones `w:lvlJc` offers a number */
+export const LEVEL_ALIGNS: readonly LevelAlign[] = ["left", "center", "right"];
 
 /** A level that says nothing puts a tab between its number and the text (§17.9.28) */
 function suffixOf(lvl: Element): LevelSuffix {
@@ -394,5 +430,5 @@ function readNumbering(xml: string, options?: NumberingOptions): Numbering {
       numId === null ? null : readList(child, abstractLevels, options?.readRun);
     if (numId !== null && list) lists.set(numId, list);
   }
-  return { lists };
+  return { lists, added: NO_ADDED_LISTS };
 }

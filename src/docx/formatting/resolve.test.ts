@@ -92,6 +92,7 @@ const NUMBERING: Numbering = {
       },
     ],
   ]),
+  added: new Map(),
 };
 
 const LIST_PPR =
@@ -349,6 +350,7 @@ describe("tab stops", () => {
           },
         ],
       ]),
+      added: new Map(),
     };
     const formatting = { ...NO_FORMATTING, numbering };
     const listed = '<w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr>';

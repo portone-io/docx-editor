@@ -14,9 +14,10 @@ import { wName } from "../ooxml/names";
 import { orderedElement } from "../ooxml/props";
 import type {
   LevelIndent,
+  NewList,
+  NewListLevel,
   NumberFormat,
   Numbering,
-  NumberingLevel,
   NumberingList,
 } from "./parseNumbering";
 
@@ -56,7 +57,7 @@ function cycled<T>(cycle: readonly T[], ilvl: number, fallback: T): T {
   return cycle[ilvl % cycle.length] ?? fallback;
 }
 
-function templateLevel(kind: ListKind, ilvl: number): NumberingLevel {
+function templateLevel(kind: ListKind, ilvl: number): NewListLevel {
   const numbered = kind === "numbered";
   return {
     format: numbered ? cycled(NUMBER_CYCLE, ilvl, "decimal") : "bullet",
@@ -71,15 +72,16 @@ function templateLevel(kind: ListKind, ilvl: number): NumberingLevel {
   };
 }
 
-function templateList(kind: ListKind): NumberingList {
-  const levels = new Map<number, NumberingLevel>();
+/** The definition a list of this kind is started with */
+export function templateList(kind: ListKind): NewList {
+  const levels = new Map<number, NewListLevel>();
   for (let ilvl = 0; ilvl < LEVEL_COUNT; ilvl += 1) {
     levels.set(ilvl, templateLevel(kind, ilvl));
   }
   return { levels };
 }
 
-const TEMPLATES: Record<ListKind, NumberingList> = {
+const TEMPLATES: Record<ListKind, NewList> = {
   numbered: templateList("numbered"),
   bullet: templateList("bullet"),
 };
@@ -94,13 +96,47 @@ export function listKindOf(numId: number): ListKind {
  * (which is the case for a list that was just started).
  */
 export function listFor(numbering: Numbering, numId: number): NumberingList {
-  return numbering.lists.get(numId) ?? TEMPLATES[listKindOf(numId)];
+  return (
+    numbering.lists.get(numId) ??
+    numbering.added.get(numId) ??
+    TEMPLATES[listKindOf(numId)]
+  );
 }
 
 /** The next number not yet in use. Picks the even or odd one matching the shape */
 export function nextNumId(used: Iterable<number>, kind: ListKind): number {
   const from = Math.max(0, ...used) + 1;
   return listKindOf(from) === kind ? from : from + 1;
+}
+
+function highest(groups: readonly Iterable<number>[]): number {
+  let max = 0;
+  for (const group of groups) {
+    for (const numId of group) if (numId > max) max = numId;
+  }
+  return max;
+}
+
+/**
+ * A number for a new list, and the numbering that now defines it under that number.
+ *
+ * `used` names the numbers the document already spends, the ones no definition stands behind
+ * included: a number a paragraph already wears would otherwise join that paragraph to the new list.
+ */
+export function allocateList(
+  numbering: Numbering,
+  used: Iterable<number>,
+  list: NewList
+): { numId: number; numbering: Numbering } {
+  const numId =
+    highest([numbering.lists.keys(), numbering.added.keys(), used]) + 1;
+  return {
+    numId,
+    numbering: {
+      ...numbering,
+      added: new Map([...numbering.added, [numId, list]]),
+    },
+  };
 }
 
 /** Writes only the slots that carry a value. If none do, no indent is written at all */
@@ -122,7 +158,7 @@ function indXml(indent: LevelIndent | null): string {
   );
 }
 
-function levelXml(ilvl: number, level: NumberingLevel): string {
+function levelXml(ilvl: number, level: NewListLevel): string {
   const ind = indXml(level.indent);
   return orderedElement(
     wName("lvl"),
