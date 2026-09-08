@@ -14,8 +14,13 @@ import {
   reservedCommentIds,
   reservedCommentParaIds,
 } from "../../editorDocument";
-import type { CommentRange, NewComment } from "./model";
-import { documentComments, repliesAttr, stringAttr } from "./reading";
+import {
+  type CommentRange,
+  type NewComment,
+  repliesAttr,
+  stringAttr,
+} from "./model";
+import { commentById } from "./reading";
 
 /**
  * The stretch as a comment anchor may stand over it, or null where one may not: a comment marks a
@@ -401,7 +406,7 @@ export function removeComment(id: string): Command {
 /** Selects the text anchored by a comment, or places the caret at a point comment. */
 export function selectComment(id: string): Command {
   return (state, dispatch) => {
-    const comment = documentComments(state).find((entry) => entry.id === id);
+    const comment = commentById(state, id);
     if (!comment) return false;
     dispatch?.(
       state.tr.setSelection(

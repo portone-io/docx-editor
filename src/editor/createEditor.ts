@@ -22,6 +22,7 @@ import {
 } from "../styles/fontStack";
 import { documentDefaultsStyle } from "../styles/inlineStyle";
 import type { CommentAuthor } from "./commands/comments/model";
+import { noteProjection } from "./commands/noteQueries";
 import {
   documentOf,
   type EditorDocument,
@@ -134,7 +135,11 @@ export function createEditorState(
       rowResize(),
       tableEditing(),
       // Comment anchors live in the model; this paints their ranges without changing document XML.
+      // The list beside the page, the lookup the comment commands ask, and these ranges are the
+      // one walk this plugin holds (`plugins/commentDecorations`)
       commentDecorations(),
+      // What the notes under the page are, worked out from the document the same way
+      noteProjection.plugin,
       // Adjacent text tabs still need separate DOM ranges for layout and pointer selection.
       tabDecorations(),
       tabPointer(),

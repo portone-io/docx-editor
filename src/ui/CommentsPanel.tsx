@@ -7,7 +7,6 @@ import {
   addCommentReply,
   type CommentAuthor,
   type DocumentComment,
-  documentComments,
   removeComment,
   removeCommentReply,
   selectComment,
@@ -19,6 +18,7 @@ import {
   closeCommentComposer,
   commentComposerRange,
 } from "../editor/plugins/commentComposer";
+import { commentProjection } from "../editor/plugins/commentDecorations";
 import { commentOwned } from "../schema/protection";
 import { protectionOf } from "../schema/protectionState";
 import { editorClassNames } from "../styles/classNames";
@@ -81,13 +81,14 @@ export function CommentsPanel({
   scrollContainer,
   allCommentsOpen,
 }: CommentsPanelProps): ReactElement {
-  // biome-ignore lint/correctness/useExhaustiveDependencies: comment data changes with the document, not with selection-only transactions
-  const comments = useMemo(() => documentComments(state), [state.doc]);
+  // The list the document holds, which is worked out once per edit rather than once per render
+  // (`editor/plugins/commentDecorations`) and so stands as the same value between edits
+  const comments = commentProjection.read(state).comments;
   const rules = protectionOf(state);
   // Writing, replying and settling a thread are open to whoever the protection lets comment;
-  // editing and deleting a body are its author's. Ownership is asked of the identity the memoised
-  // list already carries, rather than of `canEditComment`, which walks the whole document again
-  // for every comment and reply on screen
+  // editing and deleting a body are its author's. Ownership is asked of the identity the list
+  // already carries, rather than of `canEditComment`, which looks the comment up again for every
+  // comment and reply on screen
   const writer =
     author != null && rules.protection !== "readOnly" ? author : null;
   const owned = (authorId: string | null) =>

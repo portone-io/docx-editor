@@ -1,5 +1,8 @@
 /** Public comment values and shared attribute readers. */
 
+import type { CommentReplyData } from "../../../docx/comments";
+
+/** Who a comment is written by: the name it is shown under, and the identity behind it. */
 export interface CommentAuthor {
   /**
    * The identity behind the name, an opaque string the host application chooses. Recorded in the
@@ -50,4 +53,12 @@ export interface DocumentCommentReply {
   initials: string | null;
   date: string | null;
   text: string;
+}
+
+export function stringAttr(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+export function repliesAttr(value: unknown): readonly CommentReplyData[] {
+  return Array.isArray(value) ? (value as CommentReplyData[]) : [];
 }

@@ -28,16 +28,14 @@ import { exportDocx } from "./docx/exportDocx";
 import { type DocxBytes, type DocxSource, importDocx } from "./docx/importDocx";
 import { type ExportProblem, exportProblems } from "./docx/invariants";
 import type { SessionStore } from "./docx/session";
-import {
-  type CommentAuthor,
-  documentComments,
-} from "./editor/commands/commentCommands";
+import type { CommentAuthor } from "./editor/commands/commentCommands";
 import { activeLinkSpan } from "./editor/commands/linkCommands";
 import { createEditorView, editorStateForSession } from "./editor/createEditor";
 import {
   closeCommentComposer,
   isCommentComposerOpen,
 } from "./editor/plugins/commentComposer";
+import { commentProjection } from "./editor/plugins/commentDecorations";
 import { setProtection } from "./editor/plugins/documentProtection";
 import { isLinkPanelOpen } from "./editor/plugins/linkPanel";
 import { tableMenuAnchor } from "./editor/plugins/tableContextMenu";
@@ -558,7 +556,9 @@ function DocxEditorSurface(
       ? activeLinkSpan(live.state)
       : null;
   const comments =
-    live?.state === undefined ? [] : documentComments(live.state);
+    live?.state === undefined
+      ? []
+      : commentProjection.read(live.state).comments;
   const hasUnresolvedComments = comments.some((comment) => !comment.resolved);
   // The composer's own state closes it where a comment can no longer go, the mode being switched
   // to read-only included, so nothing here has to shut it in turn
