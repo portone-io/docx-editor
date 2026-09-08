@@ -30,10 +30,16 @@ import {
 } from "../../numbering/listRegistry";
 import { docxSchema, isPageBreak } from "../../schema";
 import { numIdsIn } from "../commands/listCommands";
+import { documentOf } from "../editorDocument";
 import { insertPlainText } from "../plainText";
 import { moveCaretToDrop } from "../plugins/dropCaret";
 import { COPIED_STYLE_ATTRIBUTE } from "./htmlReader";
 import { safeHref } from "./inlineFormatting";
+import {
+  INTERNAL_TOKEN_ATTRIBUTE,
+  internalTokenOf,
+  rememberCopied,
+} from "./internalChannel";
 import {
   DEFAULT_NORMALIZERS,
   normalizePasted,
@@ -145,29 +151,55 @@ function copiedNodeSpec(node: PMNode, spec: DOMOutputSpec): DOMOutputSpec {
     : withDomAttribute(stripped, COPIED_STYLE_ATTRIBUTE, styleId);
 }
 
-/**
- * The serializer a copy is written with: what the editor draws, with the private attributes taken
- * back off.
- *
- * Wrapping the schema's own drawing rather than declaring a second set of shapes keeps the two
- * from drifting. A node drawn a new way is copied the new way, and only what it publishes changes.
- */
-function clipboardSerializer(): DOMSerializer {
+function copiedNodes(): DOMSerializer["nodes"] {
   const drawn = DOMSerializer.fromSchema(docxSchema);
-  const nodes = Object.fromEntries(
+  return Object.fromEntries(
     Object.entries(drawn.nodes).map(([name, toDOM]) => [
       name,
       (node: PMNode) => copiedNodeSpec(node, toDOM(node)),
     ])
   );
-  const marks = Object.fromEntries(
+}
+
+function copiedMarks(): DOMSerializer["marks"] {
+  const drawn = DOMSerializer.fromSchema(docxSchema);
+  return Object.fromEntries(
     Object.entries(drawn.marks).map(([name, toDOM]) => [
       name,
       (mark: Mark, inline: boolean) =>
         copiedMarkSpec(mark, toDOM(mark, inline)),
     ])
   );
-  return new DOMSerializer(nodes, marks);
+}
+
+/**
+ * The serializer a copy is written with: what the editor draws, with the private attributes taken
+ * back off, and the name of the slice this editor kept written on the first element.
+ *
+ * Wrapping the schema's own drawing rather than declaring a second set of shapes keeps the two
+ * from drifting. A node drawn a new way is copied the new way, and only what it publishes changes.
+ *
+ * The name goes on only at the outermost call. `DOMSerializer` draws a node's children by calling
+ * this method again with the element it drew as the target, so a call carrying one is inside the
+ * copy rather than around it.
+ */
+class ClipboardSerializer extends DOMSerializer {
+  constructor(private readonly tokenOf: () => string | null) {
+    super(copiedNodes(), copiedMarks());
+  }
+
+  serializeFragment(
+    fragment: Fragment,
+    options?: { document?: Document },
+    target?: HTMLElement | DocumentFragment
+  ): HTMLElement | DocumentFragment {
+    const dom = super.serializeFragment(fragment, options, target);
+    const token = target === undefined ? this.tokenOf() : null;
+    if (token !== null) {
+      dom.firstElementChild?.setAttribute(INTERNAL_TOKEN_ATTRIBUTE, token);
+    }
+    return dom;
+  }
 }
 
 /** The blocks that stand for something the editor never read, which read as nothing at all */
@@ -285,12 +317,21 @@ export interface ClipboardOptions {
 
 export function docxClipboard(options: ClipboardOptions = {}): Plugin {
   const normalizers = options.normalizers ?? DEFAULT_NORMALIZERS;
-  const serializer = clipboardSerializer();
+  /** The name given to the copy being written, which the serializer runs straight after */
+  let copyToken: string | null = null;
+  const serializer = new ClipboardSerializer(() => copyToken);
   let host: EditorView | null = null;
   const parser = new DocxClipboardParser(
     options.readers ?? DEFAULT_READERS,
-    () =>
-      host === null ? null : readContextOf(host.state, host.dom.ownerDocument)
+    (dom) =>
+      host === null
+        ? null
+        : {
+            dom,
+            token: internalTokenOf(dom),
+            sessionId: documentOf(host.state).session?.sessionId ?? null,
+            context: readContextOf(host.state, host.dom.ownerDocument),
+          }
   );
   /** The definitions the last reading started, held until the edit carrying them lands */
   let started: NewLists | null = null;
@@ -348,7 +389,15 @@ export function docxClipboard(options: ClipboardOptions = {}): Plugin {
         return plainTextSlice(text, context);
       },
       clipboardTextSerializer: clipboardText,
-      transformCopied: copiedSlice,
+      transformCopied(slice, view) {
+        // The slice is kept as it stands: what the wrappers are emptied of below leaves for the
+        // clipboard, and a paste back into this session is given what was copied instead
+        copyToken = rememberCopied(
+          slice,
+          documentOf(view.state).session?.sessionId ?? null
+        );
+        return copiedSlice(slice);
+      },
       transformPasted(slice, view, plain) {
         if (!plain) parser.setPlainText(false);
         const read = parser.takeRead();
