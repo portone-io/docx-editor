@@ -125,7 +125,8 @@ whether the current author may edit or delete one; [Modes and
 protection](#modes-and-protection) explains the rule behind it.
 
 `addComment` and `canAddComment` take an optional `{ from, to }` range as their last argument, and
-use the current selection when none is given.
+use the current selection when none is given. The range must use integer document positions and
+cover a non-empty span inside one paragraph; invalid ranges return `false` without dispatching.
 Pass one from a composer of your own that stays open while the document is edited: keep the range
 you opened it over, map it through `transaction.mapping` on every change, and hand that range to
 `addComment` when the writer submits, so the comment marks the text it was written about rather

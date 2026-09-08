@@ -26,7 +26,14 @@ function anchorableRange(
   doc: PMNode,
   { from, to }: CommentRange
 ): CommentRange | null {
-  if (from >= to || from < 0 || to > doc.content.size) return null;
+  if (
+    !Number.isInteger(from) ||
+    !Number.isInteger(to) ||
+    from >= to ||
+    from < 0 ||
+    to > doc.content.size
+  )
+    return null;
   const $from = doc.resolve(from);
   if (!$from.sameParent(doc.resolve(to))) return null;
   if ($from.parent.type.name !== "paragraph") return null;
