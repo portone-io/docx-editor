@@ -36,6 +36,7 @@ import {
   paragraphPPr,
   selectedParagraphs,
 } from "../paragraphEdits";
+import { paragraphPlacementAt } from "../paragraphPlacement";
 
 /**
  * The alignment this paragraph is rendered with.
@@ -173,7 +174,11 @@ export function setParagraphStyle(styleId: string | null): Command {
       const props = withParagraphStyle(pPr, styleId);
       if (!props) return [];
       // The text takes the values of the style the paragraph now wears, the default one where the name was cleared
-      const paragraph = resolveParagraph(props.pPr, context);
+      const paragraph = resolveParagraph(
+        props.pPr,
+        context,
+        paragraphPlacementAt(state.doc, spot.pos)
+      );
       return [
         {
           spot,

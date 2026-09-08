@@ -3,18 +3,33 @@
  * derived again once the grid or the border inputs of the table moved.
  */
 
+import { tableStyleAttrs } from "../../docx/formatting";
+import { parsePropsXml } from "../../ooxml/props";
 import { cellFixes, sameFormattingInputs } from "../../table/gridBorders";
 import type { DocumentDeriver } from "./displayDerivation";
 
 export const tableDisplay: DocumentDeriver = {
   name: "table",
   nodeTypes: ["table"],
-  derive(table, pos, _doc, _context, previous) {
+  derive(table, pos, _doc, context, previous) {
     if (previous !== null && sameFormattingInputs(previous, table)) return [];
-    // A fix names the cell by its position within the table's content
-    return cellFixes(table).map((fix) => ({
-      pos: pos + 1 + fix.pos,
-      attrs: fix.attrs,
-    }));
+    const tblPr: unknown = table.attrs.tblPr;
+    const attrs = {
+      ...table.attrs,
+      ...tableStyleAttrs(
+        typeof tblPr === "string" ? parsePropsXml(tblPr) : null,
+        context.document.formatting
+      ),
+    };
+    const current = table.hasMarkup(table.type, attrs, table.marks)
+      ? table
+      : table.type.create(attrs, table.content, table.marks);
+    return [
+      { pos, attrs },
+      ...cellFixes(current).map((fix) => ({
+        pos: pos + 1 + fix.pos,
+        attrs: fix.attrs,
+      })),
+    ];
   },
 };

@@ -4,12 +4,6 @@
  */
 
 import type { Node as PMNode } from "prosemirror-model";
-import {
-  toBandSizes,
-  toCellMargins,
-  toInsideBorders,
-  toTableStyleConditions,
-} from "../model/format";
 import { childValue, wAttr } from "../ooxml/units";
 import {
   attrString,
@@ -24,6 +18,7 @@ import {
   NO_FORMATTING,
   type ParagraphPlacement,
   styledParagraph,
+  tableStyleAttrs,
   tableStyleFor,
 } from "./formatting";
 import {
@@ -443,12 +438,7 @@ export function buildTable(
       tblW: readTableWidth(parts.tblPr, "tblW"),
       gridCols,
       gridChange: parts.gridChange,
-      format: tableFormat,
-      // The cells need these again whenever an edit derives their display values afresh
-      styleInside: toInsideBorders(style?.tableInside),
-      styleCellMargins: toCellMargins(style?.tableCellMargins),
-      styleConditions: toTableStyleConditions(conditions),
-      styleBands: toBandSizes(bands),
+      ...tableStyleAttrs(parts.tblPr, context),
     },
     rows
   );

@@ -4,7 +4,7 @@ A table style dresses the parts of a table separately: the header row, the closi
 
 ## The order the parts are applied in
 
-§17.7.6 fixes the order, a later one overriding an earlier one: whole table, banded columns, banded rows, first row and last row, first column and last column, then the four corners. A cell in the header row of the first column therefore takes the header row's formatting over the column's, and the corner over both.
+§17.7.6 fixes the order, a later one overriding an earlier one: whole table, banded columns, banded rows, first row and last row, first column and last column, then the four corners. This editor follows that ECMA order. [MS-OI29500 §2.1.252](https://learn.microsoft.com/en-us/openspecs/office_standards/ms-oi29500/2ac331d4-cf1e-4fa0-8bca-6da74411e284) documents a different Office order: row bands before column bands, and columns before rows. A cell in the header row of the first column therefore takes the column's formatting over the header row's, and the corner over both.
 
 The table style's own `w:tblPr`, `w:pPr` and `w:rPr` lie under all of them, and the whole style sits where §17.7.2 puts it: above the document defaults and below the numbering level, the paragraph style and direct formatting. A paragraph style that states an alignment therefore beats one a conditional format states, which is what the hierarchy asks for even where Word's own drawing of a built-in style suggests otherwise.
 
@@ -18,7 +18,7 @@ The table style's own `w:tblPr`, `w:pPr` and `w:rPr` lie under all of them, and 
 
 `w:tblStyleRowBandSize` and `w:tblStyleColBandSize` (§17.7.6.5, §17.7.6.7) say how many rows or columns make up one band, and default to one. Band 1 is the first band, so band 1 and band 2 alternate from the first banded row onwards.
 
-The specification does not say whether the header row and the closing row are counted among the banded rows. Word does not band them: with the header row taken, the first banded row is the one under it and it is band 1. This editor follows Word, for the rows and for the edge columns alike, because a header row banded as well would be drawn in the band's fill under Word's own built-in styles. Observed 2026-09-08 against ECMA-376 5th edition, Part 1 §§17.4.55, 17.7.6, and Part 4 §14.4.12.
+This editor excludes enabled first and last rows and columns from banding, and starts band 1 at the first remaining row or column. This is a placement policy; the cited specification sections do not establish the claimed behavior of a particular Word version.
 
 ## The lines a conditional format draws
 

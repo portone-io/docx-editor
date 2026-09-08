@@ -6,15 +6,32 @@
  */
 
 import { Fragment, type Mark, type Node as PMNode } from "prosemirror-model";
-import type { ParagraphFormat, RunFormat } from "../../model/format";
+import {
+  type ParagraphFormat,
+  type RunFormat,
+  toBandSizes,
+  toCellMargins,
+  toInsideBorders,
+  toTableStyleConditions,
+} from "../../model/format";
 import { docxSchema } from "../../schema";
+import {
+  cellConditionsOf,
+  layerBandSizes,
+  NO_BAND_SIZES,
+  readBandSizes,
+  readTableFormat,
+  tblStyleIdOf,
+} from "../tableFormatting";
 import type { FormattingContext } from "./context";
 import {
   type ParagraphPlacement,
   type ResolvedParagraph,
   resolveParagraph,
   resolveRun,
+  tableStyleFor,
 } from "./resolve";
+import { layerTableFormat } from "./styles";
 
 /** The two derived paragraph attrs (`format` and `styleRun` in `schema`) */
 export interface ParagraphAttrs {
@@ -99,4 +116,23 @@ export function styledParagraph(
     Fragment.fromArray(inline),
     node.marks
   );
+}
+
+/** Table display inputs, refreshed from the same style context as the paragraphs inside it. */
+export function tableStyleAttrs(
+  tblPr: Element | null,
+  context: FormattingContext
+) {
+  const style = tableStyleFor(tblStyleIdOf(tblPr), context);
+  return {
+    format: layerTableFormat(style?.table ?? {}, readTableFormat(tblPr)),
+    styleInside: toInsideBorders(style?.tableInside),
+    styleCellMargins: toCellMargins(style?.tableCellMargins),
+    styleConditions: toTableStyleConditions(
+      cellConditionsOf(style?.tableConditions ?? {})
+    ),
+    styleBands: toBandSizes(
+      layerBandSizes(style?.tableBands ?? NO_BAND_SIZES, readBandSizes(tblPr))
+    ),
+  };
 }

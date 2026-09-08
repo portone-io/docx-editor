@@ -12,11 +12,16 @@ import type { Node as PMNode } from "prosemirror-model";
 import { type EditorState, TextSelection } from "prosemirror-state";
 import { CellSelection, TableMap } from "prosemirror-tables";
 import { describe, expect, it } from "vitest";
+import { makeStyledDocx } from "../__testing__/docx";
 import { runCommand } from "../__testing__/editing";
-import { NO_FORMATTING, readStyles } from "../docx/formatting";
+import { NO_FORMATTING } from "../docx/formatting";
+import { importDocx } from "../docx/importDocx";
 import { NO_IMPORT_SOURCES } from "../docx/importParagraph";
 import { buildTable } from "../docx/importTable";
-import { createEditorState } from "../editor/createEditor";
+import {
+  createEditorState,
+  editorStateForSession,
+} from "../editor/createEditor";
 import { type CellFormat, toCellFormat } from "../model/format";
 import { parseXml } from "../ooxml/xml";
 import { docxSchema } from "../schema";
@@ -422,22 +427,34 @@ describe("a table whose style dresses its last row", () => {
   const HEADER = "#D9E2F3";
   const TOTAL = "#FFF2CC";
 
-  function reportDoc(): PMNode {
+  function reportState(): EditorState {
     const line = (...texts: string[]) =>
       rowXml(...texts.map((t) => cellXml(t)));
-    return docOf(
-      '<w:tbl><w:tblPr><w:tblStyle w:val="Report"/>' +
-        '<w:tblLook w:firstRow="1" w:lastRow="1" w:noHBand="1" w:noVBand="1"/>' +
-        `</w:tblPr>${grid(2)}` +
-        line("a1", "b1") +
-        line("a2", "b2") +
-        line("a3", "b3") +
-        "</w:tbl>",
-      {
-        ...NO_FORMATTING,
-        styles: readStyles(parseXml(`<w:styles ${W_NS}>${STYLE}</w:styles>`)),
-      }
+    return editorStateForSession(
+      importDocx(
+        makeStyledDocx(
+          '<w:tbl><w:tblPr><w:tblStyle w:val="Report"/>' +
+            '<w:tblLook w:firstRow="1" w:lastRow="1" w:noHBand="1" w:noVBand="1"/>' +
+            `</w:tblPr>${grid(2)}` +
+            line("a1", "b1") +
+            line("a2", "b2") +
+            line("a3", "b3") +
+            "</w:tbl>",
+          STYLE
+        )
+      )
     );
+  }
+
+  function editReport(command: TableCommand): PMNode {
+    const state = reportState();
+    const map = TableMap.get(firstTable(state.doc));
+    const selected = state.apply(
+      state.tr.setSelection(
+        TextSelection.near(state.doc.resolve(2 + map.map[2 * map.width]))
+      )
+    );
+    return runCommand(selected, command).doc;
   }
 
   /** The fill every row of the table draws, by the row it stands in */
@@ -447,18 +464,22 @@ describe("a table whose style dresses its last row", () => {
     );
 
   it("draws the shading of the parts the style dresses", () => {
-    expect(fills(firstTable(reportDoc()))).toEqual([HEADER, undefined, TOTAL]);
+    expect(fills(firstTable(reportState().doc))).toEqual([
+      HEADER,
+      undefined,
+      TOTAL,
+    ]);
   });
 
   it("hands the last row's shading down to a row added under it", () => {
-    const table = firstTable(edit(reportDoc(), [2, 0], addRowAfter));
+    const table = firstTable(editReport(addRowAfter));
 
     expect(table.childCount).toBe(4);
     expect(fills(table)).toEqual([HEADER, undefined, undefined, TOTAL]);
   });
 
   it("hands it back up when the last row is deleted", () => {
-    const table = firstTable(edit(reportDoc(), [2, 0], deleteRow));
+    const table = firstTable(editReport(deleteRow));
 
     expect(fills(table)).toEqual([HEADER, TOTAL]);
   });

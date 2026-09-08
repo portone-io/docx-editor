@@ -19,7 +19,7 @@ import {
   makeStyledDocx,
   readFixture,
 } from "../../__testing__/docx";
-import { select } from "../../__testing__/editing";
+import { rangeOfText, select } from "../../__testing__/editing";
 import { NO_FORMATTING, styleIdOf } from "../../docx/formatting";
 import { importDocx } from "../../docx/importDocx";
 import type { SessionStore } from "../../docx/session";
@@ -31,7 +31,8 @@ import {
 import { docxSchema } from "../../schema";
 import { displayOnly } from "../../schema/displayDerivation";
 import { editorClassNames } from "../../styles/classNames";
-import { addRowAfter } from "../../table";
+import { addRowAfter, deleteRow } from "../../table";
+import { toggleItalic } from "../commands";
 import {
   setParagraphAlign,
   setParagraphStyle,
@@ -398,6 +399,58 @@ describe("a paragraph in a cell of a table that wears a style", () => {
     const body = cellParagraph(stateWithStyledTable().doc, 1, 0);
     expect(body.styleRun).toEqual({ bold: true, fontSizePt: 11 });
     expect(body.format).toEqual({ align: "center" });
+  });
+
+  it("reformats the existing text of the next row when the header is deleted", () => {
+    const state = stateWithStyledTable();
+    const at = rangeOfText(state.doc, "a1");
+    const next = ran(select(state, at.from), deleteRow);
+    const header = cellParagraph(next.doc, 0, 0);
+    expect(header.node.textContent).toBe("a2");
+    expect(header.styleRun?.italic).toBe(true);
+    expect(header.format?.spaceBeforePt).toBe(6);
+    const run = docxSchema.marks.run.isInSet(header.node.child(0).marks);
+    expect(toRunFormat(run?.attrs.format)?.italic).toBe(true);
+    expect(header.node.attrs.pPr).toBeNull();
+    expect(run?.attrs.rPr).toBeNull();
+  });
+
+  it("pins an off against the table condition when italic is toggled off", () => {
+    const state = stateWithStyledTable();
+    const at = rangeOfText(state.doc, "a1");
+    const next = ran(select(state, at.from, at.to), toggleItalic);
+    const header = cellParagraph(next.doc, 0, 0);
+    const run = docxSchema.marks.run.isInSet(header.node.child(0).marks);
+    expect(run?.attrs.rPr).toContain('<w:i w:val="0"/>');
+    expect(toRunFormat(run?.attrs.format)?.italic).toBe(false);
+    expect(toRunFormat(run?.attrs.format)?.bold).toBe(true);
+  });
+
+  it("refreshes cell conditions when the document's formatting context is replaced", () => {
+    const colored = (fill: string) =>
+      REPORT_STYLE.replace(
+        "</w:tblStylePr>",
+        `<w:tcPr><w:shd w:val="clear" w:fill="${fill}"/></w:tcPr></w:tblStylePr>`
+      );
+    const before = importDocx(
+      makeStyledDocx(BODY_WITH_STYLED_TABLE, colored("FF0000"))
+    );
+    const after = importDocx(
+      makeStyledDocx(BODY_WITH_STYLED_TABLE, colored("0000FF"))
+    );
+    const state = createEditorState(before.doc, {
+      document: {
+        ...editorDocumentOf(before.session),
+        formatting: after.session.formatting,
+      },
+    });
+    expect(
+      toCellFormat(state.doc.child(1).child(0).child(0).attrs.format)
+        ?.background
+    ).toBe("#0000FF");
+    expect(state.doc.child(1).attrs.tblPr).toBe(
+      before.doc.child(1).attrs.tblPr
+    );
   });
 
   it("dresses a paragraph an edit built in the header row the same way", () => {
