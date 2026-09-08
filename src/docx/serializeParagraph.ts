@@ -3,6 +3,10 @@
  *
  * Body paragraphs and paragraphs inside table cells take the same path.
  *
+ * A fragment the reader kept whole goes back where it stood: one kept inside a run is written as
+ * a piece of that run, and one kept beside the runs is written between them, which is what the
+ * two content models admit.
+ *
  * The inlines are grouped three times over: neighbours that share their formatting become one run,
  * the runs that share a hyperlink (`w:hyperlink`) go back inside it, and the links and runs that
  * share a content control (`w:sdt`) go back inside the wrapper that mark carries. The control is
@@ -101,6 +105,9 @@ function renderInline(node: PMNode, images: ImageRefs): string {
   }
   if (node.type.name === "hardBreak")
     return emptyTagXml(wName("br"), rawAttrsOf(node.attrs.brAttrs));
+  // A run child kept whole goes back inside the run it stood in, which is the one place
+  // `EG_RunInnerContent` admits it
+  if (node.type.name === "rawRunContent") return preservedXml(node);
   if (node.type.name === "image") return renderImage(node, images);
   if (node.type.name === "commentReference") {
     const original: unknown = node.attrs.referenceXml;

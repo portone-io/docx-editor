@@ -111,7 +111,13 @@ function assertWritableMainPart(root: Element): void {
   }
 }
 
-/** Moves a single body block into a node. If we cannot model it, the result is a preservation node pointing at the original fragment */
+/**
+ * Moves a single body block into a node.
+ *
+ * A paragraph always opens editable (`./importParagraph`). What is left over is a table whose
+ * rows this reader could not take apart, and a block it has no reader for at all, and both stand
+ * as a preservation node pointing at the original fragment.
+ */
 function buildBlock(
   el: Element,
   srcId: string,
@@ -124,10 +130,7 @@ function buildBlock(
       name: el.nodeName,
     });
   }
-  if (el.localName === "p") {
-    const paragraph = buildParagraph(el, srcId, sources);
-    if (paragraph) return paragraph;
-  }
+  if (el.localName === "p") return buildParagraph(el, srcId, sources);
   if (el.localName === "tbl") {
     const table = buildTable(el, srcId, sources, context);
     if (table) return table;

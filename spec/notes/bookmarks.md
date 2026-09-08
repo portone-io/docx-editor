@@ -10,7 +10,9 @@ Observed 2026-08-22 against ECMA-376 5th edition, Part 1, §§17.13.6.1–17.13.
 
 ## What we preserve
 
-Bookmarks are cross-structure annotations and can span paragraphs. Markers inside a paragraph remain invisible inline preservation nodes. Markers directly under `w:body` are invisible block preservation nodes, so they retain their exact XML and order without becoming unsupported-content placeholders.
+Bookmarks are cross-structure annotations and can span paragraphs. Markers inside a paragraph remain inline preservation nodes carrying `display: "hidden"`, so nothing of them is drawn. Markers directly under `w:body` are invisible block preservation nodes, so they retain their exact XML and order without becoming unsupported-content placeholders.
+
+Both carry `guarded: true`, which is what the deletion guard answers for; [Preservation tiers](./preservationTiers.md) is where that attribute is decided.
 
 Markers inside an unsupported container remain with that container's preserved XML. They are not exposed as independent model nodes.
 

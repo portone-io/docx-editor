@@ -141,10 +141,13 @@ describe("a drawing we do not interpret", () => {
   };
 
   for (const [name, drawing] of Object.entries(cases)) {
-    it(`${name}: keeps the whole paragraph as preserved content`, () => {
+    it(`${name}: keeps the drawing alone, inside an editable paragraph`, () => {
       const bytes = makeImageDocx(`<w:p>${drawingRun(drawing)}</w:p>`);
       const { doc } = importDocx(bytes);
-      expect(doc.child(0).type.name).toBe("docxRaw");
+      expect(doc.child(0).type.name).toBe("paragraph");
+      expect(doc.child(0).childCount).toBe(1);
+      expect(doc.child(0).child(0).type.name).toBe("rawRunContent");
+      expect(doc.child(0).child(0).attrs.element).toBe("drawing");
       expect(imagesIn(doc)).toEqual([]);
     });
 
@@ -171,9 +174,10 @@ describe("an image weighing more than we hold", () => {
       bytes: new Uint8Array(MAX_IMAGE_BYTES + 1),
     });
 
-  it("keeps the whole paragraph as preserved content", () => {
+  it("keeps the drawing alone, inside an editable paragraph", () => {
     const { doc } = importDocx(makeOversized());
-    expect(doc.child(0).type.name).toBe("docxRaw");
+    expect(doc.child(0).type.name).toBe("paragraph");
+    expect(doc.child(0).child(0).type.name).toBe("rawRunContent");
     expect(imagesIn(doc)).toEqual([]);
   });
 

@@ -1,11 +1,13 @@
 /**
- * The guards over what a document is opened with and the editor only preserves: the two ends of a
- * bookmark range, the reference standing where a footnote or an endnote is called, and the
- * paragraph that ends a section.
+ * The guards over what a document is opened with and the editor only preserves: the fragments a
+ * file falls apart without, the reference standing where a footnote or an endnote is called, and
+ * the paragraph that ends a section.
  *
- * None of it is content the editor writes, so nothing in it can put such a thing back once it is
- * gone, and a document that lost one of a bookmark's two ends cannot be written back as a file at
- * all (`docx/exportDocx` refuses it). What the first two guards hold is therefore the whole list of
+ * The first of those is the two ends of a bookmark range, the two ends of a permission or move
+ * range, and the pieces of a field, which say what they say only in the order they stand in. None
+ * of it is content the editor writes, so nothing in it can put such a thing back once it is gone,
+ * and a document that lost one of a bookmark's two ends cannot be written back as a file at all
+ * (`docx/exportDocx` refuses it). What the first two guards hold is therefore the whole list of
  * the nodes they answer for, in the order the document carries them; a section break, which an
  * edit may legitimately move from one paragraph to another, is held by its number instead.
  */
@@ -68,28 +70,28 @@ export function preservedNodeGuard(
   };
 }
 
-/** A bookmark marker inside a paragraph arrives as raw XML, so it is known by what that XML reads */
-const BOOKMARK_XML = /<(?:[\w.-]+:)?bookmark(?:Start|End)\b/;
-
-function isBookmarkMarker(node: PMNode): boolean {
-  if (node.type.name === "bookmarkBlock") return true;
-  return (
-    node.type.name === "rawInline" &&
-    typeof node.attrs.xml === "string" &&
-    BOOKMARK_XML.test(node.attrs.xml)
-  );
+/**
+ * Whether the deletion guard answers for this fragment.
+ *
+ * `docx/importPolicy` decides that when the document is opened and bakes the answer into the
+ * node, so the rule lives in one place and this layer reads it rather than matching element names
+ * against a pattern of its own. A bookmark standing directly under the body is still a node of its
+ * own carrying no such attr, and stays known by what it is until the block placeholders are one.
+ */
+function isGuardedFragment(node: PMNode): boolean {
+  return node.type.name === "bookmarkBlock" || node.attrs.guarded === true;
 }
 
-function bookmarkSignature(node: PMNode): string {
+function preservedSignature(node: PMNode): string {
   return node.type.name === "bookmarkBlock"
     ? `block:${node.attrs.srcId}:${node.attrs.name}`
-    : `inline:${node.attrs.xml}`;
+    : `${node.type.name}:${node.attrs.xml}`;
 }
 
-export const bookmarkGuard = preservedNodeGuard(
-  "bookmark",
-  isBookmarkMarker,
-  bookmarkSignature
+export const preservedGuard = preservedNodeGuard(
+  "preserved",
+  isGuardedFragment,
+  preservedSignature
 );
 
 function isNoteReference(node: PMNode): boolean {

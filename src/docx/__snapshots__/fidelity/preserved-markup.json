@@ -1,0 +1,186 @@
+[
+  {
+    "severity": "hidden",
+    "code": "preserved-run-content",
+    "part": "word/document.xml",
+    "block": 1,
+    "pos": 33,
+    "element": "w:lastRenderedPageBreak"
+  },
+  {
+    "severity": "hidden",
+    "code": "preserved-run-content",
+    "part": "word/document.xml",
+    "block": 1,
+    "pos": 93,
+    "element": "w:softHyphen"
+  },
+  {
+    "severity": "hidden",
+    "code": "preserved-run-content",
+    "part": "word/document.xml",
+    "block": 1,
+    "pos": 119,
+    "element": "w:noBreakHyphen"
+  },
+  {
+    "severity": "hidden",
+    "code": "preserved-run-content",
+    "part": "word/document.xml",
+    "block": 1,
+    "pos": 166,
+    "element": "w:cr"
+  },
+  {
+    "severity": "placeholder",
+    "code": "preserved-run-content",
+    "part": "word/document.xml",
+    "block": 1,
+    "pos": 180,
+    "element": "w:sym"
+  },
+  {
+    "severity": "placeholder",
+    "code": "preserved-run-content",
+    "part": "word/document.xml",
+    "block": 1,
+    "pos": 208,
+    "element": "w:ptab"
+  },
+  {
+    "severity": "placeholder",
+    "code": "preserved-run-content",
+    "part": "word/document.xml",
+    "block": 2,
+    "pos": 224,
+    "element": "w:fldChar"
+  },
+  {
+    "severity": "placeholder",
+    "code": "preserved-run-content",
+    "part": "word/document.xml",
+    "block": 2,
+    "pos": 225,
+    "element": "w:instrText"
+  },
+  {
+    "severity": "placeholder",
+    "code": "preserved-run-content",
+    "part": "word/document.xml",
+    "block": 2,
+    "pos": 226,
+    "element": "w:fldChar"
+  },
+  {
+    "severity": "placeholder",
+    "code": "preserved-run-content",
+    "part": "word/document.xml",
+    "block": 2,
+    "pos": 228,
+    "element": "w:fldChar"
+  },
+  {
+    "severity": "placeholder",
+    "code": "preserved-inline",
+    "part": "word/document.xml",
+    "block": 2,
+    "pos": 233,
+    "element": "w:fldSimple"
+  },
+  {
+    "severity": "hidden",
+    "code": "preserved-inline",
+    "part": "word/document.xml",
+    "block": 3,
+    "pos": 244,
+    "element": "w:proofErr"
+  },
+  {
+    "severity": "placeholder",
+    "code": "preserved-inline",
+    "part": "word/document.xml",
+    "block": 3,
+    "pos": 255,
+    "element": "w:ins"
+  },
+  {
+    "severity": "placeholder",
+    "code": "preserved-inline",
+    "part": "word/document.xml",
+    "block": 3,
+    "pos": 273,
+    "element": "w:del"
+  },
+  {
+    "severity": "placeholder",
+    "code": "preserved-inline",
+    "part": "word/document.xml",
+    "block": 3,
+    "pos": 281,
+    "element": "w:smartTag"
+  },
+  {
+    "severity": "hidden",
+    "code": "range-marker",
+    "part": "word/document.xml",
+    "block": 4,
+    "pos": 285,
+    "element": "w:bookmarkStart"
+  },
+  {
+    "severity": "hidden",
+    "code": "range-marker",
+    "part": "word/document.xml",
+    "block": 4,
+    "pos": 317,
+    "element": "w:bookmarkEnd"
+  },
+  {
+    "severity": "hidden",
+    "code": "range-marker",
+    "part": "word/document.xml",
+    "block": 4,
+    "pos": 318,
+    "element": "w:permStart"
+  },
+  {
+    "severity": "hidden",
+    "code": "range-marker",
+    "part": "word/document.xml",
+    "block": 4,
+    "pos": 358,
+    "element": "w:permEnd"
+  },
+  {
+    "severity": "hidden",
+    "code": "range-marker",
+    "part": "word/document.xml",
+    "block": 4,
+    "pos": 359,
+    "element": "w:moveFromRangeStart"
+  },
+  {
+    "severity": "hidden",
+    "code": "range-marker",
+    "part": "word/document.xml",
+    "block": 4,
+    "pos": 402,
+    "element": "w:moveFromRangeEnd"
+  },
+  {
+    "severity": "placeholder",
+    "code": "table-demoted",
+    "part": "word/document.xml",
+    "block": 6,
+    "pos": 472,
+    "element": "w:tbl"
+  },
+  {
+    "severity": "placeholder",
+    "code": "preserved-block",
+    "part": "word/document.xml",
+    "block": 8,
+    "pos": 611,
+    "element": "w:customXml"
+  }
+]

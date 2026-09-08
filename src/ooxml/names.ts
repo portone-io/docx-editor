@@ -18,6 +18,14 @@ export const W_NS =
 export const R_NS =
   "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 
+/**
+ * The math namespace. Nothing here is written under a prefix of ours - a `m:oMath` travels as the
+ * XML it arrived as - so it names the namespace alone and stays out of `NAMESPACES`, which is the
+ * list of prefixes the writer spells out.
+ */
+export const M_NS =
+  "http://schemas.openxmlformats.org/officeDocument/2006/math";
+
 /** The prefix every WordprocessingML element and attribute this package writes carries */
 export const W_PREFIX = "w";
 

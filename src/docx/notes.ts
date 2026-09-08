@@ -8,6 +8,7 @@ import {
   R_NS,
   W_NS,
 } from "../ooxml/xml";
+import { runContentText } from "./importPolicy";
 import { relatedPartPath } from "./packageParts";
 
 export type NoteKind = "footnote" | "endnote";
@@ -42,13 +43,14 @@ export const NO_NOTES: ImportedNotes = {
   endnotes: EMPTY_PART,
 };
 
+/**
+ * The plain text a note body reads as.
+ *
+ * What one run child puts on screen is `docx/importPolicy`'s answer, the same one the body reader
+ * and every other story reader takes, so a `w:cr` cannot end a line here and read as nothing there.
+ */
 function inlineText(node: Element): string {
-  if (node.localName === "t") return node.textContent ?? "";
-  if (node.localName === "tab") return "\t";
-  if (node.localName === "br" || node.localName === "cr") return "\n";
-  if (node.localName === "noBreakHyphen") return "\u2011";
-  if (node.localName === "softHyphen") return "\u00ad";
-  return elementChildren(node).map(inlineText).join("");
+  return runContentText(node) ?? elementChildren(node).map(inlineText).join("");
 }
 
 function noteText(el: Element): string {

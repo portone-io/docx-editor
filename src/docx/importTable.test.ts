@@ -1344,16 +1344,49 @@ describe("the table styles of table-styles.docx", () => {
   });
 });
 
-describe("tables in the fixtures", () => {
-  it.each(fixtureNames)("%s: no table is left as a preserved block", (name) => {
-    const { doc } = importDocx(readFixture(name));
-    let tables = 0;
-    doc.forEach((block) => {
-      expect(block.attrs.name).not.toBe("w:tbl");
-      if (block.type.name === "table") tables += 1;
-    });
-    expect(tables).toBeGreaterThan(0);
+/**
+ * How many tables each fixture deliberately holds that this reader cannot take apart.
+ *
+ * A marker standing under a row has no node to go in (`docx/importPolicy` demotes at `tbl` and
+ * `tr` for that reason), so the table around it is stood down and `preserved-markup.docx` carries
+ * one on purpose. Counted per file rather than allowed everywhere, so a table quietly demoting
+ * anywhere else fails here.
+ */
+const DEMOTED_TABLES: Readonly<Record<string, number>> = {
+  "preserved-markup.docx": 1,
+};
+
+describe("a cell paragraph carrying markup the editor does not model", () => {
+  it("stays an editable paragraph, keeping the element inside its run", () => {
+    const node = requireTable(
+      "<w:tbl>" +
+        grid(1000) +
+        "<w:tr><w:tc><w:p><w:r><w:lastRenderedPageBreak/>" +
+        "<w:t>a</w:t></w:r></w:p></w:tc></w:tr></w:tbl>"
+    );
+    const block = node.child(0).child(0).child(0);
+
+    expect(block.type.name).toBe("paragraph");
+    expect(block.textContent).toBe("a");
+    expect(block.child(0).type.name).toBe("rawRunContent");
   });
+});
+
+describe("tables in the fixtures", () => {
+  it.each(fixtureNames)(
+    "%s: leaves as preserved blocks only the tables it is written to",
+    (name) => {
+      const { doc } = importDocx(readFixture(name));
+      let tables = 0;
+      let demoted = 0;
+      doc.forEach((block) => {
+        if (block.attrs.name === "w:tbl") demoted += 1;
+        if (block.type.name === "table") tables += 1;
+      });
+      expect(demoted).toBe(DEMOTED_TABLES[name] ?? 0);
+      expect(tables).toBeGreaterThan(0);
+    }
+  );
 
   it.each(fixtureNames)(
     "%s: prosemirror-tables finds nothing to repair",

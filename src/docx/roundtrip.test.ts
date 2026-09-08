@@ -130,6 +130,52 @@ describe("round trip through the editor state", () => {
   });
 });
 
+describe("a paragraph carrying preserved run content", () => {
+  const BODY =
+    "<w:p><w:r><w:rPr><w:b/></w:rPr>" +
+    "<w:lastRenderedPageBreak/>" +
+    '<w:t xml:space="preserve">before</w:t>' +
+    '<w:fldChar w:fldCharType="begin"/>' +
+    '<w:instrText xml:space="preserve"> PAGE </w:instrText>' +
+    '<w:fldChar w:fldCharType="end"/>' +
+    '<w:t xml:space="preserve">after</w:t>' +
+    "</w:r></w:p>";
+
+  it("goes back out byte for byte when nothing was edited", () => {
+    const bytes = makeDocx(BODY);
+    const { doc, session } = importDocx(bytes);
+
+    expect(doc.child(0).type.name).toBe("paragraph");
+    expect(doc.child(0).textContent).toBe("beforeafter");
+    expectEveryPartIdentical(
+      bytes,
+      exportDocx(createEditorState(doc).doc, session),
+      session.mainPartPath
+    );
+  });
+
+  it("keeps the preserved child inside its run when a neighbouring word is edited", () => {
+    const { doc, session } = importDocx(makeDocx(BODY));
+    const state = createEditorState(doc);
+    // One past the first character of the run, which is where `posOfText` lands
+    const edited = state.apply(
+      state.tr.insertText("edited", posOfText(state.doc, "before"))
+    );
+
+    const out = documentXmlOf(edited.doc, session);
+    expect(out).toContain("edited");
+    // One run, holding what it held, in the order it held it
+    expect(out).toContain(
+      "<w:r><w:rPr><w:b/></w:rPr><w:lastRenderedPageBreak/>" +
+        '<w:t xml:space="preserve">beditedefore</w:t>' +
+        '<w:fldChar w:fldCharType="begin"/>' +
+        '<w:instrText xml:space="preserve"> PAGE </w:instrText>' +
+        '<w:fldChar w:fldCharType="end"/>' +
+        '<w:t xml:space="preserve">after</w:t></w:r>'
+    );
+  });
+});
+
 function namespaceDecls(xml: string): string[] {
   return xml.match(/xmlns(:[\w-]+)?="[^"]*"/g) ?? [];
 }

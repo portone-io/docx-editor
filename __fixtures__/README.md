@@ -18,6 +18,7 @@ Tests using `fixtureNames` from [`src/__testing__/docx.ts`](../src/__testing__/d
 | `table-styles.docx` | Export-style package | Table styles that dress the header row, the closing row, the edge columns, a corner and the banded rows |
 | `list-definitions.docx` | Export-style package | Lists defined through a numbering style, counted in formats past decimal, restarting where their levels say, and drawing their markers in the formatting those levels write |
 | `sections-and-revisions.docx` | Export-style package | Two sections with a mid-body section break, a table carrying a grid revision, an inline content control, and a body-level bookmark pair |
+| `preserved-markup.docx` | Word-style package | The markup this editor keeps whole rather than models: field characters, tracked changes, range markers, symbols, and a table a row-level marker stands down |
 | `producers/google-docs-export.docx` | Producer package | Markup Google Docs saved: revision identifiers on every run, a tracked insertion, a generated bookmark name, and measurements the schemas turn down |
 
 A Word-style package includes document properties and named styles, and some also include note parts. An export-style package omits document properties, leaves the default `Normal` style without run properties, and stores list indentation on paragraphs. Keeping both shapes exercises conventions produced by different DOCX writers. A producer package is whatever its producer wrote, which is neither of those shapes on purpose.
@@ -209,6 +210,18 @@ This is `letter-page.docx` with `word/document.xml` replaced. It holds the marku
 - A 2x2 table whose `w:tblGrid` closes with a `w:tblGridChange`.
 - One inline `w:sdt` carrying a `w:id`, and one bookmark pair standing directly under `w:body`, around the table.
 - No `w14:paraId`. A copied paragraph's identifier is exercised by unit tests that build a body with `makeDocx`, and a saved document's identifiers are met in the producer lane.
+
+### `preserved-markup.docx`
+
+This is `east-asian.docx` with `word/document.xml`, `word/styles.xml`, `word/settings.xml` and `docProps/core.xml` replaced. It is the only fixture written for the [preservation tiers](../spec/notes/preservationTiers.md), so it is what holds the reading of markup the editor keeps whole. Its fidelity snapshot is the count of each tier and is meant to be read in a diff. It must retain:
+
+- One paragraph carrying, inside a single run, `w:lastRenderedPageBreak`, `w:softHyphen`, `w:noBreakHyphen`, `w:cr`, `w:sym` and `w:ptab`, so that every display a run child can have is covered: hidden, a character of its own, a line break, and a box.
+- A complex field written as `w:fldChar` begin, `w:instrText`, `w:fldChar` separate, its drawn result and `w:fldChar` end, and one `w:fldSimple` beside it, which is both forms a field comes in.
+- One `w:ins`, one `w:del` holding a `w:delText`, one `w:smartTag` and one `w:proofErr`, which are the paragraph children kept whole rather than modelled.
+- Three kinds of range marker, each a pair: a bookmark, `w:permStart`/`w:permEnd`, and `w:moveFromRangeStart`/`w:moveFromRangeEnd`. These are what the deletion guard answers for.
+- A table whose row carries a `w:bookmarkStart` with `w:colFirst` and `w:colLast`, which no node in a table can hold, so that table opens as a placeholder. `importTable.test.ts` names this file as the one fixture that holds such a table.
+- A second table that opens as a table, carrying a `w:sdt` around one cell and a `w:customXml` block inside another.
+- At least six body paragraphs holding text, which is what the export battery in `src/docx/exportSchemaValidation.test.ts` reserves, and no numbered paragraph among them.
 
 ## Live editor
 

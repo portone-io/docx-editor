@@ -134,6 +134,18 @@ function makeCommentedDocx(body = COMMENTED_BODY): Uint8Array {
   return zipSync(parts);
 }
 
+/** The same package with one comment body rewritten */
+function withCommentBody(inner: string): Uint8Array {
+  const parts = unzipSync(makeCommentedDocx());
+  parts["word/comments.xml"] = encoder.encode(
+    COMMENTS_XML.replace(
+      '<w:r><w:t xml:space="preserve">Check this</w:t></w:r>',
+      inner
+    )
+  );
+  return zipSync(parts);
+}
+
 function makeCommentReadyDocx(body: string): Uint8Array {
   const parts = unzipSync(makeDocx(body));
   parts["[Content_Types].xml"] = encoder.encode(contentTypes(false));
@@ -181,6 +193,17 @@ describe("WordprocessingML comments", () => {
     expect(
       documentComments(state)[0]?.to - documentComments(state)[0]?.from
     ).toBe("Alpha".length);
+  });
+
+  it("draws the same character for w:cr and w:noBreakHyphen as the body does", () => {
+    const bytes = withCommentBody(
+      '<w:r><w:t xml:space="preserve">re</w:t><w:noBreakHyphen/>' +
+        '<w:t xml:space="preserve">read</w:t><w:cr/>' +
+        '<w:softHyphen/><w:t xml:space="preserve">again</w:t></w:r>'
+    );
+    const state = createEditorState(importDocx(bytes).doc);
+
+    expect(documentComments(state)[0]?.text).toBe("re‑read\nagain");
   });
 
   it("leaves all comment parts byte-identical when nothing changed", () => {

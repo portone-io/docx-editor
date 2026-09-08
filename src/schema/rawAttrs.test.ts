@@ -302,6 +302,17 @@ const NODE_FRAGMENTS: RawAttrTable = {
     id: null,
     customMarkFollows: null,
   },
+  rawRunContent: {
+    xml: {
+      attribute: "data-xml",
+      sound: '<w:fldChar w:fldCharType="begin"/>',
+      adversarial: withSibling('<w:fldChar w:fldCharType="begin"/>'),
+      draw: (xml) =>
+        inline(
+          docxSchema.nodes.rawRunContent.create({ xml, element: "fldChar" })
+        ),
+    },
+  },
   rawInline: {
     xml: {
       attribute: "data-xml",

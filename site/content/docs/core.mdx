@@ -64,10 +64,12 @@ its position in the document (`pos`, which a reader can select), and the origina
 for a piece of a run, and `paragraph-demoted` or `table-demoted` for a paragraph or table this
 editor could not model at all.
 
-Currently, notes cover preserved block and inline nodes, including hidden bookmarks and
-placeholders. `preserved-run-content` and `approximated` are reserved for future reporting;
-neither is emitted yet. An empty list does not guarantee a lossless round trip: the writer's
-known losses described below are not included in these notes.
+Notes cover every preserved node: a block, a paragraph child, and a piece of a run such as a field
+character. `paragraph-demoted` is no longer reported for a document being opened, because a
+paragraph is never stood down: markup inside it is kept where it stood and the paragraph stays
+editable. `approximated` is reserved for future reporting and is not emitted yet. An empty list
+does not guarantee a lossless round trip: the writer's known losses described below are not
+included in these notes.
 
 `exportDocxReport` writes the file and returns the notes for the document it wrote, so a server
 can report its preserved content without opening the file again:

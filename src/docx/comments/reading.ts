@@ -10,6 +10,7 @@ import {
   serializeXml,
   W_NS,
 } from "../../ooxml/xml";
+import { runContentText } from "../importPolicy";
 import { relatedPartPath } from "../packageParts";
 import { COMMENTS_EXTENDED_REL_TYPE, COMMENTS_REL_TYPE } from "./constants";
 import { lastBodyParagraph } from "./grammar";
@@ -20,11 +21,12 @@ import {
   readPeople,
 } from "./people";
 
+/** The plain text a comment body reads as, taken from the same rules the body reader takes */
 function inlineCommentText(node: Element): string {
-  if (node.localName === "t") return node.textContent ?? "";
-  if (node.localName === "tab") return "\t";
-  if (node.localName === "br" || node.localName === "cr") return "\n";
-  return elementChildren(node).map(inlineCommentText).join("");
+  return (
+    runContentText(node) ??
+    elementChildren(node).map(inlineCommentText).join("")
+  );
 }
 
 function commentText(el: Element): string {

@@ -38,6 +38,23 @@ describe("header and footer stories", () => {
     );
   });
 
+  it("draws the same character for w:cr and w:noBreakHyphen as the body does", () => {
+    const parts = unzipSync(makeHeadersFootersDocx());
+    parts["word/header2.xml"] = encoder.encode(
+      `<w:hdr xmlns:w="${W_NS}"><w:p><w:r>` +
+        '<w:t xml:space="preserve">re</w:t><w:noBreakHyphen/>' +
+        '<w:t xml:space="preserve">read</w:t><w:cr/>' +
+        '<w:softHyphen/><w:t xml:space="preserve">again</w:t>' +
+        "</w:r></w:p></w:hdr>"
+    );
+    const { session } = importDocx(zipSync(parts));
+    const stories = session.headersFooters;
+
+    expect(headerFooterText(stories.headers, stories, 1, 3)).toBe(
+      "re‑read\nagain"
+    );
+  });
+
   it("starts at page one when pgNumType does not declare a start", () => {
     const parts = unzipSync(makeHeadersFootersDocx());
     parts["word/document.xml"] = encoder.encode(
