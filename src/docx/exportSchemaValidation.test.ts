@@ -281,7 +281,6 @@ function expectEveryXmlPartParses(
   name: string,
   parts: ReadonlyMap<string, string>
 ): Map<string, Document> {
-  expect(parts.size).toBeGreaterThan(0);
   const documents = new Map<string, Document>();
   const unreadable = Array.from(parts).flatMap(([path, xml]) => {
     try {
@@ -386,52 +385,50 @@ function expectBatteryValidates(
     doc,
     exported: untouched,
   };
-  const final = afterTheBattery(
-    openState(doc, session),
-    (probe, before, after) => {
-      const label = `${name}: ${probe.name}`;
-      const previous =
-        written.doc === before.doc
-          ? written.exported
-          : exportedPackage(label, before.doc, session);
-      const current = exportedPackage(label, after.doc, session);
-      written = { doc: after.doc, exported: current };
-      expect(
-        current.mainXml === previous.mainXml &&
-          Object.keys(current.parts).every(
-            (path) =>
-              previous.parts[path] !== undefined &&
-              bytesEqual(current.parts[path], previous.parts[path])
-          ) &&
-          Object.keys(current.parts).length ===
-            Object.keys(previous.parts).length,
-        `${label}: no exported part changed`
-      ).toBe(false);
-      const documents = expectEveryXmlPartParses(
-        label,
-        xmlParts(current.parts)
-      );
-      // All intermediate outputs reach xmllint. Identical parts need only one validation, and
-      // batching them compiles the schema set once instead of once per command.
-      for (const [path, xml] of wordprocessingPartsOf(documents)) {
-        const key = `${path}\0${xml}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        snapshots.set(
-          `${String(step).padStart(2, "0")}-${probe.name.replaceAll(" ", "_")}/${path}`,
-          xml
-        );
-      }
-      step += 1;
+  afterTheBattery(openState(doc, session), (probe, before, after) => {
+    const label = `${name}: ${probe.name}`;
+    const previous =
+      written.doc === before.doc
+        ? written.exported
+        : exportedPackage(label, before.doc, session);
+    const current = exportedPackage(label, after.doc, session);
+    written = { doc: after.doc, exported: current };
+    expect(
+      current.mainXml === previous.mainXml &&
+        Object.keys(current.parts).every(
+          (path) =>
+            previous.parts[path] !== undefined &&
+            bytesEqual(current.parts[path], previous.parts[path])
+        ) &&
+        Object.keys(current.parts).length ===
+          Object.keys(previous.parts).length,
+      `${label}: no exported part changed`
+    ).toBe(false);
+    const parts = xmlParts(current.parts);
+    expect(parts.size).toBeGreaterThan(0);
+    // A probe may restore an earlier output byte for byte, so a probe holding no part this
+    // battery has not read yet is not a failure.
+    const unread = new Map<string, string>();
+    for (const [path, xml] of parts) {
+      const key = `${path}\0${xml}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      unread.set(path, xml);
     }
-  );
+    const documents = expectEveryXmlPartParses(label, unread);
+    // A part reaches the reader and xmllint once, under whichever probe wrote it first, so
+    // that is the probe a failure is reported under. Batching the snapshots compiles the
+    // schema set once instead of once per command.
+    for (const [path, xml] of wordprocessingPartsOf(documents)) {
+      snapshots.set(
+        `${String(step).padStart(2, "0")}-${probe.name.replaceAll(" ", "_")}/${path}`,
+        xml
+      );
+    }
+    step += 1;
+  });
   expectPartsValidate(name, snapshots);
-  expectProbesWrote(
-    written.doc === final.doc
-      ? written.exported
-      : exportedPackage(name, final.doc, session),
-    untouched
-  );
+  expectProbesWrote(written.exported, untouched);
 }
 
 describe("the exported package against the OOXML schemas", () => {
