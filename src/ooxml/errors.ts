@@ -46,15 +46,13 @@ export class DocxImportError extends Error {
 /**
  * Why a document could not be written back out.
  *
- * - `missing-numbering-part`: a new list needs a numbering.xml the document does not have
- * - `missing-content-types`: a new image needs a [Content_Types].xml the package does not have
+ * - `missing-content-types`: a part the writer adds, be it an image, a list definition or a comment, needs a [Content_Types].xml the package does not have
  * - `unsupported-content`: the document holds a node kind we have no way to serialize, or a preserved block standing in two places, which has one original XML to write
  * - `lost-original`: a node that only carries its original XML has lost it
  * - `malformed-xml`: an original XML fragment cannot be read well enough to rewrite
  * - `invalid-table`: the table grid is inconsistent, e.g. a vertical merge outliving its rows
  */
 export type DocxExportErrorCode =
-  | "missing-numbering-part"
   | "missing-content-types"
   | "unsupported-content"
   | "lost-original"

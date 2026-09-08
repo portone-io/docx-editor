@@ -184,7 +184,7 @@ export class DocxExportError extends Error {
 }
 
 // @public
-export type DocxExportErrorCode = "missing-numbering-part" | "missing-content-types" | "unsupported-content" | "lost-original" | "malformed-xml" | "invalid-table";
+export type DocxExportErrorCode = "missing-content-types" | "unsupported-content" | "lost-original" | "malformed-xml" | "invalid-table";
 
 // @public
 export class DocxImportError extends Error {
