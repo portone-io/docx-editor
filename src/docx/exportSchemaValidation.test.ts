@@ -49,9 +49,13 @@ import { createEditorState } from "../editor/createEditor";
 import { parseXml, R_NS, W_NS } from "../ooxml/xml";
 import { setCellPadding } from "../table";
 import { type EditedBlock, withEditedFirst } from "./__testing__/blockEdits";
-import { withoutIgnorableMarkup } from "./__testing__/mce";
+import {
+  withoutIgnorableMarkup,
+  withoutIgnorableMarkupIn,
+} from "./__testing__/mce";
 import {
   afterTheBattery,
+  type ExportedPackage,
   expectProbesWrote,
   exportedPackage,
   openState,
@@ -133,9 +137,9 @@ function rejectionsIn(
 /**
  * Validates a whole export in one xmllint run.
  *
- * Compiling the transitional schema set is what a run costs - two orders of magnitude over
- * reading a part against it - and one invocation compiles it once however many documents it is
- * handed. The parts go to a temp directory at their own paths and are named to xmllint relative
+ * Compiling the transitional schema set costs about what reading a whole package's parts against
+ * it costs - some 30ms either way - and one invocation compiles it once however many documents it
+ * is handed. The parts go to a temp directory at their own paths and are named to xmllint relative
  * to it, so every line it reports back is prefixed by the part path it belongs to.
  */
 function validateParts(parts: Map<string, string>): Map<string, string> {
@@ -204,12 +208,27 @@ function validate(path: string, xml: string): Validation {
  * conforming consumer accepts.
  */
 function wordprocessingParts(bytes: Uint8Array): Map<string, string> {
-  const parts = new Map<string, string>();
+  const documents = new Map<string, Document>();
   for (const [path, data] of Object.entries(unzipSync(bytes))) {
-    if (!path.endsWith(".xml")) continue;
-    const xml = decode(data);
-    if (parseXml(xml).documentElement.namespaceURI === W_NS) {
-      parts.set(path, withoutIgnorableMarkup(xml));
+    if (path.endsWith(".xml")) documents.set(path, parseXml(decode(data)));
+  }
+  return wordprocessingPartsOf(documents);
+}
+
+/**
+ * The same over parts a caller has already read, which is what the battery below hands it: the
+ * preprocessing rewrites the documents it is given, and they are of no further use after it.
+ */
+function wordprocessingPartsOf(
+  documents: Map<string, Document>
+): Map<string, string> {
+  const parts = new Map<string, string>();
+  for (const [path, document] of documents) {
+    if (
+      path.endsWith(".xml") &&
+      document.documentElement.namespaceURI === W_NS
+    ) {
+      parts.set(path, withoutIgnorableMarkupIn(document));
     }
   }
   return parts;
@@ -232,9 +251,11 @@ function expectPartsValidate(name: string, parts: Map<string, string>): void {
  * by nothing. Reading each one back is the least that can be said of them, and it is what catches
  * a writer that emitted a package no reader gets past at all.
  */
-function xmlParts(bytes: Uint8Array): Map<string, string> {
+function xmlParts(
+  unzipped: Readonly<Record<string, Uint8Array>>
+): Map<string, string> {
   const parts = new Map<string, string>();
-  for (const [path, data] of Object.entries(unzipSync(bytes))) {
+  for (const [path, data] of Object.entries(unzipped)) {
     if (path.endsWith(".xml") || path.endsWith(".rels")) {
       parts.set(path, decode(data));
     }
@@ -243,9 +264,11 @@ function xmlParts(bytes: Uint8Array): Map<string, string> {
 }
 
 /**
- * The parts of an exported package that no committed schema describes, which the test below
- * holds the package to holding. Without the list, a package that stopped writing one of them
- * would still pass a test that only reads what it finds.
+ * The parts of an exported package that no committed schema describes, every one of which the
+ * battery holds its final package to writing. The battery is what puts most of them there: a
+ * comment brings `word/comments.xml` and the thread part beside it, an image brings a media
+ * relationship, and every one of them is named in the content types. Without the list, a package
+ * that stopped writing one of them would still pass a test that only reads what it finds.
  */
 const UNDESCRIBED_PARTS: readonly string[] = [
   CONTENT_TYPES_PATH,
@@ -256,18 +279,21 @@ const UNDESCRIBED_PARTS: readonly string[] = [
   "word/people.xml",
 ];
 
-function expectEveryXmlPartParses(name: string, bytes: Uint8Array): void {
-  const parts = xmlParts(bytes);
-  expect(parts.size).toBeGreaterThan(0);
+function expectEveryXmlPartParses(
+  name: string,
+  parts: ReadonlyMap<string, string>
+): Map<string, Document> {
+  const documents = new Map<string, Document>();
   const unreadable = Array.from(parts).flatMap(([path, xml]) => {
     try {
-      parseXml(xml);
+      documents.set(path, parseXml(xml));
       return [];
     } catch (error) {
       return [`${name} ${path}: ${String(error)}`];
     }
   });
   expect(unreadable, `${name}: parts no reader gets past`).toEqual([]);
+  return documents;
 }
 
 /**
@@ -353,43 +379,64 @@ function expectBatteryValidates(
   const snapshots = new Map<string, string>();
   const seen = new Set<string>();
   let step = 0;
-  const final = afterTheBattery(
-    openState(doc, session),
-    (probe, before, after) => {
-      const label = `${name}: ${probe.name}`;
-      const previous = exportedPackage(label, before.doc, session);
-      const current = exportedPackage(label, after.doc, session);
-      expect(
-        current.mainXml === previous.mainXml &&
-          Object.keys(current.parts).every(
-            (path) =>
-              previous.parts[path] !== undefined &&
-              bytesEqual(current.parts[path], previous.parts[path])
-          ) &&
-          Object.keys(current.parts).length ===
-            Object.keys(previous.parts).length,
-        `${label}: no exported part changed`
-      ).toBe(false);
-      expectEveryXmlPartParses(label, current.bytes);
-      // All intermediate outputs reach xmllint. Identical parts need only one validation, and
-      // batching them compiles the schema set once instead of once per command.
-      for (const [path, xml] of wordprocessingParts(current.bytes)) {
-        const key = `${path}\0${xml}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        snapshots.set(
-          `${String(step).padStart(2, "0")}-${probe.name.replaceAll(" ", "_")}/${path}`,
-          xml
-        );
-      }
-      step += 1;
+  // What a probe is handed is what the one before it left, apart from the caret, so the package
+  // it is measured against is the one already written out for that probe. Only the table probes,
+  // which prepare the state by inserting a table, are handed a document nothing has exported.
+  const untouched = exportedPackage(name, doc, session);
+  let written: { doc: PMNode; exported: ExportedPackage } = {
+    doc,
+    exported: untouched,
+  };
+  afterTheBattery(openState(doc, session), (probe, before, after) => {
+    const label = `${name}: ${probe.name}`;
+    const previous =
+      written.doc === before.doc
+        ? written.exported
+        : exportedPackage(label, before.doc, session);
+    const current = exportedPackage(label, after.doc, session);
+    written = { doc: after.doc, exported: current };
+    expect(
+      current.mainXml === previous.mainXml &&
+        Object.keys(current.parts).every(
+          (path) =>
+            previous.parts[path] !== undefined &&
+            bytesEqual(current.parts[path], previous.parts[path])
+        ) &&
+        Object.keys(current.parts).length ===
+          Object.keys(previous.parts).length,
+      `${label}: no exported part changed`
+    ).toBe(false);
+    const parts = xmlParts(current.parts);
+    expect(parts.size).toBeGreaterThan(0);
+    // A probe may restore an earlier output byte for byte, so a probe holding no part this
+    // battery has not read yet is not a failure.
+    const unread = new Map<string, string>();
+    for (const [path, xml] of parts) {
+      const key = `${path}\0${xml}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      unread.set(path, xml);
     }
-  );
+    const documents = expectEveryXmlPartParses(label, unread);
+    // A part reaches the reader and xmllint once, under whichever probe wrote it first, so
+    // that is the probe a failure is reported under. Batching the snapshots compiles the
+    // schema set once instead of once per command.
+    for (const [path, xml] of wordprocessingPartsOf(documents)) {
+      snapshots.set(
+        `${String(step).padStart(2, "0")}-${probe.name.replaceAll(" ", "_")}/${path}`,
+        xml
+      );
+    }
+    step += 1;
+  });
   expectPartsValidate(name, snapshots);
-  expectProbesWrote(
-    exportedPackage(name, final.doc, session),
-    exportedPackage(name, doc, session)
-  );
+  for (const path of UNDESCRIBED_PARTS) {
+    expect(
+      written.exported.parts[path] !== undefined,
+      `${name} wrote no ${path}`
+    ).toBe(true);
+  }
+  expectProbesWrote(written.exported, untouched);
 }
 
 describe("the exported package against the OOXML schemas", () => {
@@ -556,7 +603,10 @@ describe("the exported package against the OOXML schemas", () => {
     const parts = wordprocessingParts(written);
     expect(parts.has("word/numbering.xml")).toBe(true);
     expectPartsValidate("a numbering part written from scratch", parts);
-    expectEveryXmlPartParses("a numbering part written from scratch", written);
+    expectEveryXmlPartParses(
+      "a numbering part written from scratch",
+      xmlParts(unzipSync(written))
+    );
   });
 
   it("cell padding remains valid beside strict leading and trailing margins", () => {
@@ -1130,7 +1180,10 @@ describe("the markup-compatibility preprocessing", () => {
     expect(commentsXml, "the export wrote no comments part").toBeDefined();
     expect(commentsXml).toContain("A note in a plainly declared package");
     expectPartsValidate("a plainly declared package", parts);
-    expectEveryXmlPartParses("a plainly declared package", written);
+    expectEveryXmlPartParses(
+      "a plainly declared package",
+      xmlParts(unzipSync(written))
+    );
   });
 
   /**
@@ -1196,16 +1249,10 @@ describe("the exported package after an edit battery", () => {
     expectPartsValidate("locked existing controls", parts);
   });
 
-  it.each(fixtureNames)(
-    "%s: every WordprocessingML part validates",
-    (name) => {
-      const { doc, session } = importDocx(readFixture(name));
-      expectBatteryValidates(name, doc, session);
-    },
-    // A whole edit battery per fixture, each export shelled out to xmllint. The largest of them
-    // runs past the default timeout on a loaded runner, and the corpus is the point of the case
-    120_000
-  );
+  it.each(fixtureNames)("%s: every WordprocessingML part validates", (name) => {
+    const { doc, session } = importDocx(readFixture(name));
+    expectBatteryValidates(name, doc, session);
+  });
 
   it("keeps a universal table width valid after editing a cell", () => {
     const bytes = makeDocx(
@@ -1245,28 +1292,6 @@ describe("the exported package after an edit battery", () => {
     expect(session.geometry).toEqual(LETTER_GEOMETRY);
     expectBatteryValidates("universal measures", doc, session);
   });
-
-  /**
-   * The parts no committed schema describes. The battery is what puts most of them in the
-   * package: a comment brings `word/comments.xml` and the thread part beside it, an image brings
-   * a media relationship, and every one of them is named in the content types.
-   */
-  it.each(fixtureNames)(
-    "%s: every XML part of the exported package parses",
-    (name) => {
-      const { doc, session } = importDocx(readFixture(name));
-      const bytes = exportDocx(
-        afterTheBattery(openState(doc, session)).doc,
-        session
-      );
-
-      const parts = xmlParts(bytes);
-      for (const path of UNDESCRIBED_PARTS) {
-        expect(parts.has(path), `${name} wrote no ${path}`).toBe(true);
-      }
-      expectEveryXmlPartParses(name, bytes);
-    }
-  );
 
   /** The same battery over a body holding no table at all, so the one it inserts is the first */
   it.each(fixtureNames)(

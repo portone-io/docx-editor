@@ -242,8 +242,15 @@ function rewrite(el: Element, inherited: Context): void {
   }
 }
 
+/**
+ * The preprocessing over a part already read, rewriting the document it is handed in place, so
+ * that a caller holding the tree does not parse the same part a second time to reach it.
+ */
+export function withoutIgnorableMarkupIn(document: Document): string {
+  rewrite(document.documentElement, EMPTY);
+  return new XMLSerializer().serializeToString(document);
+}
+
 export function withoutIgnorableMarkup(xml: string): string {
-  const doc = parseXml(xml);
-  rewrite(doc.documentElement, EMPTY);
-  return new XMLSerializer().serializeToString(doc);
+  return withoutIgnorableMarkupIn(parseXml(xml));
 }
