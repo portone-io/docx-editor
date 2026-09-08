@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { Fragment, Slice } from "prosemirror-model";
-import { TextSelection } from "prosemirror-state";
+import { NodeSelection, TextSelection } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 import { afterEach, describe, expect, it } from "vitest";
 import { makeDocx } from "../__testing__/docx";
@@ -16,13 +16,13 @@ afterEach(() => {
   mounted = [];
 });
 
-/** An editor with the caret placed before "source" */
-function openEditor(): EditorView {
+const SOURCE = '<w:p><w:r><w:t xml:space="preserve">source</w:t></w:r></w:p>';
+
+/** An editor with the caret placed at the start of its first paragraph */
+function openEditor(body: string = SOURCE): EditorView {
   const mount = document.createElement("div");
   document.body.appendChild(mount);
-  const { doc } = importDocx(
-    makeDocx('<w:p><w:r><w:t xml:space="preserve">source</w:t></w:r></w:p>')
-  );
+  const { doc } = importDocx(makeDocx(body));
   const view = createEditorView({
     mount,
     state: createEditorState(doc),
@@ -52,6 +52,16 @@ function drop(view: EditorView, text: string, html: string): boolean {
   });
   view.dom.dispatchEvent(event);
   return event.defaultPrevented;
+}
+
+/** The fragments the document is opened with and only preserves, which no edit may lose */
+function markerCount(view: EditorView): number {
+  let markers = 0;
+  view.state.doc.descendants((node) => {
+    if (node.attrs.guarded === true) markers += 1;
+    return true;
+  });
+  return markers;
 }
 
 function hasBoldRun(view: EditorView): boolean {
@@ -121,4 +131,23 @@ describe("drag and drop", () => {
       expect(view.state.doc.firstChild?.attrs.srcId).toBe(kept);
     }
   );
+  it("carries the markers a moved block anchors along with it", () => {
+    const view = openEditor(
+      SOURCE +
+        '<w:p><w:bookmarkStart w:id="1" w:name="mark"/>' +
+        '<w:r><w:t xml:space="preserve">anchored</w:t></w:r>' +
+        '<w:bookmarkEnd w:id="1"/></w:p>'
+    );
+    const anchored = view.state.doc.firstChild?.nodeSize ?? 0;
+    view.dispatch(
+      view.state.tr.setSelection(NodeSelection.create(view.state.doc, anchored))
+    );
+    view.dragging = { slice: view.state.selection.content(), move: true };
+    drop(view, "anchored", "anchored");
+
+    // Taking the markers off would leave a document the file cannot be written back from, which
+    // the preserved guard refuses whole, so the drag would silently land nothing at all
+    expect(view.state.doc.lastChild?.textContent).toBe("source");
+    expect(markerCount(view)).toBe(2);
+  });
 });

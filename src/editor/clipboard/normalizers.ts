@@ -9,8 +9,9 @@
  * paste is a normalization rather than an insertion, and each rule stands as one normalizer over
  * the whole slice, in the order they are declared.
  *
- * A move drop is the exception the first rule reads: content dragged from one place in this very
- * document to another is the same content, so it keeps the identity it had.
+ * A move drop is the exception the first two rules read: content dragged from one place in this
+ * very document to another is the same content, so it keeps the identity it had and the anchors it
+ * stood in. The source of a move is deleted along with the drop, so nothing is duplicated.
  */
 
 import {
@@ -34,6 +35,11 @@ import {
   templateList,
 } from "../../numbering/listTemplate";
 import type { NewList } from "../../numbering/parseNumbering";
+import {
+  COMMENT_RANGE_MARKERS,
+  PERMISSION_MARKERS,
+  RANGE_MARKERS,
+} from "../../ooxml/rangeMarkers";
 import { docxSchema } from "../../schema";
 import { listRefOf, numIdsIn } from "../commands/listCommands";
 import { documentFormatting } from "../documentStyles";
@@ -207,15 +213,25 @@ const ANCHOR_NODES: ReadonlySet<string> = new Set([
   "noteReference",
 ]);
 
-/** The elements a preserved fragment holds that anchor one, kept as the XML they arrived as */
-const ANCHOR_ELEMENTS: ReadonlySet<string> = new Set([
-  "bookmarkStart",
-  "bookmarkEnd",
-  "commentRangeStart",
-  "commentRangeEnd",
+/** The elements that call something the package writes elsewhere rather than opening a range */
+const REFERENCE_ELEMENTS = [
   "commentReference",
   "footnoteReference",
   "endnoteReference",
+];
+
+/**
+ * The elements a preserved fragment holds that anchor one, kept as the XML they arrived as.
+ *
+ * The ranges are the ones the import keeps as hidden markers (`docx/importPolicy`), read from the
+ * vocabulary they are declared in rather than restated here, so a marker the reader learns to keep
+ * is a marker a paste knows to detach.
+ */
+const ANCHOR_ELEMENTS: ReadonlySet<string> = new Set([
+  ...RANGE_MARKERS,
+  ...PERMISSION_MARKERS,
+  ...COMMENT_RANGE_MARKERS,
+  ...REFERENCE_ELEMENTS,
 ]);
 
 const PRESERVED_INLINE: ReadonlySet<string> = new Set([
@@ -241,14 +257,20 @@ function preservedName(node: PMNode): string | null {
  * points at the same thing a second time, which is a duplicate identifier the file may not hold
  * and a range the reader cannot close. Nothing here duplicates what they point at, so the anchor
  * goes and the text it stood in stays, which is what Word does with a note it has no body for.
+ *
+ * A move drop duplicates nothing: the source goes as the drop lands, so the one anchor there was
+ * travels with the text it opened. Taking it off would delete a marker the document has no way to
+ * write back, which is a change the preserved guard refuses whole, and the drag would do nothing.
  */
-export const detachAnchors: SliceNormalizer = (slice) =>
-  mapSliceNodes(slice, (node) => {
-    if (ANCHOR_NODES.has(node.type.name)) return null;
-    if (!PRESERVED_INLINE.has(node.type.name)) return node;
-    const name = preservedName(node);
-    return name !== null && ANCHOR_ELEMENTS.has(name) ? null : node;
-  });
+export const detachAnchors: SliceNormalizer = (slice, { move }) =>
+  move
+    ? slice
+    : mapSliceNodes(slice, (node) => {
+        if (ANCHOR_NODES.has(node.type.name)) return null;
+        if (!PRESERVED_INLINE.has(node.type.name)) return node;
+        const name = preservedName(node);
+        return name !== null && ANCHOR_ELEMENTS.has(name) ? null : node;
+      });
 
 /**
  * Works out again what the pasted paragraphs are drawn with.

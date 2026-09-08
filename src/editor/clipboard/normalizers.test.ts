@@ -60,6 +60,30 @@ const listParagraph = (numId: number) =>
     format: { numbering: { numId, ilvl: 0 } },
   });
 
+/** One paragraph holding every shape of anchor a copied range may carry */
+function anchoredParagraph(): PMNode {
+  return paragraph({}, [
+    docxSchema.nodes.commentStart.create({ id: "0" }),
+    docxSchema.text("anchored"),
+    docxSchema.nodes.commentEnd.create({ id: "0" }),
+    docxSchema.nodes.commentReference.create({ id: "0" }),
+    docxSchema.nodes.noteReference.create({ id: "2", label: "1" }),
+    docxSchema.nodes.rawInline.create({
+      xml: '<w:bookmarkStart w:id="1" w:name="mark"/>',
+      element: "bookmarkStart",
+    }),
+    // The gate on raw XML cannot tell this one from any other element a paragraph may hold
+    docxSchema.nodes.rawInline.create({
+      xml: '<w:commentRangeStart w:id="7"/>',
+      element: null,
+    }),
+    docxSchema.nodes.rawInline.create({
+      xml: "<w:oMathPara/>",
+      element: "oMathPara",
+    }),
+  ]);
+}
+
 function blocks(content: PastedContent): PMNode[] {
   const nodes: PMNode[] = [];
   content.slice.content.forEach((node) => {
@@ -198,33 +222,49 @@ describe("normalizing a pasted slice", () => {
 
   it("drops comment markers, bookmarks and note references", () => {
     const state = stateOf(makeDocx(SOURCE));
-    const anchored = paragraph({}, [
-      docxSchema.nodes.commentStart.create({ id: "0" }),
-      docxSchema.text("anchored"),
-      docxSchema.nodes.commentEnd.create({ id: "0" }),
-      docxSchema.nodes.commentReference.create({ id: "0" }),
-      docxSchema.nodes.noteReference.create({ id: "2", label: "1" }),
-      docxSchema.nodes.rawInline.create({
-        xml: '<w:bookmarkStart w:id="1" w:name="mark"/>',
-        element: "bookmarkStart",
-      }),
-      // The gate on raw XML cannot tell this one from any other element a paragraph may hold
-      docxSchema.nodes.rawInline.create({
-        xml: '<w:commentRangeStart w:id="7"/>',
-        element: null,
-      }),
-      docxSchema.nodes.rawInline.create({
-        xml: "<w:oMathPara/>",
-        element: "oMathPara",
-      }),
-    ]);
 
-    const normalized = normalizePasted(pasted(anchored), state, false);
+    const normalized = normalizePasted(
+      pasted(anchoredParagraph()),
+      state,
+      false
+    );
 
     const first = blocks(normalized)[0];
     expect(first?.textContent).toBe("anchored");
     expect(first?.childCount).toBe(2);
     expect(first?.lastChild?.attrs.xml).toBe("<w:oMathPara/>");
+  });
+
+  it("drops a permission and a move range the copied text stood in", () => {
+    const state = stateOf(makeDocx(SOURCE));
+    const ranged = paragraph({}, [
+      docxSchema.nodes.rawInline.create({
+        xml: '<w:permStart w:id="1" w:edGrp="everyone"/>',
+        element: "permStart",
+      }),
+      docxSchema.text("ranged"),
+      docxSchema.nodes.rawInline.create({
+        xml: '<w:moveToRangeEnd w:id="4"/>',
+        element: "moveToRangeEnd",
+      }),
+    ]);
+
+    const normalized = normalizePasted(pasted(ranged), state, false);
+
+    const first = blocks(normalized)[0];
+    expect(first?.textContent).toBe("ranged");
+    expect(first?.childCount).toBe(1);
+  });
+
+  it("keeps the anchors on a move drop, whose source goes as the drop lands", () => {
+    const state = stateOf(makeDocx(SOURCE));
+    const anchored = anchoredParagraph();
+
+    const normalized = normalizePasted(pasted(anchored), state, true);
+
+    // Detaching them would leave markers the document cannot write back, so the guard would
+    // refuse the drag whole rather than move the range
+    expect(blocks(normalized)[0]?.childCount).toBe(anchored.childCount);
   });
 
   it("works the display values out again against the destination's styles", () => {
