@@ -17,7 +17,7 @@ import { docxSchema } from "../../schema";
 import { listRefOf } from "../commands/listCommands";
 import { editorStateForSession } from "../createEditor";
 import type { PastedContent } from "./htmlReader";
-import { mapSliceMarks, mapSliceNodes, normalizePasted } from "./normalizers";
+import { mapSliceNodes, normalizePasted } from "./normalizers";
 
 const HEADING_STYLES =
   '<w:style w:type="paragraph" w:default="1" w:styleId="Normal">' +
@@ -97,26 +97,6 @@ describe("mapping over a slice", () => {
     );
 
     expect(mapped.content.childCount).toBe(1);
-  });
-
-  it("rewrites the attrs of one mark type and leaves the others alone", () => {
-    const marked = docxSchema.text("marked", [
-      docxSchema.marks.run.create({ rPr: "<w:rPr><w:b/></w:rPr>" }),
-      docxSchema.marks.link.create({ href: "https://example.com" }),
-    ]);
-    const mapped = mapSliceMarks(
-      new Slice(Fragment.from(paragraph({}, [marked])), 0, 0),
-      docxSchema.marks.run,
-      (mark) => ({ ...mark.attrs, rPr: null })
-    );
-
-    const text = mapped.content.firstChild?.firstChild;
-    expect(
-      docxSchema.marks.run.isInSet(text?.marks ?? [])?.attrs.rPr
-    ).toBeNull();
-    expect(docxSchema.marks.link.isInSet(text?.marks ?? [])?.attrs.href).toBe(
-      "https://example.com"
-    );
   });
 });
 

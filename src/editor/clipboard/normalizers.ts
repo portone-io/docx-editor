@@ -17,7 +17,6 @@ import {
   type Attrs,
   Fragment,
   Mark,
-  type MarkType,
   type Node as PMNode,
   Slice,
 } from "prosemirror-model";
@@ -130,21 +129,6 @@ export function mapSliceNodes(
     slice.openStart,
     slice.openEnd
   );
-}
-
-/** The slice with the attrs of every mark of this type rewritten */
-export function mapSliceMarks(
-  slice: Slice,
-  type: MarkType,
-  f: (mark: Mark) => Attrs
-): Slice {
-  return mapSliceNodes(slice, (node) => {
-    if (!node.isInline) return node;
-    const marks = node.marks.map((mark: Mark) =>
-      mark.type === type ? type.create(f(mark)) : mark
-    );
-    return Mark.sameSet(marks, node.marks) ? node : node.mark(marks);
-  });
 }
 
 /**
