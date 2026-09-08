@@ -31,14 +31,14 @@ test("the demo aligns its notes with the paper and starts at page one", async ({
     page.locator(`.${editorClassNames.pageFooter}`).first()
   ).toHaveText("Page 1");
 
-  const section14 = await page
-    .getByText("14. Cell alignment and padding", { exact: true })
+  const section13 = await page
+    .getByText("13. Cell alignment and padding", { exact: true })
     .boundingBox();
   const imageLocator = page.locator(`.${editorClassNames.imageBox}`);
   const image = await imageLocator.boundingBox();
-  if (!section14 || !image)
+  if (!section13 || !image)
     throw new Error("the closing demo blocks were not drawn");
-  expect(image.y).toBeGreaterThan(section14.y);
+  expect(image.y).toBeGreaterThan(section13.y);
 
   const imageSpacing = await imageLocator.evaluate((element) => {
     const paragraph = element.closest("p");
@@ -54,12 +54,25 @@ test("the demo aligns its notes with the paper and starts at page one", async ({
   });
   expect(imageSpacing).toEqual({ before: ["", ""], after: ["", ""] });
 
-  const section13 = page.getByText("13. Comments, bookmarks and notes", {
+  const section14 = page.getByText("14. Comments, bookmarks and notes", {
     exact: true,
   });
   await expect(
-    section13.locator(
+    section14.locator(
       `xpath=ancestor::p//*[@${editorAttributes.breakType}="page"]`
     )
   ).toHaveCount(0);
+});
+
+test("a link the document underlines itself is drawn with one line", async ({
+  page,
+}) => {
+  await openHarness(page, "demo");
+
+  const link = page.locator(`.${editorClassNames.link}`).first();
+  await expect(link.locator(`.${editorClassNames.run}`)).toHaveCSS(
+    "text-decoration-line",
+    "underline"
+  );
+  await expect(link).toHaveCSS("border-bottom-style", "none");
 });

@@ -158,6 +158,10 @@ This fixture is a readable capability overview for the live editor. The shared r
 
 Keep its claims consistent with the document itself. Detailed support claims belong in [Feature support](../site/content/docs/features.mdx), not in the fixture.
 
+Set it the way a reader of it could set it, since it is what the editor is shown doing.
+The gap between two blocks is an empty paragraph rather than `w:spacing` above or below one: the editor reads that spacing and writes it back, but nothing in it sets the value, so a gap made that way is one the demo's own user could neither place nor take out.
+Line spacing, which the toolbar does set, stays where the document uses it.
+
 ### `size-fallback.docx`
 
 This fixture must retain:
