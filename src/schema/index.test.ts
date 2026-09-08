@@ -530,6 +530,32 @@ describe("parseDOM", () => {
     );
   });
 
+  it("marks an underlined run so a link over it draws no second line", () => {
+    const link = docxSchema.marks.link.create({
+      linkPrefix: '<w:hyperlink r:id="rId9">',
+      href: "https://example.com/terms",
+    });
+    const styled = docxSchema.nodes.doc.create(null, [
+      paragraph({}, [
+        docxSchema.text("our terms", [
+          link,
+          docxSchema.marks.run.create({ format: { underline: "single" } }),
+        ]),
+        run("plainly", { format: { underline: "none" } }),
+      ]),
+    ]);
+    const host = render(...styled.children);
+
+    expect(
+      Array.from(host.querySelectorAll(`.${editorClassNames.run}`)).map(
+        (span) => span.hasAttribute("data-underline")
+      )
+    ).toEqual([true, false]);
+    expect(parser.parse(host, { preserveWhitespace: true }).eq(styled)).toBe(
+      true
+    );
+  });
+
   /** Two links written exactly alike are told apart by their number alone, as two controls are */
   it("two neighbouring hyperlinks stay apart through the DOM", () => {
     const linkAt = (linkKey: number) =>
