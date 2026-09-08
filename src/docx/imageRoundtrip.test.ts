@@ -244,6 +244,34 @@ describe("resizing an imported image", () => {
     expectOnlyBodyRewritten(bytes, out, session.mainPartPath);
   });
 
+  it("preserves extension payloads while resizing the actual picture", () => {
+    const payload =
+      '<custom:xfrm xmlns:custom="urn:picture-metadata"><custom:ext cx="11" cy="22"/>' +
+      '<custom:extent cx="33" cy="44"/></custom:xfrm>';
+    const drawing = inlineDrawingXml().replace(
+      "<pic:cNvPicPr/>",
+      '<pic:cNvPicPr><a:extLst><a:ext uri="urn:picture-metadata">' +
+        payload +
+        "</a:ext></a:extLst></pic:cNvPicPr>"
+    );
+    const bytes = makeImageDocx(`<w:p>${drawingRun(drawing)}</w:p>`);
+    const { doc, session } = importDocx(bytes);
+    expect(imagesIn(doc)).toHaveLength(1);
+    const out = exportDocx(
+      resizeImages(doc, { cx: 952500, cy: 476250 }),
+      session
+    );
+    const written = decode(partsOf(out)[session.mainPartPath]);
+    expect(written).toContain(payload);
+    expect(written).toContain('<wp:extent cx="952500" cy="476250"/>');
+    expect(written).toContain('<a:ext cx="952500" cy="476250"/>');
+    expect(imagesIn(importDocx(out).doc)[0].attrs.extent).toEqual({
+      cx: 952500,
+      cy: 476250,
+    });
+    expectOnlyBodyRewritten(bytes, out, session.mainPartPath);
+  });
+
   it("reads the new size back on reopening", () => {
     const { doc, session } = importDocx(bytes);
     const out = exportDocx(

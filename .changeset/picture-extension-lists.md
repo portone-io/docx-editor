@@ -10,3 +10,6 @@ created it or what resolution to keep it at. Resizing such an image used to over
 any empty record with the image's new size, which left the document with content Word reads as
 invalid. Only the two sizes an image is drawn from are rewritten now, and every extension record
 goes back out exactly as it came in.
+
+Size updates follow the picture’s own XML paths, so an extension’s nested transforms and size
+records stay unchanged too. Size attributes retain their quoting and surrounding markup.

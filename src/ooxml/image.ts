@@ -17,7 +17,8 @@
  */
 
 import { NAMESPACES } from "./names";
-import { childByLocalName, escapeXml, R_NS } from "./xml";
+import { parseAttrs, readTag } from "./tagScan";
+import { childByLocalName, escapeXml, localPart, R_NS } from "./xml";
 
 /**
  * English Metric Units, the unit every DrawingML length is written in.
@@ -175,39 +176,78 @@ export function readDrawingPicture(drawing: Element): DrawingPicture | null {
   return { relId, extent, alt: descr === "" ? null : descr };
 }
 
-/** `wp:extent`, the size the drawing takes up in the line */
-const EXTENT_TAG = /<([\w.-]+:)?extent\b[^>]*\/>/g;
-
 /**
- * `a:xfrm` inside `pic:spPr`, from its opening tag to its closing one.
- *
- * The frame size is found by where it sits rather than by its own name, because `ext`
- * names two unrelated things in DrawingML: the size inside a transform, and an entry in
- * an extension list, which carries a `uri` naming the extension and no size at all. Word
- * writes those lists on the inline frame, on the picture's non-visual properties and on
- * the blip, and their content is whatever the extension defines, so nothing about an
- * `ext` outside a transform can be relied on to tell it apart from a size.
+ * Follow the same direct-child paths as the picture reader. An extension can contain arbitrary
+ * XML (ECMA-376 Part 4, dml-main.xsd CT_OfficeArtExtension), including its own transform or size,
+ * so neither the first transform nor every element called extent identifies the picture's size.
  */
-const XFRM_ELEMENT =
-  /<(?:[\w.-]+:)?xfrm\b[^>]*(?<!\/)>[\s\S]*?<\/(?:[\w.-]+:)?xfrm>/;
+function isPictureSize(path: readonly string[]): boolean {
+  const names = path.join("/");
+  return (
+    names === "drawing/inline/extent" ||
+    names === "drawing/inline/graphic/graphicData/pic/spPr/xfrm/ext"
+  );
+}
 
-/** `a:ext`, the size of the picture frame itself. Only ever looked for inside a transform */
-const EXT_TAG = /<([\w.-]+:)?ext\b[^>]*\/>/;
+/** Change only the size values, preserving quoting, namespace declarations and other attributes. */
+function resizeTag(open: string, extent: ImageExtent): string {
+  const tag = readTag(open, 0);
+  if (!tag) return open;
+  const attrs = new Map(
+    parseAttrs(
+      open.slice(tag.nameEnd, tag.end - (tag.kind === "empty" ? 2 : 1))
+    ) ?? []
+  );
+  return open.replace(
+    /(\s+)([^\s=/>]+)(\s*=\s*)(["'])([\s\S]*?)\4/g,
+    (
+      whole: string,
+      gap: string,
+      name: string,
+      equals: string,
+      quote: string
+    ) => {
+      if (name !== "cx" && name !== "cy") return whole;
+      const size = extent[name];
+      if (Number(attrs.get(name)) === size) return whole;
+      return `${gap}${name}${equals}${quote}${size}${quote}`;
+    }
+  );
+}
 
 /**
- * The same drawing XML with both extents set to this size.
+ * The same drawing XML with its inline extent and its picture transform's extent set to this size.
  *
- * Only those two elements are touched; every other byte of the original stays where it
- * was. Handed the size it was imported with, this gives back the original string
- * unchanged, so nothing has to keep track of whether a resize happened.
+ * Only those two elements' size attributes are touched; every other byte stays where it was.
+ * Values already equal to the requested size keep their original spelling as well.
  */
 export function withExtent(xml: string, extent: ImageExtent): string {
-  const size = `cx="${extent.cx}" cy="${extent.cy}"`;
-  return xml
-    .replace(EXTENT_TAG, (_match, prefix) => `<${prefix ?? ""}extent ${size}/>`)
-    .replace(XFRM_ELEMENT, (xfrm) =>
-      xfrm.replace(EXT_TAG, (_match, prefix) => `<${prefix ?? ""}ext ${size}/>`)
-    );
+  const path: string[] = [];
+  const parts: string[] = [];
+  let at = 0;
+  let kept = 0;
+  for (;;) {
+    const lt = xml.indexOf("<", at);
+    if (lt === -1) break;
+    const tag = readTag(xml, lt);
+    if (!tag) return xml;
+    if (tag.kind === "close") {
+      path.pop();
+    } else if (tag.kind !== "other") {
+      path.push(localPart(tag.name));
+      if (isPictureSize(path)) {
+        parts.push(
+          xml.slice(kept, lt),
+          resizeTag(xml.slice(lt, tag.end), extent)
+        );
+        kept = tag.end;
+      }
+      if (tag.kind === "empty") path.pop();
+    }
+    at = tag.end;
+  }
+  parts.push(xml.slice(kept));
+  return parts.join("");
 }
 
 /** A picture that was inserted during editing and has no original XML to go back to */

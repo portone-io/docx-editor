@@ -149,8 +149,8 @@ describe("rewriting the size in a drawing", () => {
 });
 
 /**
- * A picture Word has written its own extensions onto: an extension list on the inline
- * frame, on the picture's non-visual properties and on the blip. Every entry there is an
+ * An inline picture with extension lists on the frame's non-visual properties, on the
+ * picture's non-visual properties and on the blip. Every entry there is an
  * `ext` carrying a uri, which is an extension's name and not a size at all.
  */
 const EXTENDED_DRAWING =
@@ -161,7 +161,8 @@ const EXTENDED_DRAWING =
   '<wp:inline distT="0" distB="0" distL="0" distR="0">' +
   '<wp:extent cx="1905000" cy="952500"/>' +
   '<wp:effectExtent l="0" t="0" r="0" b="0"/>' +
-  '<wp:docPr id="4" name="Picture 1"/>' +
+  '<wp:docPr id="4" name="Picture 1"><a:extLst>' +
+  '<a:ext uri="{C183D7F6-B498-43B3-948B-1728B52AA6E4}"/></a:extLst></wp:docPr>' +
   "<wp:cNvGraphicFramePr/>" +
   '<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">' +
   "<pic:pic><pic:nvPicPr>" +
@@ -175,7 +176,6 @@ const EXTENDED_DRAWING =
   '<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="1905000" cy="952500"/></a:xfrm>' +
   '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>' +
   "</pic:pic></a:graphicData></a:graphic>" +
-  '<wp:extLst><wp:ext uri="{C183D7F6-B498-43B3-948B-1728B52AA6E4}"/></wp:extLst>' +
   "</wp:inline></w:drawing>";
 
 describe("rewriting the size in a drawing carrying extension lists", () => {
@@ -187,6 +187,28 @@ describe("rewriting the size in a drawing carrying extension lists", () => {
       extent: { cx: 1905000, cy: 952500 },
       alt: null,
     });
+  });
+
+  it.each([
+    '<a:xfrm><a:off x="0" y="0"/><a:ext cx="11" cy="22"/></a:xfrm>',
+    '<custom:extent xmlns:custom="urn:extension" cx="11" cy="22"/>',
+    '<!-- <a:xfrm><a:ext cx="11" cy="22"/></a:xfrm> -->',
+  ])("does not resize extension payload %s", (payload) => {
+    const xml = EXTENDED_DRAWING.replace(
+      '<a16:creationId xmlns:a16="http://schemas.microsoft.com/office/drawing/2014/main" id="{2A47C0BE}"/>',
+      payload
+    );
+    expect(readDrawingPicture(drawing(xml))).not.toBeNull();
+    const expected = xml
+      .replace(
+        '<wp:extent cx="1905000" cy="952500"/>',
+        '<wp:extent cx="952500" cy="476250"/>'
+      )
+      .replace(
+        '<a:ext cx="1905000" cy="952500"/>',
+        '<a:ext cx="952500" cy="476250"/>'
+      );
+    expect(withExtent(xml, { cx: 952500, cy: 476250 })).toBe(expected);
   });
 
   it("sets the frame size the picture is drawn at", () => {
@@ -215,12 +237,46 @@ describe("rewriting the size in a drawing carrying extension lists", () => {
     );
   });
 
+  it("preserves quoting and explicit closing tags on the two size elements", () => {
+    const xml = EXTENDED_DRAWING.replace(
+      '<wp:extent cx="1905000" cy="952500"/>',
+      "<wp:extent cy = '952500' cx = '1905000'></wp:extent>"
+    ).replace(
+      '<a:ext cx="1905000" cy="952500"/>',
+      "<a:ext xmlns:a='http://schemas.openxmlformats.org/drawingml/2006/main' cy='952500' cx='&#49;905000'></a:ext>"
+    );
+    expect(withExtent(xml, { cx: 1905000, cy: 952500 })).toBe(xml);
+    expect(withExtent(xml, { cx: 952500, cy: 476250 })).toBe(
+      xml
+        .replace("cy = '952500' cx = '1905000'", "cy = '476250' cx = '952500'")
+        .replace("cy='952500' cx='&#49;905000'", "cy='476250' cx='952500'")
+    );
+  });
+
+  it("recognizes the two size paths under different namespace prefixes", () => {
+    const xml = EXTENDED_DRAWING.replaceAll("wp:", "frame:")
+      .replaceAll("xmlns:wp=", "xmlns:frame=")
+      .replaceAll("a:", "draw:")
+      .replaceAll("xmlns:a=", "xmlns:draw=");
+    expect(readDrawingPicture(drawing(xml))).not.toBeNull();
+    const expected = xml
+      .replace(
+        '<frame:extent cx="1905000" cy="952500"/>',
+        '<frame:extent cx="952500" cy="476250"/>'
+      )
+      .replace(
+        '<draw:ext cx="1905000" cy="952500"/>',
+        '<draw:ext cx="952500" cy="476250"/>'
+      );
+    expect(withExtent(xml, { cx: 952500, cy: 476250 })).toBe(expected);
+  });
+
   it("hands every extension entry back exactly as it came", () => {
     expect(resized).toContain(
       '<a:ext uri="{28A0092B-C50C-407E-A947-70E740481C1C}"/>'
     );
     expect(resized).toContain(
-      '<wp:ext uri="{C183D7F6-B498-43B3-948B-1728B52AA6E4}"/>'
+      '<a:ext uri="{C183D7F6-B498-43B3-948B-1728B52AA6E4}"/>'
     );
     expect(resized).toContain(
       '<a:ext uri="{FF2B5EF4-FFF2-40B4-BE49-F238E27FC236}">'
