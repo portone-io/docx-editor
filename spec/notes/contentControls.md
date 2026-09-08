@@ -44,7 +44,8 @@ Where the control carries an alias, a tag or a `w:dataBinding`, it keeps the str
 The specification is silent on that second half: it says the id must survive, not how wide a control may grow, so which controls may be widened is ours to decide.
 
 The shape the specification would allow for one lock over the whole paragraph with the inner control intact is nesting, which `w:group` (§17.5.2.17) describes as normal ("This restriction can be superseded by any structured document tag contained within the group").
-The editor cannot represent it: a control is a ProseMirror mark, and two marks of one type cannot nest.
+The editor represents it: a control is a ProseMirror mark that excludes no other, and the depth the file nested it at rides on the mark, so a control read inside another goes back out inside it (`schema/wrappers`).
+Locking does not write that shape - what a new lock does is the widening above - but a document that arrives with it keeps it, and a link nested with a control either way round keeps its order too.
 
 Observed 2026-08-20.
 
