@@ -12,6 +12,7 @@ import {
   toParagraphFormat,
 } from "../../model/format";
 import type { TabStop, TabStopDirective } from "../../model/tabStops";
+import { listFor } from "../../numbering/listTemplate";
 import {
   type LevelIndentPt,
   levelIndentPt,
@@ -115,7 +116,7 @@ function numberingLevelOf(
     undefined
   );
   if (!ref) return undefined;
-  return context.numbering.lists.get(ref.numId)?.levels.get(ref.ilvl);
+  return listFor(context.numbering, ref.numId)?.levels.get(ref.ilvl);
 }
 
 /**

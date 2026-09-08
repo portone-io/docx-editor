@@ -10,6 +10,7 @@ import { runCommand, select } from "../../__testing__/editing";
 import { toggleNumberedList } from "../../editor/commands/listCommands";
 import { setParagraphStyle } from "../../editor/commands/paragraphCommands";
 import { editorStateForSession } from "../../editor/createEditor";
+import { documentFormatting } from "../../editor/documentStyles";
 import { paragraphPlacementAt } from "../../editor/paragraphPlacement";
 import { docxKeymap } from "../../editor/plugins/keymap";
 import { type ParagraphFormat, toParagraphFormat } from "../../model/format";
@@ -499,12 +500,15 @@ describe("the values an opened document carries", () => {
     const split = runCommand(select(styled, 5), docxKeymap.Enter);
     expect(expectResolvedAttrs(split.doc, formatting)).toBe(2);
 
-    // The paragraph writer every other paragraph edit goes through
+    // The paragraph writer every other paragraph edit goes through. The list it started is
+    // defined on the document node, so the context to ask with is the state's own
     const listed = runCommand(select(split, 1), toggleNumberedList);
-    expect(expectResolvedAttrs(listed.doc, formatting)).toBe(2);
+    expect(expectResolvedAttrs(listed.doc, documentFormatting(listed))).toBe(2);
     expect(toParagraphFormat(listed.doc.child(0).attrs.format)).toEqual({
       align: "center",
       numbering: { numId: 2, ilvl: 0 },
+      // The level the list was started with hangs its number, and that is where the text begins
+      tabStops: [{ positionPt: 36, align: "start" }],
     });
   });
 });

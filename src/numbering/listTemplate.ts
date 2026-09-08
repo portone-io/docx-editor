@@ -1,12 +1,10 @@
 /**
- * The standard shape of a newly started list.
+ * A list started while editing: the definition it is started with, the number it takes, and the
+ * `<w:abstractNum>` that definition is written out as.
  *
- * The definition of a new list is not kept in the document model.
- * So its shape has to be derivable from the list number (numId) alone, and that rule
- * lives here. Even numbers are numbered lists, odd numbers are bullet lists.
- *
- * Drawing the markers on screen and writing the definitions into numbering.xml both look
- * at the same template.
+ * Nothing here reads anything into the number. The definition is a value the editor registers
+ * (`./listRegistry`), the same value the markers are drawn from and the one written into
+ * numbering.xml, so a list goes out as what it was started as.
  */
 
 import { elementXml, type XmlAttr } from "../ooxml/element";
@@ -14,6 +12,7 @@ import { wName } from "../ooxml/names";
 import { orderedElement } from "../ooxml/props";
 import type {
   LevelIndent,
+  LevelSuffix,
   NewList,
   NewListLevel,
   NumberFormat,
@@ -81,32 +80,16 @@ export function templateList(kind: ListKind): NewList {
   return { levels };
 }
 
-const TEMPLATES: Record<ListKind, NewList> = {
-  numbered: templateList("numbered"),
-  bullet: templateList("bullet"),
-};
-
-export function listKindOf(numId: number): ListKind {
-  return numId % 2 === 0 ? "numbered" : "bullet";
-}
-
 /**
- * The list definition for this number.
- * A number the document's numbering.xml does not know is read as the standard template
- * (which is the case for a list that was just started).
+ * The definition standing behind this number: the one the document wrote down, or the one a list
+ * started while editing was registered with. Undefined for a number nothing defines, which is a
+ * list neither drawn nor written.
  */
-export function listFor(numbering: Numbering, numId: number): NumberingList {
-  return (
-    numbering.lists.get(numId) ??
-    numbering.added.get(numId) ??
-    TEMPLATES[listKindOf(numId)]
-  );
-}
-
-/** The next number not yet in use. Picks the even or odd one matching the shape */
-export function nextNumId(used: Iterable<number>, kind: ListKind): number {
-  const from = Math.max(0, ...used) + 1;
-  return listKindOf(from) === kind ? from : from + 1;
+export function listFor(
+  numbering: Numbering,
+  numId: number
+): NumberingList | undefined {
+  return numbering.lists.get(numId) ?? numbering.added.get(numId);
 }
 
 function highest(groups: readonly Iterable<number>[]): number {
@@ -158,8 +141,52 @@ function indXml(indent: LevelIndent | null): string {
   );
 }
 
+/** One child, written only where the level asks for something other than what OOXML already gives */
+type OptionalChild = { name: string; xml: string } | null;
+
+/**
+ * `w:lvlRestart` counts levels from one, so the level a restart names goes back out as its number
+ * plus one, and the level that never restarts as the 0 of §17.9.10. A level restarted by the one
+ * above it, which is what a level saying nothing gets, writes nothing.
+ */
+function lvlRestartXml(restartAfterLevel: number | null): OptionalChild {
+  if (restartAfterLevel === null) return null;
+  return {
+    name: "lvlRestart",
+    xml: elementXml(wName("lvlRestart"), [
+      [wName("val"), `${restartAfterLevel + 1}`],
+    ]),
+  };
+}
+
+function isLglXml(legal: boolean): OptionalChild {
+  return legal ? { name: "isLgl", xml: elementXml(wName("isLgl"), []) } : null;
+}
+
+/** A tab is what §17.9.28 puts between the number and the text of a level that says nothing */
+function suffXml(suffix: LevelSuffix): OptionalChild {
+  if (suffix === "tab") return null;
+  return {
+    name: "suff",
+    xml: elementXml(wName("suff"), [[wName("val"), suffix]]),
+  };
+}
+
+/**
+ * Writes a level out in full.
+ *
+ * Everything a `NewListLevel` can hold is written here, which is what lets a registered definition
+ * be serialized rather than approximated: a value this could not spell would be a value the file
+ * silently lost.
+ */
 function levelXml(ilvl: number, level: NewListLevel): string {
   const ind = indXml(level.indent);
+  const optional = [
+    lvlRestartXml(level.restartAfterLevel),
+    isLglXml(level.legal),
+    suffXml(level.suffix),
+    ind === "" ? null : { name: "pPr", xml: ind },
+  ];
   return orderedElement(
     wName("lvl"),
     [[wName("ilvl"), `${ilvl}`]],
@@ -178,17 +205,16 @@ function levelXml(ilvl: number, level: NewListLevel): string {
       },
       {
         name: "lvlJc",
-        xml: elementXml(wName("lvlJc"), [[wName("val"), "left"]]),
+        xml: elementXml(wName("lvlJc"), [[wName("val"), level.align]]),
       },
-      ...(ind === "" ? [] : [{ name: "pPr", xml: ind }]),
+      ...optional.filter((child) => child !== null),
     ]
   );
 }
 
-/** Writes one template out as a `<w:abstractNum>` definition */
-export function abstractNumXml(abstractNumId: number, kind: ListKind): string {
-  const levels = TEMPLATES[kind].levels;
-  const body = Array.from(levels.entries())
+/** Writes one registered definition out as a `<w:abstractNum>` */
+export function abstractNumXml(abstractNumId: number, list: NewList): string {
+  const body = Array.from(list.levels.entries())
     .map(([ilvl, level]) => levelXml(ilvl, level))
     .join("");
   return elementXml(

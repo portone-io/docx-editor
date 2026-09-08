@@ -701,6 +701,8 @@ describe("pasting supported HTML", () => {
     expect(toParagraphFormat(item.attrs.format)).toEqual({
       numbering: { numId: 2, ilvl: 0 },
       spaceAfterPt: 8,
+      // The list it joined hangs its number, and that is where the text of the item begins
+      tabStops: [{ positionPt: 36, align: "start" }],
     });
     expect(toRunFormat(item.attrs.styleRun)).toEqual({
       bold: true,

@@ -24,19 +24,19 @@ import {
   newListsValue,
 } from "../../numbering/listRegistry";
 import {
+  allocateList,
   type ListKind,
   listFor,
-  listKindOf,
   MAX_ILVL,
-  nextNumId,
   templateList,
 } from "../../numbering/listTemplate";
 import type { Numbering } from "../../numbering/parseNumbering";
 import { docxSchema } from "../../schema";
+import { documentFormatting } from "../documentStyles";
 import {
-  type AlongsideParagraphs,
   editableParagraphs,
   editParagraphs,
+  type ParagraphEditExtras,
   paragraphPPr,
   selectedParagraphs,
 } from "../paragraphEdits";
@@ -62,7 +62,9 @@ function changeParagraphs(
   state: EditorState,
   dispatch: ((tr: Transaction) => void) | undefined,
   plan: ChangePlan,
-  alongside: AlongsideParagraphs = pruneLists(documentNumbering(state).added)
+  extras: ParagraphEditExtras = {
+    alongside: pruneLists(documentNumbering(state).added),
+  }
 ): boolean {
   return editParagraphs(
     state,
@@ -71,7 +73,7 @@ function changeParagraphs(
       const change = plan(node);
       return change && withListNumbering(paragraphPPr(node), change);
     },
-    alongside
+    extras
   );
 }
 
@@ -95,7 +97,7 @@ function indentForLevel(
   ) {
     return { kind: "keep" };
   }
-  const indent = listFor(numbering, ref.numId).levels.get(ref.ilvl)?.indent;
+  const indent = listFor(numbering, ref.numId)?.levels.get(ref.ilvl)?.indent;
   return indent ? { kind: "level", indent } : { kind: "keep" };
 }
 
@@ -133,15 +135,6 @@ export const increaseListLevel: Command = levelShift(1);
 /** Moves a list item one level back up, which is not the paragraph's own indent. What Shift+Tab does */
 export const decreaseListLevel: Command = levelShift(-1);
 
-/** Every numbering id the document spends: the ones its lists are defined under and the ones its paragraphs wear */
-function usedNumIds(state: EditorState, numbering: Numbering): Set<number> {
-  return new Set([
-    ...numbering.lists.keys(),
-    ...numbering.added.keys(),
-    ...numIdsIn(state.doc),
-  ]);
-}
-
 /** Every numbering id a paragraph of this document wears */
 export function numIdsIn(doc: PMNode): Set<number> {
   const worn = new Set<number>();
@@ -166,7 +159,7 @@ function recordLists(tr: Transaction, lists: NewLists): void {
  * Takes the register down to the lists the document still holds, and leaves the document node
  * alone when the edit orphaned none.
  */
-function pruneLists(lists: NewLists): AlongsideParagraphs {
+function pruneLists(lists: NewLists): (tr: Transaction) => void {
   return (tr) => {
     if (listsWorn(lists, numIdsIn(tr.doc)) !== lists) recordLists(tr, lists);
   };
@@ -193,20 +186,25 @@ function pruneLists(lists: NewLists): AlongsideParagraphs {
 function startList(kind: ListKind): Command {
   return (state, dispatch) => {
     if (!canStartNewList(state)) return false;
-    const numbering = documentNumbering(state);
-    const numId = nextNumId(usedNumIds(state, numbering), kind);
-    const registered: NewLists = new Map([
-      ...numbering.added,
-      [numId, templateList(kind)],
-    ]);
+    const started = allocateList(
+      documentNumbering(state),
+      numIdsIn(state.doc),
+      templateList(kind)
+    );
     return changeParagraphs(
       state,
       dispatch,
       (node) => ({
-        numbering: { numId, ilvl: listRefOf(node)?.ilvl ?? 0 },
+        numbering: { numId: started.numId, ilvl: listRefOf(node)?.ilvl ?? 0 },
         indent: { kind: "keep" },
       }),
-      (tr) => recordLists(tr, registered)
+      {
+        formatting: {
+          ...documentFormatting(state),
+          numbering: started.numbering,
+        },
+        alongside: (tr) => recordLists(tr, started.numbering.added),
+      }
     );
   };
 }
@@ -224,19 +222,19 @@ export const removeFromList: Command = (state, dispatch) =>
   );
 
 /**
- * The kind of this list position.
- * If the document has the definition, the number format of that level decides it; for a new
- * list with no definition, the numbering id decides it.
+ * The kind of this list position, which the number format of its level decides.
+ * Null where nothing defines the list, which is a position whose kind cannot be told and so is
+ * neither of the two buttons.
  */
-function kindOf(numbering: Numbering, ref: NumberingRef): ListKind {
-  const level = listFor(numbering, ref.numId).levels.get(ref.ilvl);
-  if (!level) return listKindOf(ref.numId);
+function kindOf(numbering: Numbering, ref: NumberingRef): ListKind | null {
+  const level = listFor(numbering, ref.numId)?.levels.get(ref.ilvl);
+  if (!level) return null;
   return level.format === "bullet" ? "bullet" : "numbered";
 }
 
 /**
- * The kind of list the selected paragraphs belong to. Null when they are not a list or the kinds
- * are mixed.
+ * The kind of list the selected paragraphs belong to. Null when they are not a list, when nothing
+ * defines the list they are in, or when the kinds are mixed.
  * It reads the paragraphs a lock leaves open, the same ones `editParagraphs` writes to: counting a
  * locked paragraph that stays out of the list would keep the answer mixed, so the button would make
  * a list a second time instead of taking it off.
@@ -303,7 +301,7 @@ const leaveListAtLineStart: Command = (state, dispatch) =>
       });
       return unlisted && withLeftIndent(unlisted.pPr, 0);
     },
-    pruneLists(documentNumbering(state).added)
+    { alongside: pruneLists(documentNumbering(state).added) }
   );
 
 /**

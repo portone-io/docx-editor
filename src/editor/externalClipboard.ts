@@ -8,7 +8,11 @@ import {
 } from "prosemirror-model";
 import { type EditorState, Plugin, type Transaction } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
-import { paragraphAttrsFor, styleIdOf } from "../docx/formatting";
+import {
+  type FormattingContext,
+  paragraphAttrsFor,
+  styleIdOf,
+} from "../docx/formatting";
 import {
   type ParagraphProps,
   withListNumbering,
@@ -21,9 +25,9 @@ import {
   newListsValue,
 } from "../numbering/listRegistry";
 import {
+  allocateList,
   type ListKind,
   MAX_ILVL,
-  nextNumId,
   templateList,
 } from "../numbering/listTemplate";
 import { docxSchema, isPageBreak } from "../schema";
@@ -43,10 +47,7 @@ import { documentFormatting, documentParagraphStyles } from "./documentStyles";
 import type { ImageToInsert } from "./insertImage";
 import { insertPlainText } from "./plainText";
 import { moveCaretToDrop } from "./plugins/dropCaret";
-import {
-  canStartNewList,
-  documentNumbering,
-} from "./plugins/numberingDecorations";
+import { canStartNewList } from "./plugins/numberingDecorations";
 
 const BLOCK_TAGS = new Set([
   "ADDRESS",
@@ -418,16 +419,13 @@ function listParagraphProps(list: ListContext | null): ParagraphProps | null {
 }
 
 function paragraphAttrs(
-  state: EditorState,
+  formatting: FormattingContext,
   list: ListContext | null,
   paragraph: ParagraphProps | null
 ): Record<string, unknown> | null {
   const props = listParagraphProps(list) ?? paragraph;
   return props
-    ? {
-        pPr: props.pPr,
-        ...paragraphAttrsFor(props.pPr, documentFormatting(state)),
-      }
+    ? { pPr: props.pPr, ...paragraphAttrsFor(props.pPr, formatting) }
     : null;
 }
 
@@ -435,27 +433,26 @@ class HtmlReader {
   readonly blocks: PMNode[] = [];
   readonly used: Set<number>;
   readonly canCreateLists: boolean;
-  /** The definitions of the lists started while editing, the pasted ones added as they are read */
-  private registered: NewLists;
+  /**
+   * What the pasted paragraphs are resolved against: the document's context, holding the
+   * definition of each pasted list as it is read, so that an item is drawn against the list it
+   * is joining rather than against a list nothing yet defines.
+   */
+  private formatting: FormattingContext;
 
   constructor(
     private readonly state: EditorState,
     private readonly preserveParagraphStyles: boolean,
     private readonly images: ReadonlyMap<string, ImageToInsert>
   ) {
-    const numbering = documentNumbering(state);
-    this.registered = numbering.added;
-    this.used = new Set([
-      ...numbering.lists.keys(),
-      ...numbering.added.keys(),
-      ...numIdsIn(state.doc),
-    ]);
+    this.formatting = documentFormatting(state);
+    this.used = numIdsIn(state.doc);
     this.canCreateLists = canStartNewList(state);
   }
 
   /** The definitions of every list started while editing, the pasted ones among them */
   get newLists(): NewLists {
-    return this.registered;
+    return this.formatting.numbering.added;
   }
 
   read(root: ParentNode): readonly PMNode[] {
@@ -499,7 +496,7 @@ class HtmlReader {
     }
     this.blocks.push(
       docxSchema.nodes.paragraph.create(
-        paragraphAttrs(this.state, list, paragraph),
+        paragraphAttrs(this.formatting, list, paragraph),
         content
       )
     );
@@ -548,13 +545,14 @@ class HtmlReader {
    */
   private takeNumId(kind: ListKind): number | null {
     if (!this.canCreateLists) return null;
-    const numId = nextNumId(this.used, kind);
-    this.registered = new Map([
-      ...this.registered,
-      [numId, templateList(kind)],
-    ]);
-    this.used.add(numId);
-    return numId;
+    const started = allocateList(
+      this.formatting.numbering,
+      this.used,
+      templateList(kind)
+    );
+    this.formatting = { ...this.formatting, numbering: started.numbering };
+    this.used.add(started.numId);
+    return started.numId;
   }
 
   private readList(

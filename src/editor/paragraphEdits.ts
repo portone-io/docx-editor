@@ -9,7 +9,7 @@
 
 import type { Node as PMNode } from "prosemirror-model";
 import type { EditorState, Transaction } from "prosemirror-state";
-import { paragraphAttrsFor } from "../docx/formatting";
+import { type FormattingContext, paragraphAttrsFor } from "../docx/formatting";
 import type { ParagraphProps } from "../docx/paraProps";
 import { docxSchema } from "../schema";
 import { editShut } from "../schema/guards";
@@ -67,19 +67,28 @@ interface PlannedChange {
   props: ParagraphProps;
 }
 
-/**
- * What an edit records beside the paragraphs themselves, such as the definition of the list they
- * are joining. It is written into the same transaction, so undo takes the two back together.
- */
-export type AlongsideParagraphs = (tr: Transaction) => void;
+/** What an edit does beyond swapping the fragments of the paragraphs it names */
+export interface ParagraphEditExtras {
+  /**
+   * The context the new display values are resolved against, which is the state's own unless the
+   * edit is itself changing it. An edit that starts a list hands in the context that already
+   * holds it, so the paragraph is drawn against the list it is joining in that same transaction.
+   */
+  formatting?: FormattingContext;
+  /**
+   * What else the edit records in the same transaction, such as the definition of the list the
+   * paragraphs are joining, so that undo takes the two back together.
+   */
+  alongside?: (tr: Transaction) => void;
+}
 
 function writeChanges(
   state: EditorState,
   changed: readonly PlannedChange[],
-  alongside: AlongsideParagraphs | undefined
+  extras: ParagraphEditExtras
 ): Transaction {
   const tr = state.tr;
-  const formatting = documentFormatting(state);
+  const formatting = extras.formatting ?? documentFormatting(state);
   for (const { spot, props } of changed) {
     tr.setNodeMarkup(tr.mapping.map(spot.pos), undefined, {
       ...spot.node.attrs,
@@ -91,7 +100,7 @@ function writeChanges(
       ),
     });
   }
-  alongside?.(tr);
+  extras.alongside?.(tr);
   return tr;
 }
 
@@ -100,7 +109,7 @@ export function editParagraphs(
   state: EditorState,
   dispatch: ((tr: Transaction) => void) | undefined,
   surgery: ParagraphSurgery,
-  alongside?: AlongsideParagraphs
+  extras: ParagraphEditExtras = {}
 ): boolean {
   const changed = editableParagraphs(state).flatMap((spot) => {
     const props = surgery(spot.node);
@@ -108,7 +117,7 @@ export function editParagraphs(
   });
   if (changed.length === 0) return false;
   if (dispatch) {
-    dispatch(writeChanges(state, changed, alongside).scrollIntoView());
+    dispatch(writeChanges(state, changed, extras).scrollIntoView());
   }
   return true;
 }

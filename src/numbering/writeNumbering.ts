@@ -1,5 +1,6 @@
 /**
- * Splices the definitions of newly started lists into the original numbering.xml.
+ * Splices the definitions the newly started lists were registered with into the original
+ * numbering.xml.
  *
  * Not one character of the original is altered; new elements are merely slotted in.
  * OOXML requires the definitions (`abstractNum`) to come before the numbers (`num`), and
@@ -9,7 +10,8 @@
 import { splicePart } from "../ooxml/partSplice";
 import { wAttr } from "../ooxml/units";
 import { elementChildren, parseXml } from "../ooxml/xml";
-import { abstractNumXml, listKindOf, numXml } from "./listTemplate";
+import { abstractNumXml, numXml } from "./listTemplate";
+import type { NewList } from "./parseNumbering";
 
 /** The largest definition id already in use */
 function maxAbstractNumId(xml: string): number {
@@ -23,20 +25,21 @@ function maxAbstractNumId(xml: string): number {
 }
 
 /**
- * numbering.xml with a standard template definition added for every list number.
+ * numbering.xml with the definition each of these lists was started with added under its number.
  * When there is nothing to add, the original string is returned unchanged.
  */
 export function addListDefinitions(
   xml: string,
-  numIds: readonly number[]
+  lists: ReadonlyMap<number, NewList>
 ): string {
-  if (numIds.length === 0) return xml;
+  if (lists.size === 0) return xml;
 
   const firstAbstractNumId = maxAbstractNumId(xml) + 1;
-  const additions = [...numIds]
-    .sort((a, b) => a - b)
-    .map((numId, index) => ({
+  const additions = [...lists]
+    .sort(([left], [right]) => left - right)
+    .map(([numId, list], index) => ({
       numId,
+      list,
       abstractNumId: firstAbstractNumId + index,
     }));
 
@@ -45,7 +48,7 @@ export function addListDefinitions(
     insert: [
       ...additions.map((added) => ({
         name: "abstractNum",
-        xml: abstractNumXml(added.abstractNumId, listKindOf(added.numId)),
+        xml: abstractNumXml(added.abstractNumId, added.list),
       })),
       ...additions.map((added) => ({
         name: "num",
