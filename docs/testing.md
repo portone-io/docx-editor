@@ -14,11 +14,11 @@ Use `pnpm check` for the default local gate. Run the specialized checks when a c
 | `pnpm verify:package` | Fresh installation, declarations, entries, bundle, and stylesheet |
 | `pnpm test:e2e` | Playwright tests against a locally installed Chrome |
 | `pnpm check:demo-library` | The site and demo pins match their installed packages and do not resolve to the working tree |
-| `pnpm test:site-release` | Offline Node tests for released-demo preparation and the site version commit |
+| `pnpm test:site-release` | Offline Node tests for released-demo preparation and the production branch rebuild |
 
 The unit suite requires `xmllint` for OOXML schema validation. `verify:package` also needs network access to install the packed package and its peer dependencies in a temporary project.
 
-`check:demo-library` is offline. `test:site-release` uses Node's test runner to check release preparation, failures, and safe version commits in temporary workspaces. It runs the actual Changesets version command; registry, installation, and GitHub responses are substituted.
+`check:demo-library` is offline. `test:site-release` uses Node's test runner to check release preparation, failures, and safe production branch rebuilds in temporary workspaces. It runs the actual Changesets version command; registry, installation, and GitHub responses are substituted.
 
 `pnpm spec 17.5.2.23` looks up an OOXML specification section. It is a utility, not a test.
 

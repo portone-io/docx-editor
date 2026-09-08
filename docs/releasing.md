@@ -15,7 +15,7 @@ Its Actions runs wait for approval, since the workflow opened the pull request r
 
 ## The version the site's demo runs
 
-Changesets preserves the published demo pins during release preparation through `bumpVersionsWithWorkspaceProtocolOnly`. After publishing succeeds, a separate workflow updates the site. See [automatic site updates and recovery](../site/README.md#automatic-updates-after-publishing).
+Changesets preserves the published demo pins during release preparation through `bumpVersionsWithWorkspaceProtocolOnly`. After publishing succeeds, a separate workflow rebuilds the `production` branch, which Vercel serves, from the release commit and the published version. See [automatic site updates and recovery](../site/README.md#automatic-updates-after-publishing).
 
 ## What the workflow decides
 
