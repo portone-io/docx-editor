@@ -14,4 +14,6 @@ Visible labels follow first-reference order within the main story rather than no
 
 ## Editing boundary
 
-Footnotes and endnotes are separate document stories rather than text owned by their main-story reference nodes. Their current plain-text projection therefore remains read-only. Editing support must model each note body as an editable story, preserve the corresponding note-part structures, and integrate its placement with document layout; rewriting reference metadata or exposing the projection as an isolated text field is not a document-editing model.
+Footnotes and endnotes are separate document stories rather than text owned by their main-story reference nodes. Each body is now read as such a story - a document of the editor's own schema, held on the document node under `footnote:<id>` or `endnote:<id>` - and `documentNotes` projects the text of it. What is still missing is the other half: the note parts are repacked unchanged, so nothing writes an edited note body back, and no command or surface offers editing one. Adding that means writing the note parts through the same story writer the Comments part goes through, and integrating a note's placement with document layout.
+
+A note story is not comparable to a comment story for a protection: a comment protection lets the comment stories change and nothing else, so rewriting a note body is a body change in the editor and a changed part to the server verifier.

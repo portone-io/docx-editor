@@ -116,13 +116,40 @@ Link controls use `canSetLink`, `activeLink`, `activeLinkSpan`, `setLink`, and `
 External links are editable; bookmark links remain preserved.
 
 Comment controls use `canAddComment`, `addComment`, `documentComments`, `selectComment`,
-`updateComment`, `removeComment`, `addCommentReply`, `updateCommentReply`, `removeCommentReply`,
-and `setCommentResolved`. `mode.author` is the identity the built-in composers write; a composer of
+`updateComment`, `setCommentBody`, `removeComment`, `addCommentReply`, `updateCommentReply`,
+`removeCommentReply`, and `setCommentResolved`. `mode.author` is the identity the built-in composers write; a composer of
 your own passes `author` (the display name), `initials`, and `authorId` taken from `mode.author` to
 `addComment` and `addCommentReply`, so that the comment is recorded as that person's.
 `documentComments` reports `authorId` on every comment and reply, and `canEditComment` answers
 whether the current author may edit or delete one; [Modes and
-protection](#modes-and-protection) explains the rule behind it.
+protection](#modes-and-protection) explains the rule behind it. Every field of the records it
+returns is read-only: they are the editor's own, worked out once per edit, so a control that wants
+to change one copies it rather than writing into it.
+
+A comment body keeps its formatting. `updateComment` replaces one with plain text; `setCommentBody`
+replaces one with a document of `docxSchema`, so a composer of your own can write a body with a
+bold run, a paragraph style, or a second paragraph:
+
+```ts
+import { docxSchema } from "@portone/docx-editor";
+import { setCommentBody } from "@portone/docx-editor/commands";
+
+const body = docxSchema.nodes.doc.create(null, [
+  docxSchema.nodes.paragraph.create(null, [
+    docxSchema.text("Please check", [
+      docxSchema.marks.run.create({ rPr: "<w:rPr><w:b/></w:rPr>" }),
+    ]),
+  ]),
+  docxSchema.nodes.paragraph.create(null, docxSchema.text("the second line.")),
+]);
+
+setCommentBody(comment.id, body)(view.state, view.dispatch);
+```
+
+The command answers `false` for a body that is not a `doc` node, one that reads as nothing but
+whitespace, and an id the document refers to no comment for. Whatever the body does not touch is
+written back as the bytes it arrived as, so a paragraph nobody edited keeps everything about it the
+editor does not model.
 
 `addComment` and `canAddComment` take an optional `{ from, to }` range as their last argument, and
 use the current selection when none is given. The range must use integer document positions and
@@ -133,7 +160,8 @@ you opened it over, map it through `transaction.mapping` on every change, and ha
 than wherever the caret has since gone.
 
 `documentNotes` returns the distinct footnotes and endnotes referenced by the main document,
-including their display labels and plain-text bodies.
+including their display labels and the plain text their bodies read as. Its records are read-only
+for the same reason the comment records are.
 
 `documentFidelity` returns what the open document holds that the editor cannot model: markup that
 is preserved but invisible, and the placeholders standing in for content it could not open for
