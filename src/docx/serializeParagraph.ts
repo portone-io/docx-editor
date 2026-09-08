@@ -7,10 +7,11 @@
  * a piece of that run, and one kept beside the runs is written between them, which is what the
  * two content models admit.
  *
- * The inlines are grouped three times over: neighbours that share their formatting become one run,
- * the runs that share a hyperlink (`w:hyperlink`) go back inside it, and the links and runs that
- * share a content control (`w:sdt`) go back inside the wrapper that mark carries. The control is
- * the outer of the two wrappers, which is the nesting the mark order records (`schema`).
+ * The inlines are grouped from the outside in: neighbours sharing the outermost wrapper each stands
+ * inside go back into it, that grouping is made again one wrapper deeper, and at the bottom the
+ * neighbours that share their formatting become one run. `schema/wrappers` says which wrapper is
+ * which depth, and `docx/wrappers` says what each of them opens and closes as, so a wrapper of a
+ * new kind is written here without this file knowing anything about it.
  */
 
 import type { Mark, Node as PMNode } from "prosemirror-model";
@@ -24,9 +25,10 @@ import {
 } from "../ooxml/image";
 import { wName } from "../ooxml/names";
 import { escapeXml } from "../ooxml/xml";
+import { wrapperMarks } from "../schema/wrappers";
 import { type ExportRefs, NO_EXPORT_REFS } from "./exportRefs";
-import { type LinkRefs, relIdIn, withRelId } from "./hyperlink";
 import type { ImageRefs } from "./media";
+import { wrapperKindOf } from "./wrappers";
 
 /** Whether neighbouring inlines can be grouped together */
 function sameMark(a: Mark | null, b: Mark | null): boolean {
@@ -145,18 +147,6 @@ type ParagraphPart =
   | { kind: "run"; mark: Mark | null; pieces: string[] }
   | { kind: "raw"; xml: string };
 
-/** The parts that stood inside one and the same hyperlink, or outside any of them */
-interface LinkGroup {
-  link: Mark | null;
-  parts: ParagraphPart[];
-}
-
-/** The groups that stood inside one and the same content control, or outside any of them */
-interface ParagraphGroup {
-  sdt: Mark | null;
-  links: LinkGroup[];
-}
-
 export function preservedXml(node: PMNode): string {
   const xml: unknown = node.attrs.xml;
   if (typeof xml !== "string") {
@@ -211,29 +201,6 @@ function addInline(
   }
 }
 
-function splitParagraphGroups(
-  paragraph: PMNode,
-  refs: ExportRefs
-): ParagraphGroup[] {
-  const groups: ParagraphGroup[] = [];
-  paragraph.forEach((child) => {
-    const sdt = markOf(child, "sdt");
-    const link = markOf(child, "link");
-    let group = groups.at(-1);
-    if (!group || !sameMark(group.sdt, sdt)) {
-      group = { sdt, links: [] };
-      groups.push(group);
-    }
-    let inLink = group.links.at(-1);
-    if (!inLink || !sameMark(inLink.link, link)) {
-      inLink = { link, parts: [] };
-      group.links.push(inLink);
-    }
-    addInline(inLink.parts, child, refs.images);
-  });
-  return groups;
-}
-
 function renderParagraphPart(part: ParagraphPart): string {
   if (part.kind === "raw") return part.xml;
   const open = openTagXml(wName("r"), rawAttrsOf(part.mark?.attrs.rAttrs));
@@ -246,62 +213,56 @@ function renderParagraphPart(part: ParagraphPart): string {
   );
 }
 
+/** The neighbours that stood inside one and the same wrapper at this depth, or outside any of them */
+interface WrapperGroup {
+  mark: Mark | null;
+  children: PMNode[];
+}
+
 /**
- * The opening tag of the link these parts stood inside.
+ * The inlines cut into the stretches that share a wrapper at this depth.
  *
- * A link that came in with an address goes out pointing at the relationship that address now lives
- * on, which for a link nobody retargeted is the one it arrived on: the tag is then the very string
- * it came as. A link the editor made has no tag of its own and gets the smallest one Word reads.
- * With no relationships to hand out - a serializer running outside an export - an imported link
- * still goes out as it came, and one made here has nothing to point at.
+ * The wrappers are read off the marks by position rather than by the depth they claim, so a link
+ * made across a stretch that only partly stands inside a control still groups with what it covers.
  */
-function openLinkTag(mark: Mark, links: LinkRefs): string {
-  const prefix: unknown = mark.attrs.linkPrefix;
-  const original = typeof prefix === "string" ? prefix : null;
-  const href: unknown = mark.attrs.href;
-  // A link naming a bookmark alone carries no address, and its wrapper says where it goes
-  if (typeof href !== "string") {
-    if (original !== null) return original;
-    throw new DocxExportError(
-      "lost-original",
-      "a hyperlink carries neither an address nor the opening XML it goes back out as"
-    );
+function groupsAtDepth(
+  children: readonly PMNode[],
+  depth: number
+): WrapperGroup[] {
+  const groups: WrapperGroup[] = [];
+  for (const child of children) {
+    const mark = wrapperMarks(child)[depth] ?? null;
+    const last = groups.at(-1);
+    if (last && sameMark(last.mark, mark)) last.children.push(child);
+    else groups.push({ mark, children: [child] });
   }
-  const relId = links.relIdOf(
-    href,
-    original === null ? null : relIdIn(original)
-  );
-  if (relId === undefined) {
-    if (original !== null) return original;
-    throw new DocxExportError(
-      "unsupported-content",
-      "an inserted hyperlink has no relationship to point at; export it through exportDocx"
-    );
-  }
-  return withRelId(original ?? "<w:hyperlink>", relId);
+  return groups;
 }
 
-/** Puts the hyperlink these parts stood inside back around them */
-function renderLinkGroup(group: LinkGroup, links: LinkRefs): string {
-  const body = group.parts.map(renderParagraphPart).join("");
-  if (!group.link) return body;
-  return `${openLinkTag(group.link, links)}${body}</w:hyperlink>`;
+/** The runs and the fragments kept whole that these inlines go back out as */
+function renderParts(children: readonly PMNode[], images: ImageRefs): string {
+  const parts: ParagraphPart[] = [];
+  for (const child of children) addInline(parts, child, images);
+  return parts.map(renderParagraphPart).join("");
 }
 
-/** Puts the content control these groups stood inside back around them */
-function renderParagraphGroup(group: ParagraphGroup, refs: ExportRefs): string {
-  const body = group.links
-    .map((inLink) => renderLinkGroup(inLink, refs.links))
+/**
+ * Puts every wrapper from this depth inwards back around the content it held, and writes the runs
+ * once no wrapper is left.
+ */
+function renderWrapped(
+  children: readonly PMNode[],
+  depth: number,
+  refs: ExportRefs
+): string {
+  return groupsAtDepth(children, depth)
+    .map((group) => {
+      if (group.mark === null) return renderParts(group.children, refs.images);
+      const kind = wrapperKindOf(group.mark);
+      const body = renderWrapped(group.children, depth + 1, refs);
+      return kind.open(group.mark, refs) + body + kind.close(group.mark);
+    })
     .join("");
-  if (!group.sdt) return body;
-  const prefix: unknown = group.sdt.attrs.sdtPrefix;
-  if (typeof prefix !== "string") {
-    throw new DocxExportError(
-      "lost-original",
-      "a content control has lost the opening XML it goes back out as"
-    );
-  }
-  return `${prefix}<w:sdtContent>${body}</w:sdtContent></w:sdt>`;
 }
 
 export function serializeParagraph(
@@ -310,8 +271,6 @@ export function serializeParagraph(
 ): string {
   const open = openTagXml(wName("p"), rawAttrsOf(node.attrs.pAttrs));
   const pPr: unknown = node.attrs.pPr;
-  const body = splitParagraphGroups(node, refs)
-    .map((group) => renderParagraphGroup(group, refs))
-    .join("");
+  const body = renderWrapped(node.children, 0, refs);
   return open + (typeof pPr === "string" ? pPr : "") + body + "</w:p>";
 }
