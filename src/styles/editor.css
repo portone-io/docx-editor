@@ -984,6 +984,10 @@ button.docx-editor-comment-body {
 /*
  * Content carried through whole that the editor has no model for: a field, a tracked change, a
  * symbol. Small enough to read the line around it, outlined so it is plainly not ordinary text.
+ *
+ * Deliberately not `user-select: none`. A chip that carries its content whole can be selected and
+ * deleted whole, and taking it out of the selection would leave a reader dragging across it with
+ * no way to reach it.
  */
 .docx-editor-raw-inline[data-display="chip"],
 .docx-editor-raw-run[data-display="chip"] {
@@ -1001,7 +1005,13 @@ button.docx-editor-comment-body {
   white-space: nowrap;
   text-overflow: ellipsis;
   vertical-align: baseline;
-  user-select: none;
+}
+
+/* The chip while it is the selection, which is how a reader sees what a delete would take */
+.docx-editor-raw-inline[data-display="chip"].ProseMirror-selectednode,
+.docx-editor-raw-run[data-display="chip"].ProseMirror-selectednode {
+  outline: 2px solid #1a73e8;
+  outline-offset: 1px;
 }
 
 .docx-editor-table,

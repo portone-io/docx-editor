@@ -193,21 +193,21 @@ function buildModelledRunChild(
  * A chip shows the text the element held, which is the field result a reader sees and the words a
  * tracked insertion put there, so the chip says what it stands for rather than only that it is one.
  */
+function preservedText(el: Element, rule: PreservationRule): string | null {
+  if (rule.display === "text") return rule.text ?? null;
+  if (rule.display !== "chip") return null;
+  return el.textContent === "" ? null : (el.textContent ?? null);
+}
+
 function preservedAttrs(
   el: Element,
   rule: PreservationRule
 ): Record<string, unknown> {
-  const content = el.textContent ?? "";
   return {
     xml: serializeXml(el),
     element: el.localName,
     display: rule.display,
-    text:
-      rule.display === "text"
-        ? (rule.text ?? null)
-        : rule.display === "chip" && content !== ""
-          ? content
-          : null,
+    text: preservedText(el, rule),
     guarded: rule.guarded,
   };
 }
