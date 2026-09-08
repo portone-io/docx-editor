@@ -368,6 +368,61 @@ describe("WordprocessingML comments", () => {
     ).toBe(true);
   });
 
+  /**
+   * A document node holding no story for a comment says nothing about its body rather than saying
+   * it has none, so a reference restored from a document written without its stories keeps the
+   * body the package arrived with.
+   */
+  it("keeps the body that arrived for a document holding no story of its own", () => {
+    const bytes = makeCommentedDocx();
+    const opened = importDocx(bytes);
+    const forgotten = docxSchema.nodes.doc.create(
+      { ...opened.doc.attrs, stories: {} },
+      opened.doc.content
+    );
+
+    expect(
+      bytesEqual(
+        unzipSync(exportDocx(forgotten, opened.session))["word/comments.xml"],
+        unzipSync(bytes)["word/comments.xml"]
+      )
+    ).toBe(true);
+  });
+
+  /**
+   * The identity on an entry that arrived is nobody's to rewrite (`./comments/parts`), so an entry
+   * carrying somebody else's is not one this comment may be written into. A state opened without
+   * the document's own snapshot does not know which ids the part already spent, and a comment that
+   * lands on one of them is still the comment its author wrote.
+   */
+  it("writes a comment under its own author when the part already spent its id", () => {
+    const parts = unzipSync(makeCommentedDocx());
+    parts["word/comments.xml"] = encoder.encode(
+      COMMENTS_XML.replace(
+        "</w:comments>",
+        '<w:comment w:id="5" w:author="Ghost" w:date="2001-01-01T00:00:00Z">' +
+          '<w:p><w:r><w:t xml:space="preserve">Left behind</w:t></w:r></w:p>' +
+          "</w:comment></w:comments>"
+      )
+    );
+    const opened = importDocx(zipSync(parts));
+    const range = firstTextRange(opened.doc);
+    let state = createEditorState(opened.doc);
+    state = state.apply(
+      state.tr.setSelection(
+        TextSelection.create(state.doc, range.from, range.to)
+      )
+    );
+    state = apply(state, addComment({ text: "New note", author: "Grace" }));
+
+    expect(documentComments(state).map((comment) => comment.id)).toContain("5");
+    const written = decode(
+      unzipSync(exportDocx(state.doc, opened.session))["word/comments.xml"]
+    );
+    expect(written).toContain('w:id="5" w:author="Grace"');
+    expect(written).not.toContain("Ghost");
+  });
+
   it("refuses a body that is no document of this schema and one saying nothing", () => {
     const opened = importDocx(makeCommentedDocx());
     const state = createEditorState(opened.doc);
