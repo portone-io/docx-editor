@@ -8,6 +8,8 @@
  * part by, so a name stands for one identity per file: a name the part already records is read as
  * it stands and never appended to. Appending a second person for it would leave a file naming two
  * identities for one name, where a reader keying by name hands one author's comments to the other.
+ * A name the file's comments already write under carries the same weight, recorded or not: a
+ * person appended for it would claim those comments too.
  */
 
 import { xmlnsAttr } from "../../ooxml/element";
@@ -97,18 +99,31 @@ export function commentAuthorId(
 }
 
 /**
- * The authors the part records no person for at all, each under the name they write as. A name it
- * already records is left as it stands, whichever provider recorded it and whatever it resolves to.
+ * The authors to record a person for, each under the name they write as: the ones the comments
+ * name one identity for and the part does not record already. A name the part records is left as
+ * it stands, whichever provider recorded it and whatever it resolves to. So is a name the comments
+ * carry under more than one identity, one identity and none among them: recording it would hand
+ * the comments carrying no identity to whoever the name then resolved to, and a document saved by
+ * a Word that wrote no people part carries every one of its comments that way.
  */
 export function unrecordedAuthors(
   bodies: Iterable<CommentReferenceData | CommentReplyData>,
   people: ImportedPeople
 ): Map<string, string> {
-  const unrecorded = new Map<string, string>();
+  const identities = new Map<string, Set<string | null>>();
   for (const body of bodies) {
-    if (body.author === null || body.authorId === null) continue;
+    if (body.author === null) continue;
     if (people.byAuthor.has(body.author)) continue;
-    unrecorded.set(body.author, body.authorId);
+    const ids = identities.get(body.author) ?? new Set<string | null>();
+    ids.add(body.authorId);
+    identities.set(body.author, ids);
+  }
+
+  const unrecorded = new Map<string, string>();
+  for (const [author, ids] of identities) {
+    if (ids.size !== 1) continue;
+    const only = Array.from(ids)[0] ?? null;
+    if (only !== null) unrecorded.set(author, only);
   }
   return unrecorded;
 }

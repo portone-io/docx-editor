@@ -21,7 +21,10 @@ import {
   serializeXml,
   W_NS,
 } from "../../ooxml/xml";
-import type { EditableComments } from "../../schema/protection";
+import {
+  commentAdditionAllowed,
+  type EditableComments,
+} from "../../schema/protection";
 import { availablePartPath } from "../packageParts";
 import type {
   EntryReading,
@@ -126,23 +129,35 @@ export function threadKeyAlone(entry: Element, original: Element): boolean {
  * Whether `authorId` could have written or rewritten this entry.
  *
  * Permission alone: whether the shape is one this editor writes is `wellFormedEntry`'s question.
- * An entry that appeared has to be this author's. One that arrived keeps the identity it arrived
- * with; settling its thread or replying to it belong to everyone and leave what it says alone,
- * while rewriting what it says is its author's, a moderator's, or anyone's where no identity was
- * recorded for it. That last is the rule the editor holds to (`schema/protection`), and the two
- * have to answer alike or a file the editor wrote would be turned down here.
+ * An entry that appeared has to be one this author could have written, which
+ * `commentAdditionAllowed` decides here as it does over the story. One that arrived keeps the
+ * identity it arrived with; settling its thread or replying to it belong to everyone and leave
+ * what it says alone, while rewriting what it says is its author's, a moderator's, or anyone's
+ * where no identity was recorded for it. Both are the rules the editor holds to
+ * (`schema/protection`), and the two have to answer alike or a file the editor wrote would be
+ * turned down here.
+ *
+ * `unattributed` is read from the file that arrived, since it says what the submission is judged
+ * against; `people` is the submission's, since it says who the submission names.
  */
 export function entryAllowed(
   entry: Element,
   original: Element | null,
   authorId: string,
   editableComments: EditableComments,
-  people: ImportedPeople
+  people: ImportedPeople,
+  unattributed: ReadonlySet<string>
 ): boolean {
   if (entry.namespaceURI === W_NS && entry.localName === "comment") {
     const author = attributeByLocalName(entry, "author");
     const recorded = author === null ? null : commentAuthorId(people, author);
-    if (original === null) return recorded === authorId;
+    if (original === null) {
+      return commentAdditionAllowed(
+        { author, authorId: recorded },
+        authorId,
+        unattributed
+      );
+    }
     // A thread key appears the first time a comment is settled or replied to, but one already
     // written is what its thread state hangs off and is not re-pointed
     const paraId = lastParagraphId(original);
@@ -383,13 +398,14 @@ function storyPart(shape: CommentPartShape): StoryPartKind {
     referents: shape.referents,
     wellFormed: wellFormedEntry,
     anyonesChange: threadKeyAlone,
-    allowed: (entry, original, authorId, options, session) =>
+    allowed: (entry, original, authorId, options, session, unattributed) =>
       entryAllowed(
         entry,
         original,
         authorId,
         options.editableComments,
-        session.comments.people
+        session.comments.people,
+        unattributed
       ),
   };
 }

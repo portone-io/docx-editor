@@ -12,8 +12,14 @@ import {
   addComment,
   addCommentReply,
   documentComments,
+  updateComment,
 } from "../../editor/commands/commentCommands";
 import { createEditorState } from "../../editor/createEditor";
+import {
+  commentEditsOwned,
+  commentIdentitiesKept,
+} from "../../schema/protection";
+import { onlyCommentsChangedBy } from "../commentOnlyChange";
 import { exportDocx } from "../exportDocx";
 import { importDocx } from "../importDocx";
 import {
@@ -293,6 +299,142 @@ describe("the people part", () => {
         "</person></people>"
     );
     expect(authorIdsOf(output)).toEqual([null, "u_grace"]);
+  });
+
+  it("records nothing for a name the document already writes a comment under", () => {
+    const bytes = commentedDocx(null);
+    const opened = importDocx(bytes);
+    const state = applied(
+      selecting(createEditorState(opened.doc), "beta"),
+      addComment({ text: "Note", author: "Ada", authorId: "u_ada" })
+    );
+    const output = exportDocx(state.doc, opened.session);
+    expect(unzipSync(output)["word/people.xml"]).toBeUndefined();
+    expect(authorIdsOf(output)).toEqual([null, null]);
+  });
+
+  it("records nothing for a name a reply of the document is written under", () => {
+    const opened = importDocx(commentedDocx(null));
+    const replied = applied(
+      createEditorState(opened.doc),
+      addCommentReply("4", { text: "Reply", author: "Lin" })
+    );
+    const state = applied(
+      selecting(replied, "beta"),
+      addComment({ text: "Note", author: "Lin", authorId: "u_lin" })
+    );
+    const output = exportDocx(state.doc, opened.session);
+    expect(unzipSync(output)["word/people.xml"]).toBeUndefined();
+    expect(authorIdsOf(output)).toEqual([null, null]);
+  });
+
+  it("leaves the comments already written under a shared name under no identity", () => {
+    const bytes = commentedDocx(null);
+    const opened = importDocx(bytes);
+    const state = applied(
+      selecting(createEditorState(opened.doc), "beta"),
+      addComment({ text: "Note", author: "Ada", authorId: "u_ada" })
+    );
+    const output = exportDocx(state.doc, opened.session);
+    expect(
+      commentIdentitiesKept(importDocx(bytes).doc, importDocx(output).doc)
+    ).toBe(true);
+  });
+
+  it("takes back a comment added under a name the document already holds", () => {
+    const bytes = commentedDocx(null);
+    const opened = importDocx(bytes);
+    const state = applied(
+      selecting(createEditorState(opened.doc), "beta"),
+      addComment({ text: "Note", author: "Ada", authorId: "u_ada" })
+    );
+    const output = exportDocx(state.doc, opened.session);
+    expect(onlyCommentsChangedBy(bytes, output, "u_ada")).toEqual({ ok: true });
+  });
+
+  it("turns down a comment added under a name the document does not hold", () => {
+    const bytes = commentedDocx(null);
+    const opened = importDocx(bytes);
+    // "Grace" is nowhere in the original, so a comment under it names a person the file has not
+    // met, whether it is recorded for one or left claiming nobody
+    for (const author of [
+      { text: "Note", author: "Grace", authorId: "u_grace" },
+      { text: "Note", author: "Grace" },
+    ]) {
+      const state = applied(
+        selecting(createEditorState(opened.doc), "beta"),
+        addComment(author)
+      );
+      const output = exportDocx(state.doc, opened.session);
+      expect(onlyCommentsChangedBy(bytes, output, "u_ada")).toEqual({
+        ok: false,
+        reason: "comment-author-forged",
+      });
+    }
+  });
+
+  it("takes a comment anyone adds under a name the document already holds", () => {
+    const bytes = commentedDocx(null);
+    const opened = importDocx(bytes);
+    const state = applied(
+      selecting(createEditorState(opened.doc), "beta"),
+      addComment({ text: "Note", author: "Ada", authorId: "u_ada" })
+    );
+    const output = exportDocx(state.doc, opened.session);
+    // The comment claims nobody and stays everyone's to edit, and "Ada" was already on a comment
+    // of the original, so no reader learns a name the file did not already show
+    expect(onlyCommentsChangedBy(bytes, output, "u_mallory")).toEqual({
+      ok: true,
+    });
+  });
+
+  it("leaves a comment added under a shared name editable by anyone", () => {
+    const opened = importDocx(commentedDocx(null));
+    const state = applied(
+      selecting(createEditorState(opened.doc), "beta"),
+      addComment({ text: "Note", author: "Ada", authorId: "u_ada" })
+    );
+    const reopened = importDocx(exportDocx(state.doc, opened.session));
+    const before = createEditorState(reopened.doc);
+    const added = documentComments(before).find(
+      (comment) => comment.text === "Note"
+    );
+    if (added === undefined) throw new Error("the comment was not added");
+    const reworded = applied(before, updateComment(added.id, "Reworded"));
+    expect(
+      commentEditsOwned(before.doc, reworded.doc, {
+        protection: "comments",
+        authorId: "u_bo",
+        editableComments: "own",
+      })
+    ).toBe(true);
+  });
+
+  it("records the name of an author the document writes no comment under", () => {
+    const opened = importDocx(commentedDocx(null));
+    const state = applied(
+      selecting(createEditorState(opened.doc), "beta"),
+      addComment({ text: "Note", author: "Grace", authorId: "u_grace" })
+    );
+    const output = exportDocx(state.doc, opened.session);
+    expect(decode(unzipSync(output)["word/people.xml"])).toContain(
+      person("Grace", COMMENT_AUTHOR_PROVIDER, "u_grace")
+    );
+    expect(authorIdsOf(output)).toEqual([null, "u_grace"]);
+  });
+
+  it("records nothing for a name two identities of this session write under", () => {
+    const opened = importDocx(plainDocx());
+    const first = applied(
+      selecting(createEditorState(opened.doc), "Alpha"),
+      addComment({ text: "Note", author: "Ada", authorId: "u_ada" })
+    );
+    const state = applied(
+      selecting(first, "beta"),
+      addComment({ text: "Other", author: "Ada", authorId: "u_other" })
+    );
+    const parts = unzipSync(exportDocx(state.doc, opened.session));
+    expect(parts["word/people.xml"]).toBeUndefined();
   });
 
   it("records nothing for a comment written under no identity", () => {

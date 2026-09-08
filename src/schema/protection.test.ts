@@ -411,7 +411,7 @@ describe("commentAdditionsBy", () => {
     expect(commentAdditionsBy(mine.doc, replied.doc, "me")).toBe(true);
   });
 
-  it("does not hold for a comment or reply claiming another identity, or none", () => {
+  it("does not hold for a comment or reply claiming another identity, or none under a name the original does not already carry unattributed", () => {
     const before = opened();
     expect(commentAdditionsBy(before.doc, commented("other").doc, "me")).toBe(
       false
@@ -429,5 +429,29 @@ describe("commentAdditionsBy", () => {
       })
     );
     expect(commentAdditionsBy(mine.doc, replied.doc, "me")).toBe(false);
+  });
+
+  it("holds for a comment or reply claiming no identity under a name the original already carries unattributed", () => {
+    // The writer records nobody for a name the document already comments under, so this is the
+    // shape it puts out for a commenter whose display name an older Word already wrote under
+    const before = commented(null);
+    const second = applied(
+      selecting(before, "Gamma"),
+      addComment({ text: "another", author: "Ada" })
+    );
+    expect(commentAdditionsBy(before.doc, second.doc, "me")).toBe(true);
+    expect(commentAdditionsBy(before.doc, second.doc, "anyone")).toBe(true);
+
+    const named = applied(
+      selecting(before, "Gamma"),
+      addComment({ text: "another", author: "Bo" })
+    );
+    expect(commentAdditionsBy(before.doc, named.doc, "me")).toBe(false);
+
+    const replied = applied(
+      before,
+      addCommentReply(commentId(before), { text: "r", author: "Ada" })
+    );
+    expect(commentAdditionsBy(before.doc, replied.doc, "me")).toBe(true);
   });
 });

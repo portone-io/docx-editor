@@ -187,7 +187,7 @@ type CommentOnlyVerdict =
 | --- | --- |
 | `body-changed` | The document differs in something other than its comments, which includes a body edit that swept a comment away with the text it was anchored to. |
 | `comment-not-owned` | A comment or reply written by somebody else was rewritten, re-anchored onto other text, or deleted. |
-| `comment-author-forged` | A comment that appeared claims another identity, or a comment that was already there had its author rewritten. |
+| `comment-author-forged` | A comment that appeared claims another identity, or a comment that was already there had its author rewritten. A comment that appeared claiming no identity at all is taken only under a display name the original file already writes an unattributed comment under, and refused under any other. |
 | `part-changed` | A part outside the comment parts differs, or the main part changed outside its body blocks. `part` names the package path. |
 | `relationship-changed` | The main part's relationships gained, lost, or repointed something that is not a comment part, gained a second relationship of a comment type, or related a part the file already held as a comment part. `part` names the relationship part. |
 | `comment-markup-rejected` | An entry of a comment part is not one this editor writes for this author, or an entry nothing refers to changed. `part` names the comment part. |
