@@ -226,7 +226,10 @@ export const removeFromList: Command = (state, dispatch) =>
  * Null where nothing defines the list, which is a position whose kind cannot be told and so is
  * neither of the two buttons.
  */
-function kindOf(numbering: Numbering, ref: NumberingRef): ListKind | null {
+export function listKindOf(
+  numbering: Numbering,
+  ref: NumberingRef
+): ListKind | null {
   const level = listFor(numbering, ref.numId)?.levels.get(ref.ilvl);
   if (!level) return null;
   return level.format === "bullet" ? "bullet" : "numbered";
@@ -243,7 +246,7 @@ export function activeListKind(state: EditorState): ListKind | null {
   const numbering = documentNumbering(state);
   const kinds = editableParagraphs(state).map(({ node }) => {
     const ref = listRefOf(node);
-    return ref === null ? null : kindOf(numbering, ref);
+    return ref === null ? null : listKindOf(numbering, ref);
   });
   const first = kinds[0] ?? null;
   return kinds.every((kind) => kind === first) ? first : null;

@@ -181,6 +181,22 @@ describe("normalizing a pasted slice", () => {
     expect(normalized.newLists.get(2)).toEqual(templateList("numbered"));
   });
 
+  it("starts the list as the kind it was where the copy was made", () => {
+    const state = stateOf(makeNumberedDocx(SOURCE));
+
+    const normalized = normalizePasted(
+      {
+        slice: pasted(listParagraph(99)).slice,
+        newLists: NO_NEW_LISTS,
+        listKinds: new Map([[99, "bullet"]]),
+      },
+      state,
+      false
+    );
+
+    expect(normalized.newLists.get(2)).toEqual(templateList("bullet"));
+  });
+
   it("leaves a list number the document already answers for alone", () => {
     const state = stateOf(makeNumberedDocx(SOURCE));
 

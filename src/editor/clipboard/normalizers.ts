@@ -43,6 +43,7 @@ import {
   documentNumbering,
 } from "../plugins/numberingDecorations";
 import type { PastedContent } from "./htmlReader";
+import { type ListKinds, NO_LIST_KINDS } from "./internalChannel";
 
 /** What one normalizer answers about the document the slice is going into */
 export interface NormalizeContext {
@@ -55,6 +56,12 @@ export interface NormalizeContext {
    * paste has started.
    */
   readonly knownLists: ReadonlySet<number>;
+  /**
+   * What the numbers the slice names meant where it was copied, for the numbers this document
+   * cannot answer for. Empty for a slice that came in as markup, whose lists were given numbers
+   * of this document as they were read.
+   */
+  readonly listKinds: ListKinds;
   /**
    * A number for a list this slice starts, registered with the definition it is started with, as
    * the list button starts one. Null in a document with nowhere to write a definition.
@@ -174,10 +181,13 @@ export const dropSourceIdentity: SliceNormalizer = (slice, { move }) =>
  *
  * A number the destination knows nothing about is exported as a list nothing defines, which the
  * export invariants refuse. The paragraphs that shared such a number still share the one they are
- * given, so a pasted list stays one list. Nothing carried over says whether it was numbered or
- * bulleted - the definition that said so is in the document it came from - so it is started as the
- * list button starts one, and the destination's own definition is what it is drawn and written
- * with from here on.
+ * given, so a pasted list stays one list, started the way the list button starts one and drawn and
+ * written from the destination's own definition from here on.
+ *
+ * Which of the two kinds it is started as is the one thing the number alone does not say. A copy
+ * made in this same session was remembered alongside what its numbers meant there
+ * (`./internalChannel`), so a bulleted list comes back bulleted; a number arriving any other way
+ * has no kind to be read off it and counts.
  */
 export const rekeyNumbering: SliceNormalizer = (slice, context) => {
   const given = new Map<number, number | null>();
@@ -187,7 +197,7 @@ export const rekeyNumbering: SliceNormalizer = (slice, context) => {
     if (ref === null || context.knownLists.has(ref.numId)) return node;
     const taken = given.has(ref.numId)
       ? (given.get(ref.numId) ?? null)
-      : context.startList("numbered");
+      : context.startList(context.listKinds.get(ref.numId) ?? "numbered");
     given.set(ref.numId, taken);
     const props =
       taken === null
@@ -321,6 +331,7 @@ export function normalizePasted(
     state,
     move,
     knownLists: known,
+    listKinds: content.listKinds ?? NO_LIST_KINDS,
     startList(kind) {
       if (!canStartNewList(state)) return null;
       const list = templateList(kind);

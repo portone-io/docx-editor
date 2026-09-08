@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import type { Node as PMNode } from "prosemirror-model";
 import { NodeSelection, TextSelection } from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
 import type { EditorView } from "prosemirror-view";
@@ -7,12 +8,20 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   documentXmlOf,
   makeDocx,
+  makeNumberedDocx,
   makeStyledDocx,
 } from "../../__testing__/docx";
 import { importDocx } from "../../docx/importDocx";
 import type { SessionStore } from "../../docx/session";
 import { toRunFormat } from "../../model/format";
+import { newListsOf } from "../../numbering/listRegistry";
+import { templateList } from "../../numbering/listTemplate";
 import { docxSchema } from "../../schema";
+import {
+  listRefOf,
+  removeFromList,
+  toggleBulletList,
+} from "../commands/listCommands";
 import { createEditorView, editorStateForSession } from "../createEditor";
 import { defineClipboardEvent } from "./__testing__/clipboardEvent";
 
@@ -31,6 +40,9 @@ const LOADED_PARAGRAPH =
   '<w:r><w:br w:type="page"/></w:r></w:p>';
 
 const TAIL = "<w:p><w:r><w:t>tail</w:t></w:r></w:p>";
+
+const SOURCE_PARAGRAPH =
+  '<w:p><w:r><w:t xml:space="preserve">source</w:t></w:r></w:p>';
 
 const cellXml = (text: string) =>
   `<w:tc><w:p><w:r><w:t xml:space="preserve">${text}</w:t></w:r></w:p></w:tc>`;
@@ -326,6 +338,38 @@ describe("the internal clipboard channel", () => {
     expect(view.state.doc.lastChild?.textContent).toBe("anchored");
     expect(occurrences(xml, "<w:bookmarkStart")).toBe(1);
     expect(occurrences(xml, "<w:bookmarkEnd")).toBe(1);
+    view.destroy();
+  });
+
+  it("brings a copied bulleted list back bulleted once nothing defines its number", () => {
+    const { view } = open(makeNumberedDocx(SOURCE_PARAGRAPH + TAIL));
+    view.dispatch(
+      view.state.tr.setSelection(TextSelection.create(view.state.doc, 1, 7))
+    );
+    expect(toggleBulletList(view.state, view.dispatch)).toBe(true);
+    const listed = view.state.doc.firstChild;
+    expect(listRefOf(listed as PMNode)?.numId).toBe(2);
+
+    selectBlock(view, 0);
+    const copied = copy(view);
+    // Leaving the list gives its number back, so nothing defines it by the time the copy lands
+    view.dispatch(
+      view.state.tr.setSelection(TextSelection.create(view.state.doc, 1, 7))
+    );
+    expect(removeFromList(view.state, view.dispatch)).toBe(true);
+    expect(newListsOf(view.state.doc.attrs.newLists).size).toBe(0);
+
+    caretAtEnd(view);
+    paste(view, copied);
+
+    // The number is issued again; what it stands for is what it stood for where it was copied
+    expect(newListsOf(view.state.doc.attrs.newLists).get(2)).toEqual(
+      templateList("bullet")
+    );
+    expect(listRefOf(view.state.doc.lastChild as PMNode)).toEqual({
+      numId: 2,
+      ilvl: 0,
+    });
     view.destroy();
   });
 

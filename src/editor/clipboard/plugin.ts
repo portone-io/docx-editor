@@ -33,6 +33,7 @@ import { numIdsIn } from "../commands/listCommands";
 import { documentOf } from "../editorDocument";
 import { insertPlainText } from "../plainText";
 import { moveCaretToDrop } from "../plugins/dropCaret";
+import { documentNumbering } from "../plugins/numberingDecorations";
 import { COPIED_STYLE_ATTRIBUTE } from "./htmlReader";
 import { safeHref } from "./inlineFormatting";
 import {
@@ -394,7 +395,8 @@ export function docxClipboard(options: ClipboardOptions = {}): Plugin {
         // clipboard, and a paste back into this session is given what was copied instead
         copyToken = rememberCopied(
           slice,
-          documentOf(view.state).session?.sessionId ?? null
+          documentOf(view.state).session?.sessionId ?? null,
+          documentNumbering(view.state)
         );
         return copiedSlice(slice);
       },

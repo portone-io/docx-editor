@@ -29,8 +29,8 @@ export type ClipboardReader = (input: ClipboardInput) => PastedContent | null;
  * markup, and markup is all a copy from anywhere else amounts to here.
  */
 export const internalSliceReader: ClipboardReader = ({ token, sessionId }) => {
-  const slice = recallCopied(token, sessionId);
-  return slice === null ? null : { slice, newLists: NO_NEW_LISTS };
+  const recalled = recallCopied(token, sessionId);
+  return recalled === null ? null : { ...recalled, newLists: NO_NEW_LISTS };
 };
 
 /** Everything the editor did not write itself, read for the formatting the markup states */
