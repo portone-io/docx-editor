@@ -412,19 +412,24 @@ class HtmlReader {
       numId: inherited?.kind === kind ? inherited.numId : this.takeNumId(kind),
       level,
     };
-    const items = Array.from(list.children).filter(
-      (child) => child.tagName === "LI"
+    const items = [...list.children].flatMap((child) =>
+      child instanceof HTMLElement && child.tagName === "LI" ? [child] : []
     );
+    const host = this.hostView();
     for (const item of items) {
-      const itemContext = contextFor(context, item as HTMLElement);
+      const itemContext = contextFor(context, item);
       const content: PMNode[] = [];
+      // A block a reader answers for stands after the item, since a list item is one paragraph
+      const after: PMNode[] = [];
       for (const child of item.childNodes) {
-        const nested =
-          child.nodeType === child.ELEMENT_NODE ? (child as HTMLElement) : null;
+        const nested = child instanceof HTMLElement ? child : null;
         if (nested?.tagName === "UL" || nested?.tagName === "OL") continue;
-        this.appendInline(content, child, itemContext);
+        const read = nested && this.readBlock(nested, itemContext, host);
+        if (read) after.push(...read);
+        else this.appendInline(content, child, itemContext);
       }
       this.addParagraph(content, listContext);
+      this.blocks.push(...after);
       for (const nested of Array.from(item.children)) {
         if (nested.tagName === "UL" || nested.tagName === "OL") {
           this.readList(

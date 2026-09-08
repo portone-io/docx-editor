@@ -281,6 +281,25 @@ describe("reading HTML written by another application", () => {
     expect(nodesOfType(doc, "tableCell")).toHaveLength(1);
   });
 
+  it("reads a table inside a list item as a table after the item", () => {
+    const doc = pasted(
+      "<ul><li>Crates<table><tr><td>a</td><td>b</td></tr></table></li>" +
+        "<li>Ropes</li></ul>"
+    );
+
+    const blocks = doc.children.map((block) => [
+      block.type.name,
+      block.textContent,
+    ]);
+    expect(blocks).toEqual([
+      ["paragraph", "Crates"],
+      ["table", "ab"],
+      ["paragraph", "Ropes"],
+    ]);
+    expect(listRefOf(doc.child(0))?.ilvl).toBe(0);
+    expect(listRefOf(doc.child(2))?.numId).toBe(listRefOf(doc.child(0))?.numId);
+  });
+
   it("reads a table inside a cell as the text of that cell", () => {
     const doc = pasted(
       "<table><tr><td>outer<table><tr><td>inner</td></tr></table></td></tr></table>"
