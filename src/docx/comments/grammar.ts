@@ -21,6 +21,8 @@ import type { CommentReferenceData, CommentReplyData } from "./model";
 
 const ELEMENT_NODE = 1;
 
+const TEXT_NODE = 3;
+
 const XMLNS_NS = "http://www.w3.org/2000/xmlns/";
 
 const nameKey = (namespace: string | null, localName: string): string =>
@@ -134,6 +136,28 @@ function isNamed(el: Element, namespace: string, localName: string): boolean {
 export function holdsElementsOnly(el: Element): boolean {
   return Array.from(el.childNodes).every(
     (node) => node.nodeType === ELEMENT_NODE
+  );
+}
+
+/** XML layout whitespace, which is the one text carrying no payload wherever it stands */
+export function isLayoutText(node: Node): boolean {
+  return (
+    node.nodeType === TEXT_NODE && /^[ \t\r\n]*$/.test(node.nodeValue ?? "")
+  );
+}
+
+/**
+ * Whether the element holds elements and the whitespace a producer laid them out over.
+ *
+ * A block is sliced with the whitespace standing ahead of it (`docx/scan`), so the writer hands a
+ * block it left untouched back with the layout it arrived in, and an entry from a part written
+ * over several lines carries that layout between its blocks. Whitespace is the only text this
+ * passes over: a comment, a processing instruction or a stretch of real text is a place to put
+ * bytes nothing looks at, and none of them is anything the writer puts out.
+ */
+export function holdsElementsAndLayout(el: Element): boolean {
+  return Array.from(el.childNodes).every(
+    (node) => node.nodeType === ELEMENT_NODE || isLayoutText(node)
   );
 }
 
