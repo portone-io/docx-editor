@@ -64,6 +64,23 @@ describe("footnotes and endnotes", () => {
     ]);
   });
 
+  it("draws the same character for w:cr and w:noBreakHyphen as the body does", () => {
+    const parts = unzipSync(makeNotesDocx());
+    const marked =
+      '<w:r><w:t xml:space="preserve">re</w:t><w:noBreakHyphen/>' +
+      '<w:t xml:space="preserve">read</w:t><w:cr/>' +
+      '<w:softHyphen/><w:t xml:space="preserve">again</w:t></w:r>';
+    parts["word/footnotes.xml"] = new TextEncoder().encode(
+      decode(parts["word/footnotes.xml"]).replace(
+        '<w:r><w:t xml:space="preserve">Footnote body</w:t></w:r>',
+        marked
+      )
+    );
+    const state = createEditorState(importDocx(zipSync(parts)).doc);
+
+    expect(documentNotes(state)[0].text).toBe("re‑read\nagain\nSecond line");
+  });
+
   it("numbers notes by first reference rather than note-part order", () => {
     const bytes = makeNotesDocx(
       '<w:p><w:r><w:footnoteReference w:id="2"/></w:r>' +

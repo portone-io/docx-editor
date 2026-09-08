@@ -10,6 +10,7 @@ import {
   R_NS,
   W_NS,
 } from "../ooxml/xml";
+import { runContentText } from "./importPolicy";
 import { relatedPartPath } from "./packageParts";
 import { readRelationships, relsPathOf, resolveTarget } from "./relationships";
 
@@ -143,19 +144,11 @@ function paragraphSegments(paragraph: Element): HeaderFooterSegment[] {
         active.instruction += el.textContent ?? "";
       return;
     }
-    if (el.namespaceURI === W_NS && el.localName === "t") {
-      text(el.textContent ?? "");
-      return;
-    }
-    if (el.namespaceURI === W_NS && el.localName === "tab") {
-      text("\t");
-      return;
-    }
-    if (
-      el.namespaceURI === W_NS &&
-      (el.localName === "br" || el.localName === "cr")
-    ) {
-      text("\n");
+    // Everything a run child puts on screen is `./importPolicy`'s answer, so a header reads a
+    // carriage return and a no-break hyphen as the body does
+    const own = runContentText(el);
+    if (own !== null) {
+      text(own);
       return;
     }
     for (const child of elementChildren(el)) visit(child);
