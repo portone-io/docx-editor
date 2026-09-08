@@ -215,6 +215,47 @@ describe("reading HTML written by another application", () => {
     ]);
   });
 
+  it("keeps a table's caption", () => {
+    const doc = pasted(
+      "<table><caption>Crates and weights</caption>" +
+        "<tr><td>Ballast</td><td>Twelve</td></tr></table>"
+    );
+
+    const blocks = doc.children.map((block) => [
+      block.type.name,
+      block.textContent,
+    ]);
+    expect(blocks).toContainEqual(["paragraph", "Crates and weights"]);
+    const caption = blocks.findIndex(
+      ([, text]) => text === "Crates and weights"
+    );
+    expect(blocks[caption + 1]?.[0]).toBe("table");
+  });
+
+  it("keeps a table larger than the model's side limit readable", () => {
+    const rows = Array.from(
+      { length: 51 },
+      (_unused, row) => `<tr><td>a${row}</td><td>b${row}</td></tr>`
+    ).join("");
+    const doc = pasted(`<table>${rows}</table>`);
+
+    expect(nodesOfType(doc, "table")).toHaveLength(0);
+    const read = nodesOfType(doc, "paragraph").map(
+      (block) => block.textContent
+    );
+    expect(read).toHaveLength(51);
+    expect(read[0]).toBe("a0\tb0");
+    expect(read[50]).toBe("a50\tb50");
+  });
+
+  it("drops a row a table gives no cells", () => {
+    const doc = pasted("<table><tr></tr><tr><td>a</td></tr></table>");
+
+    const table = nodesOfType(doc, "table")[0];
+    expect(table?.childCount).toBe(1);
+    expect(nodesOfType(doc, "tableCell")).toHaveLength(1);
+  });
+
   it("reads a table inside a cell as the text of that cell", () => {
     const doc = pasted(
       "<table><tr><td>outer<table><tr><td>inner</td></tr></table></td></tr></table>"

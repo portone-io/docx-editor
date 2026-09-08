@@ -17,6 +17,7 @@ import {
   type TableCellPlan,
 } from "../../docx/tableTemplate";
 import { type ListKind, MAX_ILVL } from "../../numbering/listTemplate";
+import { docxSchema } from "../../schema";
 import { contextFor, type InlineContext } from "./inlineFormatting";
 import type { HtmlReadContext } from "./readContext";
 
@@ -141,6 +142,41 @@ function gridOf(table: HTMLElement): readonly (readonly PlacedCell[])[] | null {
   return isTableSide(cols) ? cells : null;
 }
 
+/** The caption a table carries above it, read as the paragraph it is drawn as */
+function captionOf(table: HTMLElement): HTMLElement | null {
+  for (const child of table.children) {
+    if (child instanceof HTMLElement && child.tagName === "CAPTION") {
+      return child;
+    }
+  }
+  return null;
+}
+
+/**
+ * A table the model cannot hold, read as text: one paragraph per row, its cells set apart by the
+ * tab that already stands between cells in the plain text of a table (`schema/clipboard`).
+ *
+ * Reading it as nothing would lose the content outright, which is worse than losing the grid.
+ */
+function rowParagraphs(
+  table: HTMLElement,
+  inline: InlineContext,
+  host: HtmlBlockHost
+): readonly PMNode[] {
+  return rowsOf(table)
+    .filter((row) => cellsOf(row).length > 0)
+    .map((row) =>
+      host.paragraph(
+        cellsOf(row).flatMap((cell, index) => [
+          ...(index === 0
+            ? []
+            : [docxSchema.text("\t", [docxSchema.marks.tab.create()])]),
+          ...host.readInline(cell.childNodes, contextFor(inline, cell)),
+        ])
+      )
+    );
+}
+
 /**
  * An HTML table, read as a table of this document.
  *
@@ -150,21 +186,33 @@ function gridOf(table: HTMLElement): readonly (readonly PlacedCell[])[] | null {
  * paper against would mean the same here.
  *
  * A table inside a cell is not read as a table: the model only makes the outer one editable, so
- * the inner one is left to the reading around it, which takes its text into the cell.
+ * the inner one is left to the reading around it, which takes its text into the cell. A table
+ * larger than the model holds is read as its rows, and a caption stands as the paragraph above it.
  */
 export const tableBlockReader: HtmlBlockReader = {
   read: (element, inline, host) => {
     if (element.tagName !== "TABLE" || host.inTable) return null;
-    const grid = gridOf(element);
-    if (grid === null) return null;
     const inside = contextFor(inline, element);
+    const caption = captionOf(element);
+    const above =
+      caption === null
+        ? []
+        : [
+            host.paragraph(
+              host.readInline(caption.childNodes, contextFor(inside, caption))
+            ),
+          ];
+    const grid = gridOf(element);
+    if (grid === null) {
+      return [...above, ...rowParagraphs(element, inside, host)];
+    }
     const cells: readonly (readonly TableCellPlan[])[] = grid.map((row) =>
       row.map(({ element: cell, rect }) => ({
         rect,
         content: host.readCell(cell, contextFor(inside, cell)),
       }))
     );
-    return [createTableNodeFrom(cells, host.context.geometry)];
+    return [...above, createTableNodeFrom(cells, host.context.geometry)];
   },
 };
 
