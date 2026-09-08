@@ -5,6 +5,7 @@ import type { Node as PMNode } from "prosemirror-model";
 import { describe, expect, it } from "vitest";
 import { decode, documentXmlOf, makeLinkedDocx } from "../__testing__/docx";
 import { rangeOfText, runCommand, select } from "../__testing__/editing";
+import { undo } from "../editor/commands";
 import { setLink } from "../editor/commands/linkCommands";
 import { createEditorState } from "../editor/createEditor";
 import { parseXml, R_NS } from "../ooxml/xml";
@@ -148,6 +149,18 @@ describe("a document holding a hyperlink that holds a control", () => {
     );
   });
 
+  it("typing inside the control stays inside both wrappers", () => {
+    const bytes = makeLinkedDocx(BODY, { rId9: TERMS });
+    const state = createEditorState(importDocx(bytes).doc);
+    const { from } = rangeOfText(state.doc, "terms");
+    const typed = state.apply(state.tr.insertText("X", from + 2));
+    const paragraph = typed.doc.child(0);
+
+    expect(paragraph.textContent).toBe("teXrms");
+    expect(nesting(only(paragraph))).toEqual(["link", "sdt"]);
+    expect(serializeParagraph(paragraph, REFS)).toContain("teXrms");
+  });
+
   it("a link made in the editor inside a control lands inside it", () => {
     const bytes = makeLinkedDocx(
       `<w:p>${control(run("read the terms"))}</w:p>`,
@@ -169,5 +182,20 @@ describe("a document holding a hyperlink that holds a control", () => {
     expect(written).toContain(
       `<w:hyperlink r:id="rId9">${run("terms")}</w:hyperlink></w:sdtContent>`
     );
+  });
+
+  it("undoing that link leaves the control exactly as it was", () => {
+    const bytes = makeLinkedDocx(
+      `<w:p>${control(run("read the terms"))}</w:p>`,
+      { rId9: TERMS }
+    );
+    const state = createEditorState(importDocx(bytes).doc);
+    const before = serializeParagraph(state.doc.child(0), REFS);
+    const { from, to } = rangeOfText(state.doc, "terms");
+    const linked = runCommand(select(state, from, to), setLink(TERMS));
+
+    expect(
+      serializeParagraph(runCommand(linked, undo).doc.child(0), REFS)
+    ).toBe(before);
   });
 });
