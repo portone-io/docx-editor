@@ -74,6 +74,7 @@ export { insertLineBreak, insertPageBreak } from "./breakCommands";
 export { canRunCommand } from "./canRunCommand";
 export type {
   CommentAuthor,
+  CommentRange,
   DocumentComment,
   DocumentCommentReply,
   NewComment,
