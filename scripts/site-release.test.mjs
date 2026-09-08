@@ -163,7 +163,13 @@ const git = async (_command, args) => ({
 const repo = "repos/owner/repo";
 
 /** Answers GitHub as if production served `served` (absent when null) and returns the calls made. */
-function github({ served = null, exists = false, rejected = null } = {}) {
+function github({
+  served = null,
+  exists = false,
+  rejected = null,
+  mainPin = null,
+  proposed = null,
+} = {}) {
   const calls = [];
   const reply = (status, payload) => ({
     ok: status < 400,
@@ -178,6 +184,14 @@ function github({ served = null, exists = false, rejected = null } = {}) {
       return served
         ? reply(200, { dependencies: { [library]: served } })
         : reply(404, { message: "Not Found" });
+    if (path.startsWith(`${repo}/contents/site/package.json?ref=main`))
+      return mainPin
+        ? reply(200, { dependencies: { [library]: mainPin } })
+        : reply(404, { message: "Not Found" });
+    if (path === `${repo}/pulls?head=owner:production&base=main&state=open`)
+      return reply(200, proposed ? [{ html_url: proposed }] : []);
+    if (path === `${repo}/pulls`)
+      return reply(201, { html_url: "https://example.com/pull/1" });
     if (path === `${repo}/git/ref/heads/production`)
       return exists ? reply(200, {}) : reply(404, { message: "Not Found" });
     if (
@@ -222,6 +236,9 @@ test("production is rebuilt as the release commit plus the verified inputs", asy
           ? `PATCH ${repo}/git/refs/heads/production`
           : `POST ${repo}/git/refs`,
         "POST graphql",
+        `GET ${repo}/contents/site/package.json?ref=main`,
+        `GET ${repo}/pulls?head=owner:production&base=main&state=open`,
+        `POST ${repo}/pulls`,
       ]
     );
     assert.deepEqual(
@@ -266,8 +283,38 @@ test("unchanged inputs move production to the release commit without a commit", 
   );
   assert.deepEqual(
     remote.calls.map((call) => call.method),
-    ["GET", "GET", "PATCH"]
+    ["GET", "GET", "PATCH", "GET", "GET", "POST"]
   );
+});
+
+const pulls = (remote) =>
+  remote.calls.filter((call) => call.path.startsWith(`${repo}/pulls`));
+
+test("the release is proposed on main from the production branch", async (t) => {
+  const remote = github({ exists: true });
+  await publish(await fixture(t), "0.2.1", publishOptions(remote));
+  const [, opened] = pulls(remote);
+  assert.equal(`${opened.method} ${opened.path}`, `POST ${repo}/pulls`);
+  assert.deepEqual(
+    [opened.body.head, opened.body.base],
+    ["production", "main"]
+  );
+  assert.match(opened.body.body, /already runs 0\.2\.1/);
+});
+
+test("an open proposal is reported instead of opened again", async (t) => {
+  const remote = github({ exists: true, proposed: "https://example.com/7" });
+  await publish(await fixture(t), "0.2.1", publishOptions(remote));
+  assert.deepEqual(
+    pulls(remote).map((call) => call.method),
+    ["GET"]
+  );
+});
+
+test("nothing is proposed when main already pins the release", async (t) => {
+  const remote = github({ exists: true, mainPin: "0.2.1" });
+  await publish(await fixture(t), "0.2.1", publishOptions(remote));
+  assert.deepEqual(pulls(remote), []);
 });
 
 test("unrelated or mismatched inputs stop before GitHub is touched", async (t) => {
