@@ -74,7 +74,8 @@ describe("a stretch of text wrapped in a content control", () => {
     expect(markNames(child)).toEqual(["sdt", "run"]);
     expect(requireSdtMark(child).attrs).toEqual({
       sdtPrefix: `<w:sdt>${LOCK_PR}`,
-      sdtKey: 0,
+      key: 0,
+      depth: 0,
       contentsLocked: true,
       deletionLocked: true,
     });
@@ -84,7 +85,8 @@ describe("a stretch of text wrapped in a content control", () => {
     const node = requireParagraph(`<w:p>${sdt(run("value"))}</w:p>`);
     expect(requireSdtMark(node.child(0)).attrs).toEqual({
       sdtPrefix: `<w:sdt>${ID_PR}`,
-      sdtKey: 0,
+      key: 0,
+      depth: 0,
       contentsLocked: false,
       deletionLocked: false,
     });
@@ -192,7 +194,7 @@ describe("two neighbouring controls written exactly alike", () => {
 
     expect(first.eq(second)).toBe(false);
     expect(first.attrs.sdtPrefix).toBe(second.attrs.sdtPrefix);
-    expect([first.attrs.sdtKey, second.attrs.sdtKey]).toEqual([0, 1]);
+    expect([first.attrs.key, second.attrs.key]).toEqual([0, 1]);
   });
 });
 
@@ -362,7 +364,7 @@ describe("a stretch of text wrapped in a hyperlink", () => {
 
     expect(node.childCount).toBe(2);
     expect(first.eq(second)).toBe(false);
-    expect([first.attrs.linkKey, second.attrs.linkKey]).toEqual([0, 1]);
+    expect([first.attrs.key, second.attrs.key]).toEqual([0, 1]);
   });
 
   it("keeps the markup that puts nothing on screen inside the link", () => {

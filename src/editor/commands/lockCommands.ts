@@ -24,14 +24,16 @@ import {
   unlockAllowed,
 } from "../../schema/locks";
 import { editsShut } from "../../schema/protectionState";
+import { innermostDepth, sharedWrappers } from "../../schema/wrappers";
 
 /**
  * The mark a newly locked stretch wears, which is also the XML it goes back out as.
  * `sdtContentLocked` shuts both clauses of the lock, so the mark records both.
  */
-function lockedControlMark(id: number): Mark {
+function lockedControlMark(id: number, depth: number): Mark {
   return docxSchema.marks.sdt.create({
     sdtPrefix: lockedControlPrefix(id),
+    depth,
     contentsLocked: true,
     deletionLocked: true,
   });
@@ -89,6 +91,25 @@ function stretchIn(block: Textblock, reach: Stretch): Stretch | null {
   return from < to ? { from, to } : null;
 }
 
+/**
+ * The depth a control laid across this stretch takes: inside every wrapper the whole stretch
+ * already stands in, and outside every wrapper only a part of it stands in.
+ *
+ * A control put inside a link the stretch is wholly within goes back out inside that one link. One
+ * put around a stretch that only partly stands in a link wraps the link's text along with the rest,
+ * which is the nesting the marks meant before either carried a depth.
+ */
+function wrapperDepthOver(block: Textblock, stretch: Stretch): number {
+  const covered: PMNode[] = [];
+  block.node.forEach((child, offset) => {
+    const from = block.start + offset;
+    if (from < stretch.to && stretch.from < from + child.nodeSize) {
+      covered.push(child);
+    }
+  });
+  return innermostDepth(sharedWrappers(covered)) + 1;
+}
+
 /** The parts of this stretch that no control stands in */
 function gapsIn(stretch: Stretch, spans: readonly ControlSpan[]): Stretch[] {
   const gaps: Stretch[] = [];
@@ -105,6 +126,12 @@ function gapsIn(stretch: Stretch, spans: readonly ControlSpan[]): Stretch[] {
 /** One stretch a lock is going on, wearing the control that shuts it */
 interface LockEdit extends Stretch {
   mark: Mark;
+  /**
+   * The control this one is written in place of, which is taken off first.
+   * A control does not exclude another (`schema/wrappers`), so laying the shut one straight over
+   * the open one would leave the stretch inside two controls instead of the one it was in.
+   */
+  replaces?: Mark;
 }
 
 /** A locked cell the selection reaches, and where it stands */
@@ -136,6 +163,7 @@ function takeover(
         from: Math.min(stretch.from, only.from),
         to: Math.max(stretch.to, only.to),
         mark,
+        replaces: only.mark,
       }
     : null;
 }
@@ -162,12 +190,14 @@ function blockLockEdits(
   const shut = open(met.filter((span) => !isLocked(span.mark))).flatMap(
     (span) => {
       const mark = withLock(span.mark, true);
-      return mark ? [{ from: span.from, to: span.to, mark }] : [];
+      return mark
+        ? [{ from: span.from, to: span.to, mark, replaces: span.mark }]
+        : [];
     }
   );
   const fresh = open(gapsIn(stretch, spans)).map((gap) => ({
     ...gap,
-    mark: lockedControlMark(newControlId()),
+    mark: lockedControlMark(newControlId(), wrapperDepthOver(block, gap)),
   }));
   return [...shut, ...fresh];
 }
@@ -299,7 +329,10 @@ export const lockSelection: Command = guardedCommand((state) => {
   const edits = lockEditsOf(selectionLockDetail(state));
   if (edits.length === 0) return null;
   const tr = state.tr;
-  for (const edit of edits) tr.addMark(edit.from, edit.to, edit.mark);
+  for (const edit of edits) {
+    if (edit.replaces) tr.removeMark(edit.from, edit.to, edit.replaces);
+    tr.addMark(edit.from, edit.to, edit.mark);
+  }
   return tr;
 });
 
@@ -331,9 +364,11 @@ export const unlockSelection: Command = guardedCommand((state) => {
   const tr = state.tr.setMeta(unlockAllowed, true);
   for (const span of spans) {
     const opened = withLock(span.mark, false);
+    // The shut control comes off first: one control does not exclude another, so the opened one
+    // laid over it would stand beside it rather than in its place (`schema/wrappers`)
+    tr.removeMark(span.from, span.to, span.mark);
     // A control we cannot rewrite goes away instead, which beats a lock that cannot be lifted
     if (opened) tr.addMark(span.from, span.to, opened);
-    else tr.removeMark(span.from, span.to, span.mark);
   }
   for (const cell of cells) unlockCell(tr, cell);
   return tr;

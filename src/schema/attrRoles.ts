@@ -153,6 +153,18 @@ export const NODE_ATTR_ROLES: AttrTable = {
   },
 };
 
+/**
+ * What every wrapper mark carries (`./wrappers`). The export reads both to put the wrappers back
+ * where they stood and writes neither into the file, and neither is worked out again from what
+ * stands around it.
+ */
+const WRAPPER_ATTR_ROLES: Readonly<Record<string, AttrFacts>> = {
+  // Which wrapper of its kind this is, counted through the document as it was opened
+  key: { role: "session", class: "identity" },
+  // How deep inside the other wrappers this one stood in the file
+  depth: { role: "session", class: "identity" },
+};
+
 export const MARK_ATTR_ROLES: AttrTable = {
   run: {
     rPr: { role: "source", class: "preserved" },
@@ -161,15 +173,14 @@ export const MARK_ATTR_ROLES: AttrTable = {
   },
   sdt: {
     sdtPrefix: { role: "source", class: "preserved" },
-    // Counted through the document as it was opened, to tell one control from the next
-    sdtKey: { role: "session", class: "identity" },
+    ...WRAPPER_ATTR_ROLES,
     contentsLocked: { role: "source", class: "derived" },
     deletionLocked: { role: "source", class: "derived" },
   },
   link: {
     linkPrefix: { role: "source", class: "preserved" },
     href: { role: "source", class: "model" },
-    linkKey: { role: "session", class: "identity" },
+    ...WRAPPER_ATTR_ROLES,
   },
   tab: { tabAttrs: { role: "source", class: "preserved" } },
 };

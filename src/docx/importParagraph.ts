@@ -383,7 +383,7 @@ function buildHyperlinkNodes(
       wrapper.relId === null
         ? null
         : (sources.links.get(wrapper.relId) ?? null),
-    linkKey: nextKey(linkCounts, el),
+    key: nextKey(linkCounts, el),
   });
   return buildWrappedNodes(el, sources, [...wrappers, mark], false);
 }
@@ -398,7 +398,7 @@ function buildSdtNodes(el: Element, sources: ImportSources): PMNode[] | null {
 
   const mark = docxSchema.marks.sdt.create({
     sdtPrefix: wrapper.prefix,
-    sdtKey: nextKey(controlCounts, el),
+    key: nextKey(controlCounts, el),
     contentsLocked: wrapper.contentsLocked,
     deletionLocked: wrapper.deletionLocked,
   });

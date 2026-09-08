@@ -13,8 +13,8 @@ const PREFIX = `<w:sdt>${BOUND_PR}`;
 /** What a copy of a bound control opens as: an id of its own and no binding left */
 const COPY = /^<w:sdt><w:sdtPr><w:id w:val="\d+"\/><\/w:sdtPr>$/;
 
-function control(sdtKey: number, sdtPrefix = PREFIX): Mark {
-  return docxSchema.marks.sdt.create({ sdtPrefix, sdtKey });
+function control(key: number, sdtPrefix = PREFIX): Mark {
+  return docxSchema.marks.sdt.create({ sdtPrefix, key });
 }
 
 const runMark = docxSchema.marks.run.create({ rPr: null });

@@ -29,8 +29,8 @@ function open(xml: string, links?: LinkTargets): PMNode {
 const ID_PR = '<w:sdtPr><w:id w:val="7"/></w:sdtPr>';
 const PREFIX = `<w:sdt>${ID_PR}`;
 
-function sdtMark(sdtPrefix: string, locked = false, sdtKey = 0): Mark {
-  return docxSchema.marks.sdt.create({ sdtPrefix, sdtKey, locked });
+function sdtMark(sdtPrefix: string, locked = false, key = 0): Mark {
+  return docxSchema.marks.sdt.create({ sdtPrefix, key, locked });
 }
 
 function runMark(rPr: string | null = null): Mark {
@@ -159,7 +159,8 @@ describe("tabs", () => {
 function linkMark(attrs: {
   linkPrefix?: string | null;
   href?: string | null;
-  linkKey?: number;
+  key?: number;
+  depth?: number;
 }): Mark {
   return docxSchema.marks.link.create(attrs);
 }
@@ -202,7 +203,7 @@ describe("a hyperlink around a stretch of text", () => {
     const second = linkMark({
       linkPrefix: OPENING,
       href: "https://example.com",
-      linkKey: 1,
+      key: 1,
     });
     const node = paragraph(
       docxSchema.text("a", [first, runMark()]),

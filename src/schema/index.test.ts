@@ -485,10 +485,10 @@ describe("parseDOM", () => {
    * (a paste, or a redraw of the whole document).
    */
   it("two neighbouring content controls stay apart through the DOM", () => {
-    const controlAt = (sdtKey: number) =>
+    const controlAt = (key: number) =>
       docxSchema.marks.sdt.create({
         sdtPrefix: '<w:sdt><w:sdtPr><w:id w:val="7"/></w:sdtPr>',
-        sdtKey,
+        key,
       });
     const neighbours = docxSchema.nodes.doc.create(null, [
       paragraph({}, [
@@ -500,7 +500,7 @@ describe("parseDOM", () => {
 
     expect(
       Array.from(host.querySelectorAll(".docx-editor-sdt")).map((span) =>
-        span.getAttribute("data-sdt-key")
+        span.getAttribute("data-key")
       )
     ).toEqual(["0", "1"]);
     expect(
@@ -558,11 +558,11 @@ describe("parseDOM", () => {
 
   /** Two links written exactly alike are told apart by their number alone, as two controls are */
   it("two neighbouring hyperlinks stay apart through the DOM", () => {
-    const linkAt = (linkKey: number) =>
+    const linkAt = (key: number) =>
       docxSchema.marks.link.create({
         linkPrefix: '<w:hyperlink r:id="rId9">',
         href: "https://example.com",
-        linkKey,
+        key,
       });
     const neighbours = docxSchema.nodes.doc.create(null, [
       paragraph({}, [
@@ -574,7 +574,7 @@ describe("parseDOM", () => {
 
     expect(
       Array.from(host.querySelectorAll(".docx-editor-link")).map((span) =>
-        span.getAttribute("data-link-key")
+        span.getAttribute("data-key")
       )
     ).toEqual(["0", "1"]);
     expect(

@@ -26,6 +26,7 @@ import {
 } from "prosemirror-transform";
 import type { EditIntent, StepGuard } from "./editGuard";
 import { docxSchema } from "./index";
+import { wrappersOf } from "./wrappers";
 
 /**
  * The pass that lets a transaction through the guard, which is how a lock can be lifted at all.
@@ -58,9 +59,14 @@ interface StepRange {
   to: number;
 }
 
-/** The content control this inline node sits inside, locked or open. Null when it sits in none */
-function sdtMarkOf(node: PMNode | null | undefined): Mark | null {
-  return node?.marks.find((mark) => mark.type === docxSchema.marks.sdt) ?? null;
+/**
+ * Every content control this inline node sits inside, locked or open, outermost first. Empty when
+ * it sits in none.
+ *
+ * A control may hold a control (`schema/wrappers`), and each of them locks on its own terms.
+ */
+function sdtMarksOf(node: PMNode | null | undefined): readonly Mark[] {
+  return node ? wrappersOf(node, docxSchema.marks.sdt.name) : [];
 }
 
 /** What the control this mark stands for shuts (`schema`) */
@@ -76,8 +82,7 @@ function markLocks(mark: Mark): Locks {
  * or in one whose contents stand open, a control locked against deletion alone included.
  */
 export function lockedMarkOf(node: PMNode | null | undefined): Mark | null {
-  const mark = sdtMarkOf(node);
-  return mark !== null && markLocks(mark).contents ? mark : null;
+  return sdtMarksOf(node).find((mark) => markLocks(mark).contents) ?? null;
 }
 
 /** The two cell attributes the clauses of a wrapped cell's lock are written in (`schema`) */
@@ -109,9 +114,15 @@ export function isLockedCell(node: PMNode | null | undefined): boolean {
  * so a control locked against deletion alone counts (`editor/commands/lockCommands`).
  */
 export function carriesLock(node: PMNode): boolean {
-  const mark = node.isInline ? sdtMarkOf(node) : null;
-  const locks = mark === null ? cellLocks(node) : markLocks(mark);
-  return locks.contents || locks.deletion;
+  const marks = node.isInline ? sdtMarksOf(node) : [];
+  if (marks.length === 0) {
+    const locks = cellLocks(node);
+    return locks.contents || locks.deletion;
+  }
+  return marks.some((mark) => {
+    const locks = markLocks(mark);
+    return locks.contents || locks.deletion;
+  });
 }
 
 /** A textblock a judgement or an edit runs through, and where its content begins */
@@ -131,17 +142,30 @@ export interface ControlSpan extends StepRange {
  * A control that wrapped several runs comes in as several inlines wearing the very same mark, and
  * what a lock answers for is the control rather than the run: a stretch covering one run of a
  * control whole still covers only a part of the control.
+ *
+ * A control standing inside another gives a span of its own, the outer one first, and the two
+ * overlap: each locks on its own terms.
  */
 export function controlSpans(block: Textblock): ControlSpan[] {
   const spans: ControlSpan[] = [];
+  // The controls the node before this one stood in, so that a control reaching on is extended
+  // rather than started again. Two controls never wear the same mark, so equality is the match
+  let reaching: ControlSpan[] = [];
   block.node.forEach((child, offset) => {
-    const mark = sdtMarkOf(child);
-    if (!mark) return;
     const from = block.start + offset;
     const to = from + child.nodeSize;
-    const last = spans.at(-1);
-    if (last && last.to === from && last.mark.eq(mark)) last.to = to;
-    else spans.push({ from, to, mark });
+    reaching = sdtMarksOf(child).map((mark) => {
+      const open = reaching.find(
+        (span) => span.to === from && span.mark.eq(mark)
+      );
+      if (open) {
+        open.to = to;
+        return open;
+      }
+      const started: ControlSpan = { from, to, mark };
+      spans.push(started);
+      return started;
+    });
   });
   return spans;
 }

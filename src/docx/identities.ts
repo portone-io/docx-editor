@@ -108,7 +108,7 @@ function sdtMarkOf(node: PMNode): Mark | null {
 
 /** What tells one control apart from another, wherever in the document it turns up */
 function controlName(mark: Mark): string {
-  const key: unknown = mark.attrs.sdtKey;
+  const key: unknown = mark.attrs.key;
   const prefix: unknown = mark.attrs.sdtPrefix;
   return `${typeof key === "number" ? key : 0} ${typeof prefix === "string" ? prefix : ""}`;
 }

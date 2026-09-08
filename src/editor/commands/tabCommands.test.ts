@@ -72,7 +72,7 @@ describe("insertTab", () => {
   it("keeps a link around a tab inserted inside its text", () => {
     const link = docxSchema.marks.link.create({
       href: "https://example.com",
-      linkKey: 1,
+      key: 1,
     });
     const doc = docxSchema.nodes.doc.create(null, [
       docxSchema.nodes.paragraph.create(null, docxSchema.text("ab", [link])),
