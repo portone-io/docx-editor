@@ -264,9 +264,11 @@ function xmlParts(
 }
 
 /**
- * The parts of an exported package that no committed schema describes, which the test below
- * holds the package to holding. Without the list, a package that stopped writing one of them
- * would still pass a test that only reads what it finds.
+ * The parts of an exported package that no committed schema describes, every one of which the
+ * battery holds its final package to writing. The battery is what puts most of them there: a
+ * comment brings `word/comments.xml` and the thread part beside it, an image brings a media
+ * relationship, and every one of them is named in the content types. Without the list, a package
+ * that stopped writing one of them would still pass a test that only reads what it finds.
  */
 const UNDESCRIBED_PARTS: readonly string[] = [
   CONTENT_TYPES_PATH,
@@ -428,6 +430,12 @@ function expectBatteryValidates(
     step += 1;
   });
   expectPartsValidate(name, snapshots);
+  for (const path of UNDESCRIBED_PARTS) {
+    expect(
+      written.exported.parts[path] !== undefined,
+      `${name} wrote no ${path}`
+    ).toBe(true);
+  }
   expectProbesWrote(written.exported, untouched);
 }
 
@@ -1284,28 +1292,6 @@ describe("the exported package after an edit battery", () => {
     expect(session.geometry).toEqual(LETTER_GEOMETRY);
     expectBatteryValidates("universal measures", doc, session);
   });
-
-  /**
-   * The parts no committed schema describes. The battery is what puts most of them in the
-   * package: a comment brings `word/comments.xml` and the thread part beside it, an image brings
-   * a media relationship, and every one of them is named in the content types.
-   */
-  it.each(fixtureNames)(
-    "%s: every XML part of the exported package parses",
-    (name) => {
-      const { doc, session } = importDocx(readFixture(name));
-      const bytes = exportDocx(
-        afterTheBattery(openState(doc, session)).doc,
-        session
-      );
-
-      const parts = xmlParts(unzipSync(bytes));
-      for (const path of UNDESCRIBED_PARTS) {
-        expect(parts.has(path), `${name} wrote no ${path}`).toBe(true);
-      }
-      expectEveryXmlPartParses(name, parts);
-    }
-  );
 
   /** The same battery over a body holding no table at all, so the one it inserts is the first */
   it.each(fixtureNames)(
