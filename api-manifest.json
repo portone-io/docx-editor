@@ -103,6 +103,7 @@
     "selectComment",
     "selectionLock",
     "selectionTouchesLocked",
+    "setCommentBody",
     "setCommentResolved",
     "setFontFamily",
     "setFontSize",

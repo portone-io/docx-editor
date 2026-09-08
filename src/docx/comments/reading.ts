@@ -8,9 +8,7 @@ import {
   elementChildren,
   parseXml,
   serializeXml,
-  W_NS,
 } from "../../ooxml/xml";
-import { runContentText } from "../importPolicy";
 import { relatedPartPath } from "../packageParts";
 import { COMMENTS_EXTENDED_REL_TYPE, COMMENTS_REL_TYPE } from "./constants";
 import { lastBodyParagraph } from "./grammar";
@@ -21,19 +19,10 @@ import {
   readPeople,
 } from "./people";
 
-/** The plain text a comment body reads as, taken from the same rules the body reader takes */
-function inlineCommentText(node: Element): string {
-  return (
-    runContentText(node) ??
-    elementChildren(node).map(inlineCommentText).join("")
-  );
-}
-
-function commentText(el: Element): string {
-  const paragraphs = Array.from(el.getElementsByTagNameNS(W_NS, "p"));
-  return paragraphs.map(inlineCommentText).join("\n");
-}
-
+/**
+ * One entry of the Comments part as it arrived, everything about it but what it says: that is a
+ * story of its own, sliced and read the way a body block is (`docx/story`).
+ */
 export interface ImportedComment {
   id: string;
   author: string | null;
@@ -45,8 +34,6 @@ export interface ImportedComment {
   authorId: string | null;
   initials: string | null;
   date: string | null;
-  text: string;
-  xml: string;
   paraId: string | null;
   parentParaId: string | null;
   resolved: boolean;
@@ -194,8 +181,6 @@ export function readComments(
           authorId: author === null ? null : commentAuthorId(people, author),
           initials: attributeByLocalName(el, "initials"),
           date: attributeByLocalName(el, "date"),
-          text: commentText(el),
-          xml: serializeXml(el),
           paraId,
           parentParaId: extension?.parentParaId ?? null,
           resolved: extension?.resolved ?? false,

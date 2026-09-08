@@ -6,23 +6,26 @@ import {
   elementChildren,
   parseXml,
   R_NS,
-  W_NS,
 } from "../ooxml/xml";
-import { runContentText } from "./importPolicy";
 import { relatedPartPath } from "./packageParts";
 
 export type NoteKind = "footnote" | "endnote";
 
+/**
+ * One entry of a notes part as it arrived. What the note says is a story of its own, held on the
+ * document node under `footnote:<id>` or `endnote:<id>` (`docx/story`).
+ */
 export interface ImportedNote {
   kind: NoteKind;
   id: string;
   label: string;
-  text: string;
   type: string | null;
 }
 
 export interface ImportedNotePart {
   partPath: string | null;
+  /** The raw text of the part, which is what the note stories are sliced out of. null for none */
+  xml: string | null;
   ordered: readonly ImportedNote[];
   byId: ReadonlyMap<string, ImportedNote>;
 }
@@ -34,6 +37,7 @@ export interface ImportedNotes {
 
 const EMPTY_PART: ImportedNotePart = {
   partPath: null,
+  xml: null,
   ordered: [],
   byId: new Map(),
 };
@@ -42,22 +46,6 @@ export const NO_NOTES: ImportedNotes = {
   footnotes: EMPTY_PART,
   endnotes: EMPTY_PART,
 };
-
-/**
- * The plain text a note body reads as.
- *
- * What one run child puts on screen is `docx/importPolicy`'s answer, the same one the body reader
- * and every other story reader takes, so a `w:cr` cannot end a line here and read as nothing there.
- */
-function inlineText(node: Element): string {
-  return runContentText(node) ?? elementChildren(node).map(inlineText).join("");
-}
-
-function noteText(el: Element): string {
-  return Array.from(el.getElementsByTagNameNS(W_NS, "p"))
-    .map(inlineText)
-    .join("\n");
-}
 
 function notePart(
   parts: Map<string, Uint8Array>,
@@ -70,7 +58,8 @@ function notePart(
   const bytes = parts.get(partPath);
   if (!bytes) return { ...EMPTY_PART, partPath };
 
-  const root = parseXml(decodeUtf8(bytes).text).documentElement;
+  const xml = decodeUtf8(bytes).text;
+  const root = parseXml(xml).documentElement;
   const elements = elementChildren(root).filter((el) => el.localName === kind);
   const ordered = elements.flatMap((el): ImportedNote[] => {
     const id = attributeByLocalName(el, "id");
@@ -78,13 +67,13 @@ function notePart(
     const type = attributeByLocalName(el, "type");
     const regular = type === null || type === "normal";
     const label = regular ? "?" : "";
-    return [{ kind, id, label, text: noteText(el), type }];
+    return [{ kind, id, label, type }];
   });
   const byId = new Map<string, ImportedNote>();
   for (const note of ordered) {
     if (!byId.has(note.id)) byId.set(note.id, note);
   }
-  return { partPath, ordered, byId };
+  return { partPath, xml, ordered, byId };
 }
 
 /** Reads both note parts without modifying their original package bytes. */

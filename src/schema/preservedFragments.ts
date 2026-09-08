@@ -2,6 +2,20 @@ import type { Node as PMNode } from "prosemirror-model";
 
 type MarkerAttr = "leadingXml" | "trailingXml";
 
+/**
+ * Whether this node is content the editor keeps as it came rather than one it models.
+ *
+ * The block placeholder declares it as a group; the two inline ones cannot, since their group says
+ * where they may stand, so they are named here and asked for by name everywhere else.
+ */
+export function isPreservedNode(node: PMNode): boolean {
+  return (
+    node.type.name === "rawInline" ||
+    node.type.name === "rawRunContent" ||
+    node.type.isInGroup("preserved")
+  );
+}
+
 /** Visit preserved XML in the order the writer places it around editable content. */
 export function visitPreservedFragments(
   doc: PMNode,
@@ -19,11 +33,7 @@ export function visitPreservedFragments(
     }
   };
   const walk = (node: PMNode, pos: number) => {
-    if (
-      node.type.name === "rawInline" ||
-      node.type.name === "rawRunContent" ||
-      node.type.isInGroup("preserved")
-    ) {
+    if (isPreservedNode(node)) {
       visit(
         node,
         pos,

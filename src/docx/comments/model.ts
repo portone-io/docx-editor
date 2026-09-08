@@ -5,15 +5,17 @@
 import type { Node as PMNode } from "prosemirror-model";
 import type { ImportedComments } from "./reading";
 
+/**
+ * A comment as the reference node in the story carries it: who wrote it, where its thread state
+ * hangs, and the replies under it. What it says is not here - a body is a story of its own, held
+ * on the document node under `comment:<id>` (`docx/story`).
+ */
 export interface CommentReferenceData {
   id: string;
   author: string | null;
   authorId: string | null;
   initials: string | null;
   date: string | null;
-  text: string;
-  commentXml: string | null;
-  imported: boolean;
   paraId: string;
   resolved: boolean;
   extensionXml: string | null;
@@ -27,9 +29,6 @@ export interface CommentReplyData {
   authorId: string | null;
   initials: string | null;
   date: string | null;
-  text: string;
-  commentXml: string | null;
-  imported: boolean;
   paraId: string;
   parentParaId: string;
   extensionXml: string | null;
@@ -73,9 +72,6 @@ export function importedCommentReplies(
       authorId: reply.authorId,
       initials: reply.initials,
       date: reply.date,
-      text: reply.text,
-      commentXml: reply.xml,
-      imported: true,
       paraId,
       parentParaId,
       extensionXml: reply.extensionXml,
@@ -108,9 +104,6 @@ function replyData(value: unknown): CommentReplyData[] {
         authorId: nullableString(entry.authorId),
         initials: nullableString(entry.initials),
         date: nullableString(entry.date),
-        text: nullableString(entry.text) ?? "",
-        commentXml: nullableString(entry.commentXml),
-        imported: entry.imported === true,
         paraId,
         parentParaId,
         extensionXml: nullableString(entry.extensionXml),
@@ -129,9 +122,6 @@ function referenceData(node: PMNode): CommentReferenceData | null {
     authorId: nullableString(node.attrs.authorId),
     initials: nullableString(node.attrs.initials),
     date: nullableString(node.attrs.date),
-    text: nullableString(node.attrs.text) ?? "",
-    commentXml: nullableString(node.attrs.commentXml),
-    imported: node.attrs.imported === true,
     paraId: nullableString(node.attrs.paraId) ?? "00000001",
     resolved: node.attrs.resolved === true,
     extensionXml: nullableString(node.attrs.extensionXml),

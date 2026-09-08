@@ -721,13 +721,14 @@ describe("raw XML coming in through the DOM", () => {
     expect(parsed.textContent).toBe("x");
   });
 
-  it("a comment reference whose reply carries a smuggled body is refused", () => {
+  it("a comment reference whose reply carries smuggled thread state is refused", () => {
     const replies = JSON.stringify([
       {
         id: "2",
         paraId: "0A0A0A0A",
         parentParaId: "0B0B0B0B",
-        commentXml: '<w:comment w:id="2"/><w:comment w:id="3"/>',
+        extensionXml:
+          '<w15:commentEx w15:paraId="0A0A0A0A"/><w15:commentEx w15:paraId="0C0C0C0C"/>',
       },
     ]);
     const parsed = parseHtml(

@@ -84,8 +84,14 @@ export interface StoryPartKind {
   rootKept(before: SessionStore, after: SessionStore): boolean;
   /** The keys this file still stands behind, which is what an entry has to be keyed by */
   referents(story: Story): ReadonlySet<string>;
-  /** Grammar alone: whether the entry is one this editor's writer could have put out, whoever it belongs to */
-  wellFormed(entry: Element): boolean;
+  /**
+   * Grammar alone: whether the entry is one this editor's writer could have put out, whoever it
+   * belongs to. `original` is the entry the file that arrived held under the same key, and null
+   * for one that appeared, because what the writer can put out depends on what it had to work
+   * with: it writes a comment's body out of the blocks it models and passes the rest through from
+   * the entry it read.
+   */
+  wellFormed(entry: Element, original: Element | null): boolean;
   /**
    * Whether the entry came back differing from the one that arrived in nothing but a change this
    * protection leaves to everyone. Such an entry is nobody's rewrite, so it is held neither to
@@ -416,7 +422,7 @@ function partKept(
     if (!stoodBehindNow.has(id)) return false;
     if (original && kind.anyonesChange(entry.el, original.el)) continue;
     if (
-      !kind.wellFormed(entry.el) ||
+      !kind.wellFormed(entry.el, original?.el ?? null) ||
       !kind.allowed(
         entry.el,
         original?.el ?? null,

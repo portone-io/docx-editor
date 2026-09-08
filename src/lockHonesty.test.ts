@@ -12,6 +12,7 @@ import {
 } from "./__testing__/docx";
 import { select } from "./__testing__/editing";
 import { importDocx } from "./docx/importDocx";
+import { storyFromText } from "./docx/story";
 import * as commands from "./editor/commands/index";
 import { createEditorState } from "./editor/createEditor";
 import { setProtection } from "./editor/plugins/documentProtection";
@@ -431,6 +432,10 @@ const CASES: readonly CommandCase[] = [
     }),
   },
   { name: "updateComment", command: commands.updateComment("0", "note") },
+  {
+    name: "setCommentBody",
+    command: commands.setCommentBody("0", storyFromText("note")),
+  },
   {
     name: "updateCommentReply",
     command: commands.updateCommentReply("0", "1", "reply"),

@@ -8,6 +8,14 @@ import {
   type Transaction,
 } from "prosemirror-state";
 import { commentParaId } from "../../../docx/comments";
+import {
+  setStory,
+  storyFromText,
+  storyKey,
+  storyOf,
+  storyText,
+  withoutStories,
+} from "../../../docx/story";
 import { docxSchema } from "../../../schema";
 import { guardedCommand } from "../../../schema/guards";
 import {
@@ -162,9 +170,6 @@ function addCommentTransaction(
       authorId: comment.authorId ?? null,
       initials: comment.initials ?? null,
       date,
-      text: comment.text,
-      commentXml: null,
-      imported: false,
       paraId,
       resolved: false,
       extensionXml: null,
@@ -179,10 +184,14 @@ function addCommentTransaction(
     null,
     startMarks
   );
-  return state.tr
-    .insert(to, end)
-    .insert(to + 1, reference)
-    .insert(from, start);
+  return setStory(
+    state.tr
+      .insert(to, end)
+      .insert(to + 1, reference)
+      .insert(from, start),
+    storyKey("comment", id),
+    storyFromText(comment.text)
+  );
 }
 
 /**
@@ -211,35 +220,83 @@ export function canAddComment(state: EditorState, at?: CommentRange): boolean {
   )(state);
 }
 
-/** Replaces the plain-text body of one comment, retaining its author and anchor. */
-export function updateComment(id: string, text: string): Command {
-  return guardedCommand((state) => {
-    if (text.trim().length === 0) return null;
-    let transaction = state.tr;
-    let changed = false;
-    state.doc.descendants((node, pos) => {
-      if (
-        node.type.name === "commentReference" &&
-        stringAttr(node.attrs.id) === id &&
-        stringAttr(node.attrs.text) !== text
-      ) {
-        transaction = transaction.setNodeMarkup(pos, null, {
-          ...node.attrs,
-          text,
-          commentXml: null,
-          imported: false,
-        });
-        changed = true;
-      }
-      return true;
-    });
-    return changed ? transaction : null;
+/** Where the first reference to this comment stands, and null where the document holds none */
+function referenceAt(state: EditorState, id: string): number | null {
+  let at: number | null = null;
+  state.doc.descendants((node, pos) => {
+    if (at !== null) return false;
+    if (
+      node.type.name === "commentReference" &&
+      stringAttr(node.attrs.id) === id
+    ) {
+      at = pos;
+    }
+    return at === null;
   });
+  return at;
 }
 
+/**
+ * Writes one body, comment or reply, as the story the document holds it in.
+ *
+ * The transaction also rewrites the reference it belongs to, attr for attr. What the comment says
+ * now stands on the document node rather than on that node, and a transaction reaching neither the
+ * marker nor the reference is not a comment edit as far as the guards can tell: a comment
+ * protection would turn it down for touching no comment, and a lock over the text it is anchored
+ * in would let it through.
+ *
+ * null for a body nobody would take: one the document refers to no comment for, one saying
+ * nothing, and one already saying what it says.
+ */
+function bodyTransaction(
+  state: EditorState,
+  referenceId: string,
+  bodyId: string,
+  body: PMNode
+): Transaction | null {
+  if (body.type !== docxSchema.nodes.doc) return null;
+  if (storyText(body).trim().length === 0) return null;
+  const at = referenceAt(state, referenceId);
+  const reference = at === null ? null : state.doc.nodeAt(at);
+  if (at === null || reference === null) return null;
+  const key = storyKey("comment", bodyId);
+  const held = storyOf(state.doc, key);
+  if (held !== null && held.eq(body)) return null;
+  return setStory(state.tr, key, body).setNodeMarkup(
+    at,
+    null,
+    reference.attrs,
+    reference.marks
+  );
+}
+
+/** Replaces the plain-text body of one comment, retaining its author and anchor. */
+export function updateComment(id: string, text: string): Command {
+  return guardedCommand((state) =>
+    bodyTransaction(state, id, id, storyFromText(text))
+  );
+}
+
+/**
+ * Replaces the body of one comment with a formatted one, retaining its author and anchor.
+ *
+ * The body is a document of `docxSchema`, the same schema the page is edited in, so a paragraph
+ * style, a bold run and a second paragraph all survive being written, exported and read back.
+ * `updateComment` is the same command for a body that is only text.
+ */
+export function setCommentBody(id: string, body: PMNode): Command {
+  return guardedCommand((state) => bodyTransaction(state, id, id, body));
+}
+
+/**
+ * Rewrites the attrs of one comment reference, and whatever else the same edit writes beside them:
+ * a reply's own body is a story of its own, and it lands in the transaction that adds the reply so
+ * that one undo takes both back.
+ */
 function updateReference(
   id: string,
-  change: (node: PMNode) => Record<string, unknown> | null
+  change: (node: PMNode) => Record<string, unknown> | null,
+  alongside: (tr: Transaction) => Transaction = (tr) => tr
 ): Command {
   return guardedCommand((state) => {
     let transaction = state.tr;
@@ -258,7 +315,7 @@ function updateReference(
       }
       return false;
     });
-    return changed ? transaction : null;
+    return changed ? alongside(transaction) : null;
   });
 }
 
@@ -285,39 +342,41 @@ export function addCommentReply(id: string, reply: NewComment): Command {
     if (reply.text.trim().length === 0) return false;
     const replyId = nextCommentId(state);
     const date = reply.date ?? new Date().toISOString();
-    return updateReference(id, (node) => {
-      // The key a reply hangs off is the one the comment already has, whether it arrived with it
-      // or was given one on the way in. Minting a second would re-point the thread
-      const parentParaId =
-        stringAttr(node.attrs.paraId) ??
-        nextCommentParaId(state, `comment-${id}`);
-      const paraId = nextCommentParaId(state, `comment-${replyId}-${date}`, [
-        parentParaId,
-      ]);
-      return {
-        ...node.attrs,
-        paraId: parentParaId,
-        resolved: false,
-        extensionXml: null,
-        threadImported: false,
-        replies: [
-          ...repliesAttr(node.attrs.replies),
-          {
-            id: replyId,
-            author: reply.author,
-            authorId: reply.authorId ?? null,
-            initials: reply.initials ?? null,
-            date,
-            text: reply.text,
-            commentXml: null,
-            imported: false,
-            paraId,
-            parentParaId,
-            extensionXml: null,
-          },
-        ],
-      };
-    })(state, dispatch);
+    return updateReference(
+      id,
+      (node) => {
+        // The key a reply hangs off is the one the comment already has, whether it arrived with
+        // it or was given one on the way in. Minting a second would re-point the thread
+        const parentParaId =
+          stringAttr(node.attrs.paraId) ??
+          nextCommentParaId(state, `comment-${id}`);
+        const paraId = nextCommentParaId(state, `comment-${replyId}-${date}`, [
+          parentParaId,
+        ]);
+        return {
+          ...node.attrs,
+          paraId: parentParaId,
+          resolved: false,
+          extensionXml: null,
+          threadImported: false,
+          replies: [
+            ...repliesAttr(node.attrs.replies),
+            {
+              id: replyId,
+              author: reply.author,
+              authorId: reply.authorId ?? null,
+              initials: reply.initials ?? null,
+              date,
+              paraId,
+              parentParaId,
+              extensionXml: null,
+            },
+          ],
+        };
+      },
+      (tr) =>
+        setStory(tr, storyKey("comment", replyId), storyFromText(reply.text))
+    )(state, dispatch);
   };
 }
 
@@ -327,20 +386,41 @@ export function updateCommentReply(
   replyId: string,
   text: string
 ): Command {
-  return updateReference(commentId, (node) => {
-    if (text.trim().length === 0) return null;
-    const replies = repliesAttr(node.attrs.replies);
-    const index = replies.findIndex((reply) => reply.id === replyId);
-    if (index < 0 || replies[index].text === text) return null;
-    return {
-      ...node.attrs,
-      replies: replies.map((reply, at) =>
-        at === index
-          ? { ...reply, text, commentXml: null, imported: false }
-          : reply
-      ),
-    };
+  return guardedCommand((state) => {
+    const holdsReply = repliesOf(state, commentId).some(
+      (reply) => reply.id === replyId
+    );
+    if (!holdsReply) return null;
+    return bodyTransaction(state, commentId, replyId, storyFromText(text));
   });
+}
+
+/** The replies one comment reference carries, empty for an id the document refers to no comment for */
+function repliesOf(
+  state: EditorState,
+  commentId: string
+): readonly { id: string }[] {
+  let replies: readonly { id: string }[] = [];
+  state.doc.descendants((node) => {
+    if (
+      node.type.name !== "commentReference" ||
+      stringAttr(node.attrs.id) !== commentId
+    ) {
+      return true;
+    }
+    replies = repliesAttr(node.attrs.replies);
+    return false;
+  });
+  return replies;
+}
+
+/** The same transaction with the bodies of these comments taken off the document node */
+function dropBodies(ids: Iterable<string>): (tr: Transaction) => Transaction {
+  return (tr) =>
+    withoutStories(
+      tr,
+      Array.from(ids, (id) => storyKey("comment", id))
+    );
 }
 
 /** Removes one reply while retaining its root comment and anchor. */
@@ -348,41 +428,54 @@ export function removeCommentReply(
   commentId: string,
   replyId: string
 ): Command {
-  return updateReference(commentId, (node) => {
-    const replies = repliesAttr(node.attrs.replies);
-    if (!replies.some((reply) => reply.id === replyId)) return null;
-    const removedIds = new Set([replyId]);
-    const removedParaIds = new Set(
-      replies
-        .filter((reply) => removedIds.has(reply.id))
-        .map((reply) => reply.paraId)
-    );
-    let changed = true;
-    while (changed) {
-      changed = false;
-      for (const reply of replies) {
-        if (
-          !removedIds.has(reply.id) &&
-          removedParaIds.has(reply.parentParaId)
-        ) {
-          removedIds.add(reply.id);
-          removedParaIds.add(reply.paraId);
-          changed = true;
+  const removedReplyIds = new Set<string>();
+  return updateReference(
+    commentId,
+    (node) => {
+      const replies = repliesAttr(node.attrs.replies);
+      if (!replies.some((reply) => reply.id === replyId)) return null;
+      const removedIds = new Set([replyId]);
+      const removedParaIds = new Set(
+        replies
+          .filter((reply) => removedIds.has(reply.id))
+          .map((reply) => reply.paraId)
+      );
+      let changed = true;
+      while (changed) {
+        changed = false;
+        for (const reply of replies) {
+          if (
+            !removedIds.has(reply.id) &&
+            removedParaIds.has(reply.parentParaId)
+          ) {
+            removedIds.add(reply.id);
+            removedParaIds.add(reply.paraId);
+            changed = true;
+          }
         }
       }
-    }
-    return {
-      ...node.attrs,
-      replies: replies.filter((reply) => !removedIds.has(reply.id)),
-      threadImported: false,
-    };
-  });
+      for (const id of removedIds) removedReplyIds.add(id);
+      return {
+        ...node.attrs,
+        replies: replies.filter((reply) => !removedIds.has(reply.id)),
+        threadImported: false,
+      };
+    },
+    dropBodies(removedReplyIds)
+  );
 }
 
-/** Removes a comment's range markers, reference and Comments-part entry. */
+/**
+ * Removes a comment's range markers, reference and Comments-part entry.
+ *
+ * What the comment and its replies said goes with them: a body is a story on the document node,
+ * and one left behind for a comment nothing refers to would ride every later comparison of the
+ * document without standing for anything.
+ */
 export function removeComment(id: string): Command {
   return guardedCommand((state) => {
     const positions: Array<{ pos: number; size: number }> = [];
+    const bodies = new Set([id]);
     state.doc.descendants((node, pos) => {
       if (
         (node.type.name === "commentStart" ||
@@ -392,6 +485,13 @@ export function removeComment(id: string): Command {
       ) {
         positions.push({ pos, size: node.nodeSize });
       }
+      if (
+        node.type.name === "commentReference" &&
+        stringAttr(node.attrs.id) === id
+      ) {
+        for (const reply of repliesAttr(node.attrs.replies))
+          bodies.add(reply.id);
+      }
       return true;
     });
     if (positions.length === 0) return null;
@@ -399,7 +499,7 @@ export function removeComment(id: string): Command {
     for (const marker of positions.sort((a, b) => b.pos - a.pos)) {
       transaction.delete(marker.pos, marker.pos + marker.size);
     }
-    return transaction;
+    return dropBodies(bodies)(transaction);
   });
 }
 

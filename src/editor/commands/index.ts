@@ -88,6 +88,7 @@ export {
   removeComment,
   removeCommentReply,
   selectComment,
+  setCommentBody,
   setCommentResolved,
   updateComment,
   updateCommentReply,

@@ -247,6 +247,32 @@ describe("onlyCommentsChangedBy", () => {
     return decode(unzipSync(bytes)[path]);
   }
 
+  const FOOTNOTES_PART = "word/footnotes.xml";
+  const W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+  const REL_BASE =
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+
+  /** The package with a footnotes part related from the main story, holding one note */
+  function withFootnote(bytes: Uint8Array, text: string): Uint8Array {
+    const rels = partText(bytes, DOCUMENT_RELS_PART);
+    return repacked(bytes, {
+      [FOOTNOTES_PART]:
+        `<w:footnotes xmlns:w="${W_NS}">` +
+        `<w:footnote w:id="1"><w:p>${run(text)}</w:p></w:footnote>` +
+        "</w:footnotes>",
+      [DOCUMENT_RELS_PART]: rels.replace(
+        "</Relationships>",
+        `<Relationship Id="rIdNotes" Target="footnotes.xml" Type="${REL_BASE}/footnotes"/>` +
+          "</Relationships>"
+      ),
+      "[Content_Types].xml": partText(bytes, "[Content_Types].xml").replace(
+        "</Types>",
+        `<Override PartName="/${FOOTNOTES_PART}" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml"/>` +
+          "</Types>"
+      ),
+    });
+  }
+
   /** The bytes before and after this author commented on "beta" */
   function commentedBy(authorId: string): {
     bytes: Uint8Array;
@@ -536,6 +562,26 @@ describe("onlyCommentsChangedBy", () => {
       });
       expect(onlyCommentsChangedBy(bytes, remargined, "me")).toEqual(
         partRefused(DOCUMENT_PART)
+      );
+    });
+
+    /**
+     * A footnote body is a story now, the way a comment body is, and a comment protection lets a
+     * comment story change and nothing else. The package comparison answers first: the footnotes
+     * part is not one a comment edit rewrites, so a submission that rewrote it is turned down for
+     * the part, before any story of it is compared.
+     */
+    it("does not hold for a footnote body rewritten in a submitted file", () => {
+      const bytes = withFootnote(original(), "Under the line");
+      const rewritten = repacked(bytes, {
+        [FOOTNOTES_PART]: partText(bytes, FOOTNOTES_PART).replace(
+          "Under the line",
+          "Something else"
+        ),
+      });
+
+      expect(onlyCommentsChangedBy(bytes, rewritten, "me")).toEqual(
+        partRefused(FOOTNOTES_PART)
       );
     });
 

@@ -15,7 +15,8 @@ import {
   type NumberingOptions,
   parseNumbering,
 } from "../numbering/parseNumbering";
-import type { ImportedComments } from "./comments";
+import { asStoryKey, type StoryKey } from "../schema/stories";
+import type { ImportedComments } from "./comments/reading";
 import {
   type FormattingContext,
   numberingOptionsFor,
@@ -23,6 +24,7 @@ import {
 } from "./formatting";
 import type { HeadersFooters } from "./headersFooters";
 import type { PageGeometry } from "./pageGeometry";
+import type { ImportedStory } from "./story";
 
 export interface ImportedBlock {
   xml: string;
@@ -91,8 +93,14 @@ export class SessionStore implements DocxSession, SessionIdentity {
   readonly commentReferenceIds: ReadonlySet<string>;
   /** The first section's header and footer stories, projected for the page preview. */
   readonly headersFooters: HeadersFooters;
+  /**
+   * The side stories the package arrived holding - a comment's body, a footnote's - each as the
+   * blocks it was written in. What the document currently says stands on the document node
+   * instead (`docx/story`), so the two compare the way a body block and its original do.
+   */
+  readonly stories: ReadonlyMap<StoryKey, ImportedStory>;
 
-  constructor(opened: Omit<SessionStore, "kind">) {
+  constructor(opened: Omit<SessionStore, "kind" | "blocksOf">) {
     this.sessionId = opened.sessionId;
     this.parts = opened.parts;
     this.mainPartPath = opened.mainPartPath;
@@ -110,6 +118,17 @@ export class SessionStore implements DocxSession, SessionIdentity {
     this.comments = opened.comments;
     this.commentReferenceIds = opened.commentReferenceIds;
     this.headersFooters = opened.headersFooters;
+    this.stories = opened.stories;
+  }
+
+  /**
+   * The blocks of one story as it arrived, which is what a block key of that story indexes into.
+   * Empty for a story this document does not hold.
+   */
+  blocksOf(key: string): readonly ImportedBlock[] {
+    if (key === BODY_STORY_KEY) return this.blocks;
+    const story = asStoryKey(key);
+    return story === null ? [] : (this.stories.get(story)?.blocks ?? []);
   }
 }
 
@@ -197,8 +216,5 @@ export function originalBlock(
   if (typeof srcId !== "string") return undefined;
   const key = splitBlockKey(srcId);
   if (key === null || key.sessionId !== session.sessionId) return undefined;
-  // The body is the only story a session holds blocks of
-  return key.storyKey === BODY_STORY_KEY
-    ? session.blocks[key.index]
-    : undefined;
+  return session.blocksOf(key.storyKey)[key.index];
 }

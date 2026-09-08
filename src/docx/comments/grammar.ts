@@ -8,17 +8,11 @@
  * everything else.
  */
 
-import {
-  attrsText,
-  elementXml,
-  type XmlAttr,
-  xmlnsAttr,
-} from "../../ooxml/element";
-import { NAMESPACES, qualify, wName } from "../../ooxml/names";
+import { attrsText, elementXml, type XmlAttr } from "../../ooxml/element";
+import { NAMESPACES, qualify } from "../../ooxml/names";
 import {
   attributeByLocalName,
   elementChildren,
-  escapeXml,
   parseXml,
   W_NS,
 } from "../../ooxml/xml";
@@ -26,10 +20,8 @@ import { COMMENT_AUTHOR_PROVIDER, W14_NS, W15_NS } from "./constants";
 import type { CommentReferenceData, CommentReplyData } from "./model";
 
 const ELEMENT_NODE = 1;
-const TEXT_NODE = 3;
 
 const XMLNS_NS = "http://www.w3.org/2000/xmlns/";
-const XML_NS = "http://www.w3.org/XML/1998/namespace";
 
 const nameKey = (namespace: string | null, localName: string): string =>
   `${namespace ?? ""} ${localName}`;
@@ -49,14 +41,6 @@ export const COMMENT_EX_ATTRIBUTES: ReadonlySet<string> = new Set([
   nameKey(W15_NS, "done"),
 ]);
 
-const PARAGRAPH_ATTRIBUTES: ReadonlySet<string> = new Set([
-  nameKey(W14_NS, "paraId"),
-]);
-
-const TEXT_ATTRIBUTES: ReadonlySet<string> = new Set([
-  nameKey(XML_NS, "space"),
-]);
-
 const PERSON_ATTRIBUTES: ReadonlySet<string> = new Set([
   nameKey(W15_NS, "author"),
 ]);
@@ -65,8 +49,6 @@ const PRESENCE_ATTRIBUTES: ReadonlySet<string> = new Set([
   nameKey(W15_NS, "providerId"),
   nameKey(W15_NS, "userId"),
 ]);
-
-const NO_ATTRIBUTES: ReadonlySet<string> = new Set();
 
 /**
  * A thread key, which is four bytes written as hexadecimal (`ST_LongHexNumber`, ECMA-376 Part 1
@@ -110,6 +92,20 @@ export function declarationWritten(attr: Attr): boolean {
 }
 
 /**
+ * Whether this element and everything inside it declares only namespaces this package writes.
+ *
+ * A declaration decides what every name under it means, so a block rebinding a prefix says one
+ * thing to this reader and another to Word, and is a place to put bytes nothing looks at.
+ */
+export function declarationsWritten(el: Element): boolean {
+  return (
+    Array.from(el.attributes).every(
+      (attr) => !attr.name.startsWith("xmlns") || declarationWritten(attr)
+    ) && Array.from(el.children).every(declarationsWritten)
+  );
+}
+
+/**
  * Whether the element carries no attribute outside this set, and declares no namespace outside
  * what the writer declares.
  */
@@ -135,34 +131,10 @@ function isNamed(el: Element, namespace: string, localName: string): boolean {
  * carrying any is one it did not write, and a reading that passed over them would leave a place to
  * put bytes nothing looks at.
  */
-function holdsElementsOnly(el: Element): boolean {
+export function holdsElementsOnly(el: Element): boolean {
   return Array.from(el.childNodes).every(
     (node) => node.nodeType === ELEMENT_NODE
   );
-}
-
-/** Whether the element holds text and nothing else, which is what a `w:t` holds */
-function holdsTextOnly(el: Element): boolean {
-  return Array.from(el.childNodes).every((node) => node.nodeType === TEXT_NODE);
-}
-
-/** The body of a comment, as a paragraph of one run holding the text and the breaks in it */
-export function renderCommentBody(text: string, paraId: string | null): string {
-  const lines = text.split("\n");
-  const pieces: string[] = [];
-  lines.forEach((line, index) => {
-    if (index > 0) pieces.push(elementXml(wName("br"), []));
-    if (line.length > 0 || lines.length === 1) {
-      pieces.push(
-        elementXml(wName("t"), [["xml:space", "preserve"]], [escapeXml(line)])
-      );
-    }
-  });
-  const key: readonly XmlAttr[] =
-    paraId === null
-      ? []
-      : [xmlnsAttr("w14"), [qualify("w14", "paraId"), paraId]];
-  return elementXml(wName("p"), key, [elementXml(wName("r"), [], pieces)]);
 }
 
 /**
@@ -272,41 +244,6 @@ export function withThreadKey(
   );
 }
 
-function readRunText(run: Element): string | null {
-  if (!holdsElementsOnly(run)) return null;
-  const pieces: string[] = [];
-  for (const child of Array.from(run.children)) {
-    if (isNamed(child, W_NS, "br")) {
-      if (
-        !attributesWithin(child, NO_ATTRIBUTES) ||
-        child.childNodes.length > 0
-      ) {
-        return null;
-      }
-      pieces.push("\n");
-      continue;
-    }
-    if (!isNamed(child, W_NS, "t")) return null;
-    // The writer keeps the space of every line, so it says so on every `w:t` it writes
-    if (
-      !attributesWithin(child, TEXT_ATTRIBUTES) ||
-      child.getAttributeNS(XML_NS, "space") !== "preserve" ||
-      !holdsTextOnly(child)
-    ) {
-      return null;
-    }
-    pieces.push(child.textContent ?? "");
-  }
-  return pieces.join("");
-}
-
-/**
- * The text of a comment written in that shape, and null for an entry holding anything else: a
- * field, a second run, markup a producer wrapped it in, an attribute this editor does not write.
- *
- * An entry that arrived and was not edited is compared as it stands rather than read here, so
- * saying no to a shape this editor would not have written turns down only a rewrite.
- */
 /** Whether this editor's writer could have put out this thread state */
 export function wellFormedCommentExtension(entry: Element): boolean {
   return (
@@ -341,23 +278,6 @@ export function recordedIdentity(person: Element): string | null {
   return presence === undefined
     ? null
     : attributeByLocalName(presence, "userId");
-}
-
-export function readStrictCommentBody(comment: Element): string | null {
-  if (!holdsElementsOnly(comment)) return null;
-  const paragraphs = Array.from(comment.children);
-  if (paragraphs.length !== 1) return null;
-  const [paragraph] = paragraphs;
-  if (!isNamed(paragraph, W_NS, "p")) return null;
-  if (!attributesWithin(paragraph, PARAGRAPH_ATTRIBUTES)) return null;
-
-  if (!holdsElementsOnly(paragraph)) return null;
-  const runs = Array.from(paragraph.children);
-  if (runs.length !== 1) return null;
-  const [run] = runs;
-  if (!isNamed(run, W_NS, "r")) return null;
-  if (!attributesWithin(run, NO_ATTRIBUTES)) return null;
-  return readRunText(run);
 }
 
 /** The thread state of one comment, as this editor writes it into the extended part */

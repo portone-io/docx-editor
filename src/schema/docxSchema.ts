@@ -51,6 +51,10 @@ import {
   tableStyle,
 } from "../styles/inlineStyle";
 import { imageNodeSpec, runMarkSpec } from "./rendering";
+import type { StoryJson } from "./stories";
+
+/** What a document holding no side story carries, shared so that two such documents compare equal */
+const NO_STORIES: Readonly<Record<string, StoryJson>> = Object.freeze({});
 
 export { imageNodeSpec, runMarkSpec } from "./rendering";
 
@@ -119,8 +123,9 @@ function srcIdOf(dom: HTMLElement): string | null {
 
 /**
  * Whether every reply a comment carries holds the XML the comment parts take it back as.
- * A reply body goes back out into `word/comments.xml` (`docx/comments/writing`) rather than into
- * the story, so one smuggling a sibling would write it there.
+ * A reply's thread state goes back out into `word/commentsExtended.xml`
+ * (`docx/comments/writing`) rather than into the story, so one smuggling a sibling would write it
+ * there. What a reply says is a story of its own and reaches no DOM attribute at all.
  */
 function repliesHoldTheirXml(value: unknown): boolean {
   if (!Array.isArray(value)) return true;
@@ -128,8 +133,6 @@ function repliesHoldTheirXml(value: unknown): boolean {
   return replies.every((reply) => {
     if (!isRecord(reply)) return true;
     return (
-      acceptRawXml(ELEMENT("comment"), text(reply.commentXml) ?? null) !==
-        false &&
       acceptRawXml(ANY_ELEMENT, text(reply.extensionXml) ?? null) !== false
     );
   });
@@ -286,6 +289,12 @@ export const docxSchema = new Schema({
          * Read through `docx/sections`.
          */
         sectPr: { default: null },
+        /**
+         * What each side story - a comment's body, a footnote's - currently says, under the key
+         * naming it (`./stories`). Read and written through `docx/story`; it never reaches the
+         * DOM, so a copy out of the editor carries none of it.
+         */
+        stories: { default: NO_STORIES },
       },
     },
     paragraph: {
@@ -843,9 +852,6 @@ export const docxSchema = new Schema({
         authorId: { default: null },
         initials: { default: null },
         date: { default: null },
-        text: { default: "" },
-        commentXml: { default: null },
-        imported: { default: false },
         paraId: { default: null },
         resolved: { default: false },
         extensionXml: { default: null },
@@ -864,10 +870,6 @@ export const docxSchema = new Schema({
             "data-comment-author-id": text(node.attrs.authorId),
             "data-comment-initials": text(node.attrs.initials),
             "data-comment-date": text(node.attrs.date),
-            "data-comment-text": text(node.attrs.text),
-            "data-comment-xml": text(node.attrs.commentXml),
-            "data-comment-imported":
-              node.attrs.imported === true ? "1" : undefined,
             "data-comment-para-id": text(node.attrs.paraId),
             "data-comment-resolved":
               node.attrs.resolved === true ? "1" : undefined,
@@ -887,11 +889,6 @@ export const docxSchema = new Schema({
               "data-reference-xml",
               ELEMENT("commentReference")
             );
-            const commentXml = rawXml(
-              dom,
-              "data-comment-xml",
-              ELEMENT("comment")
-            );
             // The extended properties are a `w15:commentEx`, and `w15` is a namespace nothing
             // this far down knows, so the element is held to its shape alone
             const extensionXml = rawXml(
@@ -903,7 +900,6 @@ export const docxSchema = new Schema({
               parseJson(dom.getAttribute("data-comment-replies")) ?? [];
             if (
               referenceXml === false ||
-              commentXml === false ||
               extensionXml === false ||
               !repliesHoldTheirXml(replies)
             ) {
@@ -916,9 +912,6 @@ export const docxSchema = new Schema({
               authorId: dom.getAttribute("data-comment-author-id"),
               initials: dom.getAttribute("data-comment-initials"),
               date: dom.getAttribute("data-comment-date"),
-              text: dom.getAttribute("data-comment-text") ?? "",
-              commentXml,
-              imported: dom.getAttribute("data-comment-imported") === "1",
               paraId: dom.getAttribute("data-comment-para-id"),
               resolved: dom.getAttribute("data-comment-resolved") === "1",
               extensionXml,
@@ -940,14 +933,12 @@ export const docxSchema = new Schema({
         kind: { default: "footnote" },
         id: { default: null },
         label: { default: "?" },
-        text: { default: "" },
         customMarkFollows: { default: false },
         referenceXml: { default: null },
       },
       toDOM(node) {
         const kind = node.attrs.kind === "endnote" ? "Endnote" : "Footnote";
         const label = text(node.attrs.label) ?? "?";
-        const body = text(node.attrs.text) ?? "";
         return [
           "sup",
           {
@@ -955,12 +946,10 @@ export const docxSchema = new Schema({
             "data-note-kind": text(node.attrs.kind),
             "data-note-id": text(node.attrs.id),
             "data-note-label": label,
-            "data-note-text": body,
             "data-custom-mark-follows":
               node.attrs.customMarkFollows === true ? "1" : undefined,
             "data-reference-xml": text(node.attrs.referenceXml),
             "aria-label": `${kind} ${label}`,
-            title: body,
           },
           node.attrs.customMarkFollows === true ? "" : label,
         ];
@@ -982,7 +971,6 @@ export const docxSchema = new Schema({
                   : "footnote",
               id: dom.getAttribute("data-note-id"),
               label: dom.getAttribute("data-note-label") ?? "?",
-              text: dom.getAttribute("data-note-text") ?? "",
               customMarkFollows:
                 dom.getAttribute("data-custom-mark-follows") === "1",
               referenceXml,

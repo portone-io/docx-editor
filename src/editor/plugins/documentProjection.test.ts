@@ -118,9 +118,12 @@ describe("a value projected from the document", () => {
   it("holds the notes of an editor state", () => {
     const opened = createEditorState(importDocx(makeNotesDocx()).doc);
 
-    const notes = noteProjection.read(opened);
-    expect(notes.map((note) => note.kind)).toEqual(["footnote", "endnote"]);
-    expect(noteProjection.read(caretAt(opened, 1))).toBe(notes);
+    const held = noteProjection.read(opened);
+    expect(held.notes.map((note) => note.kind)).toEqual([
+      "footnote",
+      "endnote",
+    ]);
+    expect(noteProjection.read(caretAt(opened, 1))).toBe(held);
   });
 });
 
@@ -153,35 +156,40 @@ describe("public projection results", () => {
     );
   }
 
-  it("keeps caller edits to comment and reply records out of ownership checks", () => {
-    const state = commentedState();
-    const comments = documentComments(state);
-    comments[0].authorId = "me";
-    comments[0].text = "Locally formatted";
-    comments[0].replies[0].authorId = "me";
-    comments[0].replies[0].text = "Locally formatted reply";
-    expect(canEditComment(state, "0")).toBe(false);
-    expect(canEditComment(state, "0", "1")).toBe(false);
-    expect(documentComments(state)[0]).toMatchObject({
-      text: "Original",
-      replies: [{ text: "Reply" }],
-    });
-  });
-
-  it("keeps caller edits to a comment's range out of anchor selection", () => {
+  /**
+   * The records are the editor's own, handed out rather than copied, so what keeps a caller from
+   * writing into the projection is that every field of them is declared readonly. That is a
+   * compile-time promise, and `pnpm typecheck` is where it is kept: drop one `readonly` and the
+   * expectations below stop erroring, which fails the lane.
+   */
+  it("declares every field of a comment, a reply and a note readonly", () => {
     const state = commentedState();
     const comment = documentComments(state)[0];
-    const originalRange = { from: comment.from, to: comment.to };
+    // @ts-expect-error a comment record is the projection's, not the caller's, to rewrite
+    comment.authorId = "me";
+    // @ts-expect-error the same for what it says
+    comment.text = "Locally formatted";
+    // @ts-expect-error and for where it is anchored
     comment.from = state.doc.content.size + 100;
-    const selected = runCommand(state, selectComment("0"));
-    expect(selected.selection).toMatchObject(originalRange);
+    // @ts-expect-error and for a reply under it
+    comment.replies[0].text = "Locally formatted reply";
+
+    const note = documentNotes(
+      createEditorState(importDocx(makeNotesDocx()).doc)
+    )[0];
+    // @ts-expect-error a note record is the projection's as well
+    note.text = "Locally formatted";
   });
 
-  it("keeps caller edits to note records out of later query results", () => {
-    const state = createEditorState(importDocx(makeNotesDocx()).doc);
-    const expected = { ...documentNotes(state)[0] };
-    documentNotes(state)[0].text = "Locally formatted";
-    expect(documentNotes(state)[0]).toEqual(expected);
+  it("answers ownership and anchors off the document rather than off a held record", () => {
+    const state = commentedState();
+    const comment = documentComments(state)[0];
+    expect(canEditComment(state, "0")).toBe(false);
+    expect(canEditComment(state, "0", "1")).toBe(false);
+    expect(runCommand(state, selectComment("0")).selection).toMatchObject({
+      from: comment.from,
+      to: comment.to,
+    });
   });
 
   it("uses the first reference with an id and still refuses a missing id", () => {

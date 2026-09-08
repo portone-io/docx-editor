@@ -18,6 +18,12 @@
 
 import { Fragment, type Node as PMNode } from "prosemirror-model";
 import { sameSource } from "./sourceEquality";
+import {
+  sameStory,
+  storyKey,
+  storyNodeOf,
+  withoutCommentStories,
+} from "./stories";
 
 export type EditingProtection = "none" | "readOnly" | "comments";
 
@@ -67,9 +73,17 @@ export function withoutComments(node: PMNode): PMNode {
  * The comparison is by source (`./sourceEquality`): a display value worked out again beside a
  * comment is no content change, so it neither turns a comment edit into a body edit nor takes the
  * ownership question off it.
+ *
+ * What a comment says is a story on the document node (`./stories`), so the comment stories come
+ * off before the markers do; without that, writing one of them would move the document node and
+ * every comment edit would read as a body edit. The footnote and header stories stay: rewriting
+ * one of those is a change to what the document says, and a comment protection turns it down.
  */
 export function changesOnlyComments(before: PMNode, after: PMNode): boolean {
-  return sameSource(withoutComments(before), withoutComments(after));
+  return sameSource(
+    withoutComments(withoutCommentStories(before)),
+    withoutComments(withoutCommentStories(after))
+  );
 }
 
 /**
@@ -84,7 +98,8 @@ interface CommentBody {
   author: string | null;
   initials: string | null;
   date: string | null;
-  text: string;
+  /** What it says, as the story the document holds it in. null for a comment holding no story */
+  body: PMNode | null;
 }
 
 interface CommentThread extends CommentBody {
@@ -95,17 +110,27 @@ function stringOrNull(value: unknown): string | null {
   return typeof value === "string" ? value : null;
 }
 
-function bodyOf(attrs: Record<string, unknown>): CommentBody {
+/**
+ * The comment these attrs stand for, its body read off the document rather than off the node.
+ *
+ * The two are apart because a body is a document of its own now (`./stories`): the reference node
+ * says whose comment it is and the story under `comment:<id>` says what it says.
+ */
+function bodyOf(
+  attrs: Readonly<Record<string, unknown>>,
+  doc: PMNode
+): CommentBody {
+  const id = stringOrNull(attrs.id);
   return {
     authorId: stringOrNull(attrs.authorId),
     author: stringOrNull(attrs.author),
     initials: stringOrNull(attrs.initials),
     date: stringOrNull(attrs.date),
-    text: stringOrNull(attrs.text) ?? "",
+    body: id === null ? null : storyNodeOf(doc, storyKey("comment", id)),
   };
 }
 
-function replyBodies(value: unknown): Map<string, CommentBody> {
+function replyBodies(value: unknown, doc: PMNode): Map<string, CommentBody> {
   const replies = new Map<string, CommentBody>();
   if (!Array.isArray(value)) return replies;
   for (const entry of value) {
@@ -113,7 +138,7 @@ function replyBodies(value: unknown): Map<string, CommentBody> {
     const reply: Record<string, unknown> = entry;
     const id = stringOrNull(reply.id);
     if (id === null) continue;
-    replies.set(id, bodyOf(reply));
+    replies.set(id, bodyOf(reply, doc));
   }
   return replies;
 }
@@ -126,8 +151,8 @@ function threadsIn(doc: PMNode): Map<string, CommentThread> {
     const id = stringOrNull(node.attrs.id);
     if (id === null || threads.has(id)) return true;
     threads.set(id, {
-      ...bodyOf(node.attrs),
-      replies: replyBodies(node.attrs.replies),
+      ...bodyOf(node.attrs, doc),
+      replies: replyBodies(node.attrs.replies, doc),
     });
     return true;
   });
@@ -188,10 +213,16 @@ function sameIdentity(was: CommentBody, now: CommentBody): boolean {
   return was.authorId === now.authorId && was.author === now.author;
 }
 
-/** Whether what the comment says still reads as it did, the identity aside */
+/**
+ * Whether what the comment says still reads as it did, the identity aside.
+ *
+ * The bodies are compared as stories (`./stories`), so a body that gained a bold run or a second
+ * paragraph reads as changed the way a rewritten line does, and one read again out of the same
+ * file does not.
+ */
 function sameWords(was: CommentBody, now: CommentBody): boolean {
   return (
-    was.text === now.text &&
+    sameStory(was.body, now.body) &&
     was.initials === now.initials &&
     was.date === now.date
   );

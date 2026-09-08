@@ -12,6 +12,7 @@
 import type { Node as PMNode } from "prosemirror-model";
 import type { Plugin } from "prosemirror-state";
 import { Decoration, DecorationSet } from "prosemirror-view";
+import { storyKey, storyOf, storyText } from "../../docx/story";
 import { editorClassNames } from "../../styles/classNames";
 import {
   type DocumentComment,
@@ -45,6 +46,11 @@ function markerPositions(doc: PMNode): MarkerPositions {
   return { starts, ends, references };
 }
 
+/** What one comment or reply says, read off the story the document holds it in (`docx/story`) */
+function bodyText(doc: PMNode, id: string): string {
+  return storyText(storyOf(doc, storyKey("comment", id)));
+}
+
 /** The comments in document order, including point comments that have no explicit range. */
 function commentsIn(doc: PMNode): readonly DocumentComment[] {
   const markers = markerPositions(doc);
@@ -60,7 +66,7 @@ function commentsIn(doc: PMNode): readonly DocumentComment[] {
       authorId: stringAttr(node.attrs.authorId),
       initials: stringAttr(node.attrs.initials),
       date: stringAttr(node.attrs.date),
-      text: stringAttr(node.attrs.text) ?? "",
+      text: bodyText(doc, id),
       from: hasRange ? start + 1 : point,
       to: hasRange ? end : point,
       referencePos: pos,
@@ -71,7 +77,7 @@ function commentsIn(doc: PMNode): readonly DocumentComment[] {
         authorId: reply.authorId,
         initials: reply.initials,
         date: reply.date,
-        text: reply.text,
+        text: bodyText(doc, reply.id),
       })),
     };
   });

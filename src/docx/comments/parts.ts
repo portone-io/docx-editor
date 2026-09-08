@@ -21,18 +21,23 @@ import {
   serializeXml,
   W_NS,
 } from "../../ooxml/xml";
+import { isPreservedNode } from "../../schema/preservedFragments";
 import {
   commentAdditionAllowed,
   type EditableComments,
 } from "../../schema/protection";
+import { NO_FORMATTING } from "../formatting";
+import { NO_IMPORT_SOURCES } from "../importParagraph";
 import { availablePartPath } from "../packageParts";
 import type {
   EntryReading,
   StoryEntry,
   StoryPartKind,
 } from "../protectionPolicy";
+import { serializeBlock } from "../serializeBlock";
 import type { SessionStore } from "../session";
-import type { Story } from "../storyProjection";
+import { buildBlock } from "../story";
+import { isModelledBlock, type Story } from "../storyProjection";
 import {
   COMMENTS_CONTENT_TYPE,
   COMMENTS_EXTENDED_CONTENT_TYPE,
@@ -46,9 +51,10 @@ import {
 import {
   attributesWithin,
   COMMENT_ATTRIBUTES,
+  declarationsWritten,
   declarationWritten,
+  holdsElementsOnly,
   lastBodyParagraph,
-  readStrictCommentBody,
   recordedIdentity,
   wellFormedCommentExtension,
   wellFormedPerson,
@@ -76,17 +82,97 @@ function sameAttributes(
   );
 }
 
+/** Whether the node, or anything inside it, is content this editor keeps rather than models */
+function holdsPreserved(node: PMNode): boolean {
+  if (isPreservedNode(node)) return true;
+  let found = false;
+  node.descendants((child) => {
+    if (isPreservedNode(child)) found = true;
+    return !found;
+  });
+  return found;
+}
+
+/** The declarations a block is read under while it stands on its own, away from its part */
+const BLOCK_DECLARATIONS = Object.entries(NAMESPACES)
+  .map(([prefix, uri]) => `xmlns:${prefix}="${uri}"`)
+  .join(" ");
+
+/**
+ * One block as this package reads and writes it, so that two spellings of it compare as one.
+ *
+ * Both sides go through the same parse under the same declarations: the entry's block as the
+ * submission wrote it, and the same block as this writer puts it out. null for text that is no
+ * readable XML at all.
+ */
+function normalizedBlock(xml: string): string | null {
+  try {
+    const root = parseXml(
+      `<b ${BLOCK_DECLARATIONS}>${xml}</b>`
+    ).documentElement;
+    const [block] = Array.from(root.children);
+    return block === undefined || root.children.length !== 1
+      ? null
+      : serializeXml(block);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether this editor's writer could have written this block into a body from nothing.
+ *
+ * A body is a story now (`docx/story`), so the writer puts out whatever the editor models -
+ * paragraphs and tables, their styles, their run formatting - and not one plain run any more. Two
+ * things it never writes: content it does not model, a field or an `mc:AlternateContent` among it,
+ * which it can only pass through from the entry that arrived; and bytes it did not read, since a
+ * block it writes is one it can read back to exactly what it wrote. That fixed point is the same
+ * one the document story is compared by (`docx/storyProjection`).
+ */
+function writtenBlock(el: Element): boolean {
+  if (!declarationsWritten(el)) return false;
+  const node = buildBlock(el, "", NO_IMPORT_SOURCES, NO_FORMATTING);
+  if (!isModelledBlock(node) || holdsPreserved(node)) return false;
+  const written = normalizedBlock(serializeBlock(node));
+  return written !== null && written === normalizedBlock(serializeXml(el));
+}
+
+/**
+ * Whether the body is one this editor's writer could have put out against the entry that arrived.
+ *
+ * Every block is either the writer's own output or a block of the original passed through
+ * untouched, which is exactly what `serializeStory` writes: an edit of one paragraph leaves the
+ * others as their bytes. Whitespace and comments between blocks are not something it writes at
+ * all, so a body carrying any is not one it wrote.
+ */
+function wellFormedStoryBody(
+  entry: Element,
+  original: Element | null
+): boolean {
+  if (!holdsElementsOnly(entry)) return false;
+  const kept = new Set(
+    original === null ? [] : Array.from(original.children, serializeXml)
+  );
+  return Array.from(entry.children).every(
+    (block) => kept.has(serializeXml(block)) || writtenBlock(block)
+  );
+}
+
 /**
  * Whether this editor's writer could have put the entry out, whoever it belongs to.
  *
- * Shape alone: which attributes it carries and what stands inside it. Who may have written it is
- * `entryAllowed`'s question. Each kind is read where it is written (`./grammar`).
+ * Shape alone: which attributes it carries and what stands inside it, judged against the entry the
+ * original file held under the same id. Who may have written it is `entryAllowed`'s question.
+ * Each kind is read where it is written (`./grammar`).
  */
-export function wellFormedEntry(entry: Element): boolean {
+export function wellFormedEntry(
+  entry: Element,
+  original: Element | null
+): boolean {
   if (entry.namespaceURI === W_NS && entry.localName === "comment") {
     return (
       attributesWithin(entry, COMMENT_ATTRIBUTES) &&
-      readStrictCommentBody(entry) !== null
+      wellFormedStoryBody(entry, original)
     );
   }
   if (entry.namespaceURI === W15_NS && entry.localName === "commentEx") {

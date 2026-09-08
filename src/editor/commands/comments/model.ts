@@ -32,27 +32,32 @@ export interface NewComment {
   date?: string;
 }
 
+/**
+ * One comment as a reader of the document sees it. Every field is readonly: the record is the
+ * editor's own, worked out once per edit and handed to whoever asks (`editor/plugins/documentProjection`).
+ */
 export interface DocumentComment {
-  id: string;
-  author: string | null;
-  authorId: string | null;
-  initials: string | null;
-  date: string | null;
-  text: string;
-  from: number;
-  to: number;
-  referencePos: number;
-  resolved: boolean;
-  replies: readonly DocumentCommentReply[];
+  readonly id: string;
+  readonly author: string | null;
+  readonly authorId: string | null;
+  readonly initials: string | null;
+  readonly date: string | null;
+  /** What it says, as plain text. The formatting behind it is `setCommentBody`'s to write */
+  readonly text: string;
+  readonly from: number;
+  readonly to: number;
+  readonly referencePos: number;
+  readonly resolved: boolean;
+  readonly replies: readonly DocumentCommentReply[];
 }
 
 export interface DocumentCommentReply {
-  id: string;
-  author: string | null;
-  authorId: string | null;
-  initials: string | null;
-  date: string | null;
-  text: string;
+  readonly id: string;
+  readonly author: string | null;
+  readonly authorId: string | null;
+  readonly initials: string | null;
+  readonly date: string | null;
+  readonly text: string;
 }
 
 export function stringAttr(value: unknown): string | null {

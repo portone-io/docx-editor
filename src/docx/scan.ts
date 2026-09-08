@@ -1,28 +1,33 @@
 /**
- * Finds the span each individual body block occupies in the raw document.xml text and slices it out.
+ * Finds the span each individual block occupies in the raw text of a part and slices it out.
  *
  * A block that was not edited is exported by writing this fragment back out untouched,
- * which keeps its original bytes intact.
+ * which keeps its original bytes intact. The body of the main part is one such run of blocks;
+ * a comment and a footnote hold another (`docx/story`), and all of them are sliced here so that
+ * one story cannot end up compared or written by rules another does not follow.
  */
 
 import { DocxImportError } from "../ooxml/errors";
 import { readTag, type Tag } from "../ooxml/tagScan";
 import { localPart } from "../ooxml/xml";
 
-export interface BodyBlockSlice {
+export interface BlockSlice {
   /** The tag name exactly as written (e.g. "w:p", "w:tbl", "w:sectPr") */
   name: string;
   /** The original XML fragment. It also carries the whitespace that sat between this block and the one before it */
   xml: string;
 }
 
-export interface BodyScan {
-  /** Everything in the raw text before the first block */
+export interface BlockScan {
+  /** Everything in the raw text before the first block, the container's own opening tag included */
   prefix: string;
-  blocks: BodyBlockSlice[];
-  /** Everything in the raw text after the last block */
+  blocks: BlockSlice[];
+  /** Everything in the raw text after the last block, the container's closing tag included */
   suffix: string;
 }
+
+/** The tag whose children are the blocks, asked of every opening tag with the depth it stands at */
+export type ContainerTest = (tag: Tag, depth: number) => boolean;
 
 /** The tag at this `<`, refusing a document whose text cannot be read tag by tag */
 function tagAt(source: string, lt: number): Tag {
@@ -36,18 +41,27 @@ function tagAt(source: string, lt: number): Tag {
   return tag;
 }
 
+/** The main part's body, which is the container the document's own blocks stand in */
 function isBodyTag(tag: Tag, depth: number): boolean {
-  return localPart(tag.name) === "body" && depth === 1 && tag.kind === "open";
+  return localPart(tag.name) === "body" && depth === 1;
 }
 
-export function scanBody(source: string): BodyScan {
+/**
+ * The blocks the first container this test names holds, and the text on either side of them.
+ * null for a source holding no such container; a caller says in its own words what that means.
+ */
+export function scanBlocksIn(
+  source: string,
+  isContainer: ContainerTest
+): BlockScan | null {
   const stack: string[] = [];
-  const blocks: BodyBlockSlice[] = [];
-  let bodyDepth: number | null = null;
+  const blocks: BlockSlice[] = [];
+  let containerDepth: number | null = null;
   let contentStart = -1;
   let sliceStart = -1;
 
-  const atBodyLevel = () => bodyDepth !== null && stack.length === bodyDepth;
+  const atBlockLevel = () =>
+    containerDepth !== null && stack.length === containerDepth;
   const takeBlock = (name: string, end: number) => {
     blocks.push({ name, xml: source.slice(sliceStart, end) });
     sliceStart = end;
@@ -72,26 +86,28 @@ export function scanBody(source: string): BodyScan {
           `mismatched tags: ${opened} vs ${tag.name}`
         );
       }
-      if (atBodyLevel()) takeBlock(tag.name, tag.end);
+      if (atBlockLevel()) takeBlock(tag.name, tag.end);
       i = tag.end;
       continue;
     }
 
-    if (bodyDepth === null && isBodyTag(tag, stack.length)) {
+    if (
+      containerDepth === null &&
+      tag.kind === "open" &&
+      isContainer(tag, stack.length)
+    ) {
       stack.push(tag.name);
-      bodyDepth = stack.length;
+      containerDepth = stack.length;
       contentStart = tag.end;
       sliceStart = tag.end;
     } else {
-      if (atBodyLevel() && tag.kind === "empty") takeBlock(tag.name, tag.end);
+      if (atBlockLevel() && tag.kind === "empty") takeBlock(tag.name, tag.end);
       if (tag.kind === "open") stack.push(tag.name);
     }
     i = tag.end;
   }
 
-  if (bodyDepth === null) {
-    throw new DocxImportError("missing-body", "document has no w:body");
-  }
+  if (containerDepth === null) return null;
   if (stack.length > 0) {
     throw new DocxImportError(
       "malformed-xml",
@@ -103,4 +119,12 @@ export function scanBody(source: string): BodyScan {
     blocks,
     suffix: source.slice(sliceStart),
   };
+}
+
+export function scanBody(source: string): BlockScan {
+  const scan = scanBlocksIn(source, isBodyTag);
+  if (scan === null) {
+    throw new DocxImportError("missing-body", "document has no w:body");
+  }
+  return scan;
 }

@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { unzipSync, zipSync } from "fflate";
-import type { Node as PMNode } from "prosemirror-model";
+import { undo } from "prosemirror-history";
+import { Fragment, type Node as PMNode } from "prosemirror-model";
 import { type Command, TextSelection } from "prosemirror-state";
 import { describe, expect, it } from "vitest";
 import { bytesEqual, decode, makeDocx } from "../__testing__/docx";
@@ -11,6 +12,7 @@ import {
   documentComments,
   removeComment,
   removeCommentReply,
+  setCommentBody,
   setCommentResolved,
   updateComment,
   updateCommentReply,
@@ -20,9 +22,11 @@ import {
   editorStateForSession,
 } from "../editor/createEditor";
 import { type EditorDocument, NO_DOCUMENT } from "../editor/editorDocument";
+import { docxSchema } from "../schema";
 import { commentParaId } from "./comments";
 import { exportDocx } from "./exportDocx";
 import { importDocx } from "./importDocx";
+import { storyFromText, storyOf } from "./story";
 
 const encoder = new TextEncoder();
 const REL_BASE =
@@ -165,6 +169,17 @@ function firstTextRange(doc: PMNode): { from: number; to: number } {
   return range;
 }
 
+/** The story with its first block saying something else, the rest of it untouched */
+function retypedFirstBlock(story: PMNode, text: string): PMNode {
+  const first = story.child(0);
+  return story.copy(
+    story.content.replaceChild(
+      0,
+      first.copy(Fragment.from(docxSchema.text(text)))
+    )
+  );
+}
+
 function apply(state: ReturnType<typeof createEditorState>, command: Command) {
   let next = state;
   expect(
@@ -207,6 +222,120 @@ describe("WordprocessingML comments", () => {
     expect(documentComments(state)[0]?.text).toBe("re‑read\nagain");
   });
 
+  /**
+   * The point of holding a body as a story rather than as the text it reads as: everything the
+   * editor does not touch survives the round trip, and what it writes comes back as it wrote it.
+   */
+  it("carries a formatted body through an edit, undo, export and re-import", () => {
+    const bytes = withCommentBody(
+      '<w:r><w:rPr><w:b/></w:rPr><w:t xml:space="preserve">Bold</w:t></w:r>' +
+        '<w:r><w:t xml:space="preserve"> plain</w:t></w:r></w:p>' +
+        '<w:p><w:pPr><w:pStyle w:val="CommentText"/></w:pPr>' +
+        '<w:r><w:t xml:space="preserve">Second</w:t></w:r>'
+    );
+    const opened = importDocx(bytes);
+    const before = storyOf(opened.doc, "comment:4");
+    if (before === null) throw new Error("no comment story");
+
+    const edited = apply(
+      createEditorState(opened.doc),
+      setCommentBody("4", retypedFirstBlock(before, "Rewritten"))
+    );
+    const undone = apply(edited, undo);
+
+    expect(documentComments(edited)[0]?.text).toBe("Rewritten\nSecond");
+    expect(documentComments(undone)[0]?.text).toBe("Bold plain\nSecond");
+    expect(
+      bytesEqual(
+        unzipSync(exportDocx(undone.doc, opened.session))["word/comments.xml"],
+        unzipSync(bytes)["word/comments.xml"]
+      )
+    ).toBe(true);
+
+    const written = decode(
+      unzipSync(exportDocx(edited.doc, opened.session))["word/comments.xml"]
+    );
+    expect(written).toContain(
+      '<w:p><w:r><w:t xml:space="preserve">Rewritten</w:t></w:r></w:p>'
+    );
+    expect(written).toContain('<w:pStyle w:val="CommentText"/>');
+    expect(written).not.toContain("<w:b/>");
+
+    const reopened = importDocx(exportDocx(edited.doc, opened.session));
+    expect(documentComments(createEditorState(reopened.doc))[0]?.text).toBe(
+      "Rewritten\nSecond"
+    );
+    expect(storyOf(reopened.doc, "comment:4")?.child(1).attrs.pPr).toBe(
+      '<w:pPr><w:pStyle w:val="CommentText"/></w:pPr>'
+    );
+  });
+
+  it("editing a rich comment body keeps the untouched paragraph and its run formatting", () => {
+    const bytes = withCommentBody(
+      '<w:r><w:t xml:space="preserve">First</w:t></w:r></w:p>' +
+        "<w:p><w:r><w:rPr><w:b/><w:bCs/></w:rPr>" +
+        '<w:t xml:space="preserve">Bold second</w:t></w:r>'
+    );
+    const opened = importDocx(bytes);
+    const story = storyOf(opened.doc, "comment:4");
+    if (story === null) throw new Error("no comment story");
+    const edited = apply(
+      createEditorState(opened.doc),
+      setCommentBody("4", retypedFirstBlock(story, "Rewritten"))
+    );
+
+    const written = decode(
+      unzipSync(exportDocx(edited.doc, opened.session))["word/comments.xml"]
+    );
+
+    expect(written).toContain(
+      "<w:p><w:r><w:rPr><w:b/><w:bCs/></w:rPr>" +
+        '<w:t xml:space="preserve">Bold second</w:t></w:r></w:p>'
+    );
+  });
+
+  it("setCommentBody writes a two-paragraph body with a bold run", () => {
+    const opened = importDocx(makeCommentedDocx());
+    const bold = docxSchema.marks.run.create({ rPr: "<w:rPr><w:b/></w:rPr>" });
+    const body = docxSchema.nodes.doc.create(null, [
+      docxSchema.nodes.paragraph.create(null, [
+        docxSchema.text("Bold", [bold]),
+        docxSchema.text(" plain"),
+      ]),
+      docxSchema.nodes.paragraph.create(null, docxSchema.text("Second")),
+    ]);
+    const state = apply(
+      createEditorState(opened.doc),
+      setCommentBody("4", body)
+    );
+
+    const written = decode(
+      unzipSync(exportDocx(state.doc, opened.session))["word/comments.xml"]
+    );
+
+    expect(written).toContain(
+      '<w:comment w:id="4" w:author="Ada" w:initials="AL" ' +
+        'w:date="2026-08-22T01:02:03Z">' +
+        "<w:p><w:r><w:rPr><w:b/></w:rPr>" +
+        '<w:t xml:space="preserve">Bold</w:t></w:r>' +
+        '<w:r><w:t xml:space="preserve"> plain</w:t></w:r></w:p>' +
+        '<w:p><w:r><w:t xml:space="preserve">Second</w:t></w:r></w:p>' +
+        "</w:comment>"
+    );
+    expect(documentComments(state)[0]?.text).toBe("Bold plain\nSecond");
+  });
+
+  it("refuses a body that is no document of this schema and one saying nothing", () => {
+    const opened = importDocx(makeCommentedDocx());
+    const state = createEditorState(opened.doc);
+
+    expect(
+      setCommentBody("4", docxSchema.nodes.paragraph.create())(state)
+    ).toBe(false);
+    expect(setCommentBody("4", storyFromText("   "))(state)).toBe(false);
+    expect(setCommentBody("9", storyFromText("Note"))(state)).toBe(false);
+  });
+
   it("leaves all comment parts byte-identical when nothing changed", () => {
     const bytes = makeCommentedDocx();
     const before = unzipSync(bytes);
@@ -240,11 +369,14 @@ describe("WordprocessingML comments", () => {
   });
 
   /**
-   * A comments part is free to bind WordprocessingML to a prefix of its own, and every entry this
+   * A comments part is free to bind WordprocessingML to a prefix of its own, and every piece this
    * editor writes into it is spelled `w:`, so the binding goes on the part's root rather than on
-   * each entry. Without it the part holds a prefix nothing bound and does not read back at all.
+   * each piece. Without it the part holds a prefix nothing bound and does not read back at all.
+   *
+   * The entry itself keeps the tag it arrived under: what it says is rewritten, and who wrote it
+   * is on the opening tag, which nobody rewrites.
    */
-  it("declares the prefix a new entry is written under on the part root", () => {
+  it("declares the prefix a rewritten body is written under on the part root", () => {
     const parts = unzipSync(makeCommentedDocx());
     parts["word/comments.xml"] = encoder.encode(
       '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
@@ -262,8 +394,8 @@ describe("WordprocessingML comments", () => {
     const commentsXml = decode(unzipSync(output)["word/comments.xml"]);
 
     expect(commentsXml).toContain(`<c:comments xmlns:c="${W_NS}" xmlns:w=`);
-    expect(commentsXml).toContain('<w:comment w:id="4"');
-    expect(commentsXml).not.toContain("<w:comment xmlns:w=");
+    expect(commentsXml).toContain('<c:comment c:id="4" c:author="Ada"><w:p>');
+    expect(commentsXml).not.toContain("<w:p xmlns:w=");
     expect(
       documentComments(createEditorState(importDocx(output).doc))[0]?.text
     ).toBe("A revised note");

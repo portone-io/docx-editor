@@ -135,31 +135,52 @@ describe("the shape this editor writes", () => {
     const { commented } = commentedBy("me");
     const entry = elementOf(partText(commented, COMMENTS_PART)).children[0];
 
-    expect(wellFormedEntry(entry)).toBe(true);
+    expect(wellFormedEntry(entry, null)).toBe(true);
   });
 
-  it("takes a body carrying line breaks and an empty one", () => {
+  it("takes the formatting a body is a story of", () => {
     for (const body of [
+      // a line break, a thread key, a run property, a paragraph style, a tab, a second paragraph,
+      // a wrapper: everything the editor models and writes back itself
       '<w:p><w:r><w:t xml:space="preserve">a</w:t><w:br/><w:t xml:space="preserve">b</w:t></w:r></w:p>',
-      '<w:p><w:r><w:t xml:space="preserve"></w:t></w:r></w:p>',
-      `<w:p w14:paraId="12345678"><w:r><w:t xml:space="preserve">a</w:t></w:r></w:p>`,
-    ]) {
-      expect(wellFormedEntry(comment('w:id="0"', body))).toBe(true);
-    }
-  });
-
-  it("refuses a body holding anything the writer does not put there", () => {
-    for (const body of [
-      // a field, a second run, a run property, a tab, two paragraphs, a wrapper
-      '<w:p><w:r><w:fldChar w:fldCharType="begin"/></w:r></w:p>',
-      `<w:p>${run("a")}${run("b")}</w:p>`,
-      "<w:p><w:r><w:rPr><w:b/></w:rPr><w:t>a</w:t></w:r></w:p>",
+      '<w:p w14:paraId="12345678"><w:r><w:t xml:space="preserve">a</w:t></w:r></w:p>',
+      '<w:p><w:r><w:rPr><w:b/></w:rPr><w:t xml:space="preserve">a</w:t></w:r></w:p>',
+      '<w:p><w:pPr><w:pStyle w:val="CommentText"/></w:pPr>' +
+        '<w:r><w:t xml:space="preserve">a</w:t></w:r></w:p>',
       "<w:p><w:r><w:tab/></w:r></w:p>",
       `<w:p>${run("a")}</w:p><w:p>${run("b")}</w:p>`,
       `<w:p><w:hyperlink>${run("a")}</w:hyperlink></w:p>`,
     ]) {
-      expect(wellFormedEntry(comment('w:id="0"', body))).toBe(false);
+      expect(wellFormedEntry(comment('w:id="0"', body), null)).toBe(true);
     }
+  });
+
+  it("refuses a body holding content the writer does not model", () => {
+    for (const body of [
+      '<w:p><w:r><w:fldChar w:fldCharType="begin"/></w:r></w:p>',
+      '<w:p><mc:AlternateContent xmlns:mc="urn:mc"><mc:Fallback/>' +
+        "</mc:AlternateContent></w:p>",
+      '<w:bookmarkStart w:id="0" w:name="x"/>',
+    ]) {
+      expect(wellFormedEntry(comment('w:id="0"', body), null)).toBe(false);
+    }
+  });
+
+  /**
+   * A body the editor did not write every block of is still one it could have put out, so long as
+   * each block it did not write came back as the bytes it arrived as. That is what an edit of one
+   * paragraph leaves behind, and refusing it would turn down a file this editor wrote.
+   */
+  it("takes a block of the entry that arrived, whatever it holds", () => {
+    const field = '<w:p><w:r><w:fldChar w:fldCharType="begin"/></w:r></w:p>';
+    const arrived = comment('w:id="0"', field + BODY);
+    const edited = comment(
+      'w:id="0"',
+      `${field}<w:p>${run("rewritten")}</w:p>`
+    );
+
+    expect(wellFormedEntry(edited, arrived)).toBe(true);
+    expect(wellFormedEntry(edited, null)).toBe(false);
   });
 
   it("refuses an attribute this editor does not write on a comment", () => {
@@ -167,7 +188,7 @@ describe("the shape this editor writes", () => {
       'w:id="0" w:done="1"',
       'w:id="0" w14:paraId="12345678"',
     ]) {
-      expect(wellFormedEntry(comment(attrs, BODY))).toBe(false);
+      expect(wellFormedEntry(comment(attrs, BODY), null)).toBe(false);
     }
   });
 
@@ -177,14 +198,18 @@ describe("the shape this editor writes", () => {
       '<w:p>payload<w:r><w:t xml:space="preserve">a</w:t></w:r></w:p>',
       '<w:p><w:r>payload<w:t xml:space="preserve">a</w:t></w:r></w:p>',
       '<w:p><w:r><w:t xml:space="preserve">a<!-- payload --></w:t></w:r></w:p>',
+      `payload<w:p>${run("a")}</w:p>`,
     ]) {
-      expect(wellFormedEntry(comment('w:id="0"', body))).toBe(false);
+      expect(wellFormedEntry(comment('w:id="0"', body), null)).toBe(false);
     }
   });
 
   it("refuses a w:t that does not keep its space, which the writer always says", () => {
     expect(
-      wellFormedEntry(comment('w:id="0"', "<w:p><w:r><w:t>a</w:t></w:r></w:p>"))
+      wellFormedEntry(
+        comment('w:id="0"', "<w:p><w:r><w:t>a</w:t></w:r></w:p>"),
+        null
+      )
     ).toBe(false);
   });
 
@@ -208,7 +233,7 @@ describe("the shape this editor writes", () => {
           ' w15:providerId="portone-docx-editor" w15:userId="me"/></w15:person>'
       ),
     ]) {
-      expect(wellFormedEntry(entry)).toBe(false);
+      expect(wellFormedEntry(entry, null)).toBe(false);
     }
   });
 
@@ -225,9 +250,9 @@ describe("the shape this editor writes", () => {
 
   it("takes the thread state and the identity this editor writes", () => {
     expect(
-      wellFormedEntry(extension('w15:paraId="12345678" w15:done="1"'))
+      wellFormedEntry(extension('w15:paraId="12345678" w15:done="1"'), null)
     ).toBe(true);
-    expect(wellFormedEntry(person(PRESENCE))).toBe(true);
+    expect(wellFormedEntry(person(PRESENCE), null)).toBe(true);
   });
 
   it("refuses thread state this editor does not write", () => {
@@ -237,7 +262,7 @@ describe("the shape this editor writes", () => {
         `<w15:commentEx xmlns:w15="${W15_NS}" w15:paraId="12345678"><w15:extra/></w15:commentEx>`
       ),
     ]) {
-      expect(wellFormedEntry(entry)).toBe(false);
+      expect(wellFormedEntry(entry, null)).toBe(false);
     }
   });
 
@@ -249,7 +274,7 @@ describe("the shape this editor writes", () => {
       person('<w15:presenceInfo w15:providerId="portone-docx-editor"/>'),
       person(PRESENCE, 'w15:author="Someone" w15:extra="1"'),
     ]) {
-      expect(wellFormedEntry(entry)).toBe(false);
+      expect(wellFormedEntry(entry, null)).toBe(false);
     }
   });
 });

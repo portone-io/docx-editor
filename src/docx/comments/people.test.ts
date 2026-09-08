@@ -23,6 +23,8 @@ import { onlyCommentsChangedBy } from "../commentOnlyChange";
 import { exportDocx } from "../exportDocx";
 import { importDocx } from "../importDocx";
 import { exportProblems } from "../invariants";
+import type { SessionStore } from "../session";
+import { storyKey } from "../story";
 import {
   COMMENT_AUTHOR_PROVIDER,
   PEOPLE_CONTENT_TYPE,
@@ -119,6 +121,12 @@ function authorIdsOf(bytes: Uint8Array): (string | null)[] {
   return documentComments(createEditorState(importDocx(bytes).doc)).map(
     (comment) => comment.authorId
   );
+}
+
+/** The Comments-part entry of one comment, as the package it was opened from wrote it */
+function entryXml(session: SessionStore, id: string): string | undefined {
+  const story = session.stories.get(storyKey("comment", id));
+  return story?.xml;
 }
 
 describe("the people part", () => {
@@ -365,9 +373,7 @@ describe("the people part", () => {
     const output = exportDocx(state.doc, opened.session);
     const reopened = importDocx(output);
     expect(reopened.session.comments.byId.get("4")?.authorId).toBeNull();
-    expect(reopened.session.comments.byId.get("4")?.xml).toBe(
-      opened.session.comments.byId.get("4")?.xml
-    );
+    expect(entryXml(reopened.session, "4")).toBe(entryXml(opened.session, "4"));
     expect(authorIdsOf(output)).toEqual([null]);
     expect(unzipSync(output)["word/people.xml"]).toBeUndefined();
     expect(onlyCommentsChangedBy(bytes, output, "u_ada")).toEqual({ ok: true });
