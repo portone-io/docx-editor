@@ -70,10 +70,19 @@ import {
 function blockXml(
   node: PMNode,
   session: SessionStore,
-  refs: ExportRefs
+  refs: ExportRefs,
+  onlyBlock: boolean
 ): string {
   const imported = originalBlock(node, session);
-  if (imported && sameSource(node, imported.node)) return imported.xml;
+  // Empty original XML belongs to the editable placeholder of a section-only body. Once
+  // another block is added, that paragraph represents a real blank line and must be written.
+  if (
+    imported &&
+    (imported.xml !== "" || onlyBlock) &&
+    sameSource(node, imported.node)
+  ) {
+    return imported.xml;
+  }
   return serializeBlock(node, refs);
 }
 
@@ -84,7 +93,7 @@ function buildDocumentXml(
 ): string {
   const pieces: string[] = [session.documentPrefix];
   withUniqueIdentities(doc).forEach((child) => {
-    pieces.push(blockXml(child, session, refs));
+    pieces.push(blockXml(child, session, refs, doc.childCount === 1));
   });
   // The body's own section closes the blocks and stands ahead of the tail (§17.6.18)
   const sectPr: unknown = doc.attrs.sectPr;

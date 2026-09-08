@@ -19,14 +19,15 @@ import {
   renderElement,
   renderProps,
   setChild,
-  setChildren,
 } from "../ooxml/props";
+import { rootTagAt } from "../ooxml/tagScan";
 import { isOnElement } from "../ooxml/units";
 import {
   attributeByLocalName,
   childByLocalName,
   elementChildren,
   R_NS,
+  W_NS,
 } from "../ooxml/xml";
 import {
   A4_PORTRAIT,
@@ -189,6 +190,9 @@ export function parseSectionProperties(xml: string): SectionProperties | null {
  * stands, and the body's own where the document holds a single section.
  */
 export function firstSectPrElement(body: Element): Element | null {
+  const wordSection = body.getElementsByTagNameNS(W_NS, "sectPr")[0];
+  if (wordSection) return wordSection;
+  // Keep the existing tolerant fallback only when no Word section is present.
   for (const el of body.getElementsByTagName("*")) {
     if (el.localName === "sectPr") return el;
   }
@@ -248,18 +252,26 @@ function referenceVariant(xml: string): string {
 }
 
 /**
- * The references of this kind with the one naming the same variant swapped for `childXml`, and
- * `childXml` on the end where the section names that variant for the first time.
+ * Swap a reference in its own slot. Header and footer references can be interleaved, so replacing
+ * the list by element name would move untouched references and their intervening comments.
+ * A new variant follows the last reference of its kind, or uses the registered order for a kind
+ * the section has not named yet.
  */
-function withReference(props: Props, name: string, childXml: string): string[] {
+function withReference(props: Props, name: string, childXml: string): Props {
   const variant = referenceVariant(childXml);
-  const existing = props.children
-    .filter((child) => child.name === name)
-    .map((child) => child.xml);
-  const replaced = existing.map((xml) =>
-    referenceVariant(xml) === variant ? childXml : xml
-  );
-  return replaced.includes(childXml) ? replaced : [...replaced, childXml];
+  let last = -1;
+  let replaced = false;
+  const children = props.children.map((child, index) => {
+    if (child.name !== name) return child;
+    last = index;
+    if (referenceVariant(child.xml) !== variant) return child;
+    replaced = true;
+    return { ...child, xml: childXml };
+  });
+  if (replaced) return { ...props, children };
+  if (last === -1) return setChild(props, name, childXml);
+  children.splice(last + 1, 0, { name, xml: childXml });
+  return { ...props, children };
 }
 
 /**
@@ -278,7 +290,7 @@ export function setSectionChild(
   name: string,
   childXml: string | null
 ): string {
-  const start = sectPrXml.indexOf("<");
+  const start = rootTagAt(sectPrXml);
   if (start === -1) return sectPrXml;
   // What stood between the block before it and the section itself belongs to the document rather
   // than to the section, so it rides along instead of being written again
@@ -287,7 +299,7 @@ export function setSectionChild(
   if (props === null) return sectPrXml;
   const written =
     childXml !== null && REFERENCE_CHILDREN.includes(name)
-      ? setChildren(props, name, withReference(props, name, childXml))
+      ? withReference(props, name, childXml)
       : setChild(props, name, childXml);
   return gap + renderElement(written);
 }

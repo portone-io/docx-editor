@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 import type { EditorState } from "prosemirror-state";
 import { describe, expect, it } from "vitest";
-import { makeDocx } from "../../__testing__/docx";
+import { LETTER_SECT_PR, makeDocx } from "../../__testing__/docx";
 import { runCommand, select } from "../../__testing__/editing";
+import { exportDocx } from "../../docx/exportDocx";
 import { importDocx } from "../../docx/importDocx";
 import { serializeParagraph } from "../../docx/serializeParagraph";
 import {
@@ -205,4 +206,16 @@ describe("the link key", () => {
     const locked = runCommand(select(opened("abcd"), 1, 5), lockSelection);
     expect(docxKeymap["Mod-k"](select(locked, 1, 5))).toBe(false);
   });
+});
+
+it("keeps the first blank paragraph after Enter in a section-only body", () => {
+  const { doc, session } = importDocx(makeDocx(LETTER_SECT_PR));
+  const split = runCommand(createEditorState(doc), docxKeymap.Enter);
+  const typed = split.apply(split.tr.insertText("second paragraph"));
+  expect(typed.doc.childCount).toBe(2);
+  const reopened = importDocx(exportDocx(typed.doc, session)).doc;
+  expect(reopened.childCount).toBe(2);
+  expect(reopened.child(0).textContent).toBe("");
+  expect(reopened.child(1).textContent).toBe("second paragraph");
+  expect(reopened.attrs.sectPr).toBe(LETTER_SECT_PR);
 });

@@ -7,6 +7,8 @@ Its scope is the editor library itself; the other workspace packages, `demo/` an
 
 Import keeps the original XML behind each document block. An untouched block is written back from that source, and a structure the editor cannot model becomes a placeholder that retains the XML without exposing unsupported edits. There is one placeholder node kind, `rawBlock`, wherever such a block stands: one opened under the body names the session fragment it was read from, one opened inside a table cell carries its XML, and either may be moved into the other's place by an edit.
 
+The final body section is held in `doc.attrs.sectPr` and written after the blocks. A body containing only section properties gets an empty editable paragraph whose original XML is empty: export omits it while it remains unchanged and alone, preserving the untouched document. Once another block is added, the paragraph is written as a real blank line.
+
 Paragraphs and runs retain their original formatting XML while supported edits replace only the relevant values. Package parts outside the supported editing surface are repacked unchanged.
 
 Raw XML reaches the model from three directions: import puts what it cut out of the file straight into the attrs, a command builds a fragment of its own (`editor/commands/lockCommands` writes a control's opening tag), and the page is read back. The last of those is the only one that carries a string from outside, so every raw attr the schema's `parseDOM` rules read goes through `ooxml/fragment`, which holds a fragment against the shape the attr carrying it goes back out as. A rule that meets a refusal gives up, so the content settles one level plainer instead of carrying a fragment the writer would splice into the exported file.

@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
+
 import { unzipSync } from "fflate";
+import { EditorState } from "prosemirror-state";
 import { describe, expect, it } from "vitest";
 import {
   decode,
@@ -9,6 +11,7 @@ import {
 } from "../__testing__/docx";
 import { childByLocalName, parseXml } from "../ooxml/xml";
 import { docxSchema } from "../schema";
+import { onlyCommentsChangedBy } from "./commentOnlyChange";
 import { exportDocx } from "./exportDocx";
 import { importDocx } from "./importDocx";
 import { A4_PORTRAIT } from "./pageGeometry";
@@ -211,6 +214,42 @@ describe("the sections a document is written in", () => {
   });
 });
 
+describe("surgical edits to interleaved section references", () => {
+  const headerDefault = '<w:headerReference w:type="default" r:id="rId4"/>';
+  const footerDefault = '<w:footerReference w:type="default" r:id="rId5"/>';
+  const headerFirst = '<w:headerReference w:type="first" r:id="rId6"/>';
+  const section =
+    `<w:sectPr>\n${headerDefault}\n<!-- footer -->${footerDefault}` +
+    `\n<!-- first page -->${headerFirst}\n<w:pgSz w:w="12240" w:h="15840"/>` +
+    "\n<!-- section tail --></w:sectPr>";
+
+  it.each([
+    ["headerReference", headerFirst],
+    ["footerReference", footerDefault],
+  ])(
+    "replaces a %s in place without moving siblings or gaps",
+    (name, original) => {
+      const replacement = original.replace(/rId\d+/, "rId9");
+      expect(setSectionChild(section, name, replacement)).toBe(
+        section.replace(original, replacement)
+      );
+    }
+  );
+
+  it.each([
+    ["headerReference", headerFirst],
+    ["footerReference", footerDefault],
+  ])(
+    "adds a new %s variant after its kind without moving existing references",
+    (name, previous) => {
+      const added = `<w:${name} w:type="even" r:id="rId9"/>`;
+      expect(setSectionChild(section, name, added)).toBe(
+        section.replace(previous, previous + added)
+      );
+    }
+  );
+});
+
 /** The first section of a document, read the way the import reads it */
 function firstSectionOf(body: string) {
   const documentXml = `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:body>${body}</w:body></w:document>`;
@@ -240,7 +279,7 @@ describe("the section properties one w:sectPr lays down", () => {
       first: "rId4",
       even: null,
     });
-    // A reference naming no variant names the default one (§17.6.12)
+    // Tolerate a missing required variant as the default one.
     expect(props.footerRefs.default).toBe("rId6");
     expect(props.titlePg).toBe(true);
   });
@@ -264,4 +303,46 @@ describe("the section properties one w:sectPr lays down", () => {
       `<w:pPr>${LETTER_SECT_PR}</w:pPr>`
     );
   });
+});
+
+it("ignores foreign section names before the Word section", () => {
+  const foreign =
+    '<x:sectPr xmlns:x="urn:foreign"><x:pgSz x:w="1" x:h="2"/></x:sectPr>';
+  const { session } = importDocx(
+    makeDocx(
+      `<w:p><w:r><w:drawing>${foreign}</w:drawing></w:r></w:p>${LETTER_SECT_PR}`
+    )
+  );
+  expect(session.geometry).toEqual(LETTER);
+});
+
+it("edits a body section after its preserved comment gap", () => {
+  const gap = "\n<!-- before <w:sectPr> -->\n";
+  const child = '<w:pgMar w:top="100"/>';
+  expect(setSectionChild(gap + LETTER_SECT_PR, "pgMar", child)).toBe(
+    gap + LETTER_SECT_PR.replace(/<w:pgMar[^>]*\/>/, child)
+  );
+});
+
+it("models a section-only body without inventing XML until its paragraph is edited", () => {
+  const input = makeDocx(LETTER_SECT_PR);
+  const { doc, session } = importDocx(input);
+  expect(doc.attrs.sectPr).toBe(LETTER_SECT_PR);
+  expect(sectionsOf(doc)[0].props.geometry).toEqual(session.geometry);
+  expect(doc.firstChild?.type.name).toBe("paragraph");
+  doc.check();
+  const original = decode(unzipSync(input)["word/document.xml"]);
+  expect(decode(unzipSync(exportDocx(doc, session))["word/document.xml"])).toBe(
+    original
+  );
+  expect(onlyCommentsChangedBy(input, exportDocx(doc, session), "me")).toEqual({
+    ok: true,
+  });
+  const state = EditorState.create({ doc });
+  const edited = state.apply(state.tr.insertText("added", 1)).doc;
+  const output = decode(
+    unzipSync(exportDocx(edited, session))["word/document.xml"]
+  );
+  expect(importDocx(exportDocx(edited, session)).doc.textContent).toBe("added");
+  expect(output).toContain(LETTER_SECT_PR + "</w:body>");
 });

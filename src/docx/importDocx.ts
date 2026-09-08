@@ -194,8 +194,7 @@ function splitTrailingSectPr(scan: BodyScan): BodyScan & {
   sectPr: string | null;
 } {
   const last = scan.blocks.at(-1);
-  // In a document whose body is nothing but a sectPr, taking it away would leave no block to edit
-  if (scan.blocks.length < 2 || !last || localPart(last.name) !== "sectPr") {
+  if (!last || localPart(last.name) !== "sectPr") {
     return { ...scan, sectPr: null };
   }
   return {
@@ -338,6 +337,18 @@ function readDocx(input: DocxBytes): {
       formatting
     )
   );
+  if (blockNodes.length === 0 && scan.sectPr !== null) {
+    // A section-only body needs a place to type. Its original block is empty XML, so the
+    // paragraph is written only after an edit and an untouched file remains byte-identical.
+    blockNodes.push(
+      withStyleFormats(
+        docxSchema.nodes.paragraph.create({
+          srcId: blockKey({ sessionId }, BODY_STORY_KEY, 0),
+        }),
+        formatting
+      )
+    );
+  }
   const doc = docxSchema.nodes.doc.create({ sectPr: scan.sectPr }, blockNodes);
   return {
     doc,
@@ -349,7 +360,10 @@ function readDocx(input: DocxBytes): {
       documentPrefix: scan.prefix,
       documentSuffix: scan.suffix,
       documentHadBom: hadBom,
-      blocks: blockNodes.map((node, i) => ({ xml: scan.blocks[i].xml, node })),
+      blocks: blockNodes.map((node, i) => ({
+        xml: scan.blocks[i]?.xml ?? "",
+        node,
+      })),
       defaults: stylesDom
         ? readDocumentDefaults(stylesDom, themeFonts)
         : NO_DOCUMENT_DEFAULTS,
