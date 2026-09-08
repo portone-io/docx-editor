@@ -9,7 +9,11 @@
  *
  * A kind knows three things and nothing about either walk: what a mark reads out of one element,
  * what opens it again, and what closes it. Tracked changes (`w:ins`, `w:del`) and simple fields
- * (`w:fldSimple`) are wrappers of the same shape and arrive as one entry here beside one mark spec.
+ * (`w:fldSimple`) are wrappers of the same shape. Registering one is an entry here and a mark spec
+ * in `schema/docxSchema` carrying `WRAPPER_ATTRS`; its attrs also want a row in
+ * `schema/attrRoles`, and two test lists name the kinds outright (`WRAPPERS_READS` in
+ * `schema/attrClasses.test.ts`, the kind list in `schema/wrappers.test.ts`). Neither paragraph walk
+ * and neither policy table has to be touched.
  *
  * The opening tag is the verbatim string the file wrote wherever there is one, so a wrapper nobody
  * edited goes back out byte for byte; only the closing tag is written from scratch.
@@ -181,6 +185,23 @@ export const WRAPPER_KINDS: readonly WrapperKind[] = [SDT, LINK];
 /** The kind this element is one of, undefined for an element no kind reads */
 export function wrapperKindFor(el: Element): WrapperKind | undefined {
   return WRAPPER_KINDS.find((kind) => kind.element === el.localName);
+}
+
+/**
+ * Whether a wrapper of this kind may be read inside the wrappers already around it.
+ *
+ * A kind whose mark excludes its own type records one of itself at a time, so the inner of two is
+ * left whole where it stood rather than pushing the outer one off the content it wraps: that is a
+ * `w:hyperlink` inside a `w:hyperlink`, which OOXML admits and Word does not write. A kind that
+ * excludes nothing nests as deeply as the file does (`w:sdt`, §17.5.2.17).
+ */
+export function wrapperFits(
+  kind: WrapperKind,
+  wrappers: readonly Mark[]
+): boolean {
+  const type = docxSchema.marks[kind.mark];
+  if (!type.excludes(type)) return true;
+  return !wrappers.some((mark) => mark.type === type);
 }
 
 /** The kind this mark stands for. A wrapper mark nobody registered has no way back out */

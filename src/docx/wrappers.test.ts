@@ -136,6 +136,48 @@ describe("a wrapper kind nobody registered", () => {
   });
 });
 
+/**
+ * `EG_PContent` admits it and Word never writes it. A link mark cannot record a second link around
+ * it, so the inner one is kept whole where it stood, wearing the link around it, exactly as it was
+ * before any of this nested.
+ */
+describe("a hyperlink inside a hyperlink", () => {
+  const OTHER = "https://example.com/other";
+
+  it("keeps the inner one whole and round-trips as it came", () => {
+    const xml = `<w:p>${link(`<w:hyperlink r:id="rId8">${run("terms")}</w:hyperlink>`)}</w:p>`;
+    const node = open(xml);
+
+    expect(nesting(only(node))).toEqual(["link"]);
+    expect(only(node).type.name).toBe("rawInline");
+    expect(only(node).attrs.element).toBe("hyperlink");
+    expect(serializeParagraph(node, REFS)).toBe(xml);
+  });
+
+  it("round-trips byte identical after an edit elsewhere in the paragraph", () => {
+    const body =
+      `<w:p>${run("see ")}` +
+      `<w:hyperlink r:id="rId8"><w:hyperlink r:id="rId9">${run("terms")}</w:hyperlink></w:hyperlink>` +
+      "</w:p>";
+    const bytes = makeLinkedDocx(body, { rId9: TERMS, rId8: OTHER });
+    const { doc, session } = importDocx(bytes);
+    const state = createEditorState(doc);
+    const typed = state.apply(state.tr.insertText("X", 2));
+    const written = documentXmlOf(typed.doc, session);
+
+    // The inner link is a fragment kept whole, so its text is not the paragraph's to edit
+    expect(typed.doc.child(0).textContent).toBe("sXee ");
+    // The edit reached the block, so what follows is the writer's work rather than the original
+    // bytes handed back
+    expect(written).toContain("sXee ");
+    // Both wrappers still stand: the inner one does not push the outer off the content it wraps
+    expect(written).toContain(
+      `<w:hyperlink r:id="rId8"><w:hyperlink r:id="rId9">${run("terms")}</w:hyperlink></w:hyperlink>`
+    );
+    expect(written.match(/<w:hyperlink/g)).toHaveLength(2);
+  });
+});
+
 describe("a document holding a hyperlink that holds a control", () => {
   const BODY = `<w:p>${link(control(run("terms")))}</w:p>`;
 
@@ -182,6 +224,26 @@ describe("a document holding a hyperlink that holds a control", () => {
     expect(written).toContain(
       `<w:hyperlink r:id="rId9">${run("terms")}</w:hyperlink></w:sdtContent>`
     );
+  });
+
+  /**
+   * The pieces a link goes on are one per inline node, so a link laid over two runs gets a mark
+   * each. They carry the same address at the same depth, and the writer groups by what the marks
+   * say rather than by which object they are, so one hyperlink comes out.
+   */
+  it("a link made across two differently formatted runs goes out as one hyperlink", () => {
+    const bytes = makeLinkedDocx(
+      `<w:p>${run("our ")}<w:r><w:rPr><w:b/></w:rPr><w:t>terms</w:t></w:r></w:p>`,
+      { rId9: TERMS }
+    );
+    const state = createEditorState(importDocx(bytes).doc);
+    const { from } = rangeOfText(state.doc, "our ");
+    const { to } = rangeOfText(state.doc, "terms");
+    const linked = runCommand(select(state, from, to), setLink(TERMS));
+    const written = serializeParagraph(linked.doc.child(0), REFS);
+
+    expect(written.match(/<w:hyperlink/g)).toHaveLength(1);
+    expect(written).toContain("</w:hyperlink></w:p>");
   });
 
   it("undoing that link leaves the control exactly as it was", () => {

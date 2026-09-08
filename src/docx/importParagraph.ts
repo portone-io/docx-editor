@@ -5,8 +5,9 @@
  *
  * A `w:sdt` content control and a `w:hyperlink` standing inside the paragraph are both unwrapped, so
  * the text they hold stays editable, and the wrapper each came in rides along on a mark to go back
- * out around the same text. Either may hold the other, and either may hold another of its own kind:
- * the nesting is read as the file wrote it and recorded on the marks (`docx/wrappers`).
+ * out around the same text. Either may hold the other and a control may hold a control: the nesting
+ * is read as the file wrote it and recorded on the marks (`docx/wrappers`). A link inside a link is
+ * the one arrangement no mark can record, and the inner one stays whole as it always has.
  *
  * Nothing here demotes a paragraph. What the editor has no model for - a field character, a
  * tracked insertion, a symbol, a drawing nobody could read - is kept where it stood, inside its
@@ -42,7 +43,7 @@ import type { ImageSources } from "./media";
 import { NO_IMAGES } from "./media";
 import { type ImportedNotes, NO_NOTES, type NoteKind, noteById } from "./notes";
 import { NO_THEME_FONTS, type ThemeFonts } from "./theme";
-import { wrapperKindFor } from "./wrappers";
+import { wrapperFits, wrapperKindFor } from "./wrappers";
 
 function runMark(run: Element, themeFonts: ThemeFonts): Mark {
   const rPr = childByLocalName(run, "rPr");
@@ -303,6 +304,8 @@ function buildModelledInline(
   }
   const kind = wrapperKindFor(child);
   if (kind) {
+    // A wrapper its own kind cannot hold stays whole where it stood, wearing the wrappers around it
+    if (!wrapperFits(kind, wrappers)) return null;
     const reading = kind.read(child, depth, sources);
     if (!reading) return null;
     return buildContent(reading.content, sources, depth + 1, [
