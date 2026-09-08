@@ -557,6 +557,53 @@ describe("a link a lock holds part of", () => {
   });
 });
 
+/**
+ * A control and a link nest either way round, so a link laid across the edge of a control is
+ * written at one depth inside it and another outside: two `w:hyperlink` elements around one
+ * address. To the reader it is one link, and everything asked here reads it as one.
+ */
+describe("a link that runs out of a content control", () => {
+  const CONTROL =
+    '<w:sdt><w:sdtPr><w:id w:val="7"/></w:sdtPr><w:sdtContent>' +
+    `${run("our ")}</w:sdtContent></w:sdt>`;
+  const BODY = `<w:p>${CONTROL}${run("terms")}</w:p>`;
+
+  function linkedAcross(): Opened {
+    const { state, session } = linked(BODY);
+    const { from } = rangeOf(state.doc, "our ");
+    const { to } = rangeOf(state.doc, "terms");
+    return {
+      state: runCommand(select(state, from, to), setLink(TERMS)),
+      session,
+    };
+  }
+
+  it("the card opens over the whole of it", () => {
+    const { state } = linkedAcross();
+    const { from } = rangeOf(state.doc, "our ");
+    const { to } = rangeOf(state.doc, "terms");
+
+    expect(activeLinkSpan(inside(state, "terms"))).toEqual({
+      from,
+      to,
+      href: TERMS,
+    });
+    expect(activeLinkSpan(select(state, from, to))?.to).toBe(to);
+  });
+
+  it("is taken off whole", () => {
+    const { state } = linkedAcross();
+    const off = runCommand(inside(state, "our "), removeLink);
+    expect(anyLinkMark(off)).toBe(false);
+  });
+
+  it("goes out as the two wrappers the nesting needs, on one relationship", () => {
+    const { state, session } = linkedAcross();
+    expect(linkTags(state, session)).toHaveLength(2);
+    expect(relationships(state, session)).toHaveLength(1);
+  });
+});
+
 describe("typing inside a link", () => {
   const BODY = `<w:p><w:hyperlink r:id="rId9">${run("our terms")}</w:hyperlink></w:p>`;
 

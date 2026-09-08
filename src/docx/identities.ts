@@ -104,7 +104,7 @@ export const paragraphIdRule: IdentityRule = {
 };
 
 function sdtMarksOf(node: PMNode): readonly Mark[] {
-  return wrappersOf(node, docxSchema.marks.sdt.name);
+  return wrappersOf(node, docxSchema.marks.sdt);
 }
 
 /** What tells one control apart from another, wherever in the document it turns up */

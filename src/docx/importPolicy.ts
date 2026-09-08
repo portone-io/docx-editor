@@ -25,6 +25,7 @@ import {
   RANGE_MARKERS,
 } from "../ooxml/rangeMarkers";
 import type { PreservedDisplay } from "../schema";
+import { WRAPPER_KINDS } from "./wrappers";
 
 export type { PreservedDisplay };
 
@@ -169,12 +170,22 @@ const PARAGRAPH_CHILDREN: readonly (readonly [
   [["fldSimple", "smartTag", "customXml", "dir", "bdo", "subDoc"], INLINE_CHIP],
 ];
 
+/**
+ * The elements the wrapper registry takes apart (`docx/wrappers`). They stand last in both levels
+ * that take `EG_PContent`, so registering a kind for an element another rule keeps whole - a
+ * tracked-change container, a simple field - takes it over rather than being shadowed by that rule.
+ */
+const WRAPPER_ELEMENTS: readonly string[] = WRAPPER_KINDS.map(
+  (kind) => kind.element
+);
+
 /** `CT_P`: its properties, `EG_PContent`, and the markers and containers that group reaches */
 const PARAGRAPH_LEVEL: ReadonlyMap<string, ElementPolicy> = new Map([
   ...rules([
-    [["pPr", "r", "hyperlink", "sdt"], MODEL],
+    [["pPr", "r"], MODEL],
     [COMMENT_RANGE_MARKERS, MODEL],
     ...PARAGRAPH_CHILDREN,
+    [WRAPPER_ELEMENTS, MODEL],
   ]),
   ...MATH.map((name): [string, ElementPolicy] => [name, INLINE_CHIP]),
 ]);
@@ -188,9 +199,10 @@ const PARAGRAPH_LEVEL: ReadonlyMap<string, ElementPolicy> = new Map([
  */
 const WRAPPER_LEVEL: ReadonlyMap<string, ElementPolicy> = new Map([
   ...rules([
-    [["r", "hyperlink", "sdt"], MODEL],
+    [["r"], MODEL],
     [COMMENT_RANGE_MARKERS, MODEL],
     ...PARAGRAPH_CHILDREN,
+    [WRAPPER_ELEMENTS, MODEL],
   ]),
   ...MATH.map((name): [string, ElementPolicy] => [name, INLINE_CHIP]),
 ]);

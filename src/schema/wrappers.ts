@@ -93,13 +93,13 @@ export function wrapperMarks(node: PMNode): readonly Mark[] {
 }
 
 /** Every wrapper of this kind the node stands inside, outermost first */
-export function wrappersOf(node: PMNode, name: string): readonly Mark[] {
-  return wrapperMarks(node).filter((mark) => mark.type.name === name);
+export function wrappersOf(node: PMNode, kind: MarkType): readonly Mark[] {
+  return wrapperMarks(node).filter((mark) => mark.type === kind);
 }
 
 /** The outermost wrapper of this kind the node stands inside. null where it stands in none */
-export function wrapperOf(node: PMNode, name: string): Mark | null {
-  return wrapperMarks(node).find((mark) => mark.type.name === name) ?? null;
+export function wrapperOf(node: PMNode, kind: MarkType): Mark | null {
+  return wrapperMarks(node).find((mark) => mark.type === kind) ?? null;
 }
 
 /**
@@ -127,10 +127,11 @@ export function sharedWrappers(nodes: readonly PMNode[]): readonly Mark[] {
   let shared = wrapperMarks(first);
   for (const node of nodes.slice(1)) {
     const marks = wrapperMarks(node);
-    const same = shared.findIndex(
-      (mark, index) => !(marks[index] && mark.eq(marks[index]))
-    );
-    if (same !== -1) shared = shared.slice(0, same);
+    const differs = shared.findIndex((mark, index) => {
+      const beside = marks[index];
+      return beside === undefined || !mark.eq(beside);
+    });
+    if (differs !== -1) shared = shared.slice(0, differs);
     if (shared.length === 0) break;
   }
   return shared;

@@ -66,7 +66,7 @@ interface StepRange {
  * A control may hold a control (`schema/wrappers`), and each of them locks on its own terms.
  */
 function sdtMarksOf(node: PMNode | null | undefined): readonly Mark[] {
-  return node ? wrappersOf(node, docxSchema.marks.sdt.name) : [];
+  return node ? wrappersOf(node, docxSchema.marks.sdt) : [];
 }
 
 /** What the control this mark stands for shuts (`schema`) */
@@ -154,18 +154,21 @@ export function controlSpans(block: Textblock): ControlSpan[] {
   block.node.forEach((child, offset) => {
     const from = block.start + offset;
     const to = from + child.nodeSize;
-    reaching = sdtMarksOf(child).map((mark) => {
-      const open = reaching.find(
+    const standing: ControlSpan[] = [];
+    for (const mark of sdtMarksOf(child)) {
+      const carried = reaching.find(
         (span) => span.to === from && span.mark.eq(mark)
       );
-      if (open) {
-        open.to = to;
-        return open;
+      if (carried) {
+        carried.to = to;
+        standing.push(carried);
+        continue;
       }
       const started: ControlSpan = { from, to, mark };
       spans.push(started);
-      return started;
-    });
+      standing.push(started);
+    }
+    reaching = standing;
   });
   return spans;
 }

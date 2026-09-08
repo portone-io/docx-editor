@@ -2,6 +2,7 @@
 import type { Mark, Node as PMNode } from "prosemirror-model";
 import { describe, expect, it } from "vitest";
 import { parseXml, R_NS } from "../ooxml/xml";
+import { docxSchema } from "../schema";
 import { wrapperMarks, wrappersOf } from "../schema/wrappers";
 import type { LinkTargets } from "./hyperlink";
 import { buildParagraph, NO_IMPORT_SOURCES } from "./importParagraph";
@@ -293,7 +294,10 @@ describe("a control holding another control", () => {
     expect(child.text).toBe("value");
     expect(markNames(child)).toEqual(["sdt", "sdt", "run"]);
     expect(
-      wrappersOf(child, "sdt").map((mark) => [mark.attrs.depth, mark.attrs.key])
+      wrappersOf(child, docxSchema.marks.sdt).map((mark) => [
+        mark.attrs.depth,
+        mark.attrs.key,
+      ])
     ).toEqual([
       [0, 0],
       [1, 1],

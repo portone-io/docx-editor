@@ -46,7 +46,7 @@ function table(...cells: PMNode[]): PMNode {
 function prefixesOf(node: PMNode): string[] {
   const found: string[] = [];
   node.descendants((child) => {
-    for (const mark of wrappersOf(child, "sdt")) {
+    for (const mark of wrappersOf(child, docxSchema.marks.sdt)) {
       const prefix: unknown = mark.attrs.sdtPrefix;
       if (typeof prefix === "string") found.push(prefix);
     }

@@ -42,17 +42,39 @@ function linkMarkOf(marks: readonly Mark[]): Mark | null {
 
 /** The link this inline node stands inside. A link never holds a link, so there is at most one */
 function linkOf(node: PMNode): Mark | null {
-  return wrapperOf(node, linkType.name);
+  return wrapperOf(node, linkType);
 }
 
-/** One piece of inline content a link can go on, and the link it already wears */
-interface LinkPiece {
+/**
+ * Whether these two marks stand for the one link.
+ *
+ * A link laid across the edge of a content control is written at one depth inside it and another
+ * outside (`schema/wrappers`), which is what has the file hold two `w:hyperlink` elements around
+ * the one address. To the reader it is one link, so everything asked about a link here reads the
+ * two as one: the card opens over the whole of it, and taking it off takes all of it off.
+ */
+function sameLink(a: Mark, b: Mark): boolean {
+  return atDepth(a, 0).eq(atDepth(b, 0));
+}
+
+function atDepth(mark: Mark, depth: number): Mark {
+  return mark.attrs.depth === depth
+    ? mark
+    : mark.type.create({ ...mark.attrs, depth });
+}
+
+interface Stretch {
   from: number;
   to: number;
-  link: Mark | null;
-  /** The wrappers it already stands inside, which a link made here goes inside as well */
-  wrappers?: readonly Mark[];
 }
+
+/**
+ * One piece of inline content a link can go on: either a link already there, which an edit changes
+ * where it points, or a piece standing in none, which gets one of its own laid inside every wrapper
+ * it already stands in. A piece has one or the other, never both and never neither.
+ */
+type LinkPiece = Stretch &
+  ({ link: Mark } | { link: null; wrappers: readonly Mark[] });
 
 /**
  * Whether a link may go on this inline node.
@@ -81,12 +103,12 @@ function piecesIn(doc: PMNode, from: number, to: number): LinkPiece[] {
     const start = Math.max(pos, from);
     const end = Math.min(pos + node.nodeSize, to);
     if (start < end) {
-      pieces.push({
-        from: start,
-        to: end,
-        link: linkOf(node),
-        wrappers: wrapperMarks(node),
-      });
+      const link = linkOf(node);
+      pieces.push(
+        link === null
+          ? { from: start, to: end, link, wrappers: wrapperMarks(node) }
+          : { from: start, to: end, link }
+      );
     }
     return false;
   });
@@ -114,7 +136,7 @@ function linkSpans(parent: PMNode, start: number): LinkSpan[] {
     const from = start + offset;
     const to = from + child.nodeSize;
     const last = spans.at(-1);
-    if (last && last.to === from && last.link.eq(link)) last.to = to;
+    if (last && last.to === from && sameLink(last.link, link)) last.to = to;
     else spans.push({ from, to, link });
   });
   return spans;
@@ -128,7 +150,9 @@ function caretSpan(state: EditorState): LinkSpan | null {
   return (
     linkSpans($from.parent, $from.start()).find(
       (span) =>
-        span.link.eq(link) && span.from <= $from.pos && $from.pos <= span.to
+        sameLink(span.link, link) &&
+        span.from <= $from.pos &&
+        $from.pos <= span.to
     ) ?? null
   );
 }
@@ -212,11 +236,9 @@ function selectionPieces(state: EditorState): LinkPiece[] {
  * already stands in so that a link made inside a content control goes back out inside it.
  */
 function linkMarkFor(piece: LinkPiece, href: string): Mark {
-  if (piece.link) return linkType.create({ ...piece.link.attrs, href });
-  return linkType.create({
-    href,
-    depth: innermostDepth(piece.wrappers ?? []) + 1,
-  });
+  if (piece.link !== null)
+    return linkType.create({ ...piece.link.attrs, href });
+  return linkType.create({ href, depth: innermostDepth(piece.wrappers) + 1 });
 }
 
 /**

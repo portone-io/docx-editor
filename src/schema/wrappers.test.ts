@@ -58,12 +58,12 @@ describe("the wrappers a node stands inside", () => {
       link({ depth: 1 }),
       control({ depth: 2, key: 1 })
     );
-    expect(wrapperOf(node, "sdt")?.attrs.key).toBe(0);
-    expect(wrapperOf(node, "link")?.attrs.depth).toBe(1);
-    expect(wrappersOf(node, "sdt").map((mark) => mark.attrs.key)).toEqual([
-      0, 1,
-    ]);
-    expect(wrapperOf(docxSchema.text("x"), "sdt")).toBeNull();
+    expect(wrapperOf(node, docxSchema.marks.sdt)?.attrs.key).toBe(0);
+    expect(wrapperOf(node, docxSchema.marks.link)?.attrs.depth).toBe(1);
+    expect(
+      wrappersOf(node, docxSchema.marks.sdt).map((mark) => mark.attrs.key)
+    ).toEqual([0, 1]);
+    expect(wrapperOf(docxSchema.text("x"), docxSchema.marks.sdt)).toBeNull();
   });
 
   it("says what depth a wrapper laid inside these takes", () => {
