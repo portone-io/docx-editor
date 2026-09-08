@@ -24,15 +24,29 @@ import { styleIdOf } from "../../docx/formatting";
 import {
   NEW_LISTS_ATTR,
   type NewLists,
+  NO_NEW_LISTS,
   newListsOf,
   newListsValue,
 } from "../../numbering/listRegistry";
 import { docxSchema, isPageBreak } from "../../schema";
 import { numIdsIn } from "../commands/listCommands";
+import { documentOf } from "../editorDocument";
 import { insertPlainText } from "../plainText";
 import { moveCaretToDrop } from "../plugins/dropCaret";
+import { documentNumbering } from "../plugins/numberingDecorations";
 import { COPIED_STYLE_ATTRIBUTE } from "./htmlReader";
 import { safeHref } from "./inlineFormatting";
+import {
+  type CopyRoute,
+  INTERNAL_TOKEN_ATTRIBUTE,
+  internalTokenOf,
+  rememberCopied,
+} from "./internalChannel";
+import {
+  DEFAULT_NORMALIZERS,
+  normalizePasted,
+  type SliceNormalizer,
+} from "./normalizers";
 import { DocxClipboardParser } from "./parser";
 import { readContextOf } from "./readContext";
 import {
@@ -139,29 +153,55 @@ function copiedNodeSpec(node: PMNode, spec: DOMOutputSpec): DOMOutputSpec {
     : withDomAttribute(stripped, COPIED_STYLE_ATTRIBUTE, styleId);
 }
 
-/**
- * The serializer a copy is written with: what the editor draws, with the private attributes taken
- * back off.
- *
- * Wrapping the schema's own drawing rather than declaring a second set of shapes keeps the two
- * from drifting. A node drawn a new way is copied the new way, and only what it publishes changes.
- */
-function clipboardSerializer(): DOMSerializer {
+function copiedNodes(): DOMSerializer["nodes"] {
   const drawn = DOMSerializer.fromSchema(docxSchema);
-  const nodes = Object.fromEntries(
+  return Object.fromEntries(
     Object.entries(drawn.nodes).map(([name, toDOM]) => [
       name,
       (node: PMNode) => copiedNodeSpec(node, toDOM(node)),
     ])
   );
-  const marks = Object.fromEntries(
+}
+
+function copiedMarks(): DOMSerializer["marks"] {
+  const drawn = DOMSerializer.fromSchema(docxSchema);
+  return Object.fromEntries(
     Object.entries(drawn.marks).map(([name, toDOM]) => [
       name,
       (mark: Mark, inline: boolean) =>
         copiedMarkSpec(mark, toDOM(mark, inline)),
     ])
   );
-  return new DOMSerializer(nodes, marks);
+}
+
+/**
+ * The serializer a copy is written with: what the editor draws, with the private attributes taken
+ * back off, and the name of the slice this editor kept written on the first element.
+ *
+ * Wrapping the schema's own drawing rather than declaring a second set of shapes keeps the two
+ * from drifting. A node drawn a new way is copied the new way, and only what it publishes changes.
+ *
+ * The name goes on only at the outermost call. `DOMSerializer` draws a node's children by calling
+ * this method again with the element it drew as the target, so a call carrying one is inside the
+ * copy rather than around it.
+ */
+class ClipboardSerializer extends DOMSerializer {
+  constructor(private readonly tokenOf: () => string | null) {
+    super(copiedNodes(), copiedMarks());
+  }
+
+  serializeFragment(
+    fragment: Fragment,
+    options?: { document?: Document },
+    target?: HTMLElement | DocumentFragment
+  ): HTMLElement | DocumentFragment {
+    const dom = super.serializeFragment(fragment, options, target);
+    const token = target === undefined ? this.tokenOf() : null;
+    if (token !== null) {
+      dom.firstElementChild?.setAttribute(INTERNAL_TOKEN_ATTRIBUTE, token);
+    }
+    return dom;
+  }
 }
 
 /** The blocks that stand for something the editor never read, which read as nothing at all */
@@ -270,21 +310,62 @@ function clipboardText(slice: Slice): string {
   return fragmentText(slice.content);
 }
 
+/**
+ * The modifier that turns a drag inside the editor into a copy, which `prosemirror-view` reads off
+ * the platform the same way (`dragMoves` in its input handling).
+ */
+function dragCopyModifier(): "altKey" | "ctrlKey" {
+  return /Mac|iP(hone|[oa]d)/.test(navigator.platform) ? "altKey" : "ctrlKey";
+}
+
+/**
+ * Whether this drop moves what it carries rather than leaving a copy of it behind.
+ *
+ * ProseMirror settles that at the drop and not at the dragstart, so `view.dragging.move` is only
+ * what the drag set out as: the modifier held down over the drop overrules it. It asks after the
+ * slice has been through `transformPasted`, which is why the same question is asked here, off the
+ * same `dragCopies` prop and the same modifier, rather than read back from `handleDrop`.
+ */
+function dropMoves(view: EditorView, event: DragEvent): boolean {
+  if (view.dragging === null) return false;
+  let copies: boolean | undefined;
+  view.someProp("dragCopies", (test) => {
+    copies = copies === true || test(event);
+  });
+  return copies === undefined ? !event[dragCopyModifier()] : !copies;
+}
+
 export interface ClipboardOptions {
   /** Tried from the front. The first reader to answer decides what a paste puts in */
   readers?: readonly ClipboardReader[];
+  /** Run in order over every pasted and dropped slice before it is put in */
+  normalizers?: readonly SliceNormalizer[];
 }
 
 export function docxClipboard(options: ClipboardOptions = {}): Plugin {
-  const serializer = clipboardSerializer();
+  const normalizers = options.normalizers ?? DEFAULT_NORMALIZERS;
+  /** The name given to the copy being written, which the serializer runs straight after */
+  let copyToken: string | null = null;
+  const serializer = new ClipboardSerializer(() => copyToken);
   let host: EditorView | null = null;
   const parser = new DocxClipboardParser(
     options.readers ?? DEFAULT_READERS,
-    () =>
-      host === null ? null : readContextOf(host.state, host.dom.ownerDocument)
+    (dom) =>
+      host === null
+        ? null
+        : {
+            dom,
+            token: internalTokenOf(dom),
+            sessionId: documentOf(host.state).session?.sessionId ?? null,
+            context: readContextOf(host.state, host.dom.ownerDocument),
+          }
   );
   /** The definitions the last reading started, held until the edit carrying them lands */
   let started: NewLists | null = null;
+  /** Whether the drop being handled moves what it carries rather than copying it */
+  let dropMove = false;
+  /** Whether the serialization being written is the one the dragstart being handled asked for */
+  let draggingOut = false;
 
   return new Plugin({
     view(view) {
@@ -303,7 +384,11 @@ export function docxClipboard(options: ClipboardOptions = {}): Plugin {
     appendTransaction(transactions, _before, after) {
       const lists = started;
       started = null;
-      if (lists === null || !transactions.some((tr) => tr.docChanged)) {
+      if (
+        lists === null ||
+        lists.size === 0 ||
+        !transactions.some((tr) => tr.docChanged)
+      ) {
         return null;
       }
       const worn = numIdsIn(after.doc);
@@ -325,6 +410,24 @@ export function docxClipboard(options: ClipboardOptions = {}): Plugin {
           parser.setPlainText(false);
           return false;
         },
+        // ProseMirror writes and reads the dragged slice inside the very event the two below
+        // answer for, through props it hands the view and not the event, and it runs these first.
+        // A microtask is the first thing to run once the event is over, so neither answer is left
+        // standing for whatever comes next
+        dragstart() {
+          draggingOut = true;
+          queueMicrotask(() => {
+            draggingOut = false;
+          });
+          return false;
+        },
+        drop(view, event) {
+          dropMove = dropMoves(view, event);
+          queueMicrotask(() => {
+            dropMove = false;
+          });
+          return false;
+        },
       },
       clipboardParser: parser,
       clipboardSerializer: serializer,
@@ -335,12 +438,29 @@ export function docxClipboard(options: ClipboardOptions = {}): Plugin {
         return plainTextSlice(text, context);
       },
       clipboardTextSerializer: clipboardText,
-      transformCopied: copiedSlice,
-      transformPasted(slice, _view, plain) {
+      transformCopied(slice, view) {
+        // The slice is kept as it stands: what the wrappers are emptied of below leaves for the
+        // clipboard, and a paste back into this session is given what was copied instead
+        const route: CopyRoute = draggingOut ? "drag" : "clipboard";
+        copyToken = rememberCopied(
+          route,
+          slice,
+          documentOf(view.state).session?.sessionId ?? null,
+          documentNumbering(view.state)
+        );
+        return copiedSlice(slice);
+      },
+      transformPasted(slice, view, plain) {
         if (!plain) parser.setPlainText(false);
         const read = parser.takeRead();
-        started = read?.newLists ?? null;
-        return read?.slice ?? slice;
+        const content = normalizePasted(
+          read ?? { slice, newLists: NO_NEW_LISTS },
+          view.state,
+          dropMove,
+          normalizers
+        );
+        started = content.newLists;
+        return content.slice;
       },
       handlePaste(view, event, slice) {
         if (slice.content.size > 0) return false;

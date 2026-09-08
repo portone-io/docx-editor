@@ -2,8 +2,7 @@ import { DOMParser, Slice } from "prosemirror-model";
 import type { EditorView } from "prosemirror-view";
 import { docxSchema } from "../../schema";
 import type { PastedContent } from "./htmlReader";
-import type { HtmlReadContext } from "./readContext";
-import type { ClipboardReader } from "./readers";
+import type { ClipboardInput, ClipboardReader } from "./readers";
 
 /**
  * The parser ProseMirror hands the clipboard to.
@@ -19,7 +18,7 @@ export class DocxClipboardParser extends DOMParser {
 
   constructor(
     private readonly readers: readonly ClipboardReader[],
-    private readonly contextOf: () => HtmlReadContext | null
+    private readonly inputOf: (dom: Node) => ClipboardInput | null
   ) {
     super(docxSchema, []);
   }
@@ -27,10 +26,10 @@ export class DocxClipboardParser extends DOMParser {
   parseSlice(dom: Node): Slice {
     this.read = null;
     this.setPlainText(false);
-    const context = this.contextOf();
-    if (context === null) return Slice.empty;
+    const input = this.inputOf(dom);
+    if (input === null) return Slice.empty;
     for (const reader of this.readers) {
-      const content = reader({ dom, context });
+      const content = reader(input);
       if (content === null) continue;
       this.read = content;
       return content.slice;

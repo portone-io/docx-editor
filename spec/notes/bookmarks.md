@@ -22,6 +22,8 @@ Edits cannot remove or duplicate these attribute-carried markers or reorder them
 
 Markers inside a container this reader could not take apart otherwise remain with that container's preserved XML. They are not exposed as independent model nodes.
 
+A pasted copy of a bookmarked range does not carry the bookmark. Both markers name the same `w:id` and the range they open is the one the file already holds, so a copy of them would open a second range under an identifier the document may spend only once.
+
 A placeholder carries the identity of the session it was read from, and an export refuses one from another session as `lost-original`.
 
 The editor does not create, delete, rename, or navigate to bookmarks. It keeps existing markers at their document-model positions while surrounding supported paragraphs are edited.

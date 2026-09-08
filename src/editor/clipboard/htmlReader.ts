@@ -35,6 +35,7 @@ import {
   marksFor,
   withInlineStyle,
 } from "./inlineFormatting";
+import type { ListKinds } from "./internalChannel";
 import type { HtmlReadContext } from "./readContext";
 
 const BLOCK_TAGS = new Set([
@@ -371,6 +372,12 @@ function sliceDepth(root: ParentNode): 0 | 1 {
 export interface PastedContent {
   slice: Slice;
   newLists: NewLists;
+  /**
+   * What the numbers this slice's paragraphs name meant where it was copied
+   * (`./internalChannel`). Absent for a reading that gave the lists it read numbers of its own,
+   * which knows what kind each is from the markup it read them out of.
+   */
+  listKinds?: ListKinds;
 }
 
 /** The content one piece of already parsed markup reads as, or null when it reads as nothing */
