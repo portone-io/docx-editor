@@ -1,41 +1,89 @@
 // @vitest-environment jsdom
 import { unzipSync, zipSync } from "fflate";
+import type { Node as PMNode } from "prosemirror-model";
 import { describe, expect, it } from "vitest";
 import {
   bytesEqual,
   decode,
   makeHeadersFootersDocx,
+  makeTwoSectionHeadersFootersDocx,
 } from "../__testing__/docx";
 import { docxSchema } from "../schema";
+import {
+  type StoryKey,
+  storiesOf,
+  storyKey,
+  storyNodeOf,
+} from "../schema/stories";
 import { exportDocx } from "./exportDocx";
 import {
   displayPageNumber,
-  headerFooterAlign,
+  type HeadersFooters,
+  headerFooterOn,
   headerFooterText,
+  variantsFor,
 } from "./headersFooters";
 import { importDocx } from "./importDocx";
+import { sectionsOf } from "./sections";
+import type { SessionStore } from "./session";
+import { storyFromText } from "./story";
 
 const encoder = new TextEncoder();
 const W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const MC_NS = "http://schemas.openxmlformats.org/markup-compatibility/2006";
+const HEADER_REL =
+  "http://schemas.openxmlformats.org/officeDocument/2006/relationships/header";
+
+/** The stories one section of the opened document shows, which is what the preview draws */
+function sectionStories(
+  doc: PMNode,
+  session: SessionStore,
+  index = 0
+): HeadersFooters {
+  const section = sectionsOf(doc)[index];
+  if (!section) throw new Error(`the document has no section ${index}`);
+  return variantsFor(section, session.headerFooterStories, (key) =>
+    storyNodeOf(doc, key)
+  );
+}
+
+function openedStories(bytes: Uint8Array, index = 0): HeadersFooters {
+  const { doc, session } = importDocx(bytes);
+  return sectionStories(doc, session, index);
+}
+
+/**
+ * What one visual page's header or footer reads as, and null where the section declares none.
+ *
+ * `page` is the page's place in the whole document, which is what a `PAGE` field prints, and
+ * `pageInSection` its place within its own section, which is what the variant is chosen by. The
+ * two are the same number only while the document is written in one section.
+ */
+function shown(
+  stories: HeadersFooters,
+  kind: "headers" | "footers",
+  page: number,
+  totalPages: number,
+  pageInSection = page
+): string | null {
+  const content = headerFooterOn(stories[kind], stories, pageInSection);
+  if (content === null) return null;
+  return headerFooterText(
+    content.story,
+    displayPageNumber(stories, page),
+    totalPages
+  );
+}
 
 describe("header and footer stories", () => {
   it("selects first, default, and even stories using the displayed page number", () => {
-    const { session } = importDocx(makeHeadersFootersDocx());
-    const stories = session.headersFooters;
+    const stories = openedStories(makeHeadersFootersDocx());
 
     expect(displayPageNumber(stories, 1)).toBe(4);
-    expect(headerFooterText(stories.headers, stories, 1, 3)).toBe(
-      "First header"
-    );
-    expect(headerFooterText(stories.headers, stories, 2, 3)).toBe(
-      "Default 5 of 3"
-    );
-    expect(headerFooterText(stories.headers, stories, 3, 3)).toBe(
-      "Even header"
-    );
-    expect(headerFooterText(stories.footers, stories, 1, 3)).toBe(
-      "First footer"
-    );
+    expect(shown(stories, "headers", 1, 3)).toBe("First header");
+    expect(shown(stories, "headers", 2, 3)).toBe("Default 5 of 3");
+    expect(shown(stories, "headers", 3, 3)).toBe("Even header");
+    expect(shown(stories, "footers", 1, 3)).toBe("First footer");
   });
 
   it("draws the same character for w:cr and w:noBreakHyphen as the body does", () => {
@@ -47,10 +95,8 @@ describe("header and footer stories", () => {
         '<w:softHyphen/><w:t xml:space="preserve">again</w:t>' +
         "</w:r></w:p></w:hdr>"
     );
-    const { session } = importDocx(zipSync(parts));
-    const stories = session.headersFooters;
 
-    expect(headerFooterText(stories.headers, stories, 1, 3)).toBe(
+    expect(shown(openedStories(zipSync(parts)), "headers", 1, 3)).toBe(
       "re‑read\nagain"
     );
   });
@@ -64,7 +110,7 @@ describe("header and footer stories", () => {
       )
     );
 
-    const stories = importDocx(zipSync(parts)).session.headersFooters;
+    const stories = openedStories(zipSync(parts));
     expect(displayPageNumber(stories, 1)).toBe(1);
     expect(displayPageNumber(stories, 2)).toBe(2);
   });
@@ -76,17 +122,32 @@ describe("header and footer stories", () => {
         "<w:r><w:t>Right header</w:t></w:r></w:p></w:hdr>"
     );
 
-    const stories = importDocx(zipSync(parts)).session.headersFooters;
-    expect(headerFooterAlign(stories.headers, stories, 2)).toBe("right");
+    const stories = openedStories(zipSync(parts));
+    expect(headerFooterOn(stories.headers, stories, 2)?.align).toBe("right");
+  });
+
+  it("reads no alignment past a first paragraph that declares none", () => {
+    const parts = unzipSync(makeHeadersFootersDocx());
+    parts["word/header1.xml"] = encoder.encode(
+      `<w:hdr xmlns:w="${W_NS}">` +
+        "<w:p><w:r><w:t>Plain</w:t></w:r></w:p>" +
+        '<w:p><w:pPr><w:jc w:val="right"/></w:pPr>' +
+        "<w:r><w:t>Right</w:t></w:r></w:p></w:hdr>"
+    );
+
+    const stories = openedStories(zipSync(parts));
+    expect(headerFooterOn(stories.headers, stories, 2)?.align).toBeNull();
   });
 
   it("leaves a selected but undeclared first or even story blank", () => {
-    const { session } = importDocx(makeHeadersFootersDocx());
-    const stories = session.headersFooters;
-    const missing = { ...stories.headers, first: null, even: null };
+    const stories = openedStories(makeHeadersFootersDocx());
+    const missing: HeadersFooters = {
+      ...stories,
+      headers: { ...stories.headers, first: null, even: null },
+    };
 
-    expect(headerFooterText(missing, stories, 1, 3)).toBeNull();
-    expect(headerFooterText(missing, stories, 3, 3)).toBeNull();
+    expect(shown(missing, "headers", 1, 3)).toBeNull();
+    expect(shown(missing, "headers", 3, 3)).toBeNull();
   });
 
   it("reads relationship targets relative to the main part", () => {
@@ -105,7 +166,7 @@ describe("header and footer stories", () => {
         .replace('Target="settings.xml"', 'Target="../settings.xml"')
     );
 
-    const stories = importDocx(zipSync(parts)).session.headersFooters;
+    const stories = openedStories(zipSync(parts));
     expect(stories.headers.default).not.toBeNull();
     expect(stories.footers.first).not.toBeNull();
     expect(stories.evenAndOdd).toBe(true);
@@ -117,8 +178,7 @@ describe("header and footer stories", () => {
       `<w:settings xmlns:w="${W_NS}"><w:evenAndOddHeaders w:val="off"/></w:settings>`
     );
 
-    const stories = importDocx(zipSync(parts)).session.headersFooters;
-    expect(stories.evenAndOdd).toBe(false);
+    expect(openedStories(zipSync(parts)).evenAndOdd).toBe(false);
     // Every other spelling of off says the same, and the element on its own still says on
     for (const [written, expected] of [
       ['<w:evenAndOddHeaders w:val="0"/>', false],
@@ -129,9 +189,7 @@ describe("header and footer stories", () => {
       parts["word/settings.xml"] = encoder.encode(
         `<w:settings xmlns:w="${W_NS}">${written}</w:settings>`
       );
-      expect(importDocx(zipSync(parts)).session.headersFooters.evenAndOdd).toBe(
-        expected
-      );
+      expect(openedStories(zipSync(parts)).evenAndOdd).toBe(expected);
     }
   });
 
@@ -146,8 +204,136 @@ describe("header and footer stories", () => {
         "</w:hdr>"
     );
 
-    const stories = importDocx(zipSync(parts)).session.headersFooters;
-    expect(headerFooterText(stories.headers, stories, 2, 2)).toBe("Visible");
+    expect(shown(openedStories(zipSync(parts)), "headers", 2, 2)).toBe(
+      "Visible"
+    );
+  });
+
+  it("shows a text box a producer offered twice through mc:AlternateContent once", () => {
+    const parts = unzipSync(makeHeadersFootersDocx());
+    const box =
+      "<w:txbxContent><w:p><w:r><w:t>Text box</w:t></w:r></w:p></w:txbxContent>";
+    parts["word/header1.xml"] = encoder.encode(
+      `<w:hdr xmlns:w="${W_NS}" xmlns:mc="${MC_NS}"><w:p>` +
+        "<w:r><w:t>Visible</w:t></w:r>" +
+        '<mc:AlternateContent><mc:Choice Requires="wps">' +
+        `<w:drawing>${box}</w:drawing></mc:Choice>` +
+        `<mc:Fallback><w:pict>${box}</w:pict></mc:Fallback>` +
+        "</mc:AlternateContent></w:p></w:hdr>"
+    );
+
+    expect(shown(openedStories(zipSync(parts)), "headers", 2, 2)).toBe(
+      "Visible"
+    );
+  });
+
+  it("keeps the cached result of a field it does not work out again", () => {
+    const parts = unzipSync(makeHeadersFootersDocx());
+    parts["word/header2.xml"] = encoder.encode(
+      `<w:hdr xmlns:w="${W_NS}"><w:p>` +
+        '<w:r><w:fldChar w:fldCharType="begin"/></w:r>' +
+        '<w:r><w:instrText xml:space="preserve"> TITLE </w:instrText></w:r>' +
+        '<w:r><w:fldChar w:fldCharType="separate"/></w:r>' +
+        "<w:r><w:t>Quarterly report</w:t></w:r>" +
+        '<w:r><w:fldChar w:fldCharType="end"/></w:r>' +
+        "</w:p></w:hdr>"
+    );
+
+    expect(shown(openedStories(zipSync(parts)), "headers", 1, 3)).toBe(
+      "Quarterly report"
+    );
+  });
+
+  it("prints no page number for a PAGE field written inside another field's instruction", () => {
+    const parts = unzipSync(makeHeadersFootersDocx());
+    parts["word/header2.xml"] = encoder.encode(
+      `<w:hdr xmlns:w="${W_NS}"><w:p>` +
+        '<w:r><w:fldChar w:fldCharType="begin"/></w:r>' +
+        '<w:r><w:instrText xml:space="preserve"> IF </w:instrText></w:r>' +
+        '<w:r><w:fldChar w:fldCharType="begin"/></w:r>' +
+        '<w:r><w:instrText xml:space="preserve"> PAGE </w:instrText></w:r>' +
+        '<w:r><w:fldChar w:fldCharType="end"/></w:r>' +
+        '<w:r><w:instrText xml:space="preserve"> = 1 "first" "rest" </w:instrText></w:r>' +
+        '<w:r><w:fldChar w:fldCharType="separate"/></w:r>' +
+        "<w:r><w:t>first</w:t></w:r>" +
+        '<w:r><w:fldChar w:fldCharType="end"/></w:r>' +
+        "</w:p></w:hdr>"
+    );
+
+    // The nested field is part of what the IF field was told rather than a number the page
+    // carries, so only the result the IF field cached is drawn
+    expect(shown(openedStories(zipSync(parts)), "headers", 1, 3)).toBe("first");
+  });
+
+  it("keeps reading past a field that never ends", () => {
+    const parts = unzipSync(makeHeadersFootersDocx());
+    parts["word/header2.xml"] = encoder.encode(
+      `<w:hdr xmlns:w="${W_NS}"><w:p>` +
+        '<w:r><w:fldChar w:fldCharType="begin"/></w:r>' +
+        '<w:r><w:instrText xml:space="preserve"> PAGE </w:instrText></w:r>' +
+        '<w:r><w:t xml:space="preserve">Draft</w:t></w:r>' +
+        "</w:p></w:hdr>"
+    );
+
+    // Nothing pairs with the begin character, so no page number is put there; the characters
+    // themselves are field plumbing rather than words, and the text beside them still reads
+    expect(shown(openedStories(zipSync(parts)), "headers", 1, 3)).toBe("Draft");
+  });
+
+  it("a second section selects its own header parts", () => {
+    const bytes = makeTwoSectionHeadersFootersDocx();
+    const first = openedStories(bytes, 0);
+    const second = openedStories(bytes, 1);
+
+    // The first section names header3 and footer3 as its own default, where the body's section
+    // names header1 and footer1 and starts its page numbering at four
+    expect(shown(first, "headers", 1, 3)).toBe("Even header");
+    expect(shown(first, "footers", 1, 3)).toBe("Even footer");
+    expect(shown(second, "headers", 3, 3, 2)).toBe("Default 6 of 3");
+    expect(shown(second, "footers", 3, 3, 2)).toBe("Default footer");
+  });
+
+  it("a later section's own first page shows its first-page story", () => {
+    const bytes = makeTwoSectionHeadersFootersDocx();
+    const second = openedStories(bytes, 1);
+
+    // The body's section declares w:titlePg and opens on the document's second page, so that page
+    // is a first page even though it is not the first page of the document
+    expect(shown(second, "headers", 2, 3, 1)).toBe("First header");
+    expect(shown(second, "footers", 2, 3, 1)).toBe("First footer");
+  });
+
+  it("a later section's even story follows the page's place in that section", () => {
+    const second = openedStories(makeTwoSectionHeadersFootersDocx(), 1);
+
+    // Counted from the section's own start of four, its third page is page six and even, while
+    // the number the page shows still counts on from the document's first page
+    expect(shown(second, "headers", 4, 4, 3)).toBe("Even header");
+    expect(shown(second, "headers", 5, 5, 4)).toBe("Default 8 of 5");
+  });
+
+  it("passes over a header part no section names", () => {
+    const parts = unzipSync(makeHeadersFootersDocx());
+    // Word leaves a part behind when a section stops naming it, and this one does not even parse
+    parts["word/header9.xml"] = encoder.encode(`<w:hdr xmlns:w="${W_NS}">`);
+    const relsPath = "word/_rels/document.xml.rels";
+    parts[relsPath] = encoder.encode(
+      decode(parts[relsPath]).replace(
+        "</Relationships>",
+        `<Relationship Id="rId20" Target="header9.xml" Type="${HEADER_REL}"/>` +
+          "</Relationships>"
+      )
+    );
+
+    const { doc } = importDocx(zipSync(parts));
+    expect(Object.keys(storiesOf(doc)).sort()).toEqual([
+      "footer:word/footer1.xml",
+      "footer:word/footer2.xml",
+      "footer:word/footer3.xml",
+      "header:word/header1.xml",
+      "header:word/header2.xml",
+      "header:word/header3.xml",
+    ]);
   });
 
   it("keeps every related story part byte-identical after a body edit", () => {
@@ -175,5 +361,91 @@ describe("header and footer stories", () => {
     ]) {
       expect(bytesEqual(exported[path], original[path]), path).toBe(true);
     }
+  });
+});
+
+/** The document with one story replaced, which is what `setStory` leaves on the document node */
+function withStory(doc: PMNode, key: StoryKey, story: PMNode): PMNode {
+  return doc.type.create(
+    { ...doc.attrs, stories: { ...storiesOf(doc), [key]: story.toJSON() } },
+    doc.content,
+    doc.marks
+  );
+}
+
+describe("writing an edited header story back", () => {
+  it("rewrites only the part the edited story stands in", () => {
+    const bytes = makeHeadersFootersDocx();
+    const original = unzipSync(bytes);
+    const opened = importDocx(bytes);
+    const edited = withStory(
+      opened.doc,
+      storyKey("header", "word/header1.xml"),
+      storyFromText("Rewritten header")
+    );
+    const exported = unzipSync(exportDocx(edited, opened.session));
+
+    const written = decode(exported["word/header1.xml"]);
+    expect(written).toContain("Rewritten header");
+    expect(written.startsWith("<w:hdr ")).toBe(true);
+    expect(written.endsWith("</w:hdr>")).toBe(true);
+    for (const path of [
+      "word/header2.xml",
+      "word/header3.xml",
+      "word/footer1.xml",
+      "word/footer2.xml",
+      "word/footer3.xml",
+    ]) {
+      expect(bytesEqual(exported[path], original[path]), path).toBe(true);
+    }
+  });
+
+  it("keeps the prolog and the byte order mark the part arrived with", () => {
+    const parts = unzipSync(makeHeadersFootersDocx());
+    parts["word/header1.xml"] = encoder.encode(
+      '\u{FEFF}<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+        `<w:hdr xmlns:w="${W_NS}"><w:p><w:r><w:t>Head</w:t></w:r></w:p></w:hdr>`
+    );
+    const opened = importDocx(zipSync(parts));
+    const edited = withStory(
+      opened.doc,
+      storyKey("header", "word/header1.xml"),
+      storyFromText("Rewritten")
+    );
+
+    const bytes = unzipSync(exportDocx(edited, opened.session))[
+      "word/header1.xml"
+    ];
+    expect(Array.from(bytes.slice(0, 3))).toEqual([0xef, 0xbb, 0xbf]);
+    const written = decode(bytes);
+    expect(written.startsWith('<?xml version="1.0"')).toBe(true);
+    expect(written).toContain("Rewritten");
+  });
+
+  it("shows the edited story in the preview the section draws", () => {
+    const opened = importDocx(makeHeadersFootersDocx());
+    const edited = withStory(
+      opened.doc,
+      storyKey("header", "word/header2.xml"),
+      storyFromText("Edited first header")
+    );
+
+    expect(shown(sectionStories(edited, opened.session), "headers", 1, 1)).toBe(
+      "Edited first header"
+    );
+  });
+
+  it("reads an edited header back as the story it was written as", () => {
+    const opened = importDocx(makeHeadersFootersDocx());
+    const edited = withStory(
+      opened.doc,
+      storyKey("header", "word/header1.xml"),
+      storyFromText("Round trip")
+    );
+    const again = importDocx(exportDocx(edited, opened.session));
+
+    expect(
+      shown(sectionStories(again.doc, again.session), "headers", 2, 1)
+    ).toBe("Round trip");
   });
 });

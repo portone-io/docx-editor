@@ -41,7 +41,7 @@ import {
   readDocumentDefaults,
   readParagraphStyles,
 } from "./formatting";
-import { NO_HEADERS_FOOTERS, readHeadersFooters } from "./headersFooters";
+import { readHeaderFooterStories } from "./headersFooters";
 import { readLinkTargets } from "./hyperlink";
 import { type ImportSources, NO_IMPORT_SOURCES } from "./importParagraph";
 import { readImageSources } from "./media";
@@ -51,7 +51,11 @@ import { readPart, relatedPartPath } from "./packageParts";
 import { A4_PORTRAIT } from "./pageGeometry";
 import { readRelationships } from "./relationships";
 import { type BlockScan, scanBody } from "./scan";
-import { firstSectPrElement, readSectionProperties } from "./sections";
+import {
+  firstSectPrElement,
+  readSectionProperties,
+  storyReferenceIds,
+} from "./sections";
 import {
   BODY_STORY_KEY,
   blockKey,
@@ -332,9 +336,6 @@ function readDocx(input: DocxBytes): {
     labels.set(id, label);
     return label;
   };
-  const headersFooters = firstSection
-    ? readHeadersFooters(parts, mainPartPath, firstSection)
-    : NO_HEADERS_FOOTERS;
   const sources: ImportSources = {
     images: readImageSources(parts, mainPartPath),
     themeFonts,
@@ -344,6 +345,12 @@ function readDocx(input: DocxBytes): {
     noteLabel,
   };
   const sessionId = newSessionId();
+  const headerFooters = readHeaderFooterStories(
+    parts,
+    mainPartPath,
+    storyReferenceIds(body),
+    (partPath) => storyDeps(parts, partPath, sessionId, formatting)
+  );
   const stories = storiesByKey([
     ...readCommentStories(comments, parts, sessionId, formatting),
     ...readNoteStories(
@@ -354,6 +361,7 @@ function readDocx(input: DocxBytes): {
       formatting
     ),
     ...readNoteStories(notes.endnotes, "endnote", parts, sessionId, formatting),
+    ...headerFooters.stories,
   ]);
   const blockNodes = blockElements.map((el, i) =>
     withStyleFormats(
@@ -412,7 +420,7 @@ function readDocx(input: DocxBytes): {
       numberingPartPath,
       comments,
       commentReferenceIds: new Set(commentReferencesIn(doc).keys()),
-      headersFooters,
+      headerFooterStories: headerFooters.refs,
       stories,
     }),
   };

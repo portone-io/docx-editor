@@ -585,6 +585,28 @@ describe("onlyCommentsChangedBy", () => {
       );
     });
 
+    /**
+     * A header body is a story too, and the same rule settles it: a comment protection lets a
+     * comment story change and nothing else, so a submission that rewrote a header is turned down
+     * for the part it rewrote.
+     */
+    it("does not hold for a header story rewritten in a submitted file", () => {
+      const header = "word/header1.xml";
+      const bytes = repacked(original(), {
+        [header]: `<w:hdr xmlns:w="${W_NS}"><w:p>${run("Above the page")}</w:p></w:hdr>`,
+      });
+      const rewritten = repacked(bytes, {
+        [header]: partText(bytes, header).replace(
+          "Above the page",
+          "Something else"
+        ),
+      });
+
+      expect(onlyCommentsChangedBy(bytes, rewritten, "me")).toEqual(
+        partRefused(header)
+      );
+    });
+
     it("does not hold for a relationship the submission added", () => {
       const bytes = original();
       const related = repacked(bytes, {

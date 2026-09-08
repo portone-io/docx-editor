@@ -25,8 +25,10 @@ import {
   useState,
 } from "react";
 import { exportDocx } from "./docx/exportDocx";
+import { type HeadersFooters, variantsFor } from "./docx/headersFooters";
 import { type DocxBytes, type DocxSource, importDocx } from "./docx/importDocx";
 import { type ExportProblem, exportProblems } from "./docx/invariants";
+import { sectionIn, sectionsOf } from "./docx/sections";
 import type { SessionStore } from "./docx/session";
 import type { CommentAuthor } from "./editor/commands/commentCommands";
 import { activeLinkSpan } from "./editor/commands/linkCommands";
@@ -43,9 +45,10 @@ import { textMenuAnchor } from "./editor/plugins/textContextMenu";
 import { DocxImportError, type DocxImportErrorCode } from "./ooxml/errors";
 import { PageGuides } from "./page/PageGuides";
 import { A4_PAGE_PIXELS, pagePixels } from "./page/pageLayout";
-import { usePageLayout } from "./page/usePageLayout";
+import { type PageFace, usePageLayout } from "./page/usePageLayout";
 import type { EditableComments, EditingProtection } from "./schema/protection";
 import { editingProtection, protectionOf } from "./schema/protectionState";
+import { storyNodeOf } from "./schema/stories";
 import { editorClassNames } from "./styles/classNames";
 import type { FontFallbacks } from "./styles/fontStack";
 import { CommentsPanel } from "./ui/CommentsPanel";
@@ -521,13 +524,45 @@ function DocxEditorSurface(
     };
   }, [opened]);
 
+  // The section table is read once per document rather than once per page: reading it walks every
+  // block, and both the layout and the preview ask about it for each page drawn
+  const doc = live?.state.doc ?? null;
+  const session = opened?.status === "opened" ? opened.session : null;
+  const sections = useMemo(
+    () => (doc === null ? null : sectionsOf(doc)),
+    [doc]
+  );
+  const sectionAt = useMemo(() => {
+    if (doc === null || sections === null) return undefined;
+    return (pos: number): number => sectionIn(sections, doc, pos).index;
+  }, [doc, sections]);
+
   const overlay = usePageLayout({
     view: live?.view ?? null,
     layer: layerRef,
     enabled: showPageGuides,
     revision: live?.state.doc,
     geometry: opened?.status === "opened" ? opened.session.geometry : undefined,
+    sectionAt,
   });
+
+  const headersFootersFor = useMemo(() => {
+    if (
+      doc === null ||
+      sections === null ||
+      sectionAt === undefined ||
+      session === null
+    ) {
+      return undefined;
+    }
+    const shown = sections.map((section) =>
+      variantsFor(section, session.headerFooterStories, (key) =>
+        storyNodeOf(doc, key)
+      )
+    );
+    return (face: PageFace): HeadersFooters | null =>
+      shown[sectionAt(face.pos)] ?? null;
+  }, [doc, sections, sectionAt, session]);
 
   if (opened?.status === "rejected") {
     return renderImportError ? (
@@ -623,11 +658,7 @@ function DocxEditorSurface(
             {overlay && (
               <PageGuides
                 overlay={overlay}
-                headersFooters={
-                  opened?.status === "opened"
-                    ? opened.session.headersFooters
-                    : undefined
-                }
+                headersFootersFor={headersFootersFor}
               />
             )}
             {live && opened?.status === "opened" && (

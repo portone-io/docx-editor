@@ -146,12 +146,35 @@ function storyRefs(
     const declared = attributeByLocalName(reference, "type") ?? "default";
     const variant = HEADER_FOOTER_VARIANTS.find((known) => known === declared);
     if (variant === undefined || refs[variant] !== null) continue;
-    const id =
-      reference.getAttributeNS(R_NS, "id") ??
-      attributeByLocalName(reference, "id");
+    const id = referenceId(reference);
     if (id) refs[variant] = id;
   }
   return refs;
+}
+
+function referenceId(reference: Element): string | null {
+  return (
+    reference.getAttributeNS(R_NS, "id") ??
+    attributeByLocalName(reference, "id")
+  );
+}
+
+/**
+ * Every relationship the sections of this body name as a header or a footer story.
+ *
+ * A `w:headerReference` and a `w:footerReference` stand only inside a `w:sectPr` (§17.6.12,
+ * §17.6.5), so the body holds all of them however many sections it is written in. A part no
+ * section names is one a producer left behind rather than content this document shows.
+ */
+export function storyReferenceIds(body: Element): ReadonlySet<string> {
+  const ids = new Set<string>();
+  for (const name of ["headerReference", "footerReference"]) {
+    for (const reference of body.getElementsByTagNameNS(W_NS, name)) {
+      const id = referenceId(reference);
+      if (id) ids.add(id);
+    }
+  }
+  return ids;
 }
 
 /**
@@ -341,9 +364,17 @@ export function sectionsOf(doc: PMNode): readonly DocumentSection[] {
   return sections;
 }
 
-/** The section the block at this position belongs to */
-export function sectionAt(doc: PMNode, pos: number): DocumentSection {
-  const sections = sectionsOf(doc);
+/**
+ * The same, against a table already read.
+ *
+ * Reading the table walks every block of the document, so anything asking about more than one
+ * position - the pages of a preview, one per section - reads it once and asks here.
+ */
+export function sectionIn(
+  sections: readonly DocumentSection[],
+  doc: PMNode,
+  pos: number
+): DocumentSection {
   const index = doc
     .resolve(Math.min(Math.max(pos, 0), doc.content.size))
     .index(0);
@@ -351,4 +382,9 @@ export function sectionAt(doc: PMNode, pos: number): DocumentSection {
     sections.find((section) => index <= section.lastBlock) ??
     sections[sections.length - 1]
   );
+}
+
+/** The section the block at this position belongs to */
+export function sectionAt(doc: PMNode, pos: number): DocumentSection {
+  return sectionIn(sectionsOf(doc), doc, pos);
 }

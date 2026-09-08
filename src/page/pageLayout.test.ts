@@ -82,7 +82,9 @@ describe("pageLayout", () => {
     const result = layout(blocks(300, 300, 300));
     expect(result.pushes).toEqual([]);
     expect(result.splits).toEqual([]);
-    expect(result.pages).toEqual([{ page: 1, bodyStart: 0, crossed: false }]);
+    expect(result.pages).toEqual([
+      { page: 1, bodyStart: 0, pos: 0, pageInSection: 1, crossed: false },
+    ]);
     expect(result.bodyHeight).toBe(PAGE);
   });
 
@@ -175,19 +177,54 @@ describe("pageLayout", () => {
     expect(result.cuts).toEqual([{ at: 100, height: 2 * PAGE - 1500 + STEP }]);
   });
 
-  it("reports where each page starts", () => {
+  it("reports where each page starts and which block it opens with", () => {
     const result = layout(blocks(900, 300));
     expect(result.pages).toEqual([
-      { page: 1, bodyStart: 0, crossed: false },
-      { page: 2, bodyStart: PAGE + STEP, crossed: false },
+      { page: 1, bodyStart: 0, pos: 0, pageInSection: 1, crossed: false },
+      {
+        page: 2,
+        bodyStart: PAGE + STEP,
+        pos: 10,
+        pageInSection: 2,
+        crossed: false,
+      },
     ]);
+  });
+
+  it("counts each page again from one at the top of the section it opens", () => {
+    // The second block opens a section of its own and is a page and a half tall, so it crosses
+    // from that section's first page onto its second
+    const result = pageLayout({
+      blocks: blocks(900, 1500),
+      pageBodyHeight: PAGE,
+      pageStep: STEP,
+      sectionAt: (pos) => (pos < 10 ? 0 : 1),
+    });
+
+    expect(result.pages.map((page) => [page.pos, page.pageInSection])).toEqual([
+      [0, 1],
+      [10, 1],
+      [10, 2],
+    ]);
+  });
+
+  it("reads a sheet handed no section table as the one section it then is", () => {
+    expect(
+      layout(blocks(900, 300, 900)).pages.map((page) => page.pageInSection)
+    ).toEqual([1, 2, 3]);
+  });
+
+  it("names the block a page continues, not the one after it", () => {
+    // The one block is two pages and a half tall, so both pages after the first continue it
+    const result = layout(blocks(300, 2500));
+    expect(result.pages.map((page) => page.pos)).toEqual([0, 10, 10]);
   });
 
   it("a page reached by crossing joins onto the previous page with no top margin", () => {
     const result = layout(blocks(1500));
     expect(result.pages).toEqual([
-      { page: 1, bodyStart: 0, crossed: false },
-      { page: 2, bodyStart: PAGE, crossed: true },
+      { page: 1, bodyStart: 0, pos: 0, pageInSection: 1, crossed: false },
+      { page: 2, bodyStart: PAGE, pos: 0, pageInSection: 2, crossed: true },
     ]);
   });
 
