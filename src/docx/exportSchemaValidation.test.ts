@@ -133,9 +133,9 @@ function rejectionsIn(
 /**
  * Validates a whole export in one xmllint run.
  *
- * Compiling the transitional schema set is what a run costs - two orders of magnitude over
- * reading a part against it - and one invocation compiles it once however many documents it is
- * handed. The parts go to a temp directory at their own paths and are named to xmllint relative
+ * Compiling the transitional schema set costs about what reading a whole package's parts against
+ * it costs - some 30ms either way - and one invocation compiles it once however many documents it
+ * is handed. The parts go to a temp directory at their own paths and are named to xmllint relative
  * to it, so every line it reports back is prefixed by the part path it belongs to.
  */
 function validateParts(parts: Map<string, string>): Map<string, string> {
