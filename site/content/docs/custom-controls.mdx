@@ -321,6 +321,14 @@ Pass ProseMirror plugins through the `plugins` prop. Consumer keymaps receive ke
 before the built-in keymap, so an application can override bindings such as `Mod-k` without
 replacing the editor.
 
+A plugin that sets its own `clipboardSerializer` replaces the one a copy is written with, and the
+editor's own is not exported to wrap. A serializer built from the schema, such as
+`DOMSerializer.fromSchema(docxSchema)`, puts the page's own drawing on the clipboard: the original
+XML fragments behind each paragraph, run, and table, and the author and identity behind each
+comment, all of which the editor's copy leaves out. Such a copy also leaves without the name this
+editor recognizes its own copies by, so pasting it back reads it as HTML from somewhere else
+rather than as the content it was.
+
 A plugin that writes raw OOXML into a node or mark attr, such as a paragraph's `pPr`, a run's
 `rPr`, or a content control's opening tag, has to write the shape that attr goes back out as: a
 single element under the name the attr carries, the attributes of an opening tag on their own, or
