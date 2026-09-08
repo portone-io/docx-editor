@@ -14,6 +14,7 @@ import {
   ONE_LIST_NUMBERING,
   readFixture,
 } from "../__testing__/docx";
+import { canExport } from "../editor/commands/exportQueries";
 import {
   toggleBulletList,
   toggleNumberedList,
@@ -31,6 +32,7 @@ import { parseNumbering } from "../numbering/parseNumbering";
 import { R_NS, W_NS } from "../ooxml/xml";
 import { exportDocx } from "./exportDocx";
 import { importDocx } from "./importDocx";
+import { exportProblems } from "./invariants";
 import { CONTENT_TYPES_PATH } from "./packageParts";
 import type { SessionStore } from "./session";
 
@@ -318,6 +320,8 @@ describe("a document without numbering.xml", () => {
 
   it("creates numbering.xml, its relationship and its content type for the first list", () => {
     const listed = bulleted(makeDeclaredDocx(PLAIN_BODY));
+    expect(exportProblems(listed.doc, listed.session)).toEqual([]);
+    expect(canExport(editorStateForSession(listed))).toBe(true);
     const exported = partsOf(exportDocx(listed.doc, listed.session));
 
     const numbering = decode(exported[NUMBERING_PART]);
@@ -354,6 +358,27 @@ describe("a document without numbering.xml", () => {
       parseNumbering(again.session.numberingXml)
     );
     expect(markers.map((marker) => marker.text)).toEqual(["●"]);
+  });
+
+  it("fills the missing part an existing numbering relationship names", () => {
+    const parts = unzipSync(makeDeclaredDocx(PLAIN_BODY));
+    const encoder = new TextEncoder();
+    const relsPath = "word/_rels/document.xml.rels";
+    parts[relsPath] = encoder.encode(
+      `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId7" Type="${R_NS}/numbering" Target="../lists/definitions.xml"/></Relationships>`
+    );
+    const listed = bulleted(zipSync(parts));
+    const bytes = exportDocx(listed.doc, listed.session);
+    const exported = partsOf(bytes);
+    expect(exported["lists/definitions.xml"]).toBeDefined();
+    expect(bytesEqual(exported[relsPath], parts[relsPath])).toBe(true);
+    const reopened = importDocx(bytes);
+    expect(reopened.session.numberingPartPath).toBe("lists/definitions.xml");
+    expect(
+      paragraphMarkers(reopened.doc, reopened.session.formatting.numbering).map(
+        (marker) => marker.text
+      )
+    ).toEqual(["●"]);
   });
 
   it("takes a name beside a numbering.xml the package holds but relates to nothing", () => {
@@ -399,5 +424,13 @@ describe("a document without numbering.xml", () => {
     expect(exportErrorCode(() => exportDocx(listed.doc, opened.session))).toBe(
       "missing-content-types"
     );
+    expect(
+      exportProblems(listed.doc, opened.session).map((problem) => problem.code)
+    ).toEqual(["missing-content-types"]);
+    expect(
+      canExport(
+        editorStateForSession({ doc: listed.doc, session: opened.session })
+      )
+    ).toBe(false);
   });
 });

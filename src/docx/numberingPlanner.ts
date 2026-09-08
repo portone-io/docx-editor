@@ -39,15 +39,17 @@ export const numberingPlanner: PartPlanner = {
 
     const original = numberingPartOf(session);
     if (original === null) {
-      const path = availablePartPath(
-        session.parts,
-        session.mainPartPath,
-        "numbering"
-      );
-      context.relationships.add({
-        type: NUMBERING_REL_TYPE,
-        target: path.slice(directoryOf(session.mainPartPath).length),
-      });
+      // A dangling relationship already chooses the part's location. Adding a second relationship
+      // would leave readers following the first one to an absent definition.
+      const path =
+        session.numberingPartPath ??
+        availablePartPath(session.parts, session.mainPartPath, "numbering");
+      if (session.numberingPartPath === null) {
+        context.relationships.add({
+          type: NUMBERING_REL_TYPE,
+          target: path.slice(directoryOf(session.mainPartPath).length),
+        });
+      }
       context.contentTypes.addOverride(path, NUMBERING_CONTENT_TYPE);
       return new Map([
         [
