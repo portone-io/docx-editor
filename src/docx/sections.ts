@@ -146,12 +146,35 @@ function storyRefs(
     const declared = attributeByLocalName(reference, "type") ?? "default";
     const variant = HEADER_FOOTER_VARIANTS.find((known) => known === declared);
     if (variant === undefined || refs[variant] !== null) continue;
-    const id =
-      reference.getAttributeNS(R_NS, "id") ??
-      attributeByLocalName(reference, "id");
+    const id = referenceId(reference);
     if (id) refs[variant] = id;
   }
   return refs;
+}
+
+function referenceId(reference: Element): string | null {
+  return (
+    reference.getAttributeNS(R_NS, "id") ??
+    attributeByLocalName(reference, "id")
+  );
+}
+
+/**
+ * Every relationship the sections of this body name as a header or a footer story.
+ *
+ * A `w:headerReference` and a `w:footerReference` stand only inside a `w:sectPr` (§17.6.12,
+ * §17.6.5), so the body holds all of them however many sections it is written in. A part no
+ * section names is one a producer left behind rather than content this document shows.
+ */
+export function storyReferenceIds(body: Element): ReadonlySet<string> {
+  const ids = new Set<string>();
+  for (const name of ["headerReference", "footerReference"]) {
+    for (const reference of body.getElementsByTagNameNS(W_NS, name)) {
+      const id = referenceId(reference);
+      if (id) ids.add(id);
+    }
+  }
+  return ids;
 }
 
 /**

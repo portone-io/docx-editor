@@ -2,7 +2,7 @@
 
 ## Parts and section references
 
-Header and Footer parts are related from the Main Document part. A section selects them with `w:headerReference` and `w:footerReference`; each `r:id` must identify an internal relationship of the matching type. The editor reads every such part as a story of its own and resolves each section's references against them, so a second section shows the parts it names rather than the first section's. A part whose story nobody rewrote is repacked unchanged; a rewritten one is written back around the two ends it arrived with, its prolog included.
+Header and Footer parts are related from the Main Document part. A section selects them with `w:headerReference` and `w:footerReference`; each `r:id` must identify an internal relationship of the matching type. The editor reads every part a section names as a story of its own and resolves each section's references against them, so a second section shows the parts it names rather than the first section's. A related part no section names is a leftover rather than content, so it is never read: its bytes are repacked as they came, and markup no consumer would draw is no reason to refuse the file. A part whose story nobody rewrote is repacked unchanged; a rewritten one is written back around the two ends it arrived with, its prolog included.
 
 Observed 2026-08-22 against ECMA-376 5th edition, Part 1, §§11.3.6, 11.3.9, 17.10.2, 17.10.5.
 

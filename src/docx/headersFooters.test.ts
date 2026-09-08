@@ -29,6 +29,8 @@ import { storyFromText } from "./story";
 
 const encoder = new TextEncoder();
 const W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const HEADER_REL =
+  "http://schemas.openxmlformats.org/officeDocument/2006/relationships/header";
 
 /** The stories one section of the opened document shows, which is what the preview draws */
 function sectionStories(
@@ -248,6 +250,30 @@ describe("header and footer stories", () => {
     expect(shown(first, "footers", 1, 2)).toBe("Even footer");
     expect(shown(second, "headers", 2, 2)).toBe("Default 5 of 2");
     expect(shown(second, "footers", 2, 2)).toBe("Default footer");
+  });
+
+  it("passes over a header part no section names", () => {
+    const parts = unzipSync(makeHeadersFootersDocx());
+    // Word leaves a part behind when a section stops naming it, and this one does not even parse
+    parts["word/header9.xml"] = encoder.encode(`<w:hdr xmlns:w="${W_NS}">`);
+    const relsPath = "word/_rels/document.xml.rels";
+    parts[relsPath] = encoder.encode(
+      decode(parts[relsPath]).replace(
+        "</Relationships>",
+        `<Relationship Id="rId20" Target="header9.xml" Type="${HEADER_REL}"/>` +
+          "</Relationships>"
+      )
+    );
+
+    const { doc } = importDocx(zipSync(parts));
+    expect(Object.keys(storiesOf(doc)).sort()).toEqual([
+      "footer:word/footer1.xml",
+      "footer:word/footer2.xml",
+      "footer:word/footer3.xml",
+      "header:word/header1.xml",
+      "header:word/header2.xml",
+      "header:word/header3.xml",
+    ]);
   });
 
   it("keeps every related story part byte-identical after a body edit", () => {

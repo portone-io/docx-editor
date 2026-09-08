@@ -106,16 +106,20 @@ function kindOf(relationshipType: string): HeaderFooterKind | null {
 }
 
 /**
- * Every header and footer part of the package, read as a story apiece, and the relationship each
- * one answers to.
+ * Every header and footer part a section of the document names, read as a story apiece, and the
+ * relationship each one answers to.
  *
  * A part is read once however many relationships point at it, and a part whose root is not the
  * element its relationship promises is passed over: the reference names nothing this can draw, and
- * the bytes stay where they are.
+ * the bytes stay where they are. A part no section names is not read at all, so an orphan a
+ * producer left behind - which may hold anything, a document this one never draws included - is
+ * neither a story of this document nor a reason to refuse the file, and its bytes go back out as
+ * they came.
  */
 export function readHeaderFooterStories(
   parts: Map<string, Uint8Array>,
   mainPartPath: string,
+  referenced: ReadonlySet<string>,
   depsFor: (partPath: string) => StoryDeps
 ): { stories: readonly ImportedStory[]; refs: HeaderFooterStories } {
   const keyByRelId = new Map<string, StoryKey>();
@@ -124,6 +128,7 @@ export function readHeaderFooterStories(
     parts,
     relsPathOf(mainPartPath)
   )) {
+    if (!referenced.has(relationship.id)) continue;
     const kind = relationship.external ? null : kindOf(relationship.type);
     if (kind === null) continue;
     const partPath = resolveTarget(mainPartPath, relationship.target);
