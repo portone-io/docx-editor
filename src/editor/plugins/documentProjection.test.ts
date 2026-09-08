@@ -2,11 +2,12 @@
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorState, TextSelection } from "prosemirror-state";
 import { describe, expect, it } from "vitest";
-import { makeDocx } from "../../__testing__/docx";
+import { makeDocx, makeNotesDocx } from "../../__testing__/docx";
 import { rangeOfText, runCommand } from "../../__testing__/editing";
 import { importDocx } from "../../docx/importDocx";
 import { docxSchema } from "../../schema";
 import { addComment, documentComments } from "../commands/commentCommands";
+import { documentNotes } from "../commands/noteQueries";
 import { createEditorState } from "../createEditor";
 import { commentProjection } from "./commentDecorations";
 import { documentProjection } from "./documentProjection";
@@ -103,5 +104,13 @@ describe("a value projected from the document", () => {
     expect(commentProjection.read(moved).decorations).toBe(
       commentProjection.read(commented).decorations
     );
+  });
+
+  it("holds the notes of an editor state", () => {
+    const opened = createEditorState(importDocx(makeNotesDocx()).doc);
+
+    const notes = documentNotes(opened);
+    expect(notes.map((note) => note.kind)).toEqual(["footnote", "endnote"]);
+    expect(documentNotes(caretAt(opened, 1))).toBe(notes);
   });
 });

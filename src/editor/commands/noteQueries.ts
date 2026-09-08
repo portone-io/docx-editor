@@ -1,7 +1,9 @@
 /** Document-level readers for imported footnotes and endnotes. */
 
+import type { Node as PMNode } from "prosemirror-model";
 import type { EditorState } from "prosemirror-state";
 import type { NoteKind } from "../../docx/notes";
+import { documentProjection } from "../plugins/documentProjection";
 
 export interface DocumentNote {
   kind: NoteKind;
@@ -15,11 +17,10 @@ function stringAttr(value: unknown): string | null {
   return typeof value === "string" ? value : null;
 }
 
-/** The distinct notes referenced by the main document story, in first-reference order. */
-export function documentNotes(state: EditorState): readonly DocumentNote[] {
+function notesIn(doc: PMNode): readonly DocumentNote[] {
   const notes: DocumentNote[] = [];
   const seen = new Set<string>();
-  state.doc.descendants((node, pos) => {
+  doc.descendants((node, pos) => {
     if (node.type.name !== "noteReference") return true;
     const id = stringAttr(node.attrs.id);
     if (id === null) return true;
@@ -38,4 +39,19 @@ export function documentNotes(state: EditorState): readonly DocumentNote[] {
     return true;
   });
   return notes;
+}
+
+/**
+ * Which notes the document refers to is the document's to decide, so the list is worked out once
+ * per edit (`editor/plugins/documentProjection`) rather than once per render of the panel under
+ * the page.
+ */
+export const noteProjection = documentProjection<readonly DocumentNote[]>(
+  "docxEditorNotes",
+  notesIn
+);
+
+/** The distinct notes referenced by the main document story, in first-reference order. */
+export function documentNotes(state: EditorState): readonly DocumentNote[] {
+  return noteProjection.read(state);
 }
