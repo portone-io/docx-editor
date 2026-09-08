@@ -423,7 +423,7 @@ describe("deciding the active paragraph style", () => {
     const { doc, session } = importDocx(makeDocx("<w:customXml/>"));
     const state = editorStateForSession({ doc, session });
 
-    expect(state.doc.child(0).type.name).toBe("docxRaw");
+    expect(state.doc.child(0).type.name).toBe("rawBlock");
     expect(activeParagraphStyle(state)).toEqual({ kind: "none" });
   });
 });

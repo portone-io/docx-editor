@@ -77,6 +77,13 @@ const SMUGGLING_LIST = 'w:rsidR="00A"><w:r><w:t>smuggled</w:t></w:r';
 const withSibling = (element: string) =>
   `${element}<w:r><w:t>smuggled</w:t></w:r>`;
 
+/** A pair of markers, which is what a table and a row carry between their children */
+const MARKER_PAIR =
+  '<w:bookmarkEnd w:id="1"/><w:bookmarkStart w:id="2" w:name="b"/>';
+
+/** The same pair with text beside it, which no row or table may hold */
+const MARKERS_WITH_TEXT = `${MARKER_PAIR}smuggled`;
+
 const NODE_FRAGMENTS: RawAttrTable = {
   doc: { newLists: null },
   paragraph: {
@@ -116,6 +123,12 @@ const NODE_FRAGMENTS: RawAttrTable = {
     },
     tblW: null,
     gridCols: null,
+    leadingXml: {
+      attribute: "data-leading",
+      sound: MARKER_PAIR,
+      adversarial: MARKERS_WITH_TEXT,
+      draw: (xml) => table({ leadingXml: xml }, [row({})]),
+    },
   },
   tableRow: {
     trAttrs: {
@@ -135,6 +148,18 @@ const NODE_FRAGMENTS: RawAttrTable = {
       sound: "<w:trPr><w:cantSplit/></w:trPr>",
       adversarial: withSibling("<w:trPr/>"),
       draw: (xml) => table({}, [row({ trPr: xml })]),
+    },
+    leadingXml: {
+      attribute: "data-leading",
+      sound: MARKER_PAIR,
+      adversarial: MARKERS_WITH_TEXT,
+      draw: (xml) => table({}, [row({ leadingXml: xml })]),
+    },
+    trailingXml: {
+      attribute: "data-trailing",
+      sound: MARKER_PAIR,
+      adversarial: MARKERS_WITH_TEXT,
+      draw: (xml) => table({}, [row({ trailingXml: xml })]),
     },
   },
   tableCell: {
@@ -171,6 +196,15 @@ const NODE_FRAGMENTS: RawAttrTable = {
     tcW: null,
     sdtContentsLocked: null,
     sdtDeletionLocked: null,
+    trailingXml: {
+      attribute: "data-trailing",
+      sound: MARKER_PAIR,
+      adversarial: MARKERS_WITH_TEXT,
+      draw: (xml) =>
+        table({}, [
+          docxSchema.nodes.tableRow.create(null, [cell({ trailingXml: xml })]),
+        ]),
+    },
   },
   rawBlock: {
     xml: {
@@ -179,10 +213,7 @@ const NODE_FRAGMENTS: RawAttrTable = {
       adversarial: withSibling("<w:tbl/>"),
       draw: (xml) => docxSchema.nodes.rawBlock.create({ xml, name: "w:tbl" }),
     },
-    name: null,
   },
-  docxRaw: {},
-  bookmarkBlock: {},
   hardBreak: {
     brAttrs: {
       attribute: "data-battrs",

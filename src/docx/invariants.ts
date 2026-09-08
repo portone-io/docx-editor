@@ -19,6 +19,7 @@ import {
   W_NS,
   withXmlParser,
 } from "../ooxml/xml";
+import { visitPreservedFragments } from "../schema/preservedFragments";
 import {
   commentReferencesIn,
   commentsChanged,
@@ -38,7 +39,7 @@ import { identityProblems } from "./identities";
 import { insertedImageSrcs } from "./media";
 import { canDefineNewList, newNumIds, startedLists } from "./newLists";
 import { CONTENT_TYPES_PATH } from "./packageParts";
-import { lostOriginal } from "./serializeBlock";
+import { lostOriginal } from "./serializePreserved";
 import {
   type DocxSession,
   originalBlock,
@@ -59,24 +60,6 @@ interface ExportInvariant {
   check(doc: PMNode, session: SessionStore): readonly ExportProblem[];
 }
 
-/**
- * The XML a node's bookmark markers stand in, or null for a node that holds none.
- *
- * A marker inside a paragraph is a `rawInline` of its own, one directly under the body is a
- * `bookmarkBlock` pointing at its original, and one inside an unsupported container stays in that
- * container's XML (spec/notes/bookmarks.md "What we preserve"), which a `docxRaw` points at and a
- * `rawBlock` carries.
- */
-function markerSourceOf(node: PMNode, session: SessionStore): string | null {
-  if (node.type.name === "rawInline" || node.type.name === "rawBlock") {
-    return typeof node.attrs.xml === "string" ? node.attrs.xml : null;
-  }
-  if (node.type.isInGroup("preserved")) {
-    return originalBlock(node, session)?.xml ?? null;
-  }
-  return null;
-}
-
 /** OOXML requires every bookmark end to identify an earlier unmatched start, and every start to be ended */
 const bookmarkPairs: ExportInvariant = {
   name: "bookmarkPairs",
@@ -84,12 +67,12 @@ const bookmarkPairs: ExportInvariant = {
     const problems: ExportProblem[] = [];
     const open = new Map<string, number>();
     const used = new Set<string>();
-    doc.descendants((node, pos) => {
-      const source = markerSourceOf(node, session);
-      if (source === null) return true;
+    visitPreservedFragments(doc, (node, pos, xml) => {
+      const source = xml ?? originalBlock(node, session)?.xml ?? null;
+      if (source === null) return;
       // Use the document's namespace scope, and let the parser distinguish elements from
       // comments/CDATA and decode attribute references just as the final writer check does.
-      if (!source.includes("bookmark")) return true;
+      if (!source.includes("bookmark")) return;
       let root: Element;
       try {
         root = parseXml(
@@ -101,7 +84,7 @@ const bookmarkPairs: ExportInvariant = {
           message: "preserved bookmark XML could not be parsed",
           pos,
         });
-        return true;
+        return;
       }
       for (const marker of Array.from(root.getElementsByTagName("*"))) {
         if (
@@ -137,7 +120,6 @@ const bookmarkPairs: ExportInvariant = {
           });
         }
       }
-      return true;
     });
     for (const [id, pos] of open) {
       problems.push({
@@ -187,11 +169,10 @@ const tableGrids: ExportInvariant = {
   },
 };
 
-/** The preserved nodes that carry their own fragment rather than pointing at an original block */
+/** The preserved nodes that always carry their own fragment rather than pointing at an original block */
 const CARRIES_ITS_XML: ReadonlySet<string> = new Set([
   "rawInline",
   "rawRunContent",
-  "rawBlock",
 ]);
 
 /** Why a preserved node has nothing to be written from, or null when it has */
@@ -202,6 +183,7 @@ function lostOriginalOf(node: PMNode, session: SessionStore): string | null {
       : "a preserved element has lost its original XML";
   }
   if (node.type.isInGroup("preserved")) {
+    if (typeof node.attrs.xml === "string") return null;
     return originalBlock(node, session) ? null : lostOriginal(node, session);
   }
   return null;

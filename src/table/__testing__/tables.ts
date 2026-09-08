@@ -34,6 +34,7 @@ export const schema = new Schema({
         styleCellMargins: { default: null },
         styleConditions: { default: null },
         styleBands: { default: null },
+        leadingXml: { default: null },
       },
       toDOM: () => ["table", ["tbody", 0]],
     },
@@ -45,6 +46,8 @@ export const schema = new Schema({
         tblPrEx: { default: null },
         trPr: { default: null },
         format: { default: null },
+        leadingXml: { default: null },
+        trailingXml: { default: null },
       },
       toDOM: () => ["tr", 0],
     },
@@ -63,6 +66,7 @@ export const schema = new Schema({
         sdtPrefix: { default: null },
         sdtContentsLocked: { default: false },
         sdtDeletionLocked: { default: false },
+        trailingXml: { default: null },
       },
       toDOM: () => ["td", 0],
     },
@@ -80,6 +84,7 @@ export interface CellAttrs {
   sdtPrefix?: string | null;
   sdtContentsLocked?: boolean;
   sdtDeletionLocked?: boolean;
+  trailingXml?: string | null;
 }
 
 export const dxa = (twips: number): TableWidth => ({ type: "dxa", twips });
@@ -101,6 +106,7 @@ export function cell(text: string, attrs: CellAttrs = {}): PMNode {
       sdtPrefix: null,
       sdtContentsLocked: false,
       sdtDeletionLocked: false,
+      trailingXml: null,
       ...attrs,
     },
     schema.nodes.paragraph.create(null, text ? schema.text(text) : undefined)
@@ -115,11 +121,21 @@ export interface RowAttrs {
   tblPrEx?: string | null;
   trPr?: string | null;
   format?: Record<string, unknown> | null;
+  leadingXml?: string | null;
+  trailingXml?: string | null;
 }
 
 export const rowWith = (attrs: RowAttrs, ...cells: PMNode[]) =>
   schema.nodes.tableRow.create(
-    { trAttrs: null, tblPrEx: null, trPr: null, format: null, ...attrs },
+    {
+      trAttrs: null,
+      tblPrEx: null,
+      trPr: null,
+      format: null,
+      leadingXml: null,
+      trailingXml: null,
+      ...attrs,
+    },
     cells
   );
 

@@ -19,6 +19,11 @@
  */
 
 import { M_NS, W_NS } from "../ooxml/names";
+import {
+  COMMENT_RANGE_MARKERS,
+  PERMISSION_MARKERS,
+  RANGE_MARKERS,
+} from "../ooxml/rangeMarkers";
 import type { PreservedDisplay } from "../schema";
 
 export type { PreservedDisplay };
@@ -102,27 +107,6 @@ function rules(
   );
 }
 
-/** `EG_RangeMarkupElements` less the two comment markers, which every level reading them models */
-const RANGE_MARKERS = [
-  "bookmarkStart",
-  "bookmarkEnd",
-  "moveFromRangeStart",
-  "moveFromRangeEnd",
-  "moveToRangeStart",
-  "moveToRangeEnd",
-  "customXmlInsRangeStart",
-  "customXmlInsRangeEnd",
-  "customXmlDelRangeStart",
-  "customXmlDelRangeEnd",
-  "customXmlMoveFromRangeStart",
-  "customXmlMoveFromRangeEnd",
-  "customXmlMoveToRangeStart",
-  "customXmlMoveToRangeEnd",
-];
-
-/** The markers of `EG_RunLevelElts` that stand outside `EG_RangeMarkupElements` */
-const PERMISSION_MARKERS = ["permStart", "permEnd"];
-
 /** `EG_RunLevelElts` containers, which carry content of their own and so are never a marker */
 const REVISION_CONTAINERS = ["ins", "del", "moveFrom", "moveTo"];
 
@@ -189,7 +173,7 @@ const PARAGRAPH_CHILDREN: readonly (readonly [
 const PARAGRAPH_LEVEL: ReadonlyMap<string, ElementPolicy> = new Map([
   ...rules([
     [["pPr", "r", "hyperlink", "sdt"], MODEL],
-    [["commentRangeStart", "commentRangeEnd"], MODEL],
+    [COMMENT_RANGE_MARKERS, MODEL],
     ...PARAGRAPH_CHILDREN,
   ]),
   ...MATH.map((name): [string, ElementPolicy] => [name, INLINE_CHIP]),
@@ -205,7 +189,7 @@ const PARAGRAPH_LEVEL: ReadonlyMap<string, ElementPolicy> = new Map([
 const WRAPPER_LEVEL: ReadonlyMap<string, ElementPolicy> = new Map([
   ...rules([
     [["r", "hyperlink"], MODEL],
-    [["commentRangeStart", "commentRangeEnd"], MODEL],
+    [COMMENT_RANGE_MARKERS, MODEL],
     [["sdt"], INLINE_CHIP],
     ...PARAGRAPH_CHILDREN,
   ]),
@@ -216,7 +200,7 @@ const BLOCK_CHILDREN: readonly (readonly [readonly string[], ElementPolicy])[] =
   [
     [["p", "tbl"], MODEL],
     [RANGE_MARKERS, HIDDEN_MARKER],
-    [["commentRangeStart", "commentRangeEnd"], HIDDEN_MARKER],
+    [COMMENT_RANGE_MARKERS, HIDDEN_MARKER],
     [PERMISSION_MARKERS, HIDDEN_MARKER],
     [["proofErr"], IGNORABLE],
     [REVISION_CONTAINERS, BLOCK_CHIP],
@@ -244,7 +228,7 @@ const CELL_LEVEL: ReadonlyMap<string, ElementPolicy> = new Map([
 const TABLE_LEVEL = rules([
   [["tblPr", "tblGrid", "tr"], MODEL],
   [RANGE_MARKERS, HIDDEN_MARKER],
-  [["commentRangeStart", "commentRangeEnd"], HIDDEN_MARKER],
+  [COMMENT_RANGE_MARKERS, HIDDEN_MARKER],
   [PERMISSION_MARKERS, HIDDEN_MARKER],
   [["proofErr"], IGNORABLE],
 ]);
@@ -253,7 +237,7 @@ const TABLE_LEVEL = rules([
 const ROW_LEVEL = rules([
   [["tblPrEx", "trPr", "tc", "sdt"], MODEL],
   [RANGE_MARKERS, HIDDEN_MARKER],
-  [["commentRangeStart", "commentRangeEnd"], HIDDEN_MARKER],
+  [COMMENT_RANGE_MARKERS, HIDDEN_MARKER],
   [PERMISSION_MARKERS, HIDDEN_MARKER],
   [["proofErr"], IGNORABLE],
 ]);

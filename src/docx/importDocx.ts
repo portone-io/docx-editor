@@ -41,6 +41,7 @@ import {
 import { readHeadersFooters } from "./headersFooters";
 import { readLinkTargets } from "./hyperlink";
 import { buildParagraph, type ImportSources } from "./importParagraph";
+import { buildPreservedBlock } from "./importPreserved";
 import { buildTable } from "./importTable";
 import { readImageSources } from "./media";
 import { NUMBERING_REL_TYPE } from "./newLists";
@@ -115,8 +116,9 @@ function assertWritableMainPart(root: Element): void {
  * Moves a single body block into a node.
  *
  * A paragraph always opens editable (`./importParagraph`). What is left over is a table whose
- * rows this reader could not take apart, and a block it has no reader for at all, and both stand
- * as a preservation node pointing at the original fragment.
+ * rows this reader could not take apart, a range marker standing between blocks, and a block this
+ * reader has no reader for at all; each stands as one placeholder naming the original fragment,
+ * drawn by whatever `./importPolicy` says is on screen of it.
  */
 function buildBlock(
   el: Element,
@@ -124,18 +126,12 @@ function buildBlock(
   sources: ImportSources,
   context: FormattingContext
 ): PMNode {
-  if (el.localName === "bookmarkStart" || el.localName === "bookmarkEnd") {
-    return docxSchema.nodes.bookmarkBlock.create({
-      srcId,
-      name: el.nodeName,
-    });
-  }
   if (el.localName === "p") return buildParagraph(el, srcId, sources);
   if (el.localName === "tbl") {
     const table = buildTable(el, srcId, sources, context);
     if (table) return table;
   }
-  return docxSchema.nodes.docxRaw.create({ srcId, name: el.nodeName });
+  return buildPreservedBlock(el, srcId, "body");
 }
 
 /**

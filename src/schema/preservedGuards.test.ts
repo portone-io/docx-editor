@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
+import { joinBackward, joinForward } from "prosemirror-commands";
 import { Node as PMNode } from "prosemirror-model";
-import type { EditorState } from "prosemirror-state";
+import { type EditorState, TextSelection } from "prosemirror-state";
 import { describe, expect, it, vi } from "vitest";
 import { makeDocx, makeNotesDocx, NOTE_BODY } from "../__testing__/docx";
 import { importDocx } from "../docx/importDocx";
 import { createEditorState } from "../editor/createEditor";
+import { deleteColumn, deleteRow, deleteTable } from "../table";
 import { editShut, transactionAllowed } from "./guards";
 
 const runXml = (text: string) =>
@@ -55,7 +57,185 @@ function countOf(doc: PMNode, typeName: string): number {
   return seen;
 }
 
+const TABLE_GRID = '<w:tblPr/><w:tblGrid><w:gridCol w:w="1000"/></w:tblGrid>';
+const TABLE_CELL = `<w:tc><w:p>${runXml("cell")}</w:p></w:tc>`;
+const BOOKMARK_START = '<w:bookmarkStart w:id="9" w:name="b"/>';
+const BOOKMARK_END = '<w:bookmarkEnd w:id="9"/>';
+
+function tableMarkerState(
+  position: "table" | "rowStart" | "cell" | "rowEnd",
+  marker = BOOKMARK_START
+): EditorState {
+  const body =
+    `<w:tbl>${TABLE_GRID}${position === "table" ? marker : ""}` +
+    `<w:tr>${position === "rowStart" ? marker : ""}${TABLE_CELL}${position === "cell" ? marker : ""}</w:tr>` +
+    `${position === "rowEnd" ? marker : ""}</w:tbl><w:p>${BOOKMARK_END}${runXml("after")}</w:p>`;
+  const state = bookmarked(body);
+  const cell = nodeRange(state.doc, "tableCell");
+  return state.apply(
+    state.tr.setSelection(TextSelection.create(state.doc, cell.from + 2))
+  );
+}
+
+describe("markers stored around table content", () => {
+  it.each([
+    ["table", "table", "leadingXml"],
+    ["rowStart", "tableRow", "leadingXml"],
+    ["cell", "tableCell", "trailingXml"],
+    ["rowEnd", "tableRow", "trailingXml"],
+  ] as const)(
+    "guards the %s carrier while allowing typing inside it",
+    (position, type, attr) => {
+      const state = tableMarkerState(position);
+      const carrier = nodeRange(state.doc, type);
+      expect(deleteTable(state)).toBe(false);
+      expect(
+        transactionAllowed(
+          state.tr.setNodeAttribute(carrier.from, attr, null),
+          state
+        )
+      ).toBe(false);
+      expect(editShut(state, { kind: "replace", ...carrier })).toBe(true);
+      const at = state.selection.from;
+      expect(editShut(state, { kind: "replace", from: at, to: at + 1 })).toBe(
+        false
+      );
+      const walked = vi.spyOn(PMNode.prototype, "descendants");
+      try {
+        expect(transactionAllowed(state.tr.insertText("x", at), state)).toBe(
+          true
+        );
+        expect(walked).not.toHaveBeenCalled();
+      } finally {
+        walked.mockRestore();
+      }
+    }
+  );
+
+  it("lets a row carrying only a proofing trace be deleted", () => {
+    let state = bookmarked(
+      `<w:tbl>${TABLE_GRID}<w:tr><w:proofErr w:type="spellStart"/>${TABLE_CELL}</w:tr><w:tr>${TABLE_CELL}</w:tr></w:tbl><w:p/>`
+    );
+    const cell = nodeRange(state.doc, "tableCell");
+    state = state.apply(
+      state.tr.setSelection(TextSelection.create(state.doc, cell.from + 2))
+    );
+    expect(deleteRow(state)).toBe(true);
+    const row = nodeRange(state.doc, "tableRow");
+    expect(editShut(state, { kind: "replace", ...row })).toBe(false);
+  });
+
+  it("does not mistake an explicitly foreign marker name for a Word marker", () => {
+    const state = tableMarkerState("rowStart");
+    const row = nodeRange(state.doc, "tableRow");
+    const foreign = state.doc.nodeAt(row.from)?.type.create(
+      {
+        ...state.doc.nodeAt(row.from)?.attrs,
+        leadingXml: '<other:bookmarkStart xmlns:other="urn:other"/>',
+      },
+      state.doc.nodeAt(row.from)?.content
+    );
+    if (!foreign) throw new Error("no row");
+    const doc = state.tr.replaceWith(row.from, row.to, foreign).doc;
+    const foreignState = createEditorState(doc);
+    expect(
+      transactionAllowed(foreignState.tr.delete(row.from, row.to), foreignState)
+    ).toBe(true);
+  });
+
+  it("refuses planting another marker on an empty carrier", () => {
+    const state = tableMarkerState("cell");
+    const row = nodeRange(state.doc, "tableRow");
+    expect(
+      transactionAllowed(
+        state.tr.setNodeAttribute(row.from, "leadingXml", BOOKMARK_START),
+        state
+      )
+    ).toBe(false);
+  });
+
+  it("keeps the order between a trailing marker and an inline marker", () => {
+    const state = bookmarked(
+      `<w:tbl>${TABLE_GRID}<w:tr><w:tc><w:p>${BOOKMARK_START}${runXml("cell")}</w:p></w:tc>${BOOKMARK_END}</w:tr></w:tbl><w:p>${runXml("after")}</w:p>`
+    );
+    const start = nodeRange(state.doc, "rawInline");
+    const marker = state.doc.nodeAt(start.from);
+    if (!marker) throw new Error("no marker");
+    const tr = state.tr.delete(start.from, start.to);
+    tr.insert(tr.doc.child(0).nodeSize + 1, marker);
+    expect(transactionAllowed(tr, state)).toBe(false);
+  });
+
+  it("allows moving a table whole with its marker pair", () => {
+    const state = bookmarked(
+      `<w:p>${runXml("before")}</w:p><w:tbl>${TABLE_GRID}<w:tr><w:tc><w:p>${BOOKMARK_START}${runXml("cell")}</w:p></w:tc>${BOOKMARK_END}</w:tr></w:tbl>`
+    );
+    const table = nodeRange(state.doc, "table");
+    const moved = state.doc.slice(table.from, table.to);
+    const tr = state.tr.delete(table.from, table.to).replace(0, 0, moved);
+    expect(transactionAllowed(tr, state)).toBe(true);
+    expect(state.apply(tr).doc.eq(tr.doc)).toBe(true);
+    expect(transactionAllowed(state.tr.replace(0, 0, moved), state)).toBe(
+      false
+    );
+  });
+});
+
+describe("paragraph joins beside body bookmark placeholders", () => {
+  it.each(["backward", "forward"] as const)(
+    "keeps the body marker on a %s join",
+    (direction) => {
+      let state = bookmarked(
+        `<w:p>${runXml("before")}</w:p>${BOOKMARK_START}<w:p>${runXml("inside")}</w:p>${BOOKMARK_END}<w:p>${runXml("after")}</w:p>`
+      );
+      const marker = nodeRange(state.doc, "rawBlock");
+      const at = direction === "backward" ? marker.to + 1 : marker.from - 1;
+      state = state.apply(
+        state.tr.setSelection(TextSelection.create(state.doc, at))
+      );
+      const before = state.doc;
+      const command = direction === "backward" ? joinBackward : joinForward;
+      command(state, (tr) => {
+        state = state.apply(tr);
+      });
+      expect(state.doc.eq(before)).toBe(true);
+      expect(countOf(state.doc, "rawBlock")).toBe(2);
+    }
+  );
+});
+
 describe("a guard over the markers a document was opened with", () => {
+  it.each([deleteRow, deleteColumn])(
+    "refuses removing the cell carrying a table bookmark endpoint",
+    (command) => {
+      let state = bookmarked(
+        '<w:tbl><w:tblPr/><w:tblGrid><w:gridCol w:w="1000"/><w:gridCol w:w="1000"/></w:tblGrid>' +
+          "<w:tr><w:tc><w:p>" +
+          runXml("a") +
+          '</w:p></w:tc><w:bookmarkStart w:id="9" w:name="b"/>' +
+          "<w:tc><w:p>" +
+          runXml("b") +
+          "</w:p></w:tc></w:tr>" +
+          "<w:tr><w:tc><w:p>" +
+          runXml("c") +
+          "</w:p></w:tc><w:tc><w:p>" +
+          runXml("d") +
+          "</w:p></w:tc></w:tr>" +
+          '</w:tbl><w:p><w:bookmarkEnd w:id="9"/>' +
+          runXml("end") +
+          "</w:p>"
+      );
+      const cell = nodeRange(state.doc, "tableCell");
+      state = state.apply(
+        state.tr.setSelection(TextSelection.create(state.doc, cell.from + 2))
+      );
+      expect(command(state)).toBe(false);
+      const dispatch = vi.fn();
+      expect(command(state, dispatch)).toBe(false);
+      expect(dispatch).not.toHaveBeenCalled();
+    }
+  );
+
   it("refuses a step that takes a bookmark marker away", () => {
     const state = bookmarked();
     const marker = nodeRange(state.doc, "rawInline");

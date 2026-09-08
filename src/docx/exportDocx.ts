@@ -74,7 +74,7 @@ function blockXml(
 ): string {
   const imported = originalBlock(node, session);
   if (imported && sameSource(node, imported.node)) return imported.xml;
-  return serializeBlock(node, session, refs);
+  return serializeBlock(node, refs);
 }
 
 function buildDocumentXml(
@@ -267,6 +267,7 @@ function writeDocx(
     images: media?.refs ?? NO_IMAGE_REFS,
     links,
     notes,
+    session: store,
   });
   const documentXml = links.addedRelId()
     ? ensureRootDeclarations(body, LINK_MARKUP)

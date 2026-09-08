@@ -156,7 +156,7 @@ describe("the insert image command", () => {
     const { doc } = importDocx(makeDocx(ONLY_PRESERVED));
     const state = createEditorState(doc);
 
-    expect(state.doc.child(0).type.name).toBe("docxRaw");
+    expect(state.doc.child(0).type.name).toBe("rawBlock");
     expect(canInsertImage(state)).toBe(false);
     expect(insertImage(A_PICTURE)(state)).toBe(false);
   });

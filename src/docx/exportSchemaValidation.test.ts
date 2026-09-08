@@ -492,6 +492,50 @@ describe("the exported package against the OOXML schemas", () => {
   });
 
   /**
+   * A bookmark over a column stands under the row, where `CT_Row` puts `EG_RunLevelElts` between
+   * its cells. It rides on the cells around it, so a rebuilt row has to put it back in a spot the
+   * schema allows rather than wherever it is convenient.
+   */
+  it("a row-level bookmark remains valid after the row is rebuilt", () => {
+    const opened = importDocx(
+      makeDocx(
+        '<w:tbl><w:tblPr/><w:tblGrid><w:gridCol w:w="1000"/>' +
+          '<w:gridCol w:w="1000"/></w:tblGrid><w:tr>' +
+          '<w:bookmarkStart w:id="9" w:name="Column"/>' +
+          '<w:tc><w:p><w:r><w:t xml:space="preserve">First</w:t></w:r></w:p></w:tc>' +
+          '<w:tc><w:p><w:r><w:t xml:space="preserve">Second</w:t></w:r></w:p></w:tc>' +
+          '<w:bookmarkEnd w:id="9"/></w:tr></w:tbl>'
+      )
+    );
+    const parts = wordprocessingParts(
+      exportDocx(withEditedFirst(opened.doc, "table", EDITED), opened.session)
+    );
+
+    expect(parts.get(opened.session.mainPartPath)).toContain(
+      '<w:tr><w:bookmarkStart w:id="9" w:name="Column"/><w:tc'
+    );
+    expectPartsValidate("row-level bookmark", parts);
+  });
+
+  it("a bookmark starting inside a cell and ending after it remains valid", () => {
+    const bytes = makeDocx(
+      '<w:tbl><w:tblPr/><w:tblGrid><w:gridCol w:w="1000"/></w:tblGrid>' +
+        '<w:tr><w:tc><w:p><w:bookmarkStart w:id="9" w:name="Range"/>' +
+        "<w:r><w:t>First</w:t></w:r></w:p></w:tc>" +
+        '<w:bookmarkEnd w:id="9"/></w:tr></w:tbl>'
+    );
+    expectPartsValidate(
+      "original cross-cell bookmark",
+      wordprocessingParts(bytes)
+    );
+    const opened = importDocx(bytes);
+    const parts = wordprocessingParts(
+      exportDocx(withEditedFirst(opened.doc, "table", EDITED), opened.session)
+    );
+    expectPartsValidate("rebuilt cross-cell bookmark", parts);
+  });
+
+  /**
    * The numbering part the export writes from scratch, whose root has to declare the prefix the
    * definitions inside it are written under for the schemas to read it at all.
    */

@@ -70,13 +70,12 @@ describe("the notes a document opens with", () => {
   });
 
   /**
-   * Import no longer stands a paragraph down (`./importParagraph`), so the code is reached only
-   * by a placeholder read back from the DOM, and it is what tells one demotion from another until
-   * the block placeholders are one node.
+   * Import no longer stands a paragraph down (`./importParagraph`), so the code is reached only by
+   * a placeholder read back from the DOM, and it is what tells one demotion from another.
    */
   it("reports a placeholder standing for a paragraph as a demoted paragraph", () => {
     const doc = docxSchema.nodes.doc.create(null, [
-      docxSchema.nodes.docxRaw.create({ srcId: "opened:body:4", name: "w:p" }),
+      docxSchema.nodes.rawBlock.create({ srcId: "opened:body:4", name: "w:p" }),
     ]);
 
     expect(fidelityNotesOf(doc, null)).toEqual([
@@ -92,11 +91,13 @@ describe("the notes a document opens with", () => {
   });
 
   it("reports a demoted table as a placeholder note of its own", () => {
-    // A row-level bookmark is a row child this reader has no node for, so the table is demoted
+    // A content control around a whole row is a row this reader cannot take apart, and the two
+    // levels with no node to keep a stranger in stand the table down (`./importPolicy`)
     const notes = notesOf(
       '<w:tbl><w:tblPr/><w:tblGrid><w:gridCol w:w="1000"/></w:tblGrid>' +
-        '<w:tr><w:bookmarkStart w:id="1" w:name="b" w:colFirst="0" w:colLast="0"/>' +
-        `<w:tc><w:p>${run("a")}</w:p></w:tc><w:bookmarkEnd w:id="1"/></w:tr></w:tbl>`
+        "<w:sdt><w:sdtPr/><w:sdtContent>" +
+        `<w:tr><w:tc><w:p>${run("a")}</w:p></w:tc></w:tr>` +
+        "</w:sdtContent></w:sdt></w:tbl>"
     );
     expect(notes).toEqual([
       expect.objectContaining({
@@ -106,6 +107,16 @@ describe("the notes a document opens with", () => {
         element: "w:tbl",
       }),
     ]);
+  });
+
+  it("reports nothing for a row-level bookmark, which rides on the table it marks", () => {
+    expect(
+      notesOf(
+        '<w:tbl><w:tblPr/><w:tblGrid><w:gridCol w:w="1000"/></w:tblGrid>' +
+          '<w:tr><w:bookmarkStart w:id="1" w:name="b" w:colFirst="0" w:colLast="0"/>' +
+          `<w:tc><w:p>${run("a")}</w:p></w:tc><w:bookmarkEnd w:id="1"/></w:tr></w:tbl>`
+      )
+    ).toEqual([]);
   });
 
   it("reports a body-level bookmark as a hidden range marker", () => {

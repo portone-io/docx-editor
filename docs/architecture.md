@@ -5,7 +5,7 @@ Its scope is the editor library itself; the other workspace packages, `demo/` an
 
 ## Preservation model
 
-Import keeps the original XML behind each document block. An untouched block is written back from that source, and a structure the editor cannot model becomes a placeholder that retains the XML without exposing unsupported edits.
+Import keeps the original XML behind each document block. An untouched block is written back from that source, and a structure the editor cannot model becomes a placeholder that retains the XML without exposing unsupported edits. There is one placeholder node kind, `rawBlock`, wherever such a block stands: one opened under the body names the session fragment it was read from, one opened inside a table cell carries its XML, and either may be moved into the other's place by an edit.
 
 Paragraphs and runs retain their original formatting XML while supported edits replace only the relevant values. Package parts outside the supported editing surface are repacked unchanged.
 

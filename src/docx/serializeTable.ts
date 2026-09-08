@@ -29,11 +29,8 @@ import {
 } from "../ooxml/props";
 import { ST_MeasurementOrPercent, ST_TwipsMeasure } from "../ooxml/simpleTypes";
 import { type ExportRefs, NO_EXPORT_REFS } from "./exportRefs";
-import {
-  preservedXml,
-  rawAttrsOf,
-  serializeParagraph,
-} from "./serializeParagraph";
+import { rawAttrsOf, serializeParagraph } from "./serializeParagraph";
+import { serializePreservedBlock } from "./serializePreserved";
 
 /** Splits the original formatting fragment up by child. With no fragment, we start from an empty one */
 function propsOf(xml: unknown, tag: string): Props {
@@ -184,14 +181,25 @@ function cellPropsXml(cell: PMNode, role: CellRole): string {
   return renderProps(withWidth(merged, "tcW", width));
 }
 
+/**
+ * One block of a cell. A cell takes exactly the blocks the body takes, and each of them is
+ * written the same way it is written there.
+ */
 function cellBlockXml(block: PMNode, refs: ExportRefs): string {
   if (block.type.name === "paragraph") return serializeParagraph(block, refs);
-  if (block.type.name === "rawBlock") return preservedXml(block);
   if (block.type.name === "table") return serializeTable(block, refs);
-  throw new DocxExportError(
-    "unsupported-content",
-    `block that cannot go inside a table cell: ${block.type.name}`
-  );
+  return serializePreservedBlock(block, refs);
+}
+
+/**
+ * The markers a table, a row or a cell carries, or nothing where it carries none.
+ *
+ * `w:tbl` and `w:tr` have no node to keep such an element in (`docx/importPolicy`), so it rides on
+ * the child before it and goes back exactly where it stood: after that child, ahead of the next.
+ */
+function markerXml(node: PMNode, attr: "leadingXml" | "trailingXml"): string {
+  const xml: unknown = node.attrs[attr];
+  return typeof xml === "string" ? xml : "";
 }
 
 /**
@@ -217,7 +225,12 @@ function cellXml(cell: PMNode, role: CellRole, refs: ExportRefs): string {
     cellPropsXml(cell, role) +
     body +
     "</w:tc>";
-  return wrapInSdt(xml, cell, role);
+  // The markers this cell carries stood after the cell itself, outside whatever wrapped it, and
+  // only where the cell itself stands: a continuing cell is a fresh one and carries none
+  return (
+    wrapInSdt(xml, cell, role) +
+    (role === "start" ? markerXml(cell, "trailingXml") : "")
+  );
 }
 
 interface Placed {
@@ -272,13 +285,16 @@ function rowXml(row: PMNode, covering: Covering[], refs: ExportRefs): string {
     .join("");
   const tblPrEx: unknown = row.attrs.tblPrEx;
   const trPr: unknown = row.attrs.trPr;
-  // Inside a row the table property exceptions come ahead of the row properties
+  // Inside a row the table property exceptions come ahead of the row properties, and CT_Row takes
+  // its markers only after both of them
   return (
     openTagXml(wName("tr"), rawAttrsOf(row.attrs.trAttrs)) +
     (typeof tblPrEx === "string" ? tblPrEx : "") +
     (typeof trPr === "string" ? trPr : "") +
+    markerXml(row, "leadingXml") +
     cells +
-    "</w:tr>"
+    "</w:tr>" +
+    markerXml(row, "trailingXml")
   );
 }
 
@@ -301,6 +317,7 @@ export function serializeTable(
     openTagXml(wName("tbl"), rawAttrsOf(table.attrs.tblAttrs)) +
     tablePropsXml(table) +
     tableGridXml(table) +
+    markerXml(table, "leadingXml") +
     rows +
     "</w:tbl>"
   );

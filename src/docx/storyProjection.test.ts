@@ -9,6 +9,7 @@ import {
   TINY_PNG_DATA_URL,
 } from "../__testing__/docx";
 import { docxSchema } from "../schema";
+import { NO_EXPORT_REFS } from "./exportRefs";
 import { importDocx } from "./importDocx";
 import { serializeBlock } from "./serializeBlock";
 import type { SessionStore } from "./session";
@@ -39,12 +40,15 @@ describe("the writer as a fixed point", () => {
       doc.forEach((block) => {
         if (!isModelledBlock(block)) return;
         modelled += 1;
-        const once = serializeBlock(block, session);
+        const once = serializeBlock(block, { ...NO_EXPORT_REFS, session });
         const reopened = reopenIn(session, once);
         expect(reopened.doc.child(0).type.name).toBe(block.type.name);
-        expect(serializeBlock(reopened.doc.child(0), reopened.session)).toBe(
-          once
-        );
+        expect(
+          serializeBlock(reopened.doc.child(0), {
+            ...NO_EXPORT_REFS,
+            session: reopened.session,
+          })
+        ).toBe(once);
       });
       expect(modelled).toBeGreaterThan(0);
     }

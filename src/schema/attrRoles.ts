@@ -54,12 +54,17 @@ export const NODE_ATTR_ROLES: AttrTable = {
     styleCellMargins: { role: "display", class: "derived" },
     styleConditions: { role: "display", class: "derived" },
     styleBands: { role: "display", class: "derived" },
+    // The markers a table and a row carry are content the writer puts back exactly where it
+    // stood, so a change to one is a change to the table rather than a display refresh
+    leadingXml: { role: "source", class: "preserved" },
   },
   tableRow: {
     trAttrs: { role: "source", class: "preserved" },
     tblPrEx: { role: "source", class: "preserved" },
     trPr: { role: "source", class: "preserved" },
     format: { role: "display", class: "derived" },
+    leadingXml: { role: "source", class: "preserved" },
+    trailingXml: { role: "source", class: "preserved" },
   },
   tableCell: {
     colspan: { role: "source", class: "model" },
@@ -76,18 +81,14 @@ export const NODE_ATTR_ROLES: AttrTable = {
     sdtPrefix: { role: "source", class: "preserved" },
     sdtContentsLocked: { role: "source", class: "derived" },
     sdtDeletionLocked: { role: "source", class: "derived" },
+    trailingXml: { role: "source", class: "preserved" },
   },
   rawBlock: {
     xml: { role: "source", class: "preserved" },
-    name: { role: "source", class: "identity" },
-  },
-  docxRaw: {
     srcId: { role: "session", class: "identity" },
     name: { role: "session", class: "identity" },
-  },
-  bookmarkBlock: {
-    srcId: { role: "session", class: "identity" },
-    name: { role: "session", class: "identity" },
+    display: { role: "session", class: "derived" },
+    guarded: { role: "session", class: "derived" },
   },
   hardBreak: { brAttrs: { role: "source", class: "preserved" } },
   image: {

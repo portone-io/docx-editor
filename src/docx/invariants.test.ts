@@ -25,6 +25,7 @@ import {
 } from "../editor/createEditor";
 import type { DocxExportError } from "../ooxml/errors";
 import { docxSchema } from "../schema";
+import { withEditedFirst } from "./__testing__/blockEdits";
 import { commentReferencesIn } from "./comments";
 import { exportDocx } from "./exportDocx";
 import { importDocx } from "./importDocx";
@@ -113,6 +114,51 @@ function withComment(state: EditorState): EditorState {
 
 describe("bookmark pairs", () => {
   it.each([
+    [
+      "a cell paragraph and its following marker",
+      1,
+      '<w:tr><w:tc><w:p><w:bookmarkStart w:id="4" w:name="Range"/>' +
+        run("a") +
+        '</w:p></w:tc><w:bookmarkEnd w:id="4"/></w:tr>',
+    ],
+    [
+      "a cell paragraph and a following row boundary",
+      1,
+      '<w:tr><w:tc><w:p><w:bookmarkStart w:id="4" w:name="Range"/>' +
+        run("a") +
+        '</w:p></w:tc></w:tr><w:bookmarkEnd w:id="4"/>',
+    ],
+    [
+      "two cells whose respective markers cross the cell boundary",
+      2,
+      "<w:tr><w:tc>" +
+        paragraph("a") +
+        '</w:tc><w:bookmarkStart w:id="4" w:name="Range"/>' +
+        "<w:tc><w:p>" +
+        run("b") +
+        '<w:bookmarkEnd w:id="4"/></w:p></w:tc></w:tr>',
+    ],
+  ])("reads bookmark order across %s", (_name, columns, rows) => {
+    const opened = importDocx(
+      makeDocx(
+        '<w:tbl><w:tblPr/><w:tblGrid><w:gridCol w:w="1000"/>' +
+          (columns === 2 ? '<w:gridCol w:w="1000"/>' : "") +
+          "</w:tblGrid>" +
+          rows +
+          "</w:tbl>"
+      )
+    );
+    expect(opened.doc.firstChild?.type.name).toBe("table");
+    for (const doc of [
+      opened.doc,
+      withEditedFirst(opened.doc, "table", "Edited"),
+    ]) {
+      expect(exportProblems(doc, opened.session)).toEqual([]);
+      expect(() => exportDocx(doc, opened.session)).not.toThrow();
+    }
+  });
+
+  it.each([
     '<w:customXml><!-- <w:bookmarkStart w:id="7"/> --><w:p/></w:customXml>',
     '<w:customXml><![CDATA[<w:bookmarkStart w:id="7"/>]]><w:p/></w:customXml>',
     '<w:customXml><x:bookmarkStart xmlns:x="urn:foreign" x:id="7"/><w:p/></w:customXml>',
@@ -122,6 +168,23 @@ describe("bookmark pairs", () => {
     const opened = importDocx(makeDocx(body));
     expect(exportProblems(opened.doc, opened.session)).toEqual([]);
     expect(() => exportDocx(opened.doc, opened.session)).not.toThrow();
+  });
+
+  it("does not let a later cell attribute satisfy an earlier inline end", () => {
+    const opened = importDocx(
+      makeDocx(
+        '<w:tbl><w:tblPr/><w:tblGrid><w:gridCol w:w="1000"/></w:tblGrid>' +
+          '<w:tr><w:tc><w:p><w:bookmarkEnd w:id="4"/>' +
+          run("a") +
+          '</w:p></w:tc><w:bookmarkStart w:id="4" w:name="Range"/></w:tr></w:tbl>'
+      )
+    );
+    expect(
+      exportProblems(opened.doc, opened.session).map(({ message }) => message)
+    ).toEqual([
+      "bookmark 4 ends without an earlier start marker",
+      "bookmark 4 has no end marker",
+    ]);
   });
 
   it("an unpaired bookmark start is a malformed-xml problem at its position", () => {
@@ -168,8 +231,26 @@ describe("bookmark pairs", () => {
       },
       {
         code: "unsupported-content",
-        message: "a preserved block stands in two places (bookmarkBlock)",
+        message: "a preserved block stands in two places (rawBlock)",
         pos: start.nodeSize + inside.nodeSize,
+      },
+    ]);
+  });
+
+  it("a row-level marker that ends what nothing started is reported at its carrier", () => {
+    const opened = importDocx(
+      makeDocx(
+        '<w:tbl><w:tblPr/><w:tblGrid><w:gridCol w:w="1000"/></w:tblGrid>' +
+          `<w:tr><w:tc>${paragraph("a")}</w:tc>` +
+          '<w:bookmarkEnd w:id="4"/></w:tr></w:tbl>'
+      )
+    );
+
+    expect(exportProblems(opened.doc, opened.session)).toEqual([
+      {
+        code: "malformed-xml",
+        message: "bookmark 4 ends without an earlier start marker",
+        pos: 2,
       },
     ]);
   });
@@ -236,7 +317,7 @@ describe("preserved originals", () => {
     expect(exportProblems(stripped, opened.session)).toEqual([
       {
         code: "lost-original",
-        message: "a preserved element has lost its original XML",
+        message: "a preserved block has lost its original XML",
         pos: opened.doc.child(0).nodeSize,
       },
     ]);
@@ -281,7 +362,7 @@ describe("unique identities", () => {
     expect(problems).toEqual([
       {
         code: "unsupported-content",
-        message: "a preserved block stands in two places (docxRaw)",
+        message: "a preserved block stands in two places (rawBlock)",
         pos: opened.doc.child(0).nodeSize + placeholder.nodeSize,
       },
     ]);

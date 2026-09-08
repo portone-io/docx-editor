@@ -34,6 +34,7 @@ import {
 } from "../model/format";
 import {
   ANY_ELEMENT,
+  ANY_ELEMENTS,
   ATTRIBUTES,
   acceptRawXml,
   ELEMENT,
@@ -249,30 +250,24 @@ const UNKNOWN_PLACEHOLDER =
 
 const TABLE_NAMES = ["w:tbl", "tbl"];
 
-function rawBlockDom(name: string | undefined): {
-  className: string;
-  label: string;
-} {
-  if (name !== undefined && TABLE_NAMES.includes(name)) {
-    return {
-      className: editorClassNames.tablePlaceholder,
-      label: TABLE_PLACEHOLDER,
-    };
-  }
-  return { className: editorClassNames.rawBlock, label: UNKNOWN_PLACEHOLDER };
+/** What the box standing in for a preserved block says it is standing in for */
+function placeholderLabel(name: string | undefined): string {
+  return name !== undefined && TABLE_NAMES.includes(name)
+    ? TABLE_PLACEHOLDER
+    : UNKNOWN_PLACEHOLDER;
 }
 
 /**
- * Looking at `data-src` alone would turn a stray `div` dragged in or pasted from
- * outside into a preserved block pointing at an original fragment that does not
- * exist, so the class we attach is checked along with it.
+ * The element name a preserved block stands for, read back as it stands.
+ *
+ * It is written even where there is none, because the selector recognizing the block is the
+ * attribute alongside the class: a stray `div` dragged in or pasted from outside would otherwise
+ * settle into the document as a block pointing at an original fragment that does not exist.
  */
-const DOCX_RAW_SELECTOR = [
-  editorClassNames.rawBlock,
-  editorClassNames.tablePlaceholder,
-]
-  .map((className) => `div[data-src].${className}`)
-  .join(", ");
+function preservedNameOf(dom: HTMLElement): string | null {
+  const name = dom.getAttribute("data-name");
+  return name === null || name === "" ? null : name;
+}
 
 export const docxSchema = new Schema({
   nodes: {
@@ -386,6 +381,12 @@ export const docxSchema = new Schema({
         styleConditions: { default: null },
         /** How many rows and columns one band of the table style is made of */
         styleBands: { default: null },
+        /**
+         * The markers that stood between this table's rows: the ones ahead of the first row
+         * (`docx/importTable`). They are invisible and belong to no row, so they ride along on
+         * the table and go back where they stood
+         */
+        leadingXml: { default: null },
       },
       toDOM(node) {
         const format = toTableFormat(node.attrs.format);
@@ -411,6 +412,7 @@ export const docxSchema = new Schema({
             toTableStyleConditions(node.attrs.styleConditions)
           ),
           "data-style-bands": formatJson(toBandSizes(node.attrs.styleBands)),
+          "data-leading": text(node.attrs.leadingXml),
         };
         const body = ["tbody", 0];
         if (gridCols.length === 0) return ["table", attrs, body];
@@ -433,7 +435,13 @@ export const docxSchema = new Schema({
               "data-gridchange",
               ELEMENT("tblGridChange")
             );
-            if (tblAttrs === false || tblPr === false || gridChange === false) {
+            const leadingXml = rawXml(dom, "data-leading", ANY_ELEMENTS);
+            if (
+              tblAttrs === false ||
+              tblPr === false ||
+              gridChange === false ||
+              leadingXml === false
+            ) {
               return false;
             }
             return {
@@ -456,6 +464,7 @@ export const docxSchema = new Schema({
               styleBands: toBandSizes(
                 parseJson(dom.getAttribute("data-style-bands"))
               ),
+              leadingXml,
             };
           },
         },
@@ -472,6 +481,10 @@ export const docxSchema = new Schema({
         /** The whole `<w:trPr>...</w:trPr>` XML */
         trPr: { default: null },
         format: { default: null },
+        /** The markers that stood ahead of this row's first cell (`docx/importTable`) */
+        leadingXml: { default: null },
+        /** The markers that stood between this row and the next one, under the table */
+        trailingXml: { default: null },
       },
       toDOM(node) {
         const format = toRowFormat(node.attrs.format);
@@ -484,6 +497,8 @@ export const docxSchema = new Schema({
             "data-tblprex": text(node.attrs.tblPrEx),
             "data-trpr": text(node.attrs.trPr),
             "data-fmt": formatJson(format),
+            "data-leading": text(node.attrs.leadingXml),
+            "data-trailing": text(node.attrs.trailingXml),
           },
           0,
         ];
@@ -495,7 +510,15 @@ export const docxSchema = new Schema({
             const trAttrs = rawXml(dom, "data-trattrs", ATTRIBUTES);
             const tblPrEx = rawXml(dom, "data-tblprex", ELEMENT("tblPrEx"));
             const trPr = rawXml(dom, "data-trpr", ELEMENT("trPr"));
-            if (trAttrs === false || tblPrEx === false || trPr === false) {
+            const leadingXml = rawXml(dom, "data-leading", ANY_ELEMENTS);
+            const trailingXml = rawXml(dom, "data-trailing", ANY_ELEMENTS);
+            if (
+              trAttrs === false ||
+              tblPrEx === false ||
+              trPr === false ||
+              leadingXml === false ||
+              trailingXml === false
+            ) {
               return false;
             }
             return {
@@ -503,6 +526,8 @@ export const docxSchema = new Schema({
               tblPrEx,
               trPr,
               format: toRowFormat(parseJson(dom.getAttribute("data-fmt"))),
+              leadingXml,
+              trailingXml,
             };
           },
         },
@@ -537,6 +562,8 @@ export const docxSchema = new Schema({
          */
         sdtContentsLocked: { default: false },
         sdtDeletionLocked: { default: false },
+        /** The markers that stood between this cell and the next one, under the row */
+        trailingXml: { default: null },
       },
       toDOM(node) {
         const format = toCellFormat(node.attrs.format);
@@ -562,6 +589,7 @@ export const docxSchema = new Schema({
             "data-sdt-contents-locked": locked ? "1" : undefined,
             "data-sdt-deletion-locked":
               node.attrs.sdtDeletionLocked === true ? "1" : undefined,
+            "data-trailing": text(node.attrs.trailingXml),
           },
           0,
         ];
@@ -573,7 +601,13 @@ export const docxSchema = new Schema({
             const tcAttrs = rawXml(dom, "data-tcattrs", ATTRIBUTES);
             const tcPr = rawXml(dom, "data-tcpr", ELEMENT("tcPr"));
             const sdtPrefix = rawXml(dom, "data-sdt-prefix", SDT_PREFIX);
-            if (tcAttrs === false || tcPr === false || sdtPrefix === false) {
+            const trailingXml = rawXml(dom, "data-trailing", ANY_ELEMENTS);
+            if (
+              tcAttrs === false ||
+              tcPr === false ||
+              sdtPrefix === false ||
+              trailingXml === false
+            ) {
               return false;
             }
             return {
@@ -591,109 +625,67 @@ export const docxSchema = new Schema({
                 dom.getAttribute("data-sdt-contents-locked") === "1",
               sdtDeletionLocked:
                 dom.getAttribute("data-sdt-deletion-locked") === "1",
+              trailingXml,
             };
           },
         },
       ],
     },
     /**
-     * The node that carries, as original XML, a block inside a table cell that we do
-     * not model (a nested table, for instance).
-     * Unlike a body block it has no original fragment number, so it carries its own
-     * XML around with it.
+     * The one node a block the editor has no model for stands as, wherever it stood: under the
+     * body, or inside a table cell.
+     *
+     * Which of the two it came from is what it carries the original as. A body block is one of the
+     * fragments the session holds, so it names that fragment and the bytes go back out untouched;
+     * a block inside a cell was never a fragment of its own, so it carries its XML with it.
+     *
+     * `display` says whether anything of it is on screen. A range marker draws nothing - it stands
+     * between blocks and marks a spot rather than holding content - while a table nobody could take
+     * apart draws a box saying so.
      */
     rawBlock: {
       group: "block preserved",
       atom: true,
       selectable: false,
       attrs: {
+        /** The element, verbatim, for a block the session holds no fragment of */
         xml: { default: null },
+        /** The fragment of the session this block was opened from */
+        srcId: { default: null },
         /** The original element name (for example `w:tbl`) */
         name: { default: null },
+        display: { default: "chip" },
+        /** Whether the deletion guard answers for this block (`./preservedGuards`) */
+        guarded: { default: false },
       },
       toDOM(node) {
-        return [
-          "div",
-          {
-            class: `${editorClassNames.rawBlock} ${editorClassNames.rawXmlBlock}`,
-            "data-xml": text(node.attrs.xml),
-            "data-name": text(node.attrs.name),
-          },
-          UNKNOWN_PLACEHOLDER,
-        ];
+        const name = text(node.attrs.name);
+        const display = preservedDisplayOf(node.attrs.display);
+        const attributes = {
+          class: editorClassNames.rawBlock,
+          "data-xml": text(node.attrs.xml),
+          "data-src": text(node.attrs.srcId) ?? "",
+          "data-name": name ?? "",
+          "data-display": display,
+          "data-guarded": node.attrs.guarded === true ? "1" : undefined,
+        };
+        if (display !== "chip") return ["div", attributes];
+        return ["div", attributes, placeholderLabel(name)];
       },
       parseDOM: [
         {
-          tag: `div.${editorClassNames.rawXmlBlock}`,
+          tag: `div.${editorClassNames.rawBlock}[data-name]`,
           getAttrs: (dom) => {
             const xml = rawXml(dom, "data-xml", ANY_ELEMENT);
             if (xml === false) return false;
-            return { xml, name: dom.getAttribute("data-name") };
+            return {
+              xml,
+              srcId: srcIdOf(dom),
+              name: preservedNameOf(dom),
+              display: preservedDisplayOf(dom.getAttribute("data-display")),
+              guarded: dom.getAttribute("data-guarded") === "1",
+            };
           },
-        },
-      ],
-    },
-    /** The node that carries a non-paragraph body block (a table we could not model, sectPr, an unknown element) exactly as it came */
-    docxRaw: {
-      group: "block preserved",
-      atom: true,
-      selectable: false,
-      attrs: {
-        srcId: { default: null },
-        /** The original element name (for example `w:tbl`) */
-        name: { default: null },
-      },
-      toDOM(node) {
-        const { className, label } = rawBlockDom(text(node.attrs.name));
-        // This is the mark that identifies the node when the DOM is read back, so it is attached even without a block key
-        return [
-          "div",
-          {
-            class: className,
-            "data-src": text(node.attrs.srcId) ?? "",
-            "data-name": text(node.attrs.name),
-          },
-          label,
-        ];
-      },
-      parseDOM: [
-        {
-          tag: DOCX_RAW_SELECTOR,
-          getAttrs: (dom) => ({
-            srcId: srcIdOf(dom),
-            name: dom.getAttribute("data-name"),
-          }),
-        },
-      ],
-    },
-    /** A bookmark range marker that occurs directly under w:body rather than inside a paragraph */
-    bookmarkBlock: {
-      group: "block preserved",
-      atom: true,
-      isolating: true,
-      selectable: false,
-      attrs: {
-        srcId: { default: null },
-        name: { default: null },
-      },
-      toDOM(node) {
-        return [
-          "div",
-          {
-            class: editorClassNames.bookmarkBlock,
-            "data-src": text(node.attrs.srcId) ?? "",
-            "data-name": text(node.attrs.name),
-            hidden: "hidden",
-          },
-        ];
-      },
-      parseDOM: [
-        {
-          tag: `div.${editorClassNames.bookmarkBlock}`,
-          getAttrs: (dom) => ({
-            srcId: srcIdOf(dom),
-            name: dom.getAttribute("data-name"),
-          }),
         },
       ],
     },

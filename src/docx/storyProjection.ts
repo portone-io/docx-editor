@@ -49,7 +49,12 @@ export function comparableStory(
   const blocks: string[] = [];
   try {
     story.doc.forEach((block) => {
-      blocks.push(serializeBlock(strip(block), story.session, NO_EXPORT_REFS));
+      blocks.push(
+        serializeBlock(strip(block), {
+          ...NO_EXPORT_REFS,
+          session: story.session,
+        })
+      );
     });
   } catch (error) {
     if (error instanceof DocxExportError) return null;

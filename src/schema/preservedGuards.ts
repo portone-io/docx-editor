@@ -13,13 +13,31 @@
  */
 
 import type { Node as PMNode } from "prosemirror-model";
+import type { Transaction } from "prosemirror-state";
+import {
+  AddMarkStep,
+  AddNodeMarkStep,
+  AttrStep,
+  RemoveMarkStep,
+  RemoveNodeMarkStep,
+  ReplaceAroundStep,
+  ReplaceStep,
+} from "prosemirror-transform";
+import { W_NS } from "../ooxml/names";
 import { parseProps, propsChild } from "../ooxml/props";
+import {
+  COMMENT_RANGE_MARKERS,
+  PERMISSION_MARKERS,
+  RANGE_MARKERS,
+} from "../ooxml/rangeMarkers";
+import { parseAttrs } from "../ooxml/tagScan";
 import {
   type ChangeGuard,
   type EditGuardName,
   rangeHolds,
   transactionReaches,
 } from "./editGuard";
+import { visitPreservedFragments } from "./preservedFragments";
 
 /** Everything about one preserved node that has to read the same after a change as before it */
 type Signature = (node: PMNode) => string;
@@ -75,24 +93,139 @@ export function preservedNodeGuard(
  *
  * `docx/importPolicy` decides that when the document is opened and bakes the answer into the
  * node, so the rule lives in one place and this layer reads it rather than matching element names
- * against a pattern of its own. A bookmark standing directly under the body is still a node of its
- * own carrying no such attr, and stays known by what it is until the block placeholders are one.
+ * against a pattern of its own.
  */
 function isGuardedFragment(node: PMNode): boolean {
-  return node.type.name === "bookmarkBlock" || node.attrs.guarded === true;
+  return node.attrs.guarded === true;
 }
 
+/**
+ * A block opened from the body carries no XML of its own but names the fragment it stands for
+ * (`docx/importPreserved`), so what tells two markers apart is read from both.
+ */
 function preservedSignature(node: PMNode): string {
-  return node.type.name === "bookmarkBlock"
-    ? `block:${node.attrs.srcId}:${node.attrs.name}`
-    : `${node.type.name}:${node.attrs.xml}`;
+  return `${node.type.name}:${node.attrs.name}:${node.attrs.srcId}:${node.attrs.xml}`;
 }
 
-export const preservedGuard = preservedNodeGuard(
+const guardedNodes = preservedNodeGuard(
   "preserved",
   isGuardedFragment,
   preservedSignature
 );
+
+const rangeMarkers = new Set([
+  ...RANGE_MARKERS,
+  ...PERMISSION_MARKERS,
+  ...COMMENT_RANGE_MARKERS,
+]);
+
+/** Table attributes hold both range markers and disposable producer traces. */
+function markerFragments(xml: string): string[] {
+  const children = parseProps(`<markers>${xml}</markers>`)?.children ?? [];
+  return children.flatMap((child) => {
+    if (!rangeMarkers.has(child.name)) return [];
+    const props = parseProps(child.xml);
+    if (!props) return [];
+    const prefixEnd = props.tag.indexOf(":");
+    const binding =
+      prefixEnd < 0 ? "xmlns" : `xmlns:${props.tag.slice(0, prefixEnd)}`;
+    const namespace = parseAttrs(props.attrs ?? "")?.find(
+      ([name]) => name === binding
+    )?.[1];
+    // An inherited binding is supplied by the original document. Explicit foreign bindings
+    // do not turn a foreign element with the same local name into a Word range marker.
+    if (namespace !== undefined && namespace !== W_NS) return [];
+    return [child.xml];
+  });
+}
+
+function hasMarkerAttrs(node: PMNode): boolean {
+  return (
+    ((node.type.name === "table" || node.type.name === "tableRow") &&
+      typeof node.attrs.leadingXml === "string") ||
+    ((node.type.name === "tableCell" || node.type.name === "tableRow") &&
+      typeof node.attrs.trailingXml === "string")
+  );
+}
+
+/** A text edit inside a carrier leaves its XML attributes standing. */
+function carrierBoundaryIn(doc: PMNode, from: number, to: number): boolean {
+  let found = false;
+  doc.nodesBetween(from, to, (node, pos) => {
+    if (hasMarkerAttrs(node) && (from <= pos || to >= pos + node.nodeSize)) {
+      found = true;
+    }
+    return !found;
+  });
+  return found;
+}
+
+function markerAttrsReached(tr: Transaction): boolean {
+  return tr.steps.some((step, index) => {
+    const before = tr.docs[index];
+    const after = tr.docs[index + 1] ?? tr.doc;
+    if (
+      step instanceof AttrStep ||
+      step instanceof AddNodeMarkStep ||
+      step instanceof RemoveNodeMarkStep
+    ) {
+      const old = before.nodeAt(step.pos);
+      const next = after.nodeAt(step.pos);
+      return (
+        (old !== null && hasMarkerAttrs(old)) ||
+        (next !== null && hasMarkerAttrs(next))
+      );
+    }
+    if (step instanceof AddMarkStep || step instanceof RemoveMarkStep)
+      return false;
+    if (!(step instanceof ReplaceStep || step instanceof ReplaceAroundStep))
+      return true;
+    let reached = false;
+    step.getMap().forEach((oldStart, oldEnd, newStart, newEnd) => {
+      reached ||=
+        carrierBoundaryIn(before, oldStart, oldEnd) ||
+        carrierBoundaryIn(after, newStart, newEnd);
+    });
+    return reached;
+  });
+}
+
+function preservedFragments(doc: PMNode): string[] {
+  const found: string[] = [];
+  visitPreservedFragments(doc, (node, _pos, xml, attr) => {
+    if (attr !== undefined && xml !== null) {
+      found.push(
+        ...markerFragments(xml).map((fragment) => `marker:${fragment}`)
+      );
+    } else if (isGuardedFragment(node)) {
+      found.push(preservedSignature(node));
+    }
+  });
+  return found;
+}
+
+export const preservedGuard: ChangeGuard = {
+  name: "preserved",
+  change: (tr) =>
+    !(transactionReaches(tr, isGuardedFragment) || markerAttrsReached(tr)) ||
+    same(preservedFragments(tr.before), preservedFragments(tr.doc)),
+  shuts: (intent, state) => {
+    if (guardedNodes.shuts(intent, state)) return true;
+    if (intent.kind !== "replace") return false;
+    let shut = false;
+    state.doc.nodesBetween(intent.from, intent.to, (node, pos) => {
+      if (intent.from > pos && intent.to < pos + node.nodeSize) return true;
+      if (!hasMarkerAttrs(node)) return true;
+      for (const attr of ["leadingXml", "trailingXml"]) {
+        const xml = node.attrs[attr];
+        if (typeof xml === "string" && markerFragments(xml).length > 0)
+          shut = true;
+      }
+      return !shut;
+    });
+    return shut;
+  },
+};
 
 function isNoteReference(node: PMNode): boolean {
   return node.type.name === "noteReference";

@@ -25,7 +25,7 @@ function open(name: string) {
 
 /** A preserved block standing where `key` says it came from */
 function preserved(key: string) {
-  return docxSchema.nodes.docxRaw.create({
+  return docxSchema.nodes.rawBlock.create({
     srcId: key,
     name: "w:customXml",
   });

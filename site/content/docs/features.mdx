@@ -56,7 +56,7 @@ binding such as `Mod+K` without replacing the editor.
 | Content | Behavior |
 | --- | --- |
 | Additional Word character formatting and character styles | Existing formatting that the editor does not display or edit is preserved. |
-| Bookmarks | Existing bookmark ranges are preserved at their document positions, invisible and impossible to remove. A selection running across one of the markers cannot be replaced, so typing or deleting over it leaves the text as it stands, and the picture, line break and page break controls are unavailable while it is held. Move the selection clear of the marker to edit the text around it. The same holds for a permission range and for the markers of a moved passage. |
+| Bookmarks | Existing bookmark ranges are preserved at their document positions, invisible and impossible to remove. A selection running across one of the markers cannot be replaced, so typing or deleting over it leaves the text as it stands, and the picture, line break and page break controls are unavailable while it is held. Move the selection clear of the marker to edit the text around it. Deleting a row or column is also unavailable when it would remove a marker carried between rows or cells. The same holds for a permission range and for the markers of a moved passage. |
 | Document fields | Complex-field markers and instructions are shown as small boxes that cannot be edited or removed. Their cached result remains editable text. A simple field is one box showing its cached result and can be removed whole. The paragraph around either kind stays editable. |
 | Section breaks | A paragraph carrying a section break keeps it. The paragraph cannot be joined away, since nothing puts a lost section back, and pressing Enter in it keeps the break on the last paragraph of the section instead of copying it onto both halves. |
 | Tracked changes | An insertion or a deletion is shown as a small box carrying its text, and can be selected and removed whole; the passage inside it cannot be edited. A table's `w:tblGridChange` is preserved as it came. A rebuilt table is the exception in one place: the cells continuing a vertical merge are written from the cell that starts it, so properties of their own do not come along. |
@@ -70,16 +70,17 @@ binding such as `Mod+K` without replacing the editor.
 - Visual page boundaries are approximate and may differ from Word or printed output. Keep lines together and widow control are preserved but not reflected in them.
 - A selection running across the last paragraph of a section cannot be deleted, even when the section break is not what you meant to remove. Move the selection clear of that paragraph's boundary to edit the text around it.
 - The cached result text of a complex field can be edited, but nothing recalculates the field. A page number or a total that the document already drew stays as it was written.
-- A table is still shown as a placeholder when a marker or a wrapper stands between its rows or its cells, since there is nowhere in the table to keep such an element.
+- A table is shown as a placeholder when its row wrapper cannot be read or a marker follows a cell that only continues a vertical merge. Other markers between rows or cells are preserved while the table remains editable.
 
 ## Preservation
 
 Content outside the supported editing surface is not silently discarded. Untouched package parts
 and document blocks are written back from their original XML, and an element the editor has no
 model for is kept where it stood: inside its run, beside the runs of its paragraph, or as a block.
-A paragraph stays editable around its preserved elements. Unsupported blocks remain placeholders,
-as do tables whose structure cannot be modelled, including tables with markers or wrappers
-between their rows or cells.
+A paragraph stays editable around its preserved elements, and a table stays a table around a
+bookmark that spans one of its columns. Unsupported blocks remain placeholders, as do tables whose
+structure cannot be modelled, including tables with a content control or a tracked change around
+a whole row.
 
 What a given document kept this way is not a guess: `documentFidelity` lists it, and `importDocx`
 returns the same list for a file opened outside the editor.
