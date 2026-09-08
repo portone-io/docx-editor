@@ -21,8 +21,9 @@ import { DocxExportError, type DocxExportErrorCode } from "../ooxml/errors";
 import { qualify } from "../ooxml/names";
 import { parseAttrs } from "../ooxml/tagScan";
 import { docxSchema } from "../schema";
+import { wrappersOf } from "../schema/wrappers";
 import { withoutParagraphIds } from "./cloning";
-import { copiedControlPrefix, newControlId } from "./sdt";
+import { wrapperKindOf } from "./wrappers";
 
 export interface IdentityRule {
   readonly name: string;
@@ -102,8 +103,8 @@ export const paragraphIdRule: IdentityRule = {
   },
 };
 
-function sdtMarkOf(node: PMNode): Mark | null {
-  return node.marks.find((mark) => mark.type === docxSchema.marks.sdt) ?? null;
+function sdtMarksOf(node: PMNode): readonly Mark[] {
+  return wrappersOf(node, docxSchema.marks.sdt.name);
 }
 
 /** What tells one control apart from another, wherever in the document it turns up */
@@ -113,13 +114,9 @@ function controlName(mark: Mark): string {
   return `${typeof key === "number" ? key : 0} ${typeof prefix === "string" ? prefix : ""}`;
 }
 
+/** What its kind writes a second copy of the wrapper as (`docx/wrappers`) */
 function copiedMark(mark: Mark): Mark {
-  const prefix: unknown = mark.attrs.sdtPrefix;
-  if (typeof prefix !== "string") return mark;
-  return mark.type.create({
-    ...mark.attrs,
-    sdtPrefix: copiedControlPrefix(prefix, newControlId()),
-  });
+  return wrapperKindOf(mark).copy?.(mark) ?? mark;
 }
 
 /** One stretch of inline nodes wearing the same control mark */
@@ -139,30 +136,29 @@ function claim(mark: Mark, written: Set<string>): Control {
 /**
  * The several runs of one control are that one control, so the paragraph's inline nodes are
  * walked here rather than claimed one by one: a control is a stretch of neighbours wearing the
- * same mark, and it is broken in two only where an unmarked node stands between them.
+ * same mark, and it is broken in two only where a node without that mark stands between them.
+ *
+ * A control standing inside another is claimed on its own terms, since either of them may be the
+ * one an edit left standing twice.
  */
 function rewriteParagraph(paragraph: PMNode, written: Set<string>): PMNode {
   const inline: PMNode[] = [];
-  let running: Control | null = null;
+  let running: readonly Control[] = [];
   let renamed = false;
 
   paragraph.forEach((child) => {
-    const mark = sdtMarkOf(child);
-    if (!mark) {
-      running = null;
-      inline.push(child);
-      return;
-    }
-    const control = running?.mark.eq(mark) ? running : claim(mark, written);
-    running = control;
-    if (!control.copy) {
-      inline.push(child);
-      return;
-    }
-    renamed = true;
-    inline.push(
-      child.mark(control.copy.addToSet(mark.removeFromSet(child.marks)))
+    const controls = sdtMarksOf(child).map(
+      (mark) =>
+        running.find((control) => control.mark.eq(mark)) ?? claim(mark, written)
     );
+    running = controls;
+    let marks = child.marks;
+    for (const control of controls) {
+      if (!control.copy) continue;
+      renamed = true;
+      marks = control.copy.addToSet(control.mark.removeFromSet(marks));
+    }
+    inline.push(marks === child.marks ? child : child.mark(marks));
   });
 
   return renamed ? paragraph.copy(Fragment.fromArray(inline)) : paragraph;
