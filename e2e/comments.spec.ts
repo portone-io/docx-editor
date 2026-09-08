@@ -177,15 +177,18 @@ test("a comment starts from the selected text menu and stands beside its anchor"
     page.getByRole("complementary", { name: "Comments" })
   ).toHaveAttribute("data-view", "rail");
   await expect(card).toContainText("Review this");
-  const reopenedCardBox = await card.boundingBox();
   // Measured again rather than against the rectangle taken at the top of this test: the page has
   // been scrolled several times since, and where the card stands is a question about the anchor
-  // as it stands now
-  const reopenedRangeBox = await range.boundingBox();
-  if (!reopenedCardBox || !reopenedRangeBox) {
-    throw new Error("the reopened comment was not drawn");
-  }
-  expect(Math.abs(reopenedCardBox.y - reopenedRangeBox.y)).toBeLessThan(40);
+  // as it stands now. The rail places itself over the two frames after the panel is put away, so
+  // the distance is polled rather than read once
+  await expect
+    .poll(async () => {
+      const cardNow = await card.boundingBox();
+      const rangeNow = await range.boundingBox();
+      if (!cardNow || !rangeNow) return Number.POSITIVE_INFINITY;
+      return Math.abs(cardNow.y - rangeNow.y);
+    })
+    .toBeLessThan(40);
 });
 
 /**
