@@ -16,10 +16,10 @@ describe("canExport", () => {
     expect(documentExportProblems(state)).toEqual([]);
   });
 
-  it("turns false when a list starts in a document without numbering.xml", () => {
+  it("turns false when a list starts in a package that cannot declare its numbering part", () => {
     const opened = importDocx(makeDocx(BODY));
-    // The built-in list command refuses where there is no numbering part, so the list is
-    // started the way a plugin or a programmatic transform would start one
+    // The built-in list command refuses there, so the list is started the way a plugin or a
+    // programmatic transform would start one
     const listed = runCommand(
       select(createEditorState(opened.doc), 1),
       toggleNumberedList
@@ -32,9 +32,9 @@ describe("canExport", () => {
     expect(canExport(state)).toBe(false);
     expect(documentExportProblems(state)).toEqual([
       {
-        code: "missing-numbering-part",
+        code: "missing-content-types",
         message:
-          "cannot add a new list to a document that has no numbering.xml",
+          "cannot add a part to a package that has no [Content_Types].xml",
       },
     ]);
   });

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { unzipSync } from "fflate";
+import { unzipSync, zipSync } from "fflate";
 import type { Node as PMNode } from "prosemirror-model";
 import { type EditorState, TextSelection } from "prosemirror-state";
 import { assert, describe, expect, it } from "vitest";
@@ -8,6 +8,7 @@ import {
   decode,
   exportErrorCode,
   fixtureNames,
+  makeDeclaredDocx,
   makeDocx,
   makeNumberedDocx,
   ONE_LIST_NUMBERING,
@@ -21,11 +22,16 @@ import {
   createEditorState,
   editorStateForSession,
 } from "../editor/createEditor";
-import { paragraphMarkers } from "../editor/plugins/numberingDecorations";
+import {
+  canStartNewList,
+  paragraphMarkers,
+} from "../editor/plugins/numberingDecorations";
 import { toParagraphFormat } from "../model/format";
 import { parseNumbering } from "../numbering/parseNumbering";
+import { R_NS, W_NS } from "../ooxml/xml";
 import { exportDocx } from "./exportDocx";
 import { importDocx } from "./importDocx";
+import { CONTENT_TYPES_PATH } from "./packageParts";
 import type { SessionStore } from "./session";
 
 const NUMBERING_PART = "word/numbering.xml";
@@ -291,22 +297,107 @@ describe("starting two lists in one document", () => {
   });
 });
 
+const PLAIN_BODY = '<w:p><w:r><w:t xml:space="preserve">body</w:t></w:r></w:p>';
+
+const NUMBERING_CONTENT_TYPE =
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml";
+
 describe("a document without numbering.xml", () => {
-  it("stops when it tries to add a new list", () => {
-    const { doc, session } = importDocx(
-      makeDocx('<w:p><w:r><w:t xml:space="preserve">body</w:t></w:r></w:p>')
-    );
-    const state = createEditorState(doc);
-    const at = withCaretAt(state, 1);
+  /** Starts a bullet list in the first paragraph, through the command the editor offers */
+  function bulleted(bytes: Uint8Array) {
+    const { doc, session } = importDocx(bytes);
+    const at = withCaretAt(editorStateForSession({ doc, session }), 1);
     let listed = at;
     expect(
-      toggleNumberedList(at, (tr) => {
+      toggleBulletList(at, (tr) => {
+        listed = at.apply(tr);
+      })
+    ).toBe(true);
+    return { doc: listed.doc, session };
+  }
+
+  it("creates numbering.xml, its relationship and its content type for the first list", () => {
+    const listed = bulleted(makeDeclaredDocx(PLAIN_BODY));
+    const exported = partsOf(exportDocx(listed.doc, listed.session));
+
+    const numbering = decode(exported[NUMBERING_PART]);
+    // No byte order mark ahead of the prolog, as no part this export writes from scratch carries one
+    expect(exported[NUMBERING_PART][0]).toBe("<".charCodeAt(0));
+    expect(
+      numbering.startsWith(
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+          `<w:numbering xmlns:w="${W_NS}"><w:abstractNum w:abstractNumId="1">`
+      )
+    ).toBe(true);
+    expect(
+      numbering.endsWith(
+        '<w:num w:numId="1"><w:abstractNumId w:val="1"/></w:num></w:numbering>'
+      )
+    ).toBe(true);
+    expect(parseNumbering(numbering).lists.size).toBe(1);
+
+    expect(decode(exported["word/_rels/document.xml.rels"])).toContain(
+      `Type="${R_NS}/numbering" Target="numbering.xml"`
+    );
+    expect(decode(exported[CONTENT_TYPES_PATH])).toContain(
+      `<Override PartName="/word/numbering.xml" ContentType="${NUMBERING_CONTENT_TYPE}"/>`
+    );
+  });
+
+  it("reopens with the list it defined, drawn from the part it added", () => {
+    const listed = bulleted(makeDeclaredDocx(PLAIN_BODY));
+    const again = importDocx(exportDocx(listed.doc, listed.session));
+
+    expect(again.session.numberingPartPath).toBe(NUMBERING_PART);
+    const markers = paragraphMarkers(
+      again.doc,
+      parseNumbering(again.session.numberingXml)
+    );
+    expect(markers.map((marker) => marker.text)).toEqual(["●"]);
+  });
+
+  it("takes a name beside a numbering.xml the package holds but relates to nothing", () => {
+    const parts = unzipSync(makeDeclaredDocx(PLAIN_BODY));
+    const stray = new TextEncoder().encode(`<w:numbering xmlns:w="${W_NS}"/>`);
+    parts[NUMBERING_PART] = stray;
+    const listed = bulleted(zipSync(parts));
+    const exported = partsOf(exportDocx(listed.doc, listed.session));
+
+    expect(bytesEqual(exported[NUMBERING_PART], stray)).toBe(true);
+    expect(
+      parseNumbering(decode(exported["word/numbering2.xml"])).lists.size
+    ).toBe(1);
+    expect(decode(exported["word/_rels/document.xml.rels"])).toContain(
+      `Type="${R_NS}/numbering" Target="numbering2.xml"`
+    );
+  });
+
+  it("leaves a package that started no list as it stood", () => {
+    const bytes = makeDeclaredDocx(PLAIN_BODY);
+    const { doc, session } = importDocx(bytes);
+    const exported = partsOf(exportDocx(doc, session));
+
+    expect(exported[NUMBERING_PART]).toBeUndefined();
+    for (const [path, original] of Object.entries(partsOf(bytes))) {
+      expect(bytesEqual(exported[path], original)).toBe(true);
+    }
+  });
+
+  it("stops where the package has no content types to declare the part in", () => {
+    const opened = importDocx(makeDocx(PLAIN_BODY));
+    expect(canStartNewList(editorStateForSession(opened))).toBe(false);
+
+    // The list commands do not apply there, so the list is started the way a plugin would
+    const at = withCaretAt(createEditorState(opened.doc), 1);
+    let listed = at;
+    expect(
+      toggleBulletList(at, (tr) => {
         listed = at.apply(tr);
       })
     ).toBe(true);
 
-    expect(exportErrorCode(() => exportDocx(listed.doc, session))).toBe(
-      "missing-numbering-part"
+    expect(exportErrorCode(() => exportDocx(listed.doc, opened.session))).toBe(
+      "missing-content-types"
     );
   });
 });

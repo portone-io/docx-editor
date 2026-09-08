@@ -5,6 +5,7 @@ import type { Command, EditorState } from "prosemirror-state";
 import { describe, expect, it } from "vitest";
 import {
   fixtureNames,
+  makeDeclaredDocx,
   makeDocx,
   makeNumberedDocx,
   producerFixtureNames,
@@ -294,16 +295,10 @@ describe("unique identities", () => {
 });
 
 describe("the numbering part", () => {
-  it("a new list in a document without numbering.xml is a missing-numbering-part problem", () => {
-    const opened = importDocx(makeDocx(paragraph("Body")));
+  it("a new list in a document the export can write the part for is no problem", () => {
+    const opened = importDocx(makeDeclaredDocx(paragraph("Body")));
 
-    expect(exportProblems(withNewList(opened.doc), opened.session)).toEqual([
-      {
-        code: "missing-numbering-part",
-        message:
-          "cannot add a new list to a document that has no numbering.xml",
-      },
-    ]);
+    expect(exportProblems(withNewList(opened.doc), opened.session)).toEqual([]);
   });
 
   it("a new list in a document with numbering.xml is no problem", () => {
@@ -349,6 +344,18 @@ describe("content types", () => {
       setCommentResolved(id ?? "", true)
     );
     expect(exportProblems(resolved.doc, reopened.session)).toEqual([
+      {
+        code: "missing-content-types",
+        message:
+          "cannot add a part to a package that has no [Content_Types].xml",
+      },
+    ]);
+  });
+
+  it("a new list in a package without a content types part is a missing-content-types problem", () => {
+    const opened = importDocx(makeDocx(paragraph("Body")));
+
+    expect(exportProblems(withNewList(opened.doc), opened.session)).toEqual([
       {
         code: "missing-content-types",
         message:

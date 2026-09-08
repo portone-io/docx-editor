@@ -27,6 +27,7 @@ import {
   LETTER_FIXTURE,
   LETTER_GEOMETRY,
   LETTER_SECT_PR_UNIVERSAL,
+  makeDeclaredDocx,
   makeDocx,
   makeHeadersFootersDocx,
   makeNotesDocx,
@@ -42,6 +43,7 @@ import {
   selectionLock,
   setCommentResolved,
 } from "../editor/commands";
+import { toggleBulletList } from "../editor/commands/listCommands";
 import { createEditorState } from "../editor/createEditor";
 import { parseXml, R_NS, W_NS } from "../ooxml/xml";
 import { docxSchema } from "../schema";
@@ -487,6 +489,29 @@ describe("the exported package against the OOXML schemas", () => {
 
     expect(parts.get(opened.session.mainPartPath)).toContain("bookmarkStart");
     expectPartsValidate("body-level bookmark", parts);
+  });
+
+  /**
+   * The numbering part the export writes from scratch, whose root has to declare the prefix the
+   * definitions inside it are written under for the schemas to read it at all.
+   */
+  it("a numbering part written for the first list validates", () => {
+    const opened = importDocx(
+      makeDeclaredDocx(
+        '<w:p><w:r><w:t xml:space="preserve">First</w:t></w:r></w:p>'
+      )
+    );
+    expect(opened.session.numberingPartPath).toBeNull();
+    const state = ran(
+      firstTextParagraph(openState(opened.doc, opened.session)),
+      toggleBulletList
+    );
+
+    const written = exportDocx(state.doc, opened.session);
+    const parts = wordprocessingParts(written);
+    expect(parts.has("word/numbering.xml")).toBe(true);
+    expectPartsValidate("a numbering part written from scratch", parts);
+    expectEveryXmlPartParses("a numbering part written from scratch", written);
   });
 
   it("cell padding remains valid beside strict leading and trailing margins", () => {

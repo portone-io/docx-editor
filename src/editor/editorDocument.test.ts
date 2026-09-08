@@ -5,6 +5,8 @@ import { describe, expect, it } from "vitest";
 import {
   LETTER_GEOMETRY,
   LETTER_SECT_PR,
+  makeDeclaredDocx,
+  makeDocx,
   makeStyledNumberedDocx,
 } from "../__testing__/docx";
 import { importDocx } from "../docx/importDocx";
@@ -103,7 +105,7 @@ describe("reading an opened document into editor values", () => {
     expect(document.defaults).toBe(session.defaults);
     expect(document.paragraphStyles).toBe(session.paragraphStyles);
     expect(document.formatting.numbering).toEqual(sessionNumbering(session));
-    expect(document.canStartNewList).toBe(session.numberingPartPath !== null);
+    expect(document.canStartNewList).toBe(true);
     expect(document.geometry).toBe(session.geometry);
     expect(document.defaultTabStopPt).toBe(session.defaultTabStopPt);
     expect(document.reservedCommentIds).toEqual(
@@ -150,6 +152,16 @@ describe("reading an opened document into editor values", () => {
     expect(documentGeometry(state)).toEqual(LETTER_GEOMETRY);
     expect(canStartNewList(state)).toBe(true);
     expect([...reservedCommentIds(state)]).toEqual(["4"]);
+  });
+
+  it("a document with no numbering part can still start a list, since the export writes one", () => {
+    const declared = importDocx(makeDeclaredDocx(BODY));
+    const bare = importDocx(makeDocx(BODY));
+
+    expect(declared.session.numberingPartPath).toBeNull();
+    expect(editorDocumentOf(declared.session).canStartNewList).toBe(true);
+    // Declaring the part it adds is the one thing a package can leave the export no room for
+    expect(editorDocumentOf(bare.session).canStartNewList).toBe(false);
   });
 
   it("a state built without an opened document reads the empty snapshot", () => {

@@ -43,6 +43,7 @@ import { readLinkTargets } from "./hyperlink";
 import { buildParagraph, type ImportSources } from "./importParagraph";
 import { buildTable } from "./importTable";
 import { readImageSources } from "./media";
+import { NUMBERING_REL_TYPE } from "./newLists";
 import { readNotes } from "./notes";
 import { readPart, relatedPartPath } from "./packageParts";
 import { readBodyGeometry } from "./pageGeometry";
@@ -58,7 +59,6 @@ import { NO_THEME_FONTS, readThemeFonts } from "./theme";
 
 const OFFICE_DOCUMENT_REL = `${R_NS}/officeDocument`;
 const STYLES_REL = `${R_NS}/styles`;
-const NUMBERING_REL = `${R_NS}/numbering`;
 const THEME_REL = `${R_NS}/theme`;
 const SETTINGS_REL = `${R_NS}/settings`;
 
@@ -274,7 +274,11 @@ function readDocx(input: DocxBytes): {
   const settingsDom = settingsXml === null ? null : parseXml(settingsXml);
   const defaultTabStopPt =
     readDefaultTabStop(settingsDom) ?? DEFAULT_TAB_STOP_PT;
-  const numberingPartPath = relatedPartPath(parts, mainPartPath, NUMBERING_REL);
+  const numberingPartPath = relatedPartPath(
+    parts,
+    mainPartPath,
+    NUMBERING_REL_TYPE
+  );
   const themeXml = readPart(
     parts,
     relatedPartPath(parts, mainPartPath, THEME_REL)
