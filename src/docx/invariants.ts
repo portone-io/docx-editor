@@ -187,9 +187,16 @@ const tableGrids: ExportInvariant = {
   },
 };
 
+/** The preserved nodes that carry their own fragment rather than pointing at an original block */
+const CARRIES_ITS_XML: ReadonlySet<string> = new Set([
+  "rawInline",
+  "rawRunContent",
+  "rawBlock",
+]);
+
 /** Why a preserved node has nothing to be written from, or null when it has */
 function lostOriginalOf(node: PMNode, session: SessionStore): string | null {
-  if (node.type.name === "rawInline" || node.type.name === "rawBlock") {
+  if (CARRIES_ITS_XML.has(node.type.name)) {
     return typeof node.attrs.xml === "string"
       ? null
       : "a preserved element has lost its original XML";

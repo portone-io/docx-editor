@@ -46,18 +46,43 @@ describe("the notes a document opens with", () => {
     ]);
   });
 
-  it("reports a demoted paragraph as a placeholder note carrying its block number", () => {
-    expect(
-      notesOf(
+  it("reports a run child the editor cannot draw, leaving the paragraph editable", () => {
+    const { doc, notes } = importDocx(
+      makeDocx(
         `<w:p>${run("First")}</w:p><w:p><w:r><w:sym w:char="F0E0"/></w:r></w:p>`
       )
-    ).toEqual([
+    );
+
+    expect(doc.child(1).type.name).toBe("paragraph");
+    expect(notes).toEqual([
+      {
+        severity: "placeholder",
+        code: "preserved-run-content",
+        part: "word/document.xml",
+        block: 1,
+        pos: 8,
+        element: "w:sym",
+      },
+    ]);
+  });
+
+  /**
+   * Import no longer stands a paragraph down (`./importParagraph`), so the code is reached only
+   * by a placeholder read back from the DOM, and it is what tells one demotion from another until
+   * the block placeholders are one node.
+   */
+  it("reports a placeholder standing for a paragraph as a demoted paragraph", () => {
+    const doc = docxSchema.nodes.doc.create(null, [
+      docxSchema.nodes.docxRaw.create({ srcId: "opened:body:4", name: "w:p" }),
+    ]);
+
+    expect(fidelityNotesOf(doc, null)).toEqual([
       {
         severity: "placeholder",
         code: "paragraph-demoted",
-        part: "word/document.xml",
-        block: 1,
-        pos: 7,
+        part: null,
+        block: 4,
+        pos: 0,
         element: "w:p",
       },
     ]);
@@ -115,7 +140,7 @@ describe("the notes a document opens with", () => {
     ]);
   });
 
-  it("reports an invisible paragraph child that is not a bookmark as hidden preserved inline", () => {
+  it("reports a revision container as a placeholder the reader can see", () => {
     expect(
       notesOf(
         `<w:p>${run("a")}<w:ins w:id="1" w:author="x" w:date="2026-01-01T00:00:00Z">` +
@@ -123,10 +148,22 @@ describe("the notes a document opens with", () => {
       )
     ).toEqual([
       expect.objectContaining({
-        severity: "hidden",
+        severity: "placeholder",
         code: "preserved-inline",
         block: 0,
         element: "w:ins",
+      }),
+    ]);
+  });
+
+  it("reports a proofing mark, which nothing draws, as hidden preserved inline", () => {
+    expect(
+      notesOf(`<w:p><w:proofErr w:type="spellStart"/>${run("a")}</w:p>`)
+    ).toEqual([
+      expect.objectContaining({
+        severity: "hidden",
+        code: "preserved-inline",
+        element: "w:proofErr",
       }),
     ]);
   });
@@ -142,9 +179,9 @@ describe("the notes a document opens with", () => {
       makeDocx(
         `<w:p>${run("First")}</w:p>` +
           '<w:tbl><w:tblPr/><w:tblGrid><w:gridCol w:w="1000"/></w:tblGrid>' +
-          "<w:tr><w:tc><w:tcPr/><w:p><w:r>" +
-          '<w:sym w:font="Wingdings" w:char="F0E0"/>' +
-          "</w:r></w:p></w:tc></w:tr></w:tbl>"
+          "<w:tr><w:tc><w:tcPr/>" +
+          '<w:customXml w:element="clause"><w:p/></w:customXml>' +
+          "</w:tc></w:tr></w:tbl>"
       )
     );
     const expected = {
@@ -153,7 +190,7 @@ describe("the notes a document opens with", () => {
       part: "word/document.xml",
       block: 1,
       pos: 10,
-      element: "w:p",
+      element: "w:customXml",
     };
     expect(notes).toEqual([expected]);
 

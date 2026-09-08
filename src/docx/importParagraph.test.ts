@@ -17,7 +17,7 @@ function element(xml: string): Element {
 }
 
 /** Moves a single XML fragment into a paragraph node */
-function paragraph(xml: string, links?: LinkTargets): PMNode | null {
+function requireParagraph(xml: string, links?: LinkTargets): PMNode {
   return buildParagraph(
     element(xml),
     null,
@@ -25,10 +25,12 @@ function paragraph(xml: string, links?: LinkTargets): PMNode | null {
   );
 }
 
-function requireParagraph(xml: string, links?: LinkTargets): PMNode {
-  const node = paragraph(xml, links);
-  if (!node) throw new Error("the paragraph could not be modelled");
-  return node;
+/** The one preserved fragment a paragraph holding nothing else came out as */
+function lonePreserved(xml: string, links?: LinkTargets): PMNode {
+  const node = requireParagraph(xml, links);
+  expect(node.type.name).toBe("paragraph");
+  expect(node.childCount).toBe(1);
+  return node.child(0);
 }
 
 const run = (text: string, rPr = "") => `<w:r>${rPr}<w:t>${text}</w:t></w:r>`;
@@ -244,7 +246,7 @@ describe("a control holding something that puts nothing on screen", () => {
   });
 });
 
-describe("a paragraph holding a control we could not write back out is left preserved", () => {
+describe("a control we could not take apart stays one preserved inline", () => {
   it.each([
     [
       "an sdt with no sdtPr",
@@ -266,7 +268,21 @@ describe("a paragraph holding a control we could not write back out is left pres
     ],
     ["a control with nothing inside it at all", `<w:p>${sdt("")}</w:p>`],
   ])("%s", (_name, xml) => {
-    expect(paragraph(xml)).toBeNull();
+    const preserved = lonePreserved(xml);
+
+    expect(preserved.type.name).toBe("rawInline");
+    expect(preserved.attrs.element).toBe("sdt");
+    expect(preserved.attrs.display).toBe("chip");
+    expect(preserved.attrs.guarded).toBe(false);
+    expect(String(preserved.attrs.xml).startsWith("<w:sdt")).toBe(true);
+  });
+
+  it("shows the text that control held, so the chip says what it stands for", () => {
+    const preserved = lonePreserved(
+      `<w:p><w:sdt><w:sdtContent>${run("value")}</w:sdtContent></w:sdt></w:p>`
+    );
+
+    expect(preserved.attrs.text).toBe("value");
   });
 });
 
@@ -380,14 +396,21 @@ describe("a link and a control standing one inside the other", () => {
   });
 
   /** The marks record the control outside the link, so the other nesting has nowhere to go */
-  it("a link holding a control leaves the paragraph preserved", () => {
-    expect(
-      paragraph(`<w:p>${link(sdt(run("terms")))}</w:p>`, LINKS)
-    ).toBeNull();
+  it("a link holding a control stays one preserved inline", () => {
+    const preserved = lonePreserved(
+      `<w:p>${link(sdt(run("terms")))}</w:p>`,
+      LINKS
+    );
+
+    expect(preserved.type.name).toBe("rawInline");
+    expect(preserved.attrs.element).toBe("sdt");
+    expect(preserved.attrs.text).toBe("terms");
+    // The link around it was read, so the control that stayed whole still wears its mark
+    expect(markNames(preserved)).toEqual(["link"]);
   });
 });
 
-describe("a paragraph holding a link we could not write back out is left preserved", () => {
+describe("a link we could not take apart stays one preserved inline", () => {
   it.each([
     [
       "a link with nothing inside it at all",
@@ -399,7 +422,11 @@ describe("a paragraph holding a link we could not write back out is left preserv
         "</w:hyperlink></w:p>",
     ],
   ])("%s", (_name, xml) => {
-    expect(paragraph(xml)).toBeNull();
+    const preserved = lonePreserved(xml);
+
+    expect(preserved.type.name).toBe("rawInline");
+    expect(preserved.attrs.element).toBe("hyperlink");
+    expect(preserved.attrs.display).toBe("chip");
   });
 });
 
@@ -413,4 +440,138 @@ it("keeps a footnote reference inside a hyperlink", () => {
 
   expect(node.child(0).type.name).toBe("noteReference");
   expect(markNames(node.child(0))).toEqual(["link", "run"]);
+});
+
+describe("run children the editor does not model", () => {
+  /** The children of the paragraph a fragment inside one run came out as */
+  function runChildren(inner: string): PMNode[] {
+    const node = requireParagraph(`<w:p><w:r>${inner}</w:r></w:p>`);
+    const children: PMNode[] = [];
+    node.forEach((child) => {
+      children.push(child);
+    });
+    return children;
+  }
+
+  it("a lastRenderedPageBreak stays inside its run and puts nothing on screen", () => {
+    const node = requireParagraph(
+      "<w:p><w:r><w:lastRenderedPageBreak/><w:t>a</w:t></w:r></w:p>"
+    );
+
+    expect(node.type.name).toBe("paragraph");
+    expect(node.textContent).toBe("a");
+    expect(node.child(0).type.name).toBe("rawRunContent");
+    expect(node.child(0).attrs.display).toBe("hidden");
+    expect(node.child(0).attrs.guarded).toBe(false);
+    expect(node.child(0).attrs.xml).toBe("<w:lastRenderedPageBreak/>");
+  });
+
+  it("a soft hyphen and a no-break hyphen keep their run formatting and draw their characters", () => {
+    const children = runChildren(
+      "<w:rPr><w:b/></w:rPr><w:softHyphen/><w:noBreakHyphen/>"
+    );
+
+    expect(children.map((child) => child.attrs.display)).toEqual([
+      "hidden",
+      "text",
+    ]);
+    expect(children[1].attrs.text).toBe("‑");
+    for (const child of children) {
+      expect(markNames(child)).toEqual(["run"]);
+      expect(child.marks[0].attrs.rPr).toBe("<w:rPr><w:b/></w:rPr>");
+    }
+  });
+
+  it("a carriage return draws a line break and goes back out as w:cr", () => {
+    const [child] = runChildren("<w:cr/>");
+
+    expect(child.type.name).toBe("rawRunContent");
+    expect(child.attrs.display).toBe("break");
+    expect(child.attrs.xml).toBe("<w:cr/>");
+  });
+
+  it("a field character run stays a chip that wears the run mark", () => {
+    const children = runChildren(
+      '<w:fldChar w:fldCharType="begin"/>' +
+        '<w:instrText xml:space="preserve"> PAGE </w:instrText>'
+    );
+
+    expect(children.map((child) => child.type.name)).toEqual([
+      "rawRunContent",
+      "rawRunContent",
+    ]);
+    expect(children.map((child) => child.attrs.element)).toEqual([
+      "fldChar",
+      "instrText",
+    ]);
+    // A field falls apart if a piece of it goes, so the guard answers for every one of them
+    expect(children.map((child) => child.attrs.guarded)).toEqual([true, true]);
+    expect(children[1].attrs.text).toBe(" PAGE ");
+    expect(markNames(children[0])).toEqual(["run"]);
+  });
+
+  it("a drawing we cannot read stays a chip instead of preserving the paragraph", () => {
+    const [child] = runChildren(
+      '<w:drawing><wp:anchor xmlns:wp="urn:x"/></w:drawing>'
+    );
+
+    expect(child.type.name).toBe("rawRunContent");
+    expect(child.attrs.element).toBe("drawing");
+    expect(child.attrs.display).toBe("chip");
+  });
+});
+
+describe("paragraph children the editor does not model", () => {
+  it("a revision container is a visible chip carrying its text", () => {
+    const node = requireParagraph(
+      `<w:p>${run("a")}<w:ins w:id="1" w:author="Reviewer A" ` +
+        `w:date="2026-01-01T00:00:00Z">${run("inserted")}</w:ins>${run("b")}</w:p>`
+    );
+
+    expect(node.textContent).toBe("ab");
+    expect(node.child(1).type.name).toBe("rawInline");
+    expect(node.child(1).attrs.element).toBe("ins");
+    expect(node.child(1).attrs.display).toBe("chip");
+    expect(node.child(1).attrs.text).toBe("inserted");
+    expect(node.child(1).attrs.guarded).toBe(false);
+  });
+
+  it("a simple field is a visible chip carrying its cached result", () => {
+    const preserved = lonePreserved(
+      `<w:p><w:fldSimple w:instr=" PAGE ">${run("7")}</w:fldSimple></w:p>`
+    );
+
+    expect(preserved.attrs.element).toBe("fldSimple");
+    expect(preserved.attrs.display).toBe("chip");
+    expect(preserved.attrs.text).toBe("7");
+  });
+
+  it("a range marker is invisible and the guard answers for it", () => {
+    const preserved = lonePreserved(
+      '<w:p><w:permStart w:id="3" w:edGrp="everyone"/></w:p>'
+    );
+
+    expect(preserved.attrs.element).toBe("permStart");
+    expect(preserved.attrs.display).toBe("hidden");
+    expect(preserved.attrs.guarded).toBe(true);
+  });
+
+  it("a proofing mark is invisible and nothing depends on it", () => {
+    const preserved = lonePreserved(
+      '<w:p><w:proofErr w:type="spellStart"/></w:p>'
+    );
+
+    expect(preserved.attrs.display).toBe("hidden");
+    expect(preserved.attrs.guarded).toBe(false);
+  });
+
+  it("a run with nothing in it is still kept whole and says so", () => {
+    const preserved = lonePreserved(
+      "<w:p><w:r><w:rPr><w:b/></w:rPr></w:r></w:p>"
+    );
+
+    expect(preserved.type.name).toBe("rawInline");
+    expect(preserved.attrs.element).toBe("r");
+    expect(preserved.attrs.display).toBe("hidden");
+  });
 });

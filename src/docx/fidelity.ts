@@ -66,12 +66,22 @@ function elementOf(node: PMNode): string | null {
 }
 
 function demotedBlock(element: string | null): Preserved {
-  const name = element === null ? null : localPart(element);
+  const name = localNameOf(element);
   if (name === "tbl") return { severity: "placeholder", code: "table-demoted" };
   if (name === "p") {
     return { severity: "placeholder", code: "paragraph-demoted" };
   }
   return { severity: "placeholder", code: "preserved-block" };
+}
+
+/**
+ * How much of the fragment is on screen.
+ *
+ * A chip stands in front of what it holds and nothing else draws at all, which is the same
+ * division `FidelitySeverity` draws between a placeholder and something hidden.
+ */
+function severityOf(display: unknown): FidelitySeverity {
+  return display === "chip" ? "placeholder" : "hidden";
 }
 
 /** What a node says about itself, or null for a node the editor models and draws in full */
@@ -83,21 +93,41 @@ function preservedBy(node: PMNode, element: string | null): Preserved | null {
       return { severity: "placeholder", code: "preserved-block" };
     case "bookmarkBlock":
       return { severity: "hidden", code: "range-marker" };
+    case "rawRunContent":
+      return {
+        severity: severityOf(node.attrs.display),
+        code: "preserved-run-content",
+      };
     case "rawInline":
-      return preservedInline(element);
+      return preservedInline(node, element);
     default:
       return null;
   }
 }
 
-function preservedInline(element: string | null): Preserved | null {
-  const name = element === null ? null : localPart(element);
+/**
+ * What a fragment kept beside the runs of a paragraph reports.
+ *
+ * A range marker is told from the rest by the guard answering for it: a bookmark, a permission
+ * range and a move range are the invisible pairs a document falls apart without, and a `w:proofErr`
+ * standing beside them is invisible too but nothing depends on it.
+ */
+function preservedInline(
+  node: PMNode,
+  element: string | null
+): Preserved | null {
+  const name = stringAttr(node.attrs.element) ?? localNameOf(element);
   // A run with no children at all is kept whole (`./importParagraph`). Word draws nothing there
   // either, so the file lost nothing and there is nothing to report
   if (name === "r") return null;
-  return name === "bookmarkStart" || name === "bookmarkEnd"
-    ? { severity: "hidden", code: "range-marker" }
-    : { severity: "hidden", code: "preserved-inline" };
+  const severity = severityOf(node.attrs.display);
+  return severity === "hidden" && node.attrs.guarded === true
+    ? { severity, code: "range-marker" }
+    : { severity, code: "preserved-inline" };
+}
+
+function localNameOf(element: string | null): string | null {
+  return element === null ? null : localPart(element);
 }
 
 function blockNumberOf(node: PMNode): number | null {

@@ -290,8 +290,11 @@ function buildCellBlock(
   placement: ParagraphPlacement
 ): PMNode {
   if (el.localName === "p") {
-    const paragraph = buildParagraph(el, null, sources);
-    if (paragraph) return styledParagraph(paragraph, context, placement);
+    return styledParagraph(
+      buildParagraph(el, null, sources),
+      context,
+      placement
+    );
   }
   return docxSchema.nodes.rawBlock.create({
     xml: serializeXml(el),
