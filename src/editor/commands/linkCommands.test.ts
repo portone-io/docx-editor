@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { unzipSync } from "fflate";
+import { unzipSync, zipSync } from "fflate";
 import type { Node as PMNode } from "prosemirror-model";
 import type { EditorState } from "prosemirror-state";
 import { describe, expect, it } from "vitest";
@@ -148,6 +148,37 @@ describe("putting a link on plain text", () => {
       importDocx(exportDocx(linkedState.doc, session))
     ).not.toThrow();
   });
+
+  it.each(["root", "paragraph", "link"])(
+    "refuses a new relationship attribute shadowed at the %s",
+    (scope) => {
+      const body =
+        scope === "paragraph"
+          ? BODY.replace("<w:p>", '<w:p xmlns:r="urn:foreign">')
+          : scope === "link"
+            ? `<w:p><w:hyperlink xmlns:r="urn:foreign" w:anchor="target">${run("our terms")}</w:hyperlink></w:p>`
+            : BODY;
+      const parts = unzipSync(makeDocx(body, undefined, { prefix: "w" }));
+      if (scope === "root")
+        parts["word/document.xml"] = new TextEncoder().encode(
+          decode(parts["word/document.xml"]).replace(
+            "<w:document ",
+            '<w:document xmlns:r="urn:foreign" '
+          )
+        );
+      const { state, session } = opened(zipSync(parts));
+      expect(
+        bytesEqual(
+          unzipSync(exportDocx(state.doc, session))["word/document.xml"],
+          parts["word/document.xml"]
+        )
+      ).toBe(true);
+      const linkedState = runCommand(over(state, "our terms"), setLink(TERMS));
+      expect(() => exportDocx(linkedState.doc, session)).toThrowError(
+        expect.objectContaining({ code: "unsupported-content" })
+      );
+    }
+  );
 
   it("leaves the root of a document nobody linked in as it arrived", () => {
     const bytes = makeDocx(BODY, undefined, { prefix: "w" });

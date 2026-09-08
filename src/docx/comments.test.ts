@@ -636,3 +636,27 @@ describe("WordprocessingML comments", () => {
     expect(comment?.from).not.toBe(comment?.referencePos);
   });
 });
+
+it("declares w15 when editing an extension part written under another prefix", () => {
+  const parts = unzipSync(threadedCommentDocument());
+  parts["word/commentsExtended.xml"] = encoder.encode(
+    decode(parts["word/commentsExtended.xml"])
+      .replaceAll("w15:", "ex:")
+      .replace("xmlns:w15=", "xmlns:ex=")
+  );
+  const opened = importDocx(zipSync(parts));
+  const state = apply(
+    editorStateForSession(opened),
+    setCommentResolved("4", false)
+  );
+  const exported = exportDocx(state.doc, opened.session);
+  expect(decode(unzipSync(exported)["word/commentsExtended.xml"])).toContain(
+    `xmlns:w15="${W15_NS}"`
+  );
+  const read = importDocx(exported);
+  expect(
+    documentComments(editorStateForSession(read)).find(
+      (comment) => comment.id === "4"
+    )?.resolved
+  ).toBe(false);
+});

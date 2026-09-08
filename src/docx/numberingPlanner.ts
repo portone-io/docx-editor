@@ -6,6 +6,8 @@
  */
 
 import { addListDefinitions } from "../numbering/writeNumbering";
+import { NAMESPACES } from "../ooxml/names";
+import { ensureRootDeclarations } from "../ooxml/partSplice";
 import { decodeUtf8, encodeUtf8 } from "../ooxml/xml";
 import { newNumIds, numberingPartOf } from "./newLists";
 import type { PartPlanner } from "./partPlan";
@@ -20,8 +22,9 @@ export const numberingPlanner: PartPlanner = {
     if (added.length === 0 || original === null) return null;
 
     const { text, hadBom } = decodeUtf8(original.bytes);
-    return new Map([
-      [original.path, encodeUtf8(addListDefinitions(text, added), hadBom)],
-    ]);
+    const rewritten = ensureRootDeclarations(addListDefinitions(text, added), {
+      namespaces: { w: NAMESPACES.w },
+    });
+    return new Map([[original.path, encodeUtf8(rewritten, hadBom)]]);
   },
 };

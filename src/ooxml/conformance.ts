@@ -5,15 +5,12 @@
  * ECMA-376 defines two document conformance classes, Strict (Part 1 §2.1) and Transitional
  * (Part 4 §2.1). They describe the same vocabulary under different names: the main document part's
  * root namespace and the relationship the package reaches it through differ between the two
- * (Part 1 §11.3.10, Part 4 §9.2.10). This editor reads and writes Transitional, which is what
- * every mainstream producer saves, and a conforming consumer is one that does not reject the
- * documents of at least one class (Part 1 §2.2), so a Strict package is named and turned down
- * rather than half-read.
+ * (Part 1 §11.3.10, Part 4 §9.2.10). This editor supports a subset of Transitional. Strict is
+ * refused explicitly so that its markup is never read using Transitional assumptions.
  *
  * A namespace prefix is the producer's own choice and carries no meaning of its own, so readers
- * look an element up by its local part. Writing is the other way round: a prefix has to be spelled
- * out, and everything this package writes is spelled `w` (`ooxml/names`), so a main part that
- * binds WordprocessingML to another prefix is one nothing here can splice markup into.
+ * identify markup by namespace URI and local name. The WordprocessingML writer emits `w`
+ * (`ooxml/names`), so the main part's root must bind that prefix to the Transitional namespace.
  */
 
 import { W_NS, W_PREFIX } from "./names";
@@ -38,7 +35,7 @@ export function conformanceOf(root: Element): Conformance | null {
  * Whether the root binds the prefix every writer emits (`w`) to the WordprocessingML namespace.
  *
  * A root has nothing above it to inherit a declaration from, so what it writes itself is the whole
- * answer, and a document binding the namespace as the default one binds no prefix to it at all.
+ * answer. A default namespace or another prefix alone does not bind `w`.
  */
 export function bindsWritingPrefix(root: Element): boolean {
   return Array.from(root.attributes).some(

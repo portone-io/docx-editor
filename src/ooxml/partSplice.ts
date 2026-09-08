@@ -240,12 +240,19 @@ function withDeclarations(
       "the root element's attributes could not be read"
     );
   }
-  const declared = new Set(attrs.map(([name]) => name));
+  const declared = new Map(attrs);
   const additions: XmlAttr[] = [];
   for (const [prefix, namespace] of Object.entries(namespaces)) {
-    if (namespace !== undefined && !declared.has(`xmlns:${prefix}`)) {
-      additions.push([`xmlns:${prefix}`, namespace]);
+    if (namespace === undefined) continue;
+    const name = `xmlns:${prefix}`;
+    const existing = declared.get(name);
+    if (existing !== undefined && existing !== namespace) {
+      throw new DocxExportError(
+        "unsupported-content",
+        `the part root binds ${prefix} to a namespace the writer cannot use`
+      );
     }
+    if (existing === undefined) additions.push([name, namespace]);
   }
   const ignoring = IGNORABLE.exec(openTag);
   let tokens: string[] | null = null;
@@ -275,7 +282,7 @@ function withDeclarations(
 
 /**
  * The part with its root binding every prefix named and its `mc:Ignorable` naming every token
- * asked for, each declared once: one the root declares already is left as it was written.
+ * asked for, each declared once: a matching declaration is preserved, and a conflicting binding is refused.
  */
 export function ensureRootDeclarations(
   xml: string,

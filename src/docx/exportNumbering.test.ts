@@ -2,7 +2,7 @@
 import { unzipSync } from "fflate";
 import type { Node as PMNode } from "prosemirror-model";
 import { type EditorState, TextSelection } from "prosemirror-state";
-import { describe, expect, it } from "vitest";
+import { assert, describe, expect, it } from "vitest";
 import {
   bytesEqual,
   decode,
@@ -90,6 +90,36 @@ function exportWithNewList(name: string): {
 }
 
 describe("editing that starts a new list", () => {
+  it("declares w on an existing numbering part that uses another prefix", () => {
+    const original = ONE_LIST_NUMBERING.replaceAll("w:", "n:").replace(
+      "xmlns:w=",
+      "xmlns:n="
+    );
+    const opened = importDocx(
+      makeNumberedDocx("<w:p><w:r><w:t>Start here</w:t></w:r></w:p>", original)
+    );
+    const state = editorStateForSession(opened);
+    let listed = state;
+    expect(
+      toggleNumberedList(state, (tr) => {
+        listed = state.apply(tr);
+      })
+    ).toBe(true);
+    const bytes = exportDocx(listed.doc, opened.session);
+    const xml = decode(partsOf(bytes)[NUMBERING_PART]);
+    expect(xml).toContain(
+      'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+    );
+    const imported = importDocx(bytes);
+    const ref = toParagraphFormat(
+      imported.doc.child(0).attrs.format
+    )?.numbering;
+    assert(ref);
+    expect(
+      imported.session.formatting.numbering.lists.get(ref.numId)?.levels.size
+    ).toBe(9);
+  });
+
   it.each(fixtureNames)(
     "%s: numbering.xml keeps the original text intact",
     (name) => {

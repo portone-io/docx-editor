@@ -97,8 +97,8 @@ function localAttribute(el: Element, name: string): string | null {
   );
 }
 
-/** OOXML requires every bookmark end to identify an earlier unmatched start. */
-function assertBookmarkPairs(documentXml: string): void {
+/** Checks bookmark pairing and, when links were written, their relationship namespace in scope. */
+function assertMainPart(documentXml: string, wroteLinks: boolean): void {
   let root: Element;
   try {
     root = parseXml(documentXml).documentElement;
@@ -113,6 +113,15 @@ function assertBookmarkPairs(documentXml: string): void {
   const used = new Set<string>();
   for (const element of root.getElementsByTagName("*")) {
     if (element.namespaceURI !== W_NS) continue;
+    if (wroteLinks && element.localName === "hyperlink") {
+      const id = element.getAttributeNode("r:id");
+      if (id && id.namespaceURI !== R_NS) {
+        throw new DocxExportError(
+          "unsupported-content",
+          "a hyperlink's r:id is shadowed by a different relationship namespace"
+        );
+      }
+    }
     if (
       element.localName !== "bookmarkStart" &&
       element.localName !== "bookmarkEnd"
@@ -262,7 +271,7 @@ function writeDocx(
   const documentXml = links.addedRelId()
     ? ensureRootDeclarations(body, LINK_MARKUP)
     : body;
-  assertBookmarkPairs(documentXml);
+  assertMainPart(documentXml, links.addedRelId());
 
   const parts = runPartPlanners(planners, doc, store, context, media?.parts);
   const rels = context.relationships.part(store.parts.get(relsPath));

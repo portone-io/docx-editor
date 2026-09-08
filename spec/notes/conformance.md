@@ -10,12 +10,9 @@ For the main document part, Part 1 §11.3.10 gives the Strict root namespace `ht
 Part 4 §9.2.10 gives the Transitional pair, `http://schemas.openxmlformats.org/wordprocessingml/2006/main` and `http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument`.
 A package therefore says which class it belongs to twice, and a reader can tell from either.
 
-## Refusing Strict is conforming
+## Supported documents
 
-Application conformance is stated per class in the same words in both parts, Part 1 §2.2 and Part 4 §2.2: a conforming consumer shall not reject any conforming document of at least one document conformance class.
-Reading and writing Transitional alone is a conforming consumer and producer of WML Transitional.
-This editor therefore refuses a Strict package outright, under its own import error code, rather than reading part of it and writing something back that belongs to neither class.
-Word saves Transitional by default, so a Strict package is rare in practice, and the refusal is a named one rather than a later failure over markup that did not resolve.
+The editor supports a subset of Transitional and refuses Strict with `unsupported-conformance`, so a Strict package is never processed using Transitional namespace assumptions. This is a support policy, not a claim of application conformance: Part 1 §2.2 and Part 4 §2.2 require accepting every conforming document of at least one class, whereas this editor also refuses some Transitional content and prefix arrangements.
 
 ## A namespace prefix is the producer's choice
 
@@ -29,3 +26,5 @@ Writing cannot: a prefix has to be spelled out, and this editor spells `w`.
 Markup it writes is spliced into a part the document brought, so the binding has to be in scope where the markup lands.
 Rather than declaring the prefix on every element written, the root of each part written binds it, and a main part whose root does not bind `w` to the Transitional namespace is refused when the file is opened.
 That refusal is about what can be written back, not about what the standard allows, so it carries the code for markup this editor cannot write rather than the conformance one.
+
+Root declarations are checked by URI as well as by name. A conflicting binding is refused on a write that needs that prefix, because replacing it could change preserved markup. When links are written, the final main-part check also rejects an `r:id` shadowed by a declaration below the root. An untouched package is not rewritten to normalize its namespaces.

@@ -65,7 +65,7 @@ binding such as `Mod+K` without replacing the editor.
 
 - A list counts in decimal numbers, decimal numbers with a leading zero, upper or lower letters, upper or lower Roman numerals, Ganada, Korean digits, or the Chinese counting system. A list counting in any other format is shown with decimal numbers, and a level numbered with a picture is shown with the character written beside it instead.
 - A new list requires an existing numbering part.
-- ECMA-376 Strict packages are refused, as is a document that binds WordprocessingML to a prefix other than `w`. Word saves neither by default.
+- ECMA-376 Strict packages are refused. A Transitional document must declare the WordprocessingML prefix `w` on its main part's root.
 - Tab leader glyphs and bar lines remain preserved in OOXML but are not drawn.
 - Visual page boundaries are approximate and may differ from Word or printed output. Keep lines together and widow control are preserved but not reflected in them.
 - A selection running across the last paragraph of a section cannot be deleted, even when the section break is not what you meant to remove. Move the selection clear of that paragraph's boundary to edit the text around it.

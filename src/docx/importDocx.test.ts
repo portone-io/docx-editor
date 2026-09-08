@@ -127,6 +127,16 @@ describe("refusing to open", () => {
     );
   });
 
+  it("refuses a foreign main root even when it declares the writing prefix", () => {
+    const bytes = makePackage({
+      "_rels/.rels": PACKAGE_RELS,
+      "word/document.xml": `<x:document xmlns:x="urn:foreign" xmlns:w="${W_NS}"><w:body><w:p/></w:body></x:document>`,
+    });
+    expect(importErrorCode(() => importDocx(bytes))).toBe(
+      "unsupported-content"
+    );
+  });
+
   it("refuses a main part that binds the namespace as the default one", () => {
     const defaultNamespace = makePackage({
       "_rels/.rels": PACKAGE_RELS,

@@ -197,6 +197,18 @@ describe("ensureRootDeclarations", () => {
     );
   });
 
+  it.each(["w", "r", "w14", "mc"] as const)(
+    "refuses a conflicting %s binding without changing the existing markup",
+    (prefix) => {
+      const xml = `<root xmlns:${prefix}="urn:foreign"/>`;
+      expect(() =>
+        ensureRootDeclarations(xml, {
+          namespaces: { [prefix]: NAMESPACES[prefix] },
+        })
+      ).toThrowError(expect.objectContaining({ code: "unsupported-content" }));
+    }
+  );
+
   it("declares on a root that closes on itself without opening it", () => {
     expect(
       ensureRootDeclarations(`<w:comments ${xmlnsDecl("w")}/>`, THREAD_MARKUP)

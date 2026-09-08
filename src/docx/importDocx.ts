@@ -87,14 +87,20 @@ function findMainPartPath(parts: Map<string, Uint8Array>): string {
 
 /**
  * Turns down a main part this editor could read but never write back into: one written in the
- * Strict vocabulary, and one binding WordprocessingML to a prefix other than the `w` every writer
- * spells out. Strict is asked first, since a Strict root binds `w` to a namespace of its own.
+ * Strict vocabulary, or one whose root does not bind `w` to the Transitional namespace.
+ * Strict is asked first so that its namespace is refused under the conformance code.
  */
 function assertWritableMainPart(root: Element): void {
   if (conformanceOf(root) === "strict") {
     throw new DocxImportError(
       "unsupported-conformance",
       "the main document part is written in the ECMA-376 Strict vocabulary"
+    );
+  }
+  if (conformanceOf(root) !== "transitional" || root.localName !== "document") {
+    throw new DocxImportError(
+      "unsupported-content",
+      "the main part is not a Transitional WordprocessingML document"
     );
   }
   if (!bindsWritingPrefix(root)) {

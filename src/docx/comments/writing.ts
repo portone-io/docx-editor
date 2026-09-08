@@ -116,10 +116,13 @@ function extensionsXml(
       `<w15:commentsEx ${xmlnsDecl("w15")}>${pieces.join("")}</w15:commentsEx>`
     );
   }
-  return splicePart(comments.extendedXml, {
-    root: EXTENSIONS_ROOT,
-    replaceChildren: pieces.join(""),
-  });
+  return ensureRootDeclarations(
+    splicePart(comments.extendedXml, {
+      root: EXTENSIONS_ROOT,
+      replaceChildren: pieces.join(""),
+    }),
+    { namespaces: { w15: NAMESPACES.w15 } }
+  );
 }
 
 /** The root element each comment part is rewritten around */

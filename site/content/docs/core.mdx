@@ -253,8 +253,8 @@ codes without importing the core entry.
 reaches it; [Server environments](#server-environments) covers it.
 A file a person picked can fail with any of the rest, so the code is worth showing: `not-a-docx`
 and `too-large` are usually the person's to fix, while the others describe the file itself.
-A document that binds WordprocessingML to a prefix other than `w` is refused as
-`unsupported-content`, since every element written back out is spelled under that prefix.
+A main document root that does not bind `w` to the Transitional WordprocessingML namespace is
+refused as `unsupported-content`, since the WordprocessingML writer emits that prefix.
 
 ### Checking before export
 
@@ -290,6 +290,8 @@ first entry of the same list with its code and message. An empty list does not g
 writing will succeed.
 Inside an editor, [`canExport`](/docs/custom-controls#commands-and-queries) asks the same question
 of the state.
+A write that needs a namespace prefix already bound to a different namespace is also refused as `unsupported-content`; this includes a local declaration that changes the meaning of a newly written hyperlink.
+
 A refusal the list does not foresee is still thrown: `unsupported-content` for a node or an image
 of a kind the writer cannot put out, `lost-original` or `malformed-xml` for a node a plugin
 stripped of an attribute the writer needs or a raw fragment it wrote that does not hold its shape,
