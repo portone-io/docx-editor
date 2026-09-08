@@ -37,6 +37,7 @@ import { documentNumbering } from "../plugins/numberingDecorations";
 import { COPIED_STYLE_ATTRIBUTE } from "./htmlReader";
 import { safeHref } from "./inlineFormatting";
 import {
+  type CopyRoute,
   INTERNAL_TOKEN_ATTRIBUTE,
   internalTokenOf,
   rememberCopied,
@@ -363,6 +364,8 @@ export function docxClipboard(options: ClipboardOptions = {}): Plugin {
   let started: NewLists | null = null;
   /** Whether the drop being handled moves what it carries rather than copying it */
   let dropMove = false;
+  /** Whether the serialization being written is the one the dragstart being handled asked for */
+  let draggingOut = false;
 
   return new Plugin({
     view(view) {
@@ -407,10 +410,17 @@ export function docxClipboard(options: ClipboardOptions = {}): Plugin {
           parser.setPlainText(false);
           return false;
         },
-        // ProseMirror reads the dragged slice inside the very event this answers for, through
-        // props it hands the view and not the event, and it runs this one first. A microtask is
-        // the first thing to run once the event is over, so the answer is not left standing for
-        // whatever comes next
+        // ProseMirror writes and reads the dragged slice inside the very event the two below
+        // answer for, through props it hands the view and not the event, and it runs these first.
+        // A microtask is the first thing to run once the event is over, so neither answer is left
+        // standing for whatever comes next
+        dragstart() {
+          draggingOut = true;
+          queueMicrotask(() => {
+            draggingOut = false;
+          });
+          return false;
+        },
         drop(view, event) {
           dropMove = dropMoves(view, event);
           queueMicrotask(() => {
@@ -431,7 +441,9 @@ export function docxClipboard(options: ClipboardOptions = {}): Plugin {
       transformCopied(slice, view) {
         // The slice is kept as it stands: what the wrappers are emptied of below leaves for the
         // clipboard, and a paste back into this session is given what was copied instead
+        const route: CopyRoute = draggingOut ? "drag" : "clipboard";
         copyToken = rememberCopied(
+          route,
           slice,
           documentOf(view.state).session?.sessionId ?? null,
           documentNumbering(view.state)

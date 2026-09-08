@@ -32,6 +32,16 @@ export type ListKinds = ReadonlyMap<number, ListKind>;
 
 export const NO_LIST_KINDS: ListKinds = new Map();
 
+/**
+ * The two ways a copy leaves the editor.
+ *
+ * A drag is serialized through the very same path a copy takes, so the one the drag wrote would
+ * replace the one the clipboard still holds, and a drag begun and let go would send the next paste
+ * of that clipboard to the reader that reads markup. They are kept apart instead, and each is
+ * replaced only by the next copy made the same way.
+ */
+export type CopyRoute = "clipboard" | "drag";
+
 interface Copied {
   readonly token: string;
   readonly sessionId: string;
@@ -46,14 +56,14 @@ export interface RecalledCopy {
 }
 
 /**
- * The last copy made in this process, which is the only one a paste can name.
+ * The last copy made each way in this process, which are the only ones a paste can name.
  *
- * A clipboard holds one thing at a time, so keeping more would be keeping slices nothing can ask
- * for. The entry lives until the next copy replaces it or the process ends; a paste that arrives
- * after a copy made anywhere else - another editor, another document - finds a token that is no
- * longer the one it carries.
+ * A clipboard holds one thing at a time and so does a drag, so keeping more would be keeping
+ * slices nothing can ask for. An entry lives until the next copy made that way replaces it or the
+ * process ends; a paste that arrives after a copy made anywhere else - another editor, another
+ * document - finds a token that is no longer one of the two it carries.
  */
-let copied: Copied | null = null;
+const copied = new Map<CopyRoute, Copied>();
 
 let copies = 0;
 
@@ -72,18 +82,19 @@ function nextToken(): string {
  * to tell this editor's copy from another's, and the copy travels as markup alone.
  */
 export function rememberCopied(
+  route: CopyRoute,
   slice: Slice,
   sessionId: string | null,
   numbering: Numbering
 ): string | null {
   if (sessionId === null) return null;
   const token = nextToken();
-  copied = {
+  copied.set(route, {
     token,
     sessionId,
     slice,
     listKinds: listKindsIn(slice, numbering),
-  };
+  });
   return token;
 }
 
@@ -92,10 +103,13 @@ export function recallCopied(
   token: string | null,
   sessionId: string | null
 ): RecalledCopy | null {
-  if (copied === null || token === null || sessionId === null) return null;
-  return copied.token === token && copied.sessionId === sessionId
-    ? { slice: copied.slice, listKinds: copied.listKinds }
-    : null;
+  if (token === null || sessionId === null) return null;
+  const found = [...copied.values()].find(
+    (copy) => copy.token === token && copy.sessionId === sessionId
+  );
+  return found === undefined
+    ? null
+    : { slice: found.slice, listKinds: found.listKinds };
 }
 
 /** What the numbering of the source document says each list the slice names is */

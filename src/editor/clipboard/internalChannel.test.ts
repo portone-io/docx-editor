@@ -85,6 +85,24 @@ function paste(view: EditorView, data: Record<string, string>): void {
   view.dom.dispatchEvent(event);
 }
 
+/**
+ * Fakes the dragstart ProseMirror writes the dragged slice on. jsdom has neither DragEvent nor
+ * DataTransfer, and it measures no text, so no position can be found from the drag's coordinates.
+ */
+function dragOut(view: EditorView): void {
+  const event = new Event("dragstart", { bubbles: true, cancelable: true });
+  Object.defineProperty(event, "dataTransfer", {
+    value: {
+      files: [],
+      clearData: () => {},
+      setData: () => {},
+      effectAllowed: "",
+    },
+  });
+  view.posAtCoords = () => null;
+  view.dom.dispatchEvent(event);
+}
+
 function selectBlock(view: EditorView, pos: number): void {
   view.dispatch(
     view.state.tr.setSelection(NodeSelection.create(view.state.doc, pos))
@@ -280,6 +298,25 @@ describe("the internal clipboard channel", () => {
     // The markup it arrived with is what is read, not whichever slice is being kept
     expect(view.state.doc.lastChild?.textContent).toContain("Caps");
     expect(view.state.doc.lastChild?.attrs.pPr).toBeNull();
+    view.destroy();
+  });
+
+  it("leaves the clipboard copy standing when a drag is begun and let go", () => {
+    const { view } = open(makeStyledDocx(LOADED_PARAGRAPH + TAIL, STYLES));
+    selectBlock(view, 0);
+    const copied = copy(view);
+    // A dragstart writes the dragged slice through the very path a copy is written on
+    selectBlock(view, view.state.doc.firstChild?.nodeSize ?? 0);
+    dragOut(view);
+
+    caretAtEnd(view);
+    paste(view, copied);
+
+    // What the clipboard still holds comes back through the channel rather than through the reader
+    expect(view.state.doc.lastChild?.attrs.pPr).toContain(
+      '<w:jc w:val="center"/>'
+    );
+    expect(view.state.doc.lastChild?.textContent).toContain("Caps");
     view.destroy();
   });
 
