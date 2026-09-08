@@ -9,7 +9,12 @@ import type { EditorView } from "prosemirror-view";
 import { describe, expect, it } from "vitest";
 import { makeNumberedDocx } from "../../__testing__/docx";
 import { importDocx } from "../../docx/importDocx";
-import { toRunFormat } from "../../model/format";
+import {
+  toGridCols,
+  toRunFormat,
+  toTableWidth,
+  widthNumber,
+} from "../../model/format";
 import { newListsOf } from "../../numbering/listRegistry";
 import { templateList } from "../../numbering/listTemplate";
 import { editorClassNames } from "../../styles/classNames";
@@ -98,7 +103,7 @@ function runFormatOf(doc: PMNode, text: string) {
 }
 
 describe("reading HTML written by another application", () => {
-  it("identifies the source from the captured HTML", () => {
+  it("identifies the source from the HTML each application writes", () => {
     expect(detectHtmlSource(markup(fixture("word-list-table.html")))).toBe(
       "word"
     );
@@ -213,6 +218,14 @@ describe("reading HTML written by another application", () => {
       [1, 1],
       [1, 1],
     ]);
+    // A cell is as wide as the columns it covers, so the grid still adds up to the body width
+    const gridCols = toGridCols(table?.attrs.gridCols);
+    const widths = cells.map((cell) => {
+      const width = toTableWidth(cell.attrs.tcW);
+      return width === null ? null : widthNumber(width);
+    });
+    expect(widths[0]).toBe((gridCols[0] ?? 0) + (gridCols[1] ?? 0));
+    expect(widths[1]).toBe(gridCols[2]);
   });
 
   it("counts a Word list whose marker it could not find", () => {
@@ -238,6 +251,47 @@ describe("reading HTML written by another application", () => {
     const registered = newListsOf(doc.attrs.newLists);
     expect(registered.get(rope ?? -1)).toEqual(templateList("numbered"));
     expect(registered.get(cord ?? -1)).toEqual(templateList("bullet"));
+  });
+
+  it("reads a table pasted into a paragraph as blocks of its own", () => {
+    const view = openEditor();
+    view.dispatch(
+      view.state.tr.setSelection(TextSelection.create(view.state.doc, 4))
+    );
+    paste(
+      view,
+      "<table><caption>Crates</caption><tr><td>a</td><td>b</td></tr></table>"
+    );
+    const blocks = view.state.doc.children.map((block) => [
+      block.type.name,
+      block.textContent,
+    ]);
+    view.destroy();
+
+    // Markup naming no block at all joins the paragraph it is put in; a table names one, so
+    // nothing a table reads as - its caption included - is drawn into the paragraph around it
+    expect(blocks).toEqual([
+      ["paragraph", "sou"],
+      ["paragraph", "Crates"],
+      ["table", "ab"],
+      ["paragraph", "rce"],
+    ]);
+  });
+
+  it("drops the empty element Word closes its paragraphs with", () => {
+    const word = pasted(
+      '<meta name=Generator content="Microsoft Word 15">' +
+        "<p class=MsoNormal>Manifest<o:p>\u00a0</o:p></p>"
+    );
+    expect(nodesOfType(word, "paragraph").map((b) => b.textContent)).toContain(
+      "Manifest"
+    );
+
+    // Nothing but Word writes it, so a writer this reading does not know is taken at its word
+    const unknown = pasted("<p>Manifest<o:p>\u00a0</o:p></p>");
+    expect(
+      nodesOfType(unknown, "paragraph").map((b) => b.textContent)
+    ).not.toContain("Manifest");
   });
 
   it("keeps a table's caption", () => {
