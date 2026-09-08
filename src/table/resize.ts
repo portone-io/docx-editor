@@ -61,7 +61,8 @@ function minColumnDxa(gridCols: number[]): number {
 /**
  * The limit a table can be widened to (dxa).
  *
- * The body width of the paper the document names, minus the table indent (`w:tblInd`).
+ * The body width of the paper handed in, which is the section's the table stands in, minus
+ * the table indent (`w:tblInd`).
  * For a table already stored wider than that, its current width is the limit, so
  * dragging can only narrow it.
  */
@@ -119,8 +120,9 @@ function tableAt(doc: PMNode, pos: number): PMNode | null {
  * Because it is one single transaction, a single undo returns everything to the state
  * before the drag.
  *
- * The geometry is the paper the open document names, which is what the table is kept
- * inside. The editor layer reads it off the state; this layer is handed it.
+ * The geometry is the paper of the section the table stands in, which is what the table is
+ * kept inside. The editor layer reads it off the state (`editor/documentStyles`); this layer
+ * is handed it.
  */
 export function buildResizeColumnTransaction(
   state: EditorState,
