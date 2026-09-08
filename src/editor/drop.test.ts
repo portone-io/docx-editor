@@ -40,8 +40,18 @@ function openEditor(body: string = SOURCE): EditorView {
   return view;
 }
 
-/** Fakes a single drop. jsdom has neither DragEvent nor DataTransfer */
-function drop(view: EditorView, text: string, html: string): boolean {
+/**
+ * Fakes a single drop. jsdom has neither DragEvent nor DataTransfer.
+ *
+ * Which modifier turns the drop into a copy depends on the platform, so `copy` holds down both the
+ * one ProseMirror reads on macOS and the one it reads everywhere else.
+ */
+function drop(
+  view: EditorView,
+  text: string,
+  html: string,
+  { copy = false }: { copy?: boolean } = {}
+): boolean {
   const event = new Event("drop", { bubbles: true, cancelable: true });
   Object.defineProperty(event, "dataTransfer", {
     value: {
@@ -50,6 +60,8 @@ function drop(view: EditorView, text: string, html: string): boolean {
       getData: (type: string) => (type === "text/html" ? html : text),
     },
   });
+  Object.defineProperty(event, "altKey", { value: copy });
+  Object.defineProperty(event, "ctrlKey", { value: copy });
   view.dom.dispatchEvent(event);
   return event.defaultPrevented;
 }
@@ -107,11 +119,13 @@ describe("drag and drop", () => {
   });
 
   it.each([
-    { move: true, kept: "kept" },
-    { move: false, kept: null },
+    { began: true, copy: false, kept: "kept" },
+    { began: false, copy: true, kept: null },
+    { began: true, copy: true, kept: null },
+    { began: false, copy: false, kept: "kept" },
   ])(
-    "keeps the source identity of a block only while the drag moves it (move: $move)",
-    ({ move, kept }) => {
+    "reads move against copy off the drop and not off the dragstart (began as a move: $began, copy held at the drop: $copy)",
+    ({ began, copy, kept }) => {
       const view = openEditor();
       view.dragging = {
         slice: new Slice(
@@ -123,14 +137,15 @@ describe("drag and drop", () => {
           0,
           0
         ),
-        move,
+        move: began,
       };
-      drop(view, "clipboard", "clipboard");
+      drop(view, "clipboard", "clipboard", { copy });
 
       // A copy is written from the model; only the block that moved is still the block it was
       expect(view.state.doc.firstChild?.attrs.srcId).toBe(kept);
     }
   );
+
   it("carries the markers a moved block anchors along with it", () => {
     const view = openEditor(
       SOURCE +

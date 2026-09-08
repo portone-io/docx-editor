@@ -309,6 +309,31 @@ function clipboardText(slice: Slice): string {
   return fragmentText(slice.content);
 }
 
+/**
+ * The modifier that turns a drag inside the editor into a copy, which `prosemirror-view` reads off
+ * the platform the same way (`dragMoves` in its input handling).
+ */
+function dragCopyModifier(): "altKey" | "ctrlKey" {
+  return /Mac|iP(hone|[oa]d)/.test(navigator.platform) ? "altKey" : "ctrlKey";
+}
+
+/**
+ * Whether this drop moves what it carries rather than leaving a copy of it behind.
+ *
+ * ProseMirror settles that at the drop and not at the dragstart, so `view.dragging.move` is only
+ * what the drag set out as: the modifier held down over the drop overrules it. It asks after the
+ * slice has been through `transformPasted`, which is why the same question is asked here, off the
+ * same `dragCopies` prop and the same modifier, rather than read back from `handleDrop`.
+ */
+function dropMoves(view: EditorView, event: DragEvent): boolean {
+  if (view.dragging === null) return false;
+  let copies: boolean | undefined;
+  view.someProp("dragCopies", (test) => {
+    copies = copies === true || test(event);
+  });
+  return copies === undefined ? !event[dragCopyModifier()] : !copies;
+}
+
 export interface ClipboardOptions {
   /** Tried from the front. The first reader to answer decides what a paste puts in */
   readers?: readonly ClipboardReader[];
@@ -336,6 +361,8 @@ export function docxClipboard(options: ClipboardOptions = {}): Plugin {
   );
   /** The definitions the last reading started, held until the edit carrying them lands */
   let started: NewLists | null = null;
+  /** Whether the drop being handled moves what it carries rather than copying it */
+  let dropMove = false;
 
   return new Plugin({
     view(view) {
@@ -380,6 +407,17 @@ export function docxClipboard(options: ClipboardOptions = {}): Plugin {
           parser.setPlainText(false);
           return false;
         },
+        // ProseMirror reads the dragged slice inside the very event this answers for, through
+        // props it hands the view and not the event, and it runs this one first. A microtask is
+        // the first thing to run once the event is over, so the answer is not left standing for
+        // whatever comes next
+        drop(view, event) {
+          dropMove = dropMoves(view, event);
+          queueMicrotask(() => {
+            dropMove = false;
+          });
+          return false;
+        },
       },
       clipboardParser: parser,
       clipboardSerializer: serializer,
@@ -406,7 +444,7 @@ export function docxClipboard(options: ClipboardOptions = {}): Plugin {
         const content = normalizePasted(
           read ?? { slice, newLists: NO_NEW_LISTS },
           view.state,
-          view.dragging?.move === true,
+          dropMove,
           normalizers
         );
         started = content.newLists;
