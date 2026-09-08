@@ -115,6 +115,86 @@ describe("rewriting the size in a drawing", () => {
   });
 });
 
+/**
+ * A picture Word has written its own extensions onto: an extension list on the inline
+ * frame, on the picture's non-visual properties and on the blip. Every entry there is an
+ * `ext` carrying a uri, which is an extension's name and not a size at all.
+ */
+const EXTENDED_DRAWING =
+  '<w:drawing xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"' +
+  ' xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"' +
+  ' xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"' +
+  ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+  '<wp:inline distT="0" distB="0" distL="0" distR="0">' +
+  '<wp:extent cx="1905000" cy="952500"/>' +
+  '<wp:effectExtent l="0" t="0" r="0" b="0"/>' +
+  '<wp:docPr id="4" name="Picture 1"/>' +
+  "<wp:cNvGraphicFramePr/>" +
+  '<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">' +
+  "<pic:pic><pic:nvPicPr>" +
+  '<pic:cNvPr id="1" name="Picture 1">' +
+  '<a:extLst><a:ext uri="{FF2B5EF4-FFF2-40B4-BE49-F238E27FC236}">' +
+  '<a16:creationId xmlns:a16="http://schemas.microsoft.com/office/drawing/2014/main" id="{2A47C0BE}"/>' +
+  "</a:ext></a:extLst></pic:cNvPr><pic:cNvPicPr/></pic:nvPicPr>" +
+  '<pic:blipFill><a:blip r:embed="rId7">' +
+  '<a:extLst><a:ext uri="{28A0092B-C50C-407E-A947-70E740481C1C}"/></a:extLst>' +
+  "</a:blip><a:stretch><a:fillRect/></a:stretch></pic:blipFill>" +
+  '<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="1905000" cy="952500"/></a:xfrm>' +
+  '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>' +
+  "</pic:pic></a:graphicData></a:graphic>" +
+  '<wp:extLst><wp:ext uri="{C183D7F6-B498-43B3-948B-1728B52AA6E4}"/></wp:extLst>' +
+  "</wp:inline></w:drawing>";
+
+describe("rewriting the size in a drawing carrying extension lists", () => {
+  const resized = withExtent(EXTENDED_DRAWING, { cx: 952500, cy: 476250 });
+
+  it("is a picture the editor draws, so a resize goes down this road", () => {
+    expect(readDrawingPicture(drawing(EXTENDED_DRAWING))).toEqual({
+      relId: "rId7",
+      extent: { cx: 1905000, cy: 952500 },
+      alt: null,
+    });
+  });
+
+  it("sets the frame size the picture is drawn at", () => {
+    expect(resized).toContain(
+      '<a:xfrm><a:off x="0" y="0"/><a:ext cx="952500" cy="476250"/></a:xfrm>'
+    );
+    expect(resized).toContain('<wp:extent cx="952500" cy="476250"/>');
+  });
+
+  it("gives back the very same string for the size it came in with", () => {
+    expect(withExtent(EXTENDED_DRAWING, { cx: 1905000, cy: 952500 })).toBe(
+      EXTENDED_DRAWING
+    );
+  });
+
+  it("leaves the lists alone when the transform states no size", () => {
+    const noFrameSize = EXTENDED_DRAWING.replace(
+      '<a:xfrm><a:off x="0" y="0"/><a:ext cx="1905000" cy="952500"/></a:xfrm>',
+      '<a:xfrm rot="0"/>'
+    );
+    expect(withExtent(noFrameSize, { cx: 952500, cy: 476250 })).toBe(
+      noFrameSize.replace(
+        '<wp:extent cx="1905000" cy="952500"/>',
+        '<wp:extent cx="952500" cy="476250"/>'
+      )
+    );
+  });
+
+  it("hands every extension entry back exactly as it came", () => {
+    expect(resized).toContain(
+      '<a:ext uri="{28A0092B-C50C-407E-A947-70E740481C1C}"/>'
+    );
+    expect(resized).toContain(
+      '<wp:ext uri="{C183D7F6-B498-43B3-948B-1728B52AA6E4}"/>'
+    );
+    expect(resized).toContain(
+      '<a:ext uri="{FF2B5EF4-FFF2-40B4-BE49-F238E27FC236}">'
+    );
+  });
+});
+
 describe("the drawing built for an inserted image", () => {
   const xml = imageDrawingXml({
     relId: "rId3",

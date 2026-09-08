@@ -178,8 +178,21 @@ export function readDrawingPicture(drawing: Element): DrawingPicture | null {
 /** `wp:extent`, the size the drawing takes up in the line */
 const EXTENT_TAG = /<([\w.-]+:)?extent\b[^>]*\/>/g;
 
-/** `a:ext` inside `pic:spPr`, the size of the picture frame itself */
-const EXT_TAG = /<([\w.-]+:)?ext\b[^>]*\/>/g;
+/**
+ * `a:xfrm` inside `pic:spPr`, from its opening tag to its closing one.
+ *
+ * The frame size is found by where it sits rather than by its own name, because `ext`
+ * names two unrelated things in DrawingML: the size inside a transform, and an entry in
+ * an extension list, which carries a `uri` naming the extension and no size at all. Word
+ * writes those lists on the inline frame, on the picture's non-visual properties and on
+ * the blip, and their content is whatever the extension defines, so nothing about an
+ * `ext` outside a transform can be relied on to tell it apart from a size.
+ */
+const XFRM_ELEMENT =
+  /<(?:[\w.-]+:)?xfrm\b[^>]*(?<!\/)>[\s\S]*?<\/(?:[\w.-]+:)?xfrm>/;
+
+/** `a:ext`, the size of the picture frame itself. Only ever looked for inside a transform */
+const EXT_TAG = /<([\w.-]+:)?ext\b[^>]*\/>/;
 
 /**
  * The same drawing XML with both extents set to this size.
@@ -192,7 +205,9 @@ export function withExtent(xml: string, extent: ImageExtent): string {
   const size = `cx="${extent.cx}" cy="${extent.cy}"`;
   return xml
     .replace(EXTENT_TAG, (_match, prefix) => `<${prefix ?? ""}extent ${size}/>`)
-    .replace(EXT_TAG, (_match, prefix) => `<${prefix ?? ""}ext ${size}/>`);
+    .replace(XFRM_ELEMENT, (xfrm) =>
+      xfrm.replace(EXT_TAG, (_match, prefix) => `<${prefix ?? ""}ext ${size}/>`)
+    );
 }
 
 /** A picture that was inserted during editing and has no original XML to go back to */
