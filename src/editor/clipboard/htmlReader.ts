@@ -27,6 +27,12 @@ import { docxSchema } from "../../schema";
 import { COPIED_STYLE_ATTRIBUTE } from "../../schema/clipboard";
 import { editorClassNames } from "../../styles/classNames";
 import { numIdsIn } from "../commands/listCommands";
+import {
+  DEFAULT_BLOCK_READERS,
+  type HtmlBlockHost,
+  type HtmlBlockReader,
+  type ListPlacement,
+} from "./blockReaders";
 import { PASTED_IMAGE_ATTRIBUTE } from "./images";
 import {
   appendInline,
@@ -58,6 +64,16 @@ const BLOCK_TAGS = new Set([
   "SECTION",
 ]);
 
+/**
+ * What names a block anywhere in the markup: the block elements, the lists, and a table, which is
+ * read as a table of its own. An element holding one of these is read as the wrapper it is rather
+ * than as text, which is how a writer that wraps its whole copy in one element - Google Docs wraps
+ * it in a `<b>` - keeps its paragraphs apart.
+ */
+const BLOCK_SELECTOR = [...BLOCK_TAGS, "OL", "UL", "TABLE"]
+  .map((tag) => tag.toLowerCase())
+  .join(",");
+
 const HEADING_LEVELS: Readonly<Record<string, number>> = {
   H1: 1,
   H2: 2,
@@ -75,12 +91,6 @@ const HEADING_FALLBACKS: Readonly<Record<number, InlineStyle>> = {
   5: { bold: true, fontSizePt: 10 },
   6: { bold: true, fontSizePt: 8 },
 };
-
-interface ListContext {
-  kind: ListKind;
-  numId: number | null;
-  level: number;
-}
 
 interface BlockContext {
   inline: InlineContext;
@@ -165,7 +175,7 @@ function blockContext(
 }
 
 /** A pasted list item joins the list the way a list command puts a paragraph into one */
-function listParagraphProps(list: ListContext | null): ParagraphProps | null {
+function listParagraphProps(list: ListPlacement | null): ParagraphProps | null {
   if (!list || list.numId === null) return null;
   return withListNumbering(null, {
     numbering: { numId: list.numId, ilvl: Math.min(MAX_ILVL, list.level) },
@@ -175,7 +185,7 @@ function listParagraphProps(list: ListContext | null): ParagraphProps | null {
 
 function paragraphAttrs(
   formatting: FormattingContext,
-  list: ListContext | null,
+  list: ListPlacement | null,
   paragraph: ParagraphProps | null
 ): Record<string, unknown> | null {
   const props = listParagraphProps(list) ?? paragraph;
@@ -185,9 +195,13 @@ function paragraphAttrs(
 }
 
 class HtmlReader {
-  readonly blocks: PMNode[] = [];
+  private blocks: PMNode[] = [];
   readonly used: Set<number>;
   readonly canCreateLists: boolean;
+  /** How deep the reading stands inside the tables it is reading */
+  private tableDepth = 0;
+  /** The number each list a block reader named has taken, so its items join one list */
+  private readonly listNumbers = new Map<string, number | null>();
   /**
    * What the pasted paragraphs are resolved against: the document's context, holding the
    * definition of each pasted list as it is read, so that an item is drawn against the list it
@@ -197,7 +211,8 @@ class HtmlReader {
 
   constructor(
     private readonly context: HtmlReadContext,
-    private readonly preserveParagraphStyles: boolean
+    private readonly preserveParagraphStyles: boolean,
+    private readonly blockReaders: readonly HtmlBlockReader[]
   ) {
     this.formatting = context.formatting;
     this.used = new Set(context.numbering.used);
@@ -220,6 +235,10 @@ class HtmlReader {
     context: InlineContext
   ): void {
     appendInline(target, node, context, (content, element, inline) => {
+      // Word marks the end of every paragraph with an empty one of its own elements
+      if (this.context.source === "word" && element.tagName === "O:P") {
+        return true;
+      }
       if (element.tagName !== "IMG") return false;
       const token = element.getAttribute(PASTED_IMAGE_ATTRIBUTE);
       const image = token === null ? undefined : this.context.images.get(token);
@@ -239,21 +258,68 @@ class HtmlReader {
     });
   }
 
+  /**
+   * One paragraph of the reading. An item of a list this document may not start keeps its marker
+   * as text, since the list it names is one the document will not be numbering.
+   */
+  private paragraphNode(
+    content: readonly PMNode[],
+    list: ListPlacement | null = null,
+    paragraph: ParagraphProps | null = null
+  ): PMNode {
+    const marker =
+      list && list.numId === null
+        ? [docxSchema.text(list.kind === "bullet" ? "\u2022 " : "1. ")]
+        : [];
+    return docxSchema.nodes.paragraph.create(
+      paragraphAttrs(this.formatting, list, paragraph),
+      [...marker, ...content]
+    );
+  }
+
   private addParagraph(
-    content: PMNode[],
-    list: ListContext | null = null,
+    content: readonly PMNode[],
+    list: ListPlacement | null = null,
     paragraph: ParagraphProps | null = null
   ): void {
-    if (list && list.numId === null) {
-      const marker = list.kind === "bullet" ? "• " : "1. ";
-      content.unshift(docxSchema.text(marker));
-    }
-    this.blocks.push(
-      docxSchema.nodes.paragraph.create(
-        paragraphAttrs(this.formatting, list, paragraph),
-        content
-      )
-    );
+    this.blocks.push(this.paragraphNode(content, list, paragraph));
+  }
+
+  /** The blocks a nested reading produces, kept apart from the ones read so far */
+  private collect(read: () => void): readonly PMNode[] {
+    const outer = this.blocks;
+    this.blocks = [];
+    read();
+    const inner = this.blocks;
+    this.blocks = outer;
+    return inner;
+  }
+
+  /** What a block reader may ask of this reading */
+  private hostView(): HtmlBlockHost {
+    return {
+      context: this.context,
+      inTable: this.tableDepth > 0,
+      readCell: (cell, inline) => {
+        this.tableDepth += 1;
+        const blocks = this.collect(() => this.readFlow(cell, inline));
+        this.tableDepth -= 1;
+        return blocks;
+      },
+      readInline: (nodes, inline) => {
+        const target: PMNode[] = [];
+        for (const node of nodes) this.appendInline(target, node, inline);
+        return target;
+      },
+      paragraph: (content, list) => this.paragraphNode(content, list ?? null),
+      listNumber: (key, kind) => {
+        const known = this.listNumbers.get(key);
+        if (known !== undefined) return known;
+        const numId = this.takeNumId(kind);
+        this.listNumbers.set(key, numId);
+        return numId;
+      },
+    };
   }
 
   private readFlow(
@@ -267,13 +333,24 @@ class HtmlReader {
       this.addParagraph(inline, null, paragraph);
       inline = [];
     };
+    const host = this.hostView();
     for (const child of parent.childNodes) {
       const element =
         child.nodeType === child.ELEMENT_NODE ? (child as HTMLElement) : null;
-      if (element?.tagName === "UL" || element?.tagName === "OL") {
+      const reader =
+        element &&
+        this.blockReaders.find((candidate) => candidate.matches(element, host));
+      if (element && reader) {
+        flush();
+        this.blocks.push(...reader.read(element, context, host));
+      } else if (element?.tagName === "UL" || element?.tagName === "OL") {
         flush();
         this.readList(element, context, 0, null);
-      } else if (element && BLOCK_TAGS.has(element.tagName)) {
+      } else if (
+        element &&
+        (BLOCK_TAGS.has(element.tagName) ||
+          element.querySelector(BLOCK_SELECTOR) !== null)
+      ) {
         flush();
         const before = this.blocks.length;
         const block = blockContext(
@@ -313,10 +390,10 @@ class HtmlReader {
     list: HTMLElement,
     context: InlineContext,
     level: number,
-    inherited: ListContext | null
+    inherited: ListPlacement | null
   ): void {
     const kind: ListKind = list.tagName === "UL" ? "bullet" : "numbered";
-    const listContext: ListContext = {
+    const listContext: ListPlacement = {
       kind,
       numId: inherited?.kind === kind ? inherited.numId : this.takeNumId(kind),
       level,
@@ -360,8 +437,7 @@ function sliceDepth(root: ParentNode): 0 | 1 {
     10
   );
   if (Number.isFinite(openStart)) return openStart === 0 ? 0 : 1;
-  const blocks = [...BLOCK_TAGS, "OL", "UL"].map((tag) => tag.toLowerCase());
-  return root.querySelector(blocks.join(",")) ? 0 : 1;
+  return root.querySelector(BLOCK_SELECTOR) ? 0 : 1;
 }
 
 /** What a paste puts in: the content, and the definitions of the lists it started */
@@ -379,12 +455,14 @@ export interface PastedContent {
 /** The content one piece of already parsed markup reads as, or null when it reads as nothing */
 export function readHtml(
   root: ParentNode,
-  context: HtmlReadContext
+  context: HtmlReadContext,
+  blockReaders: readonly HtmlBlockReader[] = DEFAULT_BLOCK_READERS
 ): PastedContent | null {
   const open = sliceDepth(root);
   const reader = new HtmlReader(
     { ...context, source: detectHtmlSource(root) },
-    open === 0
+    open === 0,
+    blockReaders
   );
   const blocks = reader.read(root);
   return blocks.length === 0
