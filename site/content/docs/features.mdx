@@ -16,7 +16,7 @@ This page is the user-facing support summary. API details live in
 | Text formatting | Edit bold, italic, strikethrough, underline, palette or custom HEX colors, highlight, fonts, and font size. Supported document defaults and paragraph or character styles are reflected in the text and formatting controls. |
 | Paragraphs | Apply paragraph styles, alignment, indentation, line spacing, line breaks, and page breaks. A paragraph marked keep with next, by itself or by its style, is shown on the same page as the start of the block after it. |
 | Tabs | Insert, paste, format, navigate, select, and align document tabs using the document's automatic interval and effective paragraph stops. |
-| Lists | Create and edit common bullet and numbered lists, including nested levels. |
+| Lists | Create and edit common bullet and numbered lists, including nested levels. A list is drawn the way its own definition asks: the format its numbers are counted in, where its counting starts over, what stands between a number and the text, and the character formatting the level puts on the number itself. A list that takes its numbers from a numbering style is drawn like any other. |
 | Tables | Insert and remove rows, columns, and tables; merge, split, resize columns and rows, format, vertically align, and pad cells. A table style is displayed, its header row, closing row, edge columns, corners, and banded rows included. Long tables continue at safe row boundaries, repeating leading `tblHeader` rows. |
 | Images | Insert, paste, drop, select, and resize inline images. |
 | Hyperlinks | Create, change, remove, and open external links. |
@@ -63,7 +63,8 @@ binding such as `Mod+K` without replacing the editor.
 
 ## Current limitations
 
-- Uncommon list formats may be displayed as decimal numbers, and a new list requires an existing numbering part.
+- A list counts in decimal numbers, decimal numbers with a leading zero, upper or lower letters, upper or lower Roman numerals, Ganada, Korean digits, or the Chinese counting system. A list counting in any other format is shown with decimal numbers, and a level numbered with a picture is shown with the character written beside it instead.
+- A new list requires an existing numbering part.
 - Tab leader glyphs and bar lines remain preserved in OOXML but are not drawn.
 - Visual page boundaries are approximate and may differ from Word or printed output. Keep lines together and widow control are preserved but not reflected in them.
 - A selection running across the last paragraph of a section cannot be deleted, even when the section break is not what you meant to remove. Move the selection clear of that paragraph's boundary to edit the text around it.

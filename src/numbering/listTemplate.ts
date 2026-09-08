@@ -63,6 +63,11 @@ function templateLevel(kind: ListKind, ilvl: number): NumberingLevel {
     text: numbered ? `%${ilvl + 1}.` : cycled(BULLET_CYCLE, ilvl, "●"),
     start: 1,
     indent: templateIndent(ilvl),
+    restartAfterLevel: null,
+    legal: false,
+    suffix: "tab",
+    align: "left",
+    run: null,
   };
 }
 

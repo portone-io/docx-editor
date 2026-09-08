@@ -62,12 +62,16 @@ export {
   toTableWidth,
 } from "./model/format";
 export type {
+  LevelAlign,
   LevelIndent,
+  LevelSuffix,
   NumberFormat,
   Numbering,
   NumberingLevel,
   NumberingList,
   NumberingOptions,
+  NumberingStyleLinks,
+  ReadLevelRun,
 } from "./numbering/parseNumbering";
 export { parseNumbering } from "./numbering/parseNumbering";
 export type {

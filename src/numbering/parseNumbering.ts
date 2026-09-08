@@ -6,6 +6,7 @@
  * disturbs the file.
  */
 
+import type { RunFormat } from "../model/format";
 import type { TabStopDirective } from "../model/tabStops";
 import {
   ST_DecimalNumber,
@@ -13,7 +14,13 @@ import {
   ST_TwipsMeasure,
 } from "../ooxml/simpleTypes";
 import { readTabStopDirectives } from "../ooxml/tabStops";
-import { childValue, twipsToPt, wAttr } from "../ooxml/units";
+import {
+  ALIGN_BY_JC,
+  childValue,
+  isOn,
+  twipsToPt,
+  wAttr,
+} from "../ooxml/units";
 import {
   childByLocalName,
   elementChildren,
@@ -21,17 +28,9 @@ import {
   withXmlParser,
   type XmlParser,
 } from "../ooxml/xml";
+import { isNumberFormat, type NumberFormat } from "./spellers";
 
-/** The number formats actually used across every fixture */
-const NUMBER_FORMATS = [
-  "decimal",
-  "bullet",
-  "lowerLetter",
-  "upperLetter",
-  "lowerRoman",
-] as const;
-
-export type NumberFormat = (typeof NUMBER_FORMATS)[number];
+export type { NumberFormat } from "./spellers";
 
 /**
  * The indent a level defines. The unit is twips (1/20 of a point), and a slot that is
@@ -43,6 +42,12 @@ export interface LevelIndent {
   hangingTwips: number | null;
   firstLineTwips: number | null;
 }
+
+/** What stands between a level's number and the text of the paragraph (`w:suff`, §17.9.28) */
+export type LevelSuffix = "tab" | "space" | "nothing";
+
+/** Where a level's number sits in the space kept for it (`w:lvlJc`, §17.9.7) */
+export type LevelAlign = "left" | "center" | "right";
 
 export interface NumberingLevel {
   format: NumberFormat;
@@ -56,7 +61,30 @@ export interface NumberingLevel {
   indent: LevelIndent | null;
   /** Custom stops contributed by this level's paragraph properties. */
   tabStops?: readonly TabStopDirective[];
+  /**
+   * The deepest level whose advance sends this one back to its start (`w:lvlRestart`, §17.9.10),
+   * as a level number: any level above that one restarts it too. A level of -1 never restarts, and
+   * null is the default, the level right above this one.
+   */
+  restartAfterLevel: number | null;
+  /** Every level in this level's text spelled as a decimal, whatever format it counts in (`w:isLgl`, §17.9.4) */
+  legal: boolean;
+  suffix: LevelSuffix;
+  align: LevelAlign;
+  /**
+   * The formatting of the number itself (`w:rPr`, §17.9.24). It dresses the number alone and
+   * never the text of the paragraph the number stands in front of.
+   * Null where the level writes none, and where the caller handed in no reader for it.
+   */
+  run: RunFormat | null;
 }
+
+/**
+ * How a level's `w:rPr` is read into display values.
+ * The vocabulary of run properties belongs with the reader that holds styles.xml and the theme
+ * fonts, which this folder cannot reach, so it is handed in.
+ */
+export type ReadLevelRun = (rPr: Element) => RunFormat | null;
 
 export interface NumberingList {
   /** The shape for each level (ilvl) */
@@ -69,10 +97,6 @@ export interface Numbering {
 }
 
 export const EMPTY_NUMBERING: Numbering = { lists: new Map() };
-
-function isNumberFormat(value: string | null): value is NumberFormat {
-  return NUMBER_FORMATS.some((format) => format === value);
-}
 
 function indentOf(lvl: Element): LevelIndent | null {
   const pPr = childByLocalName(lvl, "pPr");
@@ -134,26 +158,69 @@ export function levelIndentPt(indent: LevelIndent | null): LevelIndentPt {
   };
 }
 
-function readLevel(lvl: Element): NumberingLevel {
+const LEVEL_SUFFIXES: readonly LevelSuffix[] = ["tab", "space", "nothing"];
+
+/** A level that says nothing puts a tab between its number and the text (§17.9.28) */
+function suffixOf(lvl: Element): LevelSuffix {
+  const suffix = childValue(lvl, "suff");
+  return LEVEL_SUFFIXES.find((known) => known === suffix) ?? "tab";
+}
+
+/**
+ * Where the number sits in the space kept for it.
+ * A level that says nothing, or that asks for a justification a number cannot take, keeps it at
+ * the left, which is what §17.9.7 gives a left-to-right paragraph.
+ */
+function alignOf(lvl: Element): LevelAlign {
+  const jc = childValue(lvl, "lvlJc");
+  const align = jc === null ? undefined : ALIGN_BY_JC[jc];
+  return align === undefined || align === "justify" ? "left" : align;
+}
+
+/**
+ * Which level's advance restarts this one.
+ *
+ * `w:lvlRestart` counts levels from one, so the level it names is the number minus one, and the 0
+ * that §17.9.10 gives for a level that never restarts lands below the outermost level of all. A
+ * number that cannot be read at all leaves the default standing.
+ */
+function restartAfterLevelOf(lvl: Element): number | null {
+  const restart = ST_DecimalNumber.parse(childValue(lvl, "lvlRestart"));
+  return restart === null ? null : restart - 1;
+}
+
+function readLevel(
+  lvl: Element,
+  readRun: ReadLevelRun | undefined
+): NumberingLevel {
   const format = childValue(lvl, "numFmt");
   const pPr = childByLocalName(lvl, "pPr");
   const tabStops = readTabStopDirectives(pPr);
+  const rPr = childByLocalName(lvl, "rPr");
   return {
     format: isNumberFormat(format) ? format : "decimal",
     text: childValue(lvl, "lvlText") ?? "",
     start: ST_DecimalNumber.parse(childValue(lvl, "start")) ?? 1,
     indent: indentOf(lvl),
     ...(tabStops.length === 0 ? {} : { tabStops }),
+    restartAfterLevel: restartAfterLevelOf(lvl),
+    legal: isOn(lvl, "isLgl"),
+    suffix: suffixOf(lvl),
+    align: alignOf(lvl),
+    run: rPr && readRun ? readRun(rPr) : null,
   };
 }
 
 /** Collects each `<w:lvl w:ilvl="0">` bundle, keyed by its level number */
-function readLevels(parent: Element): Map<number, NumberingLevel> {
+function readLevels(
+  parent: Element,
+  readRun: ReadLevelRun | undefined
+): Map<number, NumberingLevel> {
   const levels = new Map<number, NumberingLevel>();
   for (const child of elementChildren(parent)) {
     if (child.localName !== "lvl") continue;
     const ilvl = ST_DecimalNumber.parse(wAttr(child, "ilvl"));
-    if (ilvl !== null) levels.set(ilvl, readLevel(child));
+    if (ilvl !== null) levels.set(ilvl, readLevel(child, readRun));
   }
   return levels;
 }
@@ -165,7 +232,8 @@ function readLevels(parent: Element): Map<number, NumberingLevel> {
  */
 function readList(
   num: Element,
-  abstractLevels: Map<number, Map<number, NumberingLevel>>
+  abstractLevels: Map<number, Map<number, NumberingLevel>>,
+  readRun: ReadLevelRun | undefined
 ): NumberingList | null {
   const abstractNumId = ST_DecimalNumber.parse(
     childValue(num, "abstractNumId")
@@ -178,7 +246,9 @@ function readList(
     const ilvl = ST_DecimalNumber.parse(wAttr(child, "ilvl"));
     if (ilvl === null) continue;
     const replacement = childByLocalName(child, "lvl");
-    const base = replacement ? readLevel(replacement) : levels.get(ilvl);
+    const base = replacement
+      ? readLevel(replacement, readRun)
+      : levels.get(ilvl);
     if (!base) continue;
     const startOverride = ST_DecimalNumber.parse(
       childValue(child, "startOverride")
@@ -191,6 +261,15 @@ function readList(
   return { levels };
 }
 
+/**
+ * The list each numbering style names, by the style's id.
+ *
+ * A numbering style is never worn by a paragraph: it is a name on a list, which an abstract
+ * definition reaches through `w:numStyleLink` (§17.9.21). The map is built from styles.xml, which
+ * this folder cannot read for itself.
+ */
+export type NumberingStyleLinks = ReadonlyMap<string, number>;
+
 /** What a caller may say about reading numbering beyond handing over the XML */
 export interface NumberingOptions {
   /**
@@ -198,6 +277,69 @@ export interface NumberingOptions {
    * runtime carrying none refuses the read with `no-xml-parser`.
    */
   xmlParser?: XmlParser;
+  /**
+   * The list each numbering style of the document names. Left out, a definition deferring to a
+   * numbering style is read through the definition that declares it stands behind that style.
+   */
+  links?: NumberingStyleLinks;
+  /** How the formatting a level puts on its number is read. Left out, no level carries any */
+  readRun?: ReadLevelRun;
+}
+
+const NO_STYLE_LINKS: NumberingStyleLinks = new Map();
+
+/** What the abstract definitions of one numbering part say about each other */
+interface Definitions {
+  /** Each `w:abstractNum` by its id */
+  byId: ReadonlyMap<number, Element>;
+  /** The definition each `w:num` names */
+  ofList: ReadonlyMap<number, number>;
+  /** The definition that declares itself the one behind a numbering style (`w:styleLink`) */
+  ofStyle: ReadonlyMap<string, number>;
+  links: NumberingStyleLinks;
+  readRun: ReadLevelRun | undefined;
+}
+
+/**
+ * The levels one abstract definition lays down.
+ *
+ * A definition carrying `w:numStyleLink` holds none of its own and defers to a numbering style
+ * (§17.9.21), which names the list whose definition holds them. That definition is the one the
+ * style points at, and where no style table was handed in, the one that declares it stands behind
+ * that style (`w:styleLink`, §17.9.27). A link that leads back to a definition already followed is
+ * left where it is rather than followed round again.
+ */
+function levelsOf(
+  id: number,
+  definitions: Definitions,
+  resolved: Map<number, Map<number, NumberingLevel>>
+): Map<number, NumberingLevel> {
+  const path = new Set<number>();
+  let current = id;
+  let levels = new Map<number, NumberingLevel>();
+  while (!path.has(current)) {
+    const known = resolved.get(current);
+    if (known) {
+      levels = known;
+      break;
+    }
+    path.add(current);
+    const el = definitions.byId.get(current);
+    if (!el) break;
+    levels = readLevels(el, definitions.readRun);
+    const styleId = childValue(el, "numStyleLink");
+    if (levels.size > 0 || styleId === null) break;
+    const named = definitions.links.get(styleId);
+    const deferred =
+      (named === undefined ? undefined : definitions.ofList.get(named)) ??
+      definitions.ofStyle.get(styleId);
+    if (deferred === undefined) break;
+    current = deferred;
+  }
+  // Every definition along this chain resolves to the same levels. Reading them once also
+  // avoids invoking a consumer's run-format reader again for each referring list.
+  for (const seen of path) resolved.set(seen, levels);
+  return levels;
 }
 
 /**
@@ -209,24 +351,47 @@ export function parseNumbering(
   options?: NumberingOptions
 ): Numbering {
   if (xml === null) return EMPTY_NUMBERING;
-  return withXmlParser(options?.xmlParser, () => readNumbering(xml));
+  return withXmlParser(options?.xmlParser, () => readNumbering(xml, options));
 }
 
-function readNumbering(xml: string): Numbering {
+function readNumbering(xml: string, options?: NumberingOptions): Numbering {
   const root = parseXml(xml).documentElement;
 
-  const abstractLevels = new Map<number, Map<number, NumberingLevel>>();
+  const byId = new Map<number, Element>();
+  const ofStyle = new Map<string, number>();
+  const ofList = new Map<number, number>();
   for (const child of elementChildren(root)) {
-    if (child.localName !== "abstractNum") continue;
-    const id = ST_DecimalNumber.parse(wAttr(child, "abstractNumId"));
-    if (id !== null) abstractLevels.set(id, readLevels(child));
+    if (child.localName === "abstractNum") {
+      const id = ST_DecimalNumber.parse(wAttr(child, "abstractNumId"));
+      if (id === null) continue;
+      byId.set(id, child);
+      const styleId = childValue(child, "styleLink");
+      if (styleId !== null) ofStyle.set(styleId, id);
+    } else if (child.localName === "num") {
+      const numId = ST_DecimalNumber.parse(wAttr(child, "numId"));
+      const id = ST_DecimalNumber.parse(childValue(child, "abstractNumId"));
+      if (numId !== null && id !== null) ofList.set(numId, id);
+    }
+  }
+  const definitions: Definitions = {
+    byId,
+    ofList,
+    ofStyle,
+    links: options?.links ?? NO_STYLE_LINKS,
+    readRun: options?.readRun,
+  };
+
+  const abstractLevels = new Map<number, Map<number, NumberingLevel>>();
+  for (const id of byId.keys()) {
+    abstractLevels.set(id, levelsOf(id, definitions, abstractLevels));
   }
 
   const lists = new Map<number, NumberingList>();
   for (const child of elementChildren(root)) {
     if (child.localName !== "num") continue;
     const numId = ST_DecimalNumber.parse(wAttr(child, "numId"));
-    const list = numId === null ? null : readList(child, abstractLevels);
+    const list =
+      numId === null ? null : readList(child, abstractLevels, options?.readRun);
     if (numId !== null && list) lists.set(numId, list);
   }
   return { lists };

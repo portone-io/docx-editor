@@ -187,6 +187,9 @@ export interface ImportOptions {
 }
 
 // @public
+export type LevelAlign = "left" | "center" | "right";
+
+// @public
 export interface LevelIndent {
     // (undocumented)
     endTwips: number | null;
@@ -197,6 +200,9 @@ export interface LevelIndent {
     // (undocumented)
     startTwips: number | null;
 }
+
+// @public
+export type LevelSuffix = "tab" | "space" | "nothing";
 
 // @public
 export type LineSpacing = {
@@ -211,12 +217,7 @@ export type LineSpacing = {
 };
 
 // @public
-const NUMBER_FORMATS: readonly ["decimal", "bullet", "lowerLetter", "upperLetter", "lowerRoman"];
-
-// Warning: (ae-forgotten-export) The symbol "NUMBER_FORMATS" needs to be exported by the entry point core.d.ts
-//
-// @public (undocumented)
-export type NumberFormat = (typeof NUMBER_FORMATS)[number];
+export type NumberFormat = "decimal" | "decimalZero" | "bullet" | "lowerLetter" | "upperLetter" | "lowerRoman" | "upperRoman" | "ganada" | "koreanDigital" | "chineseCounting";
 
 // @public (undocumented)
 export interface Numbering {
@@ -226,10 +227,17 @@ export interface Numbering {
 // @public (undocumented)
 export interface NumberingLevel {
     // (undocumented)
+    align: LevelAlign;
+    // (undocumented)
     format: NumberFormat;
     indent: LevelIndent | null;
+    legal: boolean;
+    restartAfterLevel: number | null;
+    run: RunFormat | null;
     // (undocumented)
     start: number;
+    // (undocumented)
+    suffix: LevelSuffix;
     // Warning: (ae-forgotten-export) The symbol "TabStopDirective" needs to be exported by the entry point core.d.ts
     tabStops?: readonly TabStopDirective[];
     text: string;
@@ -242,6 +250,8 @@ export interface NumberingList {
 
 // @public
 export interface NumberingOptions {
+    links?: NumberingStyleLinks;
+    readRun?: ReadLevelRun;
     xmlParser?: XmlParser;
 }
 
@@ -252,6 +262,9 @@ export interface NumberingRef {
     // (undocumented)
     numId: number;
 }
+
+// @public
+export type NumberingStyleLinks = ReadonlyMap<string, number>;
 
 // @public
 export function onlyCommentsChangedBy(original: DocxBytes, submitted: DocxBytes, authorId: string, input?: {
@@ -315,6 +328,9 @@ export function parseNumbering(xml: string | null, options?: NumberingOptions): 
 
 // @public (undocumented)
 export function pxToEmu(px: number): number;
+
+// @public
+export type ReadLevelRun = (rPr: Element) => RunFormat | null;
 
 // @public
 export interface RowFormat {

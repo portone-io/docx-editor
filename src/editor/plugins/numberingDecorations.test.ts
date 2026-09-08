@@ -1,14 +1,23 @@
 // @vitest-environment jsdom
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { unzipSync } from "fflate";
 import type { Node as PMNode } from "prosemirror-model";
 import { afterEach, describe, expect, it } from "vitest";
-import { bytesEqual, readFixture } from "../../__testing__/docx";
+import {
+  bytesEqual,
+  makeNumberedDocx,
+  readFixture,
+} from "../../__testing__/docx";
 import { exportDocx } from "../../docx/exportDocx";
-import { NO_FORMATTING } from "../../docx/formatting";
+import { NO_FORMATTING, readRunFormat } from "../../docx/formatting";
 import { importDocx } from "../../docx/importDocx";
-import { toParagraphFormat } from "../../model/format";
+import type { SessionStore } from "../../docx/session";
+import { toParagraphFormat, toRunFormat } from "../../model/format";
 import { type Numbering, parseNumbering } from "../../numbering/parseNumbering";
 import { docxSchema } from "../../schema";
+import { editorAttributes, editorCssVariables } from "../../styles/classNames";
 import {
   createEditorState,
   createEditorView,
@@ -79,6 +88,74 @@ describe("list marker decorations", () => {
     expect(markerDecorations(doc, numbering).find()).toHaveLength(
       paragraphMarkers(doc, numbering).length
     );
+  });
+});
+
+/**
+ * The fixture whose lists are defined the way a definition can be written rather than the way a
+ * reader would like to find it: one borrows its numbers from a numbering style, one counts in
+ * formats past decimal, and one decides for itself when its counting starts over.
+ */
+describe("the lists of list-definitions.docx", () => {
+  const DEFINITIONS_FIXTURE = "list-definitions.docx";
+
+  const opened = () => importDocx(readFixture(DEFINITIONS_FIXTURE));
+
+  /** Every list paragraph of the document, whether or not a marker was worked out for it */
+  function listParagraphs(doc: PMNode): number {
+    let listed = 0;
+    doc.descendants((node) => {
+      if (node.type.name !== "paragraph") return true;
+      if (toParagraphFormat(node.attrs.format)?.numbering) listed += 1;
+      return false;
+    });
+    return listed;
+  }
+
+  it("every list paragraph in it gets a marker", () => {
+    const { doc, session } = opened();
+    const markers = paragraphMarkers(doc, session.formatting.numbering);
+
+    expect(markers).toHaveLength(listParagraphs(doc));
+    expect(markers.length).toBeGreaterThan(0);
+  });
+
+  it("draws each list the way its own definition asks", () => {
+    const { doc, session } = opened();
+
+    expect(
+      paragraphMarkers(doc, session.formatting.numbering).map(
+        (marker) => marker.text
+      )
+    ).toEqual([
+      // Reached through the numbering style Clauses, and counted with a leading zero below it
+      "I.",
+      "I.01",
+      "II.",
+      // A space after the number, then nothing at all, then the Korean letters
+      "一 ",
+      "일)",
+      "가.",
+      "二 ",
+      // A level that never restarts, under one that does, over a legal level
+      "A.",
+      "A.a.",
+      "1.1.1.",
+      "B.",
+      "B.b.",
+      "2.2.1.",
+    ]);
+  });
+
+  it("the marker of the borrowed list wears what that list's level writes down", () => {
+    const { doc, session } = opened();
+    const [marker] = paragraphMarkers(doc, session.formatting.numbering);
+
+    expect(marker?.run).toEqual({
+      bold: true,
+      color: "#1F3864",
+      fontSizePt: 14,
+    });
   });
 });
 
@@ -167,46 +244,75 @@ describe("where list numbers sit (Word geometry)", () => {
   });
 });
 
+const W_NS =
+  'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+
+/**
+ * A list of one level, holding whatever properties the test writes into it, read the way an
+ * opened document reads its own numbering part
+ */
+function oneLevel(properties: string): Numbering {
+  return parseNumbering(
+    `<w:numbering ${W_NS}><w:abstractNum w:abstractNumId="0">` +
+      '<w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="decimal"/>' +
+      `${properties}<w:lvlText w:val="%1."/>` +
+      "</w:lvl></w:abstractNum>" +
+      '<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num></w:numbering>',
+    { readRun: (rPr) => readRunFormat(rPr) }
+  );
+}
+
+function listDoc(
+  format: Record<string, unknown>,
+  pPr: string | null = null
+): PMNode {
+  return docxSchema.nodes.doc.create(null, [
+    docxSchema.nodes.paragraph.create(
+      { srcId: "opened:body:0", pAttrs: null, pPr, format },
+      docxSchema.text("Item")
+    ),
+  ]);
+}
+
+const numbered = { numbering: { numId: 1, ilvl: 0 } };
+
+/** The properties the display values above are worked out from, which a state reads them off again */
+const NUMBERED_PPR =
+  '<w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr></w:pPr>';
+
+/** A document that knows nothing but these level definitions */
+const knowing = (numbering: Numbering): EditorDocument => ({
+  ...NO_DOCUMENT,
+  formatting: { ...NO_FORMATTING, numbering },
+});
+
+/** The paragraph as the editor draws it, with the marker decoration applied */
+function drawnParagraph(numbering: Numbering): HTMLElement {
+  const mount = document.createElement("div");
+  document.body.appendChild(mount);
+  mounted.view = createEditorView({
+    mount,
+    state: createEditorState(listDoc(numbered, NUMBERED_PPR), {
+      document: knowing(numbering),
+    }),
+    onStateChange: () => {},
+  });
+  const paragraph = mount.querySelector("p.docx-editor-p[data-marker]");
+  if (!(paragraph instanceof HTMLElement)) throw new Error("no paragraph");
+  return paragraph;
+}
+
 /**
  * When a paragraph has not written down a `w:ind`, Word uses the indentation the list level
  * specifies. Without overlaying that value on screen, the number would sit at the paragraph's
  * left edge and the whole body text would be pushed over by the number's width.
  */
 describe("the indentation the level specifies", () => {
-  const W_NS =
-    'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
-
-  const numbering: Numbering = parseNumbering(
-    `<w:numbering ${W_NS}><w:abstractNum w:abstractNumId="0">` +
-      '<w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="decimal"/>' +
-      '<w:lvlText w:val="%1."/><w:pPr><w:ind w:left="720" w:right="240" w:hanging="360"/></w:pPr>' +
-      "</w:lvl></w:abstractNum>" +
-      '<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num></w:numbering>'
+  const numbering: Numbering = oneLevel(
+    '<w:pPr><w:ind w:left="720" w:right="240" w:hanging="360"/></w:pPr>'
   );
 
-  function listDoc(
-    format: Record<string, unknown>,
-    pPr: string | null = null
-  ): PMNode {
-    return docxSchema.nodes.doc.create(null, [
-      docxSchema.nodes.paragraph.create(
-        { srcId: "opened:body:0", pAttrs: null, pPr, format },
-        docxSchema.text("Item")
-      ),
-    ]);
-  }
-
-  const numbered = { numbering: { numId: 1, ilvl: 0 } };
-
-  /** The properties the display values above are worked out from, which a state reads them off again */
-  const NUMBERED_PPR =
-    '<w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr></w:pPr>';
-
-  /** A document that knows these level definitions and nothing else */
-  const withLevels: EditorDocument = {
-    ...NO_DOCUMENT,
-    formatting: { ...NO_FORMATTING, numbering },
-  };
+  const withLevels: EditorDocument = knowing(numbering);
 
   it("overlays the level's indentation on screen when the paragraph has no ind", () => {
     const [marker] = paragraphMarkers(listDoc(numbered), numbering);
@@ -264,7 +370,158 @@ describe("the indentation the level specifies", () => {
   });
 });
 
-/** The span the first table occupies in the document */
+describe("what the level asks for around its number", () => {
+  const styleOf = (properties: string) =>
+    drawnParagraph(oneLevel(properties)).style;
+
+  it("a level asking for a tab keeps the width its number sits in", () => {
+    const style = styleOf(
+      '<w:suff w:val="tab"/><w:pPr><w:ind w:left="720" w:hanging="360"/></w:pPr>'
+    );
+    expect(style.getPropertyValue(editorCssVariables.markerWidth)).toBe("18pt");
+    expect(style.getPropertyValue(editorCssVariables.markerGap)).toBe("");
+  });
+
+  it("a level asking for a space keeps no width and no gap at all", () => {
+    const style = styleOf(
+      '<w:suff w:val="space"/><w:pPr><w:ind w:left="720" w:hanging="360"/></w:pPr>'
+    );
+    expect(style.getPropertyValue(editorCssVariables.markerWidth)).toBe("0");
+    expect(style.getPropertyValue(editorCssVariables.markerGap)).toBe("0");
+  });
+
+  it("draws the space itself as part of the number", () => {
+    const paragraph = drawnParagraph(oneLevel('<w:suff w:val="space"/>'));
+    expect(paragraph.getAttribute(editorAttributes.listMarker)).toBe("1. ");
+  });
+
+  it("a level justifying its number to the end draws it against the text", () => {
+    expect(
+      styleOf('<w:lvlJc w:val="end"/>').getPropertyValue(
+        editorCssVariables.markerAlign
+      )
+    ).toBe("right");
+  });
+
+  it("a level justifying it to the start leaves the rule's own alignment standing", () => {
+    expect(
+      styleOf('<w:lvlJc w:val="start"/>').getPropertyValue(
+        editorCssVariables.markerAlign
+      )
+    ).toBe("");
+  });
+});
+
+/**
+ * A level dresses its own number and nothing else (§17.9.24), so what it writes has to reach the
+ * marker without reaching the text of the paragraph the marker stands in front of.
+ */
+describe("the character formatting a level puts on its number", () => {
+  /** A list of one level that draws its number bold, red, and larger than the text */
+  const DRESSED_LEVEL =
+    `<w:numbering ${W_NS}><w:abstractNum w:abstractNumId="0">` +
+    '<w:lvl w:ilvl="0"><w:numFmt w:val="decimal"/><w:lvlText w:val="%1."/>' +
+    '<w:rPr><w:b/><w:color w:val="FF0000"/><w:sz w:val="32"/></w:rPr>' +
+    "</w:lvl></w:abstractNum>" +
+    '<w:num w:numId="1"><w:abstractNumId w:val="0"/></w:num></w:numbering>';
+
+  const LIST_BODY = `<w:p>${NUMBERED_PPR}<w:r><w:t>Item</w:t></w:r></w:p>`;
+
+  const opened = () => importDocx(makeNumberedDocx(LIST_BODY, DRESSED_LEVEL));
+
+  /** The paragraph as the editor draws it, opened from a package rather than built by hand */
+  function drawn(doc: PMNode, session: SessionStore): HTMLElement {
+    const mount = document.createElement("div");
+    document.body.appendChild(mount);
+    mounted.view = createEditorView({
+      mount,
+      state: editorStateForSession({ doc, session }),
+      onStateChange: () => {},
+    });
+    const paragraph = mount.querySelector("p.docx-editor-p[data-marker]");
+    if (!(paragraph instanceof HTMLElement)) throw new Error("no paragraph");
+    return paragraph;
+  }
+
+  it("the marker wears the level's rPr", () => {
+    const { doc, session } = opened();
+    const style = drawn(doc, session).style;
+
+    expect(style.getPropertyValue(editorCssVariables.markerFontWeight)).toBe(
+      "bold"
+    );
+    expect(style.getPropertyValue(editorCssVariables.markerColor)).toBe(
+      "#FF0000"
+    );
+    expect(style.getPropertyValue(editorCssVariables.markerFontSize)).toBe(
+      "16pt"
+    );
+  });
+
+  it("the text of the paragraph the marker stands in front of does not", () => {
+    const { doc } = opened();
+    const mark = doc.child(0).child(0).marks[0];
+
+    expect(toRunFormat(mark?.attrs.format)).toBeNull();
+    expect(toParagraphFormat(doc.child(0).attrs.format)).toEqual({
+      numbering: { numId: 1, ilvl: 0 },
+    });
+  });
+
+  it("a level that dresses nothing leaves the number drawn like the text", () => {
+    const style = drawnParagraph(oneLevel("")).style;
+
+    expect(style.getPropertyValue(editorCssVariables.markerFontWeight)).toBe(
+      ""
+    );
+    expect(style.getPropertyValue(editorCssVariables.markerColor)).toBe("");
+  });
+
+  it("a level switching a property off draws the number with it off", () => {
+    const style = drawnParagraph(
+      oneLevel('<w:rPr><w:b w:val="0"/><w:i w:val="0"/></w:rPr>')
+    ).style;
+
+    expect(style.getPropertyValue(editorCssVariables.markerFontWeight)).toBe(
+      "normal"
+    );
+    expect(style.getPropertyValue(editorCssVariables.markerFontStyle)).toBe(
+      "normal"
+    );
+  });
+});
+
+/**
+ * The variables the decoration writes are read by the pseudo-element that draws the number, which
+ * is the only thing that puts them on screen. A rule that stops reading one of them would leave
+ * the decoration writing a value nothing draws.
+ */
+describe("the marker rule in editor.css", () => {
+  const css = readFileSync(
+    join(dirname(fileURLToPath(import.meta.url)), "../../styles/editor.css"),
+    "utf8"
+  );
+  const rule = /\[data-marker\]::before\s*\{([^}]*)\}/.exec(css)?.[1] ?? "";
+
+  it("draws the number from the attribute the decoration sets", () => {
+    expect(rule).toContain(`attr(${editorAttributes.listMarker})`);
+  });
+
+  it.each([
+    editorCssVariables.markerWidth,
+    editorCssVariables.markerGap,
+    editorCssVariables.markerAlign,
+    editorCssVariables.markerFontWeight,
+    editorCssVariables.markerFontStyle,
+    editorCssVariables.markerColor,
+    editorCssVariables.markerFontSize,
+    editorCssVariables.markerFontFamily,
+  ])("reads %s", (name) => {
+    expect(rule).toContain(`var(${name}`);
+  });
+});
+
+/** The span the first table occupies in the document */ /** The span the first table occupies in the document */
 function tableRange(doc: PMNode): { from: number; to: number } {
   let range: { from: number; to: number } | null = null;
   doc.forEach((block, offset) => {

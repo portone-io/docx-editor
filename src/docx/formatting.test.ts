@@ -7,6 +7,7 @@ import {
   layerParagraphFormat,
   layerRunFormat,
   layerTableFormat,
+  numberingStyleLinks,
   readDefaultParagraphFormat,
   readDocumentDefaults,
   readParagraphFormat,
@@ -861,6 +862,58 @@ describe("the table formatting a style passes down", () => {
       '<w:style w:styleId="Plain"><w:rPr><w:b/></w:rPr></w:style>'
     );
     expect(styles.get("Plain")).toEqual(styleFormat({ run: { bold: true } }));
+  });
+});
+
+describe("numberingStyleLinks", () => {
+  const numbering = (id: string, numId: string) =>
+    `<w:style w:type="numbering" w:styleId="${id}">` +
+    `<w:pPr><w:numPr><w:numId w:val="${numId}"/></w:numPr></w:pPr></w:style>`;
+
+  const linksOf = (styles: string) => numberingStyleLinks(styleTable(styles));
+
+  it("collects the list each numbering style names", () => {
+    expect(
+      linksOf(numbering("Chapters", "6") + numbering("Clauses", "7"))
+    ).toEqual(
+      new Map([
+        ["Chapters", 6],
+        ["Clauses", 7],
+      ])
+    );
+  });
+
+  it("passes over a style of another kind that names a list", () => {
+    expect(
+      linksOf(
+        '<w:style w:type="paragraph" w:styleId="ListParagraph">' +
+          '<w:pPr><w:numPr><w:numId w:val="6"/></w:numPr></w:pPr></w:style>'
+      )
+    ).toEqual(new Map());
+  });
+
+  it("passes over a numbering style that names no list, and one that names the empty list", () => {
+    expect(
+      linksOf(
+        '<w:style w:type="numbering" w:styleId="Unlinked"/>' +
+          numbering("Cleared", "0")
+      )
+    ).toEqual(new Map());
+  });
+
+  it("takes the list a numbering style inherits from the one it is based on", () => {
+    expect(
+      linksOf(
+        numbering("Chapters", "6") +
+          '<w:style w:type="numbering" w:styleId="Appendix">' +
+          '<w:basedOn w:val="Chapters"/></w:style>'
+      )
+    ).toEqual(
+      new Map([
+        ["Chapters", 6],
+        ["Appendix", 6],
+      ])
+    );
   });
 });
 

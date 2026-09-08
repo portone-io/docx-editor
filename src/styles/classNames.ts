@@ -171,6 +171,19 @@ export const editorCssVariables = {
   lineHeight: `--${PREFIX}-line-height`,
   /** The hanging indent width the list marker sits in */
   markerWidth: `--${PREFIX}-marker-width`,
+  /** The room kept after the list marker, which a level asking for no tab closes up (`w:suff`) */
+  markerGap: `--${PREFIX}-marker-gap`,
+  /** Where the marker sits inside the width kept for it (`w:lvlJc`) */
+  markerAlign: `--${PREFIX}-marker-align`,
+  /**
+   * The formatting the numbering level puts on its marker (`lvl/rPr`). It dresses the marker
+   * alone, so it reaches the pseudo-element that draws it and nothing the paragraph holds
+   */
+  markerFontWeight: `--${PREFIX}-marker-font-weight`,
+  markerFontStyle: `--${PREFIX}-marker-font-style`,
+  markerColor: `--${PREFIX}-marker-color`,
+  markerFontSize: `--${PREFIX}-marker-font-size`,
+  markerFontFamily: `--${PREFIX}-marker-font-family`,
   /** The width calculated for a tab using custom paragraph stops. */
   tabWidth: `--${PREFIX}-tab-width`,
   /** The paper height, grown to match the page count */

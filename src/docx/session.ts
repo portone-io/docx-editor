@@ -16,7 +16,11 @@ import {
   parseNumbering,
 } from "../numbering/parseNumbering";
 import type { ImportedComments } from "./comments";
-import type { FormattingContext, ParagraphStyleOption } from "./formatting";
+import {
+  type FormattingContext,
+  numberingOptionsFor,
+  type ParagraphStyleOption,
+} from "./formatting";
 import type { HeadersFooters } from "./headersFooters";
 import type { PageGeometry } from "./pageGeometry";
 
@@ -130,7 +134,14 @@ export function documentNumbering(
   session: DocxSession,
   options?: NumberingOptions
 ): Numbering {
-  return parseNumbering(sessionOf(session).numberingXml, options);
+  const store = sessionOf(session);
+  return parseNumbering(store.numberingXml, {
+    ...numberingOptionsFor(
+      store.formatting.styles,
+      store.formatting.themeFonts
+    ),
+    ...options,
+  });
 }
 
 /** The story a block key names when the block stood in the main document body */

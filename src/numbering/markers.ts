@@ -5,115 +5,85 @@
  * same numbering definitions always yield the same numbers.
  */
 
-import type { NumberingRef } from "../model/format";
+import type { NumberingRef, RunFormat } from "../model/format";
 import { listFor } from "./listTemplate";
 import {
+  type LevelAlign,
   type LevelIndentPt,
+  type LevelSuffix,
   levelIndentPt,
-  type NumberFormat,
   type Numbering,
+  type NumberingLevel,
   type NumberingList,
 } from "./parseNumbering";
+import { spellNumber } from "./spellers";
 
 /** The number to draw in front of one paragraph */
 export interface ListMarker {
+  /**
+   * The number as it is drawn, the space a level asking for one (`w:suff`) included: a separator
+   * made of a character belongs to the marker, while the tab every other level asks for is the
+   * width the number sits in rather than anything to draw
+   */
   text: string;
   /**
    * The indent defined by the level this paragraph belongs to. Used when the paragraph
    * records none of its own
    */
   indent: LevelIndentPt;
-}
-
-const ROMAN: ReadonlyArray<readonly [number, string]> = [
-  [1000, "M"],
-  [900, "CM"],
-  [500, "D"],
-  [400, "CD"],
-  [100, "C"],
-  [90, "XC"],
-  [50, "L"],
-  [40, "XL"],
-  [10, "X"],
-  [9, "IX"],
-  [5, "V"],
-  [4, "IV"],
-  [1, "I"],
-];
-
-function toRoman(value: number): string {
-  let rest = value;
-  let out = "";
-  for (const [amount, sign] of ROMAN) {
-    while (rest >= amount) {
-      out += sign;
-      rest -= amount;
-    }
-  }
-  return out;
-}
-
-/** As in Word, z is followed by aa, then bb */
-function toLetters(value: number): string {
-  const index = (value - 1) % 26;
-  const repeat = Math.floor((value - 1) / 26) + 1;
-  return String.fromCharCode(65 + index).repeat(repeat);
+  /** Whether the number sits in a width of its own, which is what a tab suffix asks for */
+  suffix: LevelSuffix;
+  align: LevelAlign;
+  /** The formatting the level puts on the number, which dresses the number and nothing else */
+  run: RunFormat | null;
 }
 
 /**
  * Cap on a rendered marker's length. `w:lvlText` is drawn verbatim, so without a cap a crafted
  * megabyte-long one would render in front of every list paragraph and rebuild on every keystroke.
+ * It bounds the spelled numbers as well, so that a crafted `w:start` cannot grow one either.
  */
 const MAX_MARKER_CHARS = 64;
 
 /**
- * The largest value each format spells out. A number past it is drawn as a decimal, which
- * is where a format we do not spell lands as well.
- *
- * A letter marker takes one character per 26 counted and a roman one one M per 1000, so a
- * crafted `w:start` of two billion would otherwise build a marker of tens of millions of
- * characters.
+ * Replaces each `%n` in something like `%1.%2.` with the current number of the nth level.
+ * A legal level spells every one of them as a decimal, whatever format that level counts in.
  */
-const MAX_SPELLED_VALUE: Record<NumberFormat, number> = {
-  decimal: Number.POSITIVE_INFINITY,
-  bullet: Number.POSITIVE_INFINITY,
-  lowerLetter: 26 * MAX_MARKER_CHARS,
-  upperLetter: 26 * MAX_MARKER_CHARS,
-  lowerRoman: 1000 * MAX_MARKER_CHARS,
-};
-
-function formatNumber(value: number, format: NumberFormat): string {
-  if (value < 1 || value > MAX_SPELLED_VALUE[format]) return `${value}`;
-  switch (format) {
-    case "lowerLetter":
-      return toLetters(value).toLowerCase();
-    case "upperLetter":
-      return toLetters(value);
-    case "lowerRoman":
-      return toRoman(value).toLowerCase();
-    default:
-      return `${value}`;
-  }
-}
-
-/** Replaces each `%n` in something like `%1.%2.` with the current number of the nth level */
 function fillLevels(
   text: string,
   list: NumberingList,
-  counters: Map<number, number>
+  counters: Map<number, number>,
+  legal: boolean
 ): string {
   return text.replaceAll(/%([1-9])/g, (_, digit: string) => {
     const ilvl = Number(digit) - 1;
     const level = list.levels.get(ilvl);
     if (!level) return "";
-    return formatNumber(counters.get(ilvl) ?? level.start, level.format);
+    const count = counters.get(ilvl) ?? level.start;
+    return spellNumber(
+      count,
+      legal ? "decimal" : level.format,
+      MAX_MARKER_CHARS
+    );
   });
+}
+
+/**
+ * The level whose advance sends this one back to its start number, which for a level naming none
+ * is the level right above it (§17.9.10).
+ *
+ * A level naming one no shallower than itself needs no rule of its own: only a shallower level
+ * ever sets a restart off, and every one of those is shallower than the level it named too, so it
+ * restarts exactly as the default does.
+ */
+function restartedBy(level: NumberingLevel | undefined, ilvl: number): number {
+  return level?.restartAfterLevel ?? ilvl - 1;
 }
 
 /**
  * Advances the numbering by one step at this paragraph.
  * A level seen for the first time takes its start number, and when a shallower level
- * advances, the deeper levels start counting from the beginning again.
+ * advances, the deeper levels that answer to it start counting from the beginning again.
  */
 function advance(
   counters: Map<number, number>,
@@ -124,7 +94,9 @@ function advance(
   const current = counters.get(ilvl);
   counters.set(ilvl, current === undefined ? start : current + 1);
   for (const deeper of [...counters.keys(), ...list.levels.keys()]) {
-    if (deeper > ilvl) counters.delete(deeper);
+    if (deeper > ilvl && restartedBy(list.levels.get(deeper), deeper) >= ilvl) {
+      counters.delete(deeper);
+    }
   }
 }
 
@@ -177,8 +149,15 @@ export function computeMarkers(
     const shape =
       level.format === "bullet"
         ? level.text
-        : fillLevels(level.text, list, counters);
-    const text = capped(shape);
-    return text ? { text, indent: levelIndentPt(level.indent) } : null;
+        : fillLevels(level.text, list, counters, level.legal);
+    const drawn = capped(shape);
+    if (!drawn) return null;
+    return {
+      text: level.suffix === "space" ? `${drawn} ` : drawn,
+      indent: levelIndentPt(level.indent),
+      suffix: level.suffix,
+      align: level.align,
+      run: level.run,
+    };
   });
 }

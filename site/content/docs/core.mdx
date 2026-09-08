@@ -26,6 +26,13 @@ The session belongs to the imported document and must not be constructed or modi
 Use `documentNumbering(session)` and `documentPartPath(session)` for the package information
 exposed by the public API.
 
+`documentNumbering(session)` reads the document's lists as the editor draws them: a list that takes
+its numbers from a numbering style is followed to the definition holding them, and the character
+formatting each level puts on its own number is read in.
+`parseNumbering(xml)` reads a numbering part handed over on its own, without the styles that go
+with it, so a list defined through a numbering style is resolved only as far as that part alone
+allows. Pass `links`, a numbering style id to the list it names, to resolve the rest.
+
 ## What a document loses
 
 A DOCX holds more than this editor draws.

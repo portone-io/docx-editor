@@ -7,9 +7,18 @@
 import type { Node as PMNode } from "prosemirror-model";
 import { type EditorState, Plugin, PluginKey } from "prosemirror-state";
 import { Decoration, DecorationSet } from "prosemirror-view";
-import { type ParagraphFormat, toParagraphFormat } from "../../model/format";
+import {
+  type ParagraphFormat,
+  type RunFormat,
+  toParagraphFormat,
+} from "../../model/format";
 import { computeMarkers } from "../../numbering/markers";
-import type { LevelIndentPt, Numbering } from "../../numbering/parseNumbering";
+import type {
+  LevelAlign,
+  LevelIndentPt,
+  LevelSuffix,
+  Numbering,
+} from "../../numbering/parseNumbering";
 import { editorAttributes, editorCssVariables } from "../../styles/classNames";
 import { documentOf } from "../editorDocument";
 
@@ -48,6 +57,12 @@ export interface PlacedMarker {
   indentEndPt: number | null;
   /** The first-line indentation, under the same rule */
   textIndentPt: number | null;
+  /** What the level puts between the number and the text (`w:suff`) */
+  suffix: LevelSuffix;
+  /** Where the number sits inside the width kept for it (`w:lvlJc`) */
+  align: LevelAlign;
+  /** The formatting the level puts on the number alone (`lvl/rPr`) */
+  run: RunFormat | null;
 }
 
 /**
@@ -101,10 +116,63 @@ export function paragraphMarkers(
         from: spot.pos,
         to: spot.pos + spot.nodeSize,
         text: marker.text,
+        suffix: marker.suffix,
+        align: marker.align,
+        run: marker.run,
         ...markerPlacement(spot.format, marker.indent),
       },
     ];
   });
+}
+
+/**
+ * How much room the number takes before the text begins.
+ *
+ * A tab suffix is the one that keeps a width for the number, the hanging indent wide, so the text
+ * of every item starts at the same place. The other two put the text straight after the number,
+ * with the space among them drawn as part of the marker itself.
+ */
+function markerSpacing(marker: PlacedMarker): string[] {
+  if (marker.suffix === "tab") {
+    return [`${editorCssVariables.markerWidth}:${marker.widthPt}pt`];
+  }
+  return [
+    `${editorCssVariables.markerWidth}:0`,
+    `${editorCssVariables.markerGap}:0`,
+  ];
+}
+
+/**
+ * The character formatting the level puts on its number (§17.9.24).
+ *
+ * It dresses the number and nothing else, so it goes out as variables the rule drawing the number
+ * reads rather than as CSS the paragraph itself wears. The five drawn here are the ones that say
+ * how the number is written; an underline, a strikethrough or a highlight a level asks for is left
+ * undrawn, and numbering.xml goes back out as it came, so nothing of it is lost either way.
+ */
+function markerFormat(run: RunFormat | null): string[] {
+  if (!run) return [];
+  const css: string[] = [];
+  if (run.bold !== undefined) {
+    css.push(
+      `${editorCssVariables.markerFontWeight}:${run.bold ? "bold" : "normal"}`
+    );
+  }
+  if (run.italic !== undefined) {
+    css.push(
+      `${editorCssVariables.markerFontStyle}:${run.italic ? "italic" : "normal"}`
+    );
+  }
+  if (run.color !== undefined) {
+    css.push(`${editorCssVariables.markerColor}:${run.color}`);
+  }
+  if (run.fontSizePt !== undefined) {
+    css.push(`${editorCssVariables.markerFontSize}:${run.fontSizePt}pt`);
+  }
+  if (run.fontFamily !== undefined) {
+    css.push(`${editorCssVariables.markerFontFamily}:${run.fontFamily}`);
+  }
+  return css;
 }
 
 /**
@@ -113,7 +181,10 @@ export function paragraphMarkers(
  * written here wins. That is why indentation the paragraph specified itself is not put in here.
  */
 function markerStyle(marker: PlacedMarker): string {
-  const css = [`${editorCssVariables.markerWidth}:${marker.widthPt}pt`];
+  const css = [...markerSpacing(marker), ...markerFormat(marker.run)];
+  if (marker.align !== "left") {
+    css.push(`${editorCssVariables.markerAlign}:${marker.align}`);
+  }
   if (marker.indentStartPt !== null) {
     css.push(`margin-inline-start:${marker.indentStartPt}pt`);
   }

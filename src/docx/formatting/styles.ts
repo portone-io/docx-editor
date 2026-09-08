@@ -13,6 +13,7 @@ import {
   toRunFormat,
   toTableFormat,
 } from "../../model/format";
+import type { NumberingStyleLinks } from "../../numbering/parseNumbering";
 import { parsePropsXml } from "../../ooxml/props";
 import { ST_OnOff } from "../../ooxml/simpleTypes";
 import { childValue, isOn, wAttr } from "../../ooxml/units";
@@ -278,6 +279,23 @@ export function readStyles(
     table.set(id, foldChain(styleChain(id, sources), themeFonts));
   }
   return table;
+}
+
+/**
+ * The list each numbering style names.
+ *
+ * A numbering style carries its list in the `w:numPr` of its paragraph properties, and that is the
+ * only way a numbering definition deferring to a style (`w:numStyleLink`) finds the levels it
+ * draws. A style naming no list, or naming the empty list `w:numId` 0, links to nothing.
+ */
+export function numberingStyleLinks(styles: StyleTable): NumberingStyleLinks {
+  const links = new Map<string, number>();
+  for (const [id, format] of styles) {
+    if (format.type !== "numbering") continue;
+    const numId = format.paragraph.numbering?.numId;
+    if (numId !== undefined) links.set(id, numId);
+  }
+  return links;
 }
 
 /** Whether the style is the one OOXML applies to every object of its kind that points at no style */
