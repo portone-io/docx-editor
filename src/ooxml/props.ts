@@ -10,6 +10,7 @@ import { childOrderOf } from "./childOrder";
 import { attrsText, emptyTagXml, type XmlAttr } from "./element";
 import { wName } from "./names";
 import { parseAttrs, readTag, type Tag } from "./tagScan";
+import { childValue } from "./units";
 import { elementChildren, localPart, namespaceDecls, parseXml } from "./xml";
 
 export interface PropsChild {
@@ -396,4 +397,29 @@ export function parsePropsXml(xml: string): Element | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * The style ids already read out of a formatting fragment.
+ *
+ * The toolbar decides the style of every selected paragraph on each render, and parsing the same
+ * fragment over and over is the whole cost of that. The fragment text is the key, so one fragment
+ * is parsed once however many paragraphs share it.
+ */
+const styleIdsByPPr = new Map<string, string | null>();
+
+/** Past this many fragments the table is dropped rather than grown for as long as the page lives */
+const STYLE_ID_CACHE_LIMIT = 2000;
+
+/** The style name the paragraph formatting XML points at. null if it points at none */
+export function styleIdOf(pPr: unknown): string | null {
+  // Paragraphs that point at a style are rare, so we screen them out first with a cheap string check
+  if (typeof pPr !== "string" || !pPr.includes("pStyle")) return null;
+  const known = styleIdsByPPr.get(pPr);
+  if (known !== undefined) return known;
+  const el = parsePropsXml(pPr);
+  const id = el ? childValue(el, "pStyle") : null;
+  if (styleIdsByPPr.size >= STYLE_ID_CACHE_LIMIT) styleIdsByPPr.clear();
+  styleIdsByPPr.set(pPr, id);
+  return id;
 }
