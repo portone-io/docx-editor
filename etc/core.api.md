@@ -496,7 +496,7 @@ export interface XmlParser {
 
 // Warnings were encountered during analysis:
 //
-// dist/docx/commentOnlyChange.d.ts:50:5 - (ae-forgotten-export) The symbol "EditableComments" needs to be exported by the entry point core.d.ts
+// dist/docx/commentOnlyChange.d.ts:52:5 - (ae-forgotten-export) The symbol "EditableComments" needs to be exported by the entry point core.d.ts
 
 // (No @packageDocumentation comment for this package)
 

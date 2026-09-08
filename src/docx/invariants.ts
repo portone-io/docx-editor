@@ -20,6 +20,7 @@ import {
   withXmlParser,
 } from "../ooxml/xml";
 import { visitPreservedFragments } from "../schema/preservedFragments";
+import { unattributedCommentAuthors } from "../schema/protection";
 import {
   commentReferencesIn,
   commentsChanged,
@@ -271,7 +272,8 @@ function addsCommentsPart(doc: PMNode, session: SessionStore): boolean {
       session.comments.people.xml === null) &&
     unrecordedAuthors(
       currentCommentBodies(references).values(),
-      session.comments.people
+      session.comments.people,
+      unattributedCommentAuthors(session.comments.ordered)
     ).size > 0
   );
 }

@@ -18,7 +18,11 @@ import {
   withXmlParser,
   type XmlParser,
 } from "../ooxml/xml";
-import type { EditableComments, EditingProtection } from "../schema/protection";
+import {
+  type EditableComments,
+  type EditingProtection,
+  unattributedCommentAuthors,
+} from "../schema/protection";
 import { type DocxBytes, importDocx } from "./importDocx";
 import { CONTENT_TYPES_PATH } from "./packageParts";
 import {
@@ -91,14 +95,17 @@ export interface StoryPartKind {
   /**
    * Permission alone: whether `authorId` may have written (`original === null`) or rewritten this
    * entry under `options`. `session` is the submission's, so a kind can look across at a sibling
-   * part, the way a comment's author resolves through the people part.
+   * part, the way a comment's author resolves through the people part. `unattributed` is the
+   * display names the file that arrived writes comments under while recording nobody for them,
+   * which is what an entry claiming no identity is held against.
    */
   allowed(
     entry: Element,
     original: Element | null,
     authorId: string,
     options: PolicyOptions,
-    session: SessionStore
+    session: SessionStore,
+    unattributed: ReadonlySet<string>
   ): boolean;
 }
 
@@ -383,6 +390,9 @@ function partKept(
   if (submitted === null) return false;
   if (!kind.rootKept(before.session, after.session)) return false;
 
+  const unattributed = unattributedCommentAuthors(
+    before.session.comments.ordered
+  );
   const stoodBehindNow = kind.referents(after);
   for (const [id, entry] of submitted) {
     const original = arrived.get(id);
@@ -396,7 +406,8 @@ function partKept(
         original?.el ?? null,
         authorId,
         options,
-        after.session
+        after.session,
+        unattributed
       )
     ) {
       return false;

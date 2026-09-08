@@ -7,6 +7,7 @@ import {
   commentAdditionsBy,
   commentEditsOwned,
   commentIdentitiesKept,
+  unattributedCommentAuthors,
   withoutComments,
 } from "../../schema/protection";
 import {
@@ -57,7 +58,12 @@ function commentsStoryKept(
   if (!sameBody(before, after)) return refused("body-changed");
   if (
     !commentIdentitiesKept(before.doc, after.doc) ||
-    !commentAdditionsBy(before.doc, after.doc, authorId)
+    !commentAdditionsBy(
+      before.doc,
+      after.doc,
+      authorId,
+      unattributedCommentAuthors(before.session.comments.ordered)
+    )
   ) {
     return refused("comment-author-forged");
   }

@@ -1171,10 +1171,16 @@ describe("the exported package after an edit battery", () => {
     expectPartsValidate("locked existing controls", parts);
   });
 
-  it.each(fixtureNames)("%s: every WordprocessingML part validates", (name) => {
-    const { doc, session } = importDocx(readFixture(name));
-    expectBatteryValidates(name, doc, session);
-  });
+  it.each(fixtureNames)(
+    "%s: every WordprocessingML part validates",
+    (name) => {
+      const { doc, session } = importDocx(readFixture(name));
+      expectBatteryValidates(name, doc, session);
+    },
+    // A whole edit battery per fixture, each export shelled out to xmllint. The largest of them
+    // runs past the default timeout on a loaded runner, and the corpus is the point of the case
+    120_000
+  );
 
   it("keeps a universal table width valid after editing a cell", () => {
     const bytes = makeDocx(

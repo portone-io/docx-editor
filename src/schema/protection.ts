@@ -291,31 +291,77 @@ export function protectionAllows(
 }
 
 /**
- * Whether every comment and reply that appeared between the two documents was written under this
- * identity, and every one that was already there kept the identity it was written under. The
- * editor takes an addition from anyone, since it writes the author itself; a server taking a file
- * back does not, since the file could claim any author.
+ * The display names these comment bodies write under while recording nobody for them.
+ *
+ * A name here is one no comment in the file can be attributed through, so a comment that appears
+ * under it names no more of a person than the ones already there do.
+ */
+export function unattributedCommentAuthors(
+  bodies: Iterable<{ author: string | null; authorId: string | null }>
+): ReadonlySet<string> {
+  const names = new Set<string>();
+  for (const body of bodies) {
+    if (body.authorId === null && body.author !== null) names.add(body.author);
+  }
+  return names;
+}
+
+/**
+ * Whether a comment or reply that appeared is one this author was in a position to write.
+ *
+ * One carrying this identity is, since a file can claim any author and only the requester's own
+ * identity vouches for itself. So is one carrying no identity at all under a name the original
+ * already holds unattributed: the writer records no person for such a name, precisely so that the
+ * comments already written under it are not handed to whoever comments next (`docx/comments/people`),
+ * and a submission the writer produced has to be one the verifier takes. Such a comment claims
+ * nobody and stays everyone's to edit, and the name it shows was already in the file.
+ */
+export function commentAdditionAllowed(
+  added: { author: string | null; authorId: string | null },
+  authorId: string,
+  unattributed: ReadonlySet<string>
+): boolean {
+  if (added.authorId !== null) return added.authorId === authorId;
+  return added.author !== null && unattributed.has(added.author);
+}
+
+/**
+ * Whether every comment and reply that appeared between the two documents was one this identity
+ * could have written, and every one that was already there kept the identity it was written under.
+ * The editor takes an addition from anyone, since it writes the author itself; a server taking a
+ * file back does not, since the file could claim any author.
  */
 export function commentAdditionsBy(
   before: PMNode,
   after: PMNode,
-  authorId: string
+  authorId: string,
+  unattributed?: ReadonlySet<string>
 ): boolean {
   if (!commentIdentitiesKept(before, after)) return false;
   const was = threadsIn(before);
+  // A package verifier also supplies names from preserved Comments-part entries, which have no
+  // reference node in the editable story but share the same people-part identity lookup.
+  const names =
+    unattributed ??
+    unattributedCommentAuthors(
+      Array.from(was.values()).flatMap((thread) => [
+        thread,
+        ...thread.replies.values(),
+      ])
+    );
+  const allowed = (added: CommentBody) =>
+    commentAdditionAllowed(added, authorId, names);
   for (const [id, thread] of threadsIn(after)) {
     const earlier = was.get(id);
     if (earlier === undefined) {
-      if (thread.authorId !== authorId) return false;
+      if (!allowed(thread)) return false;
       for (const reply of thread.replies.values()) {
-        if (reply.authorId !== authorId) return false;
+        if (!allowed(reply)) return false;
       }
       continue;
     }
     for (const [replyId, reply] of thread.replies) {
-      if (!earlier.replies.has(replyId) && reply.authorId !== authorId) {
-        return false;
-      }
+      if (!earlier.replies.has(replyId) && !allowed(reply)) return false;
     }
   }
   return true;

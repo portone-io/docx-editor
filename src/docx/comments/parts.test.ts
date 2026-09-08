@@ -255,6 +255,9 @@ describe("the shape this editor writes", () => {
 });
 
 describe("who may have written an entry", () => {
+  /** The names a document already comments under while recording nobody for them */
+  const NAMED_BY_NOBODY: ReadonlySet<string> = new Set(["Nobody's"]);
+
   const people = {
     partPath: "word/people.xml",
     xml: null,
@@ -268,8 +271,29 @@ describe("who may have written an entry", () => {
   it("takes a comment that appeared under this author's name", () => {
     const entry = comment('w:id="0" w:author="Mine"', BODY);
 
-    expect(entryAllowed(entry, null, "me", "own", people)).toBe(true);
-    expect(entryAllowed(entry, null, "other", "own", people)).toBe(false);
+    expect(
+      entryAllowed(entry, null, "me", "own", people, NAMED_BY_NOBODY)
+    ).toBe(true);
+    expect(
+      entryAllowed(entry, null, "other", "own", people, NAMED_BY_NOBODY)
+    ).toBe(false);
+  });
+
+  it("takes a comment that appeared naming nobody, under a name the original already leaves unattributed", () => {
+    const named = comment('w:id="0" w:author="Nobody\'s"', BODY);
+    const stranger = comment('w:id="0" w:author="Passing"', BODY);
+
+    // No person is recorded for either name, so both resolve to no identity here. What tells them
+    // apart is that the original already showed one of them and never showed the other
+    expect(
+      entryAllowed(named, null, "me", "own", NO_PEOPLE, NAMED_BY_NOBODY)
+    ).toBe(true);
+    expect(
+      entryAllowed(stranger, null, "me", "own", NO_PEOPLE, NAMED_BY_NOBODY)
+    ).toBe(false);
+    expect(entryAllowed(named, null, "me", "own", NO_PEOPLE, new Set())).toBe(
+      false
+    );
   });
 
   it("allows a moderator's rewrite of another author's body under all", () => {
@@ -279,8 +303,12 @@ describe("who may have written an entry", () => {
       '<w:p><w:r><w:t xml:space="preserve">rewritten</w:t></w:r></w:p>'
     );
 
-    expect(entryAllowed(rewritten, original, "me", "own", people)).toBe(false);
-    expect(entryAllowed(rewritten, original, "me", "all", people)).toBe(true);
+    expect(
+      entryAllowed(rewritten, original, "me", "own", people, NAMED_BY_NOBODY)
+    ).toBe(false);
+    expect(
+      entryAllowed(rewritten, original, "me", "all", people, NAMED_BY_NOBODY)
+    ).toBe(true);
   });
 
   it("refuses a rewritten w:author or w:date on an entry that arrived, under all too", () => {
@@ -294,12 +322,12 @@ describe("who may have written an entry", () => {
       'w:id="1" w:author="Mine" w:date="2020-01-01T00:00:00Z"',
     ]) {
       const rewritten = comment(attrs, BODY);
-      expect(entryAllowed(rewritten, original, "me", "own", people)).toBe(
-        false
-      );
-      expect(entryAllowed(rewritten, original, "me", "all", people)).toBe(
-        false
-      );
+      expect(
+        entryAllowed(rewritten, original, "me", "own", people, NAMED_BY_NOBODY)
+      ).toBe(false);
+      expect(
+        entryAllowed(rewritten, original, "me", "all", people, NAMED_BY_NOBODY)
+      ).toBe(false);
     }
   });
 
@@ -314,7 +342,14 @@ describe("who may have written an entry", () => {
 
     // Settling a comment for the first time is where the key gets written
     expect(
-      entryAllowed(threaded("11111111"), threaded(null), "me", "own", people)
+      entryAllowed(
+        threaded("11111111"),
+        threaded(null),
+        "me",
+        "own",
+        people,
+        NAMED_BY_NOBODY
+      )
     ).toBe(true);
     expect(
       entryAllowed(
@@ -322,7 +357,8 @@ describe("who may have written an entry", () => {
         threaded("11111111"),
         "me",
         "all",
-        people
+        people,
+        NAMED_BY_NOBODY
       )
     ).toBe(false);
   });
@@ -335,13 +371,39 @@ describe("who may have written an entry", () => {
           "</w15:person>"
       );
 
-    expect(entryAllowed(person("me"), null, "me", "own", NO_PEOPLE)).toBe(true);
-    expect(entryAllowed(person("other"), null, "me", "own", NO_PEOPLE)).toBe(
-      false
-    );
+    expect(
+      entryAllowed(person("me"), null, "me", "own", NO_PEOPLE, NAMED_BY_NOBODY)
+    ).toBe(true);
+    expect(
+      entryAllowed(
+        person("me"),
+        null,
+        "me",
+        "own",
+        NO_PEOPLE,
+        new Set(["Mine"])
+      )
+    ).toBe(false);
+    expect(
+      entryAllowed(
+        person("other"),
+        null,
+        "me",
+        "own",
+        NO_PEOPLE,
+        NAMED_BY_NOBODY
+      )
+    ).toBe(false);
     // An identity already recorded is nobody's to rewrite, its own subject included
     expect(
-      entryAllowed(person("me"), person("other"), "me", "all", NO_PEOPLE)
+      entryAllowed(
+        person("me"),
+        person("other"),
+        "me",
+        "all",
+        NO_PEOPLE,
+        NAMED_BY_NOBODY
+      )
     ).toBe(false);
   });
 
@@ -356,7 +418,8 @@ describe("who may have written an entry", () => {
         original,
         "me",
         "own",
-        NO_PEOPLE
+        NO_PEOPLE,
+        NAMED_BY_NOBODY
       )
     ).toBe(true);
     expect(
@@ -365,7 +428,8 @@ describe("who may have written an entry", () => {
         original,
         "me",
         "own",
-        NO_PEOPLE
+        NO_PEOPLE,
+        NAMED_BY_NOBODY
       )
     ).toBe(false);
   });

@@ -43,9 +43,11 @@ export type CommentOnlyVerdict =
  * has to read as it did, comments aside. Those three parts are read entry by entry instead
  * (`./comments/policy`), since a comment edit is free to rewrite them and something has to say
  * what it may have written there. A comment carrying no recorded identity is everyone's to
- * edit here as it is in the editor (`schema/protection`), while a comment that appeared has to
- * carry this identity: a file can claim any author, and the editor's own hand in writing it is
- * not there to vouch for it. An identity already recorded is nobody's to rewrite.
+ * edit here as it is in the editor (`schema/protection`). A comment that appeared carries this
+ * identity, or none under a name an original comment already carried unattributed, including a
+ * preserved comment outside the editable story. A file can claim any author, so an addition under
+ * any other name must carry the requester's identity. An identity already recorded is nobody's
+ * to rewrite, and a new identity cannot claim an original unattributed comment.
  *
  * `editableComments: "all"` judges the file of an editor opened for a moderator, where every
  * comment was theirs to edit; an identity is nobody's to rewrite under either setting.
