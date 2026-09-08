@@ -1,4 +1,4 @@
-/** Reads the first section's header and footer stories for the page preview. */
+/** Resolves the header and footer stories one section refers to, for the page preview. */
 
 import type { ParagraphAlign } from "../model/format";
 import { ALIGN_BY_JC, isOnElement } from "../ooxml/units";
@@ -13,8 +13,12 @@ import {
 import { runContentText } from "./importPolicy";
 import { relatedPartPath } from "./packageParts";
 import { readRelationships, relsPathOf, resolveTarget } from "./relationships";
+import {
+  HEADER_FOOTER_VARIANTS,
+  type HeaderFooterRefs,
+  type SectionProperties,
+} from "./sections";
 
-export type HeaderFooterVariant = "default" | "first" | "even";
 export type PageField = "PAGE" | "NUMPAGES";
 
 export type HeaderFooterSegment =
@@ -54,15 +58,6 @@ export const NO_HEADERS_FOOTERS: HeadersFooters = {
   evenAndOdd: false,
   pageNumberStart: 1,
 };
-
-function firstSectPrIn(root: Element): Element | null {
-  const namespaced = root.getElementsByTagNameNS(W_NS, "sectPr").item(0);
-  if (namespaced) return namespaced;
-  for (const el of root.getElementsByTagName("*")) {
-    if (el.localName === "sectPr") return el;
-  }
-  return null;
-}
 
 function pageField(instruction: string): PageField | null {
   const name = instruction.trim().split(/\s+/, 1)[0]?.toUpperCase();
@@ -200,10 +195,11 @@ function settingsEvenAndOdd(
   return isOnElement(setting);
 }
 
+/** The story each variant of the section refers to, as far as the package actually holds one */
 function readVariants(
   parts: Map<string, Uint8Array>,
   mainPartPath: string,
-  sectPr: Element,
+  refs: HeaderFooterRefs,
   kind: "header" | "footer"
 ): HeaderFooterVariants {
   const relationships = new Map(
@@ -213,14 +209,9 @@ function readVariants(
     ])
   );
   const variants: HeaderFooterVariants = { ...EMPTY_VARIANTS };
-  for (const reference of elementChildren(sectPr)) {
-    if (reference.localName !== `${kind}Reference`) continue;
-    const type = attributeByLocalName(reference, "type") ?? "default";
-    if (type !== "default" && type !== "first" && type !== "even") continue;
-    const id =
-      reference.getAttributeNS(R_NS, "id") ??
-      attributeByLocalName(reference, "id");
-    if (!id) continue;
+  for (const variant of HEADER_FOOTER_VARIANTS) {
+    const id = refs[variant];
+    if (id === null) continue;
     const relationship = relationships.get(id);
     if (
       !relationship ||
@@ -230,38 +221,29 @@ function readVariants(
       continue;
     }
     const bytes = parts.get(resolveTarget(mainPartPath, relationship.target));
-    if (bytes) variants[type] = readContent(bytes);
+    if (bytes) variants[variant] = readContent(bytes);
   }
   return variants;
 }
 
-function pageNumberStart(sectPr: Element): number {
-  const pgNumType = elementChildren(sectPr).find(
-    (child) => child.localName === "pgNumType"
-  );
-  const declared = pgNumType ? attributeByLocalName(pgNumType, "start") : null;
-  if (declared === null) return 1;
-  const start = Number(declared);
-  return Number.isSafeInteger(start) && start >= 0 ? start : 1;
-}
-
-/** Reads the first section's display stories and section-level selection switches. */
+/**
+ * Reads the display stories one section refers to, and the switches that pick between them.
+ *
+ * The section itself has already been read (`./sections`), so what is left here is resolving each
+ * reference to a part of the package. `w:evenAndOddHeaders` is a document-wide setting rather than
+ * a section's own, so it is read from settings.xml instead.
+ */
 export function readHeadersFooters(
   parts: Map<string, Uint8Array>,
   mainPartPath: string,
-  body: Element
+  props: SectionProperties
 ): HeadersFooters {
-  const sectPr = firstSectPrIn(body);
-  if (!sectPr) return NO_HEADERS_FOOTERS;
   return {
-    headers: readVariants(parts, mainPartPath, sectPr, "header"),
-    footers: readVariants(parts, mainPartPath, sectPr, "footer"),
-    firstPageDifferent: isOnElement(
-      elementChildren(sectPr).find((child) => child.localName === "titlePg") ??
-        null
-    ),
+    headers: readVariants(parts, mainPartPath, props.headerRefs, "header"),
+    footers: readVariants(parts, mainPartPath, props.footerRefs, "footer"),
+    firstPageDifferent: props.titlePg,
     evenAndOdd: settingsEvenAndOdd(parts, mainPartPath),
-    pageNumberStart: pageNumberStart(sectPr),
+    pageNumberStart: props.pageNumberStart ?? 1,
   };
 }
 

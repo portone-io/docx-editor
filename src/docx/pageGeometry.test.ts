@@ -21,18 +21,19 @@ import {
   bodyWidth,
   bodyWidthTwips,
   type PageGeometry,
-  readBodyGeometry,
+  readPageGeometry,
 } from "./pageGeometry";
+import { firstSectPrElement } from "./sections";
 
 function bodyWith(sectPr: string): string {
   return `<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p/>${sectPr}</w:body></w:document>`;
 }
 
-/** The reading as the importer does it: off the body of a document already parsed */
+/** The reading as the importer does it: off the first section of a document already parsed */
 function geometryOf(documentXml: string): PageGeometry {
   const body = childByLocalName(parseXml(documentXml).documentElement, "body");
   if (!body) throw new Error("the document has no body");
-  return readBodyGeometry(body);
+  return readPageGeometry(firstSectPrElement(body));
 }
 
 describe("the page geometry a document lays down", () => {

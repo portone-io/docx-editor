@@ -38,7 +38,7 @@ import {
   readParagraphStyles,
   styledParagraph,
 } from "./formatting";
-import { readHeadersFooters } from "./headersFooters";
+import { NO_HEADERS_FOOTERS, readHeadersFooters } from "./headersFooters";
 import { readLinkTargets } from "./hyperlink";
 import { buildParagraph, type ImportSources } from "./importParagraph";
 import { buildPreservedBlock } from "./importPreserved";
@@ -47,9 +47,10 @@ import { readImageSources } from "./media";
 import { NUMBERING_REL_TYPE } from "./newLists";
 import { readNotes } from "./notes";
 import { readPart, relatedPartPath } from "./packageParts";
-import { readBodyGeometry } from "./pageGeometry";
+import { A4_PORTRAIT } from "./pageGeometry";
 import { readRelationships } from "./relationships";
 import { type BodyScan, scanBody } from "./scan";
+import { firstSectPrElement, readSectionProperties } from "./sections";
 import {
   BODY_STORY_KEY,
   blockKey,
@@ -257,7 +258,9 @@ function readDocx(input: DocxBytes): {
   const children = elementChildren(body);
   assertScanMatchesDom(children, scanned);
 
-  const geometry = readBodyGeometry(body);
+  const firstSectPr = firstSectPrElement(body);
+  const firstSection = firstSectPr ? readSectionProperties(firstSectPr) : null;
+  const geometry = firstSection?.geometry ?? A4_PORTRAIT;
   const scan = foldTrailingSectPr(scanned);
   const blockElements = children.slice(0, scan.blocks.length);
 
@@ -307,7 +310,9 @@ function readDocx(input: DocxBytes): {
     labels.set(id, label);
     return label;
   };
-  const headersFooters = readHeadersFooters(parts, mainPartPath, body);
+  const headersFooters = firstSection
+    ? readHeadersFooters(parts, mainPartPath, firstSection)
+    : NO_HEADERS_FOOTERS;
   const sources: ImportSources = {
     images: readImageSources(parts, mainPartPath),
     themeFonts,

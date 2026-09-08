@@ -15,8 +15,8 @@
 
 import type { Attrs, Node as PMNode } from "prosemirror-model";
 import { attrsText, withoutAttrs } from "../ooxml/element";
-import { parseProps, renderProps, setChild } from "../ooxml/props";
 import { parseAttrs } from "../ooxml/tagScan";
+import { withoutSectionBreak } from "./sections";
 
 /** Which half of a split the clone becomes, or a free-standing copy */
 export type CloneSide = "before" | "after" | "copy";
@@ -62,21 +62,9 @@ export function withoutParagraphIds(value: unknown): unknown {
   return kept.length === 0 ? null : attrsText(kept);
 }
 
-/**
- * The paragraph properties without the section break, and null for properties left holding nothing
- * at all.
- *
- * `parseProps` lists direct children alone, so the `w:sectPr` inside a `w:pPrChange` - the
- * properties this paragraph wore before a tracked change - is not this paragraph's own break and
- * stays where it stands.
- */
-function withoutSectionBreak(value: unknown): unknown {
-  if (typeof value !== "string") return value;
-  const props = parseProps(value);
-  if (props === null) return value;
-  const without = setChild(props, "sectPr", null);
-  if (without.children.length === props.children.length) return value;
-  return renderProps(without) || null;
+/** The properties as `./sections` leaves them once the break is gone. A value that is not text is nothing this rewrites */
+function droppingSectionBreak(value: unknown): unknown {
+  return typeof value === "string" ? withoutSectionBreak(value) : value;
 }
 
 /**
@@ -136,7 +124,7 @@ export const CLONE_POLICIES: Readonly<
       // paragraph ends up last in that section: the second half of a split, and no half of a copy,
       // which is lifted out of the section it was taken from.
       pPr: (value, side) =>
-        side === "after" ? value : withoutSectionBreak(value),
+        side === "after" ? value : droppingSectionBreak(value),
       // What names the block this paragraph was opened from. Only the half still standing where
       // that block stood may go on claiming it; `docx/exportDocx` writes the original bytes back
       // for whatever claims one.

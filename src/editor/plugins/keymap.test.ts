@@ -142,6 +142,27 @@ describe("the break shortcuts", () => {
   );
 });
 
+describe("Enter", () => {
+  /** A section closed by the paragraph the caret sits in, which is where §17.6.17 puts one */
+  const SECT_PR = '<w:sectPr><w:pgSz w:w="12240" w:h="15840"/></w:sectPr>';
+
+  const sectionBreaksIn = (state: EditorState, index: number) =>
+    serializeParagraph(state.doc.child(index)).match(/<w:sectPr[ />]/g) ?? [];
+
+  it("leaves the break on the later paragraph at the end of a section", () => {
+    const body =
+      `<w:p><w:pPr>${SECT_PR}</w:pPr>` +
+      '<w:r><w:t xml:space="preserve">abcd</w:t></w:r></w:p>' +
+      "<w:p/>";
+    const state = createEditorState(importDocx(makeDocx(body)).doc);
+    const split = runCommand(select(state, 5), docxKeymap.Enter);
+
+    expect(split.doc.childCount).toBe(3);
+    expect(sectionBreaksIn(split, 0)).toEqual([]);
+    expect(sectionBreaksIn(split, 1)).toEqual(["<w:sectPr>"]);
+  });
+});
+
 describe("Tab", () => {
   it("inserts a document tab in an ordinary paragraph", () => {
     const next = runCommand(select(opened("abcd"), 3), docxKeymap.Tab);
