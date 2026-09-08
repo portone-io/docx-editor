@@ -134,6 +134,8 @@ export function createEditorState(
       rowResize(),
       tableEditing(),
       // Comment anchors live in the model; this paints their ranges without changing document XML.
+      // The list beside the page, the lookup the comment commands ask, and these ranges are the
+      // one walk this plugin holds (`plugins/commentDecorations`)
       commentDecorations(),
       // Adjacent text tabs still need separate DOM ranges for layout and pointer selection.
       tabDecorations(),
