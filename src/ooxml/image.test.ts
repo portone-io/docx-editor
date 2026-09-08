@@ -21,6 +21,31 @@ function drawing(xml: string): Element {
     .documentElement;
 }
 
+/**
+ * A picture inside a group shape. The group states a transform of its own, written before
+ * the picture's, so a resize that went by the first transform in the drawing would move
+ * the group's frame and leave the picture's where it was.
+ */
+const GROUPED_DRAWING =
+  '<w:drawing xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"' +
+  ' xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"' +
+  ' xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"' +
+  ' xmlns:wpg="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup"' +
+  ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+  '<wp:inline distT="0" distB="0" distL="0" distR="0">' +
+  '<wp:extent cx="1905000" cy="952500"/>' +
+  '<wp:docPr id="4" name="Group 1"/>' +
+  '<a:graphic><a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingGroup">' +
+  "<wpg:wgp><wpg:cNvGrpSpPr/>" +
+  '<wpg:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="1905000" cy="952500"/>' +
+  '<a:chOff x="0" y="0"/><a:chExt cx="1905000" cy="952500"/></a:xfrm></wpg:grpSpPr>' +
+  '<pic:pic><pic:nvPicPr><pic:cNvPr id="1" name="Picture 1"/><pic:cNvPicPr/></pic:nvPicPr>' +
+  '<pic:blipFill><a:blip r:embed="rId7"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>' +
+  '<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="952500" cy="476250"/></a:xfrm>' +
+  '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>' +
+  "</pic:pic></wpg:wgp></a:graphicData></a:graphic>" +
+  "</wp:inline></w:drawing>";
+
 describe("reading a drawing", () => {
   it("reads an inline picture", () => {
     const picture = readDrawingPicture(
@@ -53,6 +78,14 @@ describe("reading a drawing", () => {
     expect(
       readDrawingPicture(drawing(inlineDrawingXml({ linked: true })))
     ).toBe(null);
+  });
+
+  /**
+   * The group's own transform is the reason this matters: a grouped picture that got as
+   * far as a resize would have its group frame rewritten instead of its own
+   */
+  it("does not read a picture inside a group", () => {
+    expect(readDrawingPicture(drawing(GROUPED_DRAWING))).toBe(null);
   });
 
   it("does not read a picture with no size to draw it at", () => {
