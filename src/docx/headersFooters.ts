@@ -1,6 +1,6 @@
 /**
  * The header and footer stories of a document: where each one is written, which section shows it,
- * and what it reads as on a given page.
+ * what it reads as on a given page, and where an edited one goes back out.
  *
  * A header part is a story of the same schema as the body (`./story`): its blocks are read by the
  * same readers and sliced verbatim by the same scanner, so an edit to one rides a transaction and
@@ -13,19 +13,29 @@
 
 import type { Node as PMNode } from "prosemirror-model";
 import { type ParagraphAlign, toParagraphFormat } from "../model/format";
+import { NAMESPACES } from "../ooxml/names";
+import {
+  ensureRootDeclarations,
+  type RootDeclarations,
+} from "../ooxml/partSplice";
 import { isOnElement } from "../ooxml/units";
-import { decodeUtf8, parseXml, R_NS, W_NS } from "../ooxml/xml";
+import { decodeUtf8, encodeUtf8, parseXml, R_NS, W_NS } from "../ooxml/xml";
 import { docxSchema } from "../schema";
 import { isPreservedNode } from "../schema/preservedFragments";
-import { type StoryKey, storyKey } from "../schema/stories";
+import { sameSource } from "../schema/sourceEquality";
+import { type StoryKey, storyKey, storyNodeOf } from "../schema/stories";
+import { NO_EXPORT_REFS } from "./exportRefs";
 import { type FieldSpan, fieldSpans, isFieldCharacter } from "./fields";
 import { relatedPartPath } from "./packageParts";
+import type { PartPlanner } from "./partPlan";
 import { readRelationships, relsPathOf, resolveTarget } from "./relationships";
 import {
   type DocumentSection,
   HEADER_FOOTER_VARIANTS,
   type HeaderFooterRefs,
 } from "./sections";
+import { serializeStory } from "./serializeStory";
+import type { SessionStore } from "./session";
 import { type ImportedStory, readStory, type StoryDeps } from "./story";
 
 /** One story a section may show, as the document currently says it */
@@ -305,3 +315,46 @@ export function headerFooterText(
   });
   return lines.join("\n");
 }
+
+/**
+ * What a header this editor rewrote has to declare: every block it writes is spelled under `w`, so
+ * the part's root binds it rather than each block declaring it again. A part that already binds it
+ * - which every one Word writes does - is left exactly as it stands.
+ */
+const HEADER_MARKUP: RootDeclarations = { namespaces: { w: NAMESPACES.w } };
+
+/** Every header and footer part whose story the document no longer says as the package said it */
+function rewrittenParts(
+  doc: PMNode,
+  session: SessionStore
+): ReadonlyMap<string, Uint8Array> | null {
+  const parts = new Map<string, Uint8Array>();
+  for (const [key, imported] of session.stories) {
+    if (imported.kind !== "header" && imported.kind !== "footer") continue;
+    const current = storyNodeOf(doc, key);
+    if (current === null || sameSource(current, imported.doc)) continue;
+    const written = serializeStory(current, imported, imported, {
+      ...NO_EXPORT_REFS,
+      session,
+    });
+    const hadBom = decodeUtf8(
+      session.parts.get(imported.partPath) ?? new Uint8Array()
+    ).hadBom;
+    parts.set(
+      imported.partPath,
+      encodeUtf8(ensureRootDeclarations(written, HEADER_MARKUP), hadBom)
+    );
+  }
+  return parts.size === 0 ? null : parts;
+}
+
+/**
+ * Writes back the header and footer parts an edit changed, and no others.
+ *
+ * A story nobody touched is not written at all, so a document opened and exported hands every
+ * header part back as the bytes it arrived as, and editing one header leaves the rest untouched.
+ */
+export const headerFooterPlanner: PartPlanner = {
+  name: "headers and footers",
+  plan: (doc, session) => rewrittenParts(doc, session),
+};

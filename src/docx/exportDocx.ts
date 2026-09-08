@@ -34,6 +34,7 @@ import {
   type FidelityNote,
   fidelityNotesOf,
 } from "./fidelity";
+import { headerFooterPlanner } from "./headersFooters";
 import { hyperlinkRefs } from "./hyperlink";
 import { withUniqueIdentities } from "./identities";
 import { problemsOf } from "./invariants";
@@ -150,6 +151,7 @@ const LINK_MARKUP: RootDeclarations = { namespaces: { r: R_NS } };
 const PART_PLANNERS: readonly PartPlanner[] = [
   numberingPlanner,
   commentsPlanner,
+  headerFooterPlanner,
 ];
 
 /** What a caller may say about a write beyond handing over the document and its session */
