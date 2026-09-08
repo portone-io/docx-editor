@@ -153,10 +153,12 @@ function captionOf(table: HTMLElement): HTMLElement | null {
 }
 
 /**
- * A table the model cannot hold, read as text: one paragraph per row, its cells set apart by the
- * tab that already stands between cells in the plain text of a table (`schema/clipboard`).
+ * A table the model cannot hold where it stands, read as text: one paragraph per row, its cells
+ * set apart by the tab that already stands between cells in the plain text of a table
+ * (`schema/clipboard`).
  *
- * Reading it as nothing would lose the content outright, which is worse than losing the grid.
+ * Reading it as nothing would lose the content outright, which is worse than losing the grid, and
+ * running its cells together would leave text nobody can tell apart.
  */
 function rowParagraphs(
   table: HTMLElement,
@@ -185,13 +187,14 @@ function rowParagraphs(
  * like one the toolbar put there, since nothing of the width a foreign document measured its own
  * paper against would mean the same here.
  *
- * A table inside a cell is not read as a table: the model only makes the outer one editable, so
- * the inner one is left to the reading around it, which takes its text into the cell. A table
- * larger than the model holds is read as its rows, and a caption stands as the paragraph above it.
+ * A table inside a cell is not read as a table, since the model only makes the outer one editable,
+ * and neither is one larger than the model holds. Both are read as their rows instead, so that a
+ * cell of the inner table still stands apart from the next one. A caption stands as the paragraph
+ * above whichever of the two the table is read as.
  */
 export const tableBlockReader: HtmlBlockReader = {
   read: (element, inline, host) => {
-    if (element.tagName !== "TABLE" || host.inTable) return null;
+    if (element.tagName !== "TABLE") return null;
     const inside = contextFor(inline, element);
     const caption = captionOf(element);
     const above =
@@ -202,7 +205,7 @@ export const tableBlockReader: HtmlBlockReader = {
               host.readInline(caption.childNodes, contextFor(inside, caption))
             ),
           ];
-    const grid = gridOf(element);
+    const grid = host.inTable ? null : gridOf(element);
     if (grid === null) {
       return [...above, ...rowParagraphs(element, inside, host)];
     }

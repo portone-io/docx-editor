@@ -356,11 +356,21 @@ describe("reading HTML written by another application", () => {
 
   it("reads a table inside a cell as the text of that cell", () => {
     const doc = pasted(
-      "<table><tr><td>outer<table><tr><td>inner</td></tr></table></td></tr></table>"
+      "<table><tr><td>outer" +
+        "<table><tr><td>i1</td><td>i2</td></tr>" +
+        "<tr><td>i3</td><td>i4</td></tr></table>" +
+        "</td></tr></table>"
     );
 
+    // Only the outer table is editable, and the inner one keeps its cells and rows apart in the
+    // text it is read as rather than running them all together
     expect(nodesOfType(doc, "table")).toHaveLength(1);
-    expect(nodesOfType(doc, "tableCell")[0]?.textContent).toContain("inner");
+    const cell = nodesOfType(doc, "tableCell")[0];
+    expect(cell?.children.map((block) => block.textContent)).toEqual([
+      "outer",
+      "i1\ti2",
+      "i3\ti4",
+    ]);
   });
 
   it("reads Google Docs bold and colored spans into run properties", () => {
