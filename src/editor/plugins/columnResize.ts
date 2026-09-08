@@ -20,7 +20,7 @@ import {
   shiftedTableWidth,
   tableGridCols,
 } from "../../table/widths";
-import { documentGeometry } from "../documentStyles";
+import { sectionGeometryAt } from "../documentStyles";
 import { TableNodeView } from "../views/tableView";
 
 /** Distance (px) that counts as being on an edge. Closer than this the cursor changes, and pressing starts a drag */
@@ -238,7 +238,7 @@ export function columnResize(): Plugin {
         col: current.target.col,
         width: current.width,
       },
-      documentGeometry(current.view.state)
+      sectionGeometryAt(current.view.state, current.target.tablePos)
     );
     if (tr) current.view.dispatch(tr);
   }
@@ -258,7 +258,10 @@ export function columnResize(): Plugin {
     drag = {
       view,
       target,
-      maxTotal: maxGridTotal(target.table, documentGeometry(view.state)),
+      maxTotal: maxGridTotal(
+        target.table,
+        sectionGeometryAt(view.state, target.tablePos)
+      ),
       startX: event.clientX,
       dxaPerPx: dxaPerPx(target.gridCols, target.tableDom),
       cols,

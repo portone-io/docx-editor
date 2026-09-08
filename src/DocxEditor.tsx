@@ -44,7 +44,7 @@ import { tableMenuAnchor } from "./editor/plugins/tableContextMenu";
 import { textMenuAnchor } from "./editor/plugins/textContextMenu";
 import { DocxImportError, type DocxImportErrorCode } from "./ooxml/errors";
 import { PageGuides } from "./page/PageGuides";
-import { A4_PAGE_PIXELS, pagePixels } from "./page/pageLayout";
+import { A4_PAGE_PIXELS, pagePixels, sectionPixels } from "./page/pageLayout";
 import { type PageFace, usePageLayout } from "./page/usePageLayout";
 import type { EditableComments, EditingProtection } from "./schema/protection";
 import { editingProtection, protectionOf } from "./schema/protectionState";
@@ -427,6 +427,8 @@ function DocxEditorSurface(
   const latestOnReady = useLatest(onReady);
   const latestOnChange = useLatest(onChange);
   const selectedZoom = normalizeZoom(zoom ?? uncontrolledZoom);
+  // One sheet is drawn at one paper, the first section's, whatever the sections after it name
+  // (`page/pageLayout`)
   const page =
     opened?.status === "opened"
       ? pagePixels(opened.session.geometry)
@@ -524,45 +526,38 @@ function DocxEditorSurface(
     };
   }, [opened]);
 
-  // The section table is read once per document rather than once per page: reading it walks every
-  // block, and both the layout and the preview ask about it for each page drawn
+  // The section table is read once per document rather than once per page or per measurement:
+  // reading it walks every block, and both the page arithmetic and the preview ask about it for
+  // each page they draw
   const doc = live?.state.doc ?? null;
   const session = opened?.status === "opened" ? opened.session : null;
   const sections = useMemo(
     () => (doc === null ? null : sectionsOf(doc)),
     [doc]
   );
-  const sectionAt = useMemo(() => {
-    if (doc === null || sections === null) return undefined;
-    return (pos: number): number => sectionIn(sections, doc, pos).index;
-  }, [doc, sections]);
+  const sectionPapers = useMemo(
+    () => (sections === null ? undefined : sectionPixels(sections)),
+    [sections]
+  );
 
   const overlay = usePageLayout({
     view: live?.view ?? null,
     layer: layerRef,
     enabled: showPageGuides,
     revision: live?.state.doc,
-    geometry: opened?.status === "opened" ? opened.session.geometry : undefined,
-    sectionAt,
+    sections: sectionPapers,
   });
 
   const headersFootersFor = useMemo(() => {
-    if (
-      doc === null ||
-      sections === null ||
-      sectionAt === undefined ||
-      session === null
-    ) {
-      return undefined;
-    }
+    if (doc === null || session === null || sections === null) return undefined;
     const shown = sections.map((section) =>
       variantsFor(section, session.headerFooterStories, (key) =>
         storyNodeOf(doc, key)
       )
     );
     return (face: PageFace): HeadersFooters | null =>
-      shown[sectionAt(face.pos)] ?? null;
-  }, [doc, sections, sectionAt, session]);
+      shown[sectionIn(sections, doc, face.pos).index] ?? null;
+  }, [doc, session, sections]);
 
   if (opened?.status === "rejected") {
     return renderImportError ? (

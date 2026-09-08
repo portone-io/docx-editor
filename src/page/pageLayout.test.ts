@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { LETTER_GEOMETRY } from "../__testing__/docx";
+import { DEFAULT_SECTION, type DocumentSection } from "../docx/sections";
 import { editorClassNames, editorCssVariables } from "../styles/classNames";
 import type { BreakCandidate } from "./blockKinds";
 import {
@@ -13,6 +14,9 @@ import {
   pageGeometryStyle,
   pageLayout,
   pagePixels,
+  type SectionPixels,
+  sectionPaperAt,
+  sectionPixels,
 } from "./pageLayout";
 
 const PAGE = 1000;
@@ -69,12 +73,52 @@ function rowBoundaries(
   }));
 }
 
+/** One section covering the whole document, on paper 1000 tall with a 200 step between pages */
+const ONE_SECTION: readonly SectionPixels[] = [
+  {
+    untilPos: Number.POSITIVE_INFINITY,
+    pixels: { ...A4_PAGE_PIXELS, bodyHeight: PAGE, pageStep: STEP },
+    type: null,
+  },
+];
+
+/**
+ * The same paper for the two blocks the first section covers, and paper 1600 tall for every
+ * block after them: a landscape section following a portrait one
+ */
+const LANDSCAPE_PAGE = 1600;
+const TWO_SECTIONS: readonly SectionPixels[] = [
+  {
+    untilPos: 10,
+    pixels: { ...A4_PAGE_PIXELS, bodyHeight: PAGE, pageStep: STEP },
+    type: null,
+  },
+  {
+    untilPos: Number.POSITIVE_INFINITY,
+    pixels: { ...A4_PAGE_PIXELS, bodyHeight: LANDSCAPE_PAGE, pageStep: STEP },
+    type: null,
+  },
+];
+
+/**
+ * The same two sections on the same paper, the second one declaring `continuous`: a section that
+ * carries on down the page the one before it ends on (§17.6.22)
+ */
+const CONTINUOUS_SECTIONS: readonly SectionPixels[] = [
+  {
+    untilPos: 10,
+    pixels: { ...A4_PAGE_PIXELS, bodyHeight: PAGE, pageStep: STEP },
+    type: null,
+  },
+  {
+    untilPos: Number.POSITIVE_INFINITY,
+    pixels: { ...A4_PAGE_PIXELS, bodyHeight: PAGE, pageStep: STEP },
+    type: "continuous",
+  },
+];
+
 function layout(list: MeasuredBlock[]) {
-  return pageLayout({
-    blocks: list,
-    pageBodyHeight: PAGE,
-    pageStep: STEP,
-  });
+  return pageLayout({ blocks: list, sections: ONE_SECTION });
 }
 
 describe("pageLayout", () => {
@@ -192,23 +236,36 @@ describe("pageLayout", () => {
   });
 
   it("counts each page again from one at the top of the section it opens", () => {
-    // The second block opens a section of its own and is a page and a half tall, so it crosses
-    // from that section's first page onto its second
+    // The third block opens the landscape section and is taller than its 1600 of body, so it
+    // crosses from that section's first page onto its second
     const result = pageLayout({
-      blocks: blocks(900, 1500),
-      pageBodyHeight: PAGE,
-      pageStep: STEP,
-      sectionAt: (pos) => (pos < 10 ? 0 : 1),
+      blocks: blocks(300, 300, 2000),
+      sections: TWO_SECTIONS,
     });
 
     expect(result.pages.map((page) => [page.pos, page.pageInSection])).toEqual([
       [0, 1],
-      [10, 1],
-      [10, 2],
+      [20, 1],
+      [20, 2],
     ]);
   });
 
-  it("reads a sheet handed no section table as the one section it then is", () => {
+  it("a continuous section does not restart the count on the page it shares", () => {
+    // The third block opens the continuous section partway down page 2, so that page stays with
+    // the section that opened it and only the page after it starts the new section's count
+    const result = pageLayout({
+      blocks: blocks(900, 300, 300, 900),
+      sections: CONTINUOUS_SECTIONS,
+    });
+
+    expect(result.pages.map((page) => [page.pos, page.pageInSection])).toEqual([
+      [0, 1],
+      [10, 2],
+      [30, 1],
+    ]);
+  });
+
+  it("counts every page of a document written in one section", () => {
     expect(
       layout(blocks(900, 300, 900)).pages.map((page) => page.pageInSection)
     ).toEqual([1, 2, 3]);
@@ -495,10 +552,153 @@ describe("pageLayout", () => {
     expect(after.pages).toHaveLength(2);
   });
 
-  it("does nothing for a page height that cannot be measured", () => {
+  it("a landscape second section gets its own body height from its first block", () => {
+    // 300 + 300 fill the first section's page; the 1500 that follows opens the landscape
+    // section, whose 1600 of body holds it whole where the first section's 1000 could not
+    const result = pageLayout({
+      blocks: blocks(300, 300, 1500),
+      sections: TWO_SECTIONS,
+    });
+
+    expect(result.pushes).toEqual([
+      { pos: 20, marginTop: PAGE + STEP - 600, push: PAGE + STEP - 600 },
+    ]);
+    expect(result.splits).toEqual([
+      { y: PAGE, page: 2, forced: true, crossed: false },
+    ]);
+    expect(result.pages).toEqual([
+      { page: 1, bodyStart: 0, pos: 0, pageInSection: 1, crossed: false },
+      {
+        page: 2,
+        bodyStart: PAGE + STEP,
+        pos: 20,
+        pageInSection: 1,
+        crossed: false,
+      },
+    ]);
+    // The last page is filled out on the paper it opens with, which is the landscape one
+    expect(result.bodyHeight).toBe(PAGE + STEP + LANDSCAPE_PAGE);
+  });
+
+  it("a section starts a new page even where its first block would have fitted", () => {
+    const result = pageLayout({
+      blocks: blocks(300, 300, 100),
+      sections: TWO_SECTIONS,
+    });
+
+    expect(result.pushes.map((push) => push.pos)).toEqual([20]);
+    expect(result.pages).toHaveLength(2);
+    expect(result.splits[0]?.forced).toBe(true);
+  });
+
+  it("a boundary between two sections keeps the margin of each page at it", () => {
+    // The page that ends keeps its own bottom margin and the page that opens its own top margin,
+    // so the step across the boundary is neither section's own step
+    const margins: readonly SectionPixels[] = [
+      {
+        untilPos: 0,
+        pixels: {
+          ...A4_PAGE_PIXELS,
+          bodyHeight: PAGE,
+          pageStep: STEP,
+          marginTop: 20,
+        },
+        type: null,
+      },
+      {
+        untilPos: Number.POSITIVE_INFINITY,
+        pixels: {
+          ...A4_PAGE_PIXELS,
+          bodyHeight: LANDSCAPE_PAGE,
+          pageStep: 999,
+          marginTop: 60,
+        },
+        type: null,
+      },
+    ];
+    const across = PAGE + STEP - 20 + 60;
+    const result = pageLayout({ blocks: blocks(300, 300), sections: margins });
+
+    expect(result.pages[1]?.bodyStart).toBe(across);
+    expect(result.pushes).toEqual([
+      { pos: 10, marginTop: across - 300, push: across - 300 },
+    ]);
+  });
+
+  it("a continuous section carries on down the page instead of opening one", () => {
+    // The same blocks that open a page at the boundary when the section starts on a new page
+    const result = pageLayout({
+      blocks: blocks(300, 300, 100),
+      sections: CONTINUOUS_SECTIONS,
+    });
+
+    expect(result.pushes).toEqual([]);
+    expect(result.splits).toEqual([]);
+    expect(result.pages).toHaveLength(1);
+  });
+
+  it("a keep reaches across a continuous boundary, which opens no page to close", () => {
+    const result = pageLayout({
+      blocks: blocks(900, { height: 50, keepWithNext: true }, 100),
+      sections: CONTINUOUS_SECTIONS,
+    });
+
+    // The kept block goes down with what it is kept with, rather than the boundary pushing the
+    // block after it on its own
+    expect(result.pushes.map((push) => push.pos)).toEqual([10]);
+    expect(result.pages).toHaveLength(2);
+  });
+
+  it("leaves the sheet the bottom margin of the page the document ends on", () => {
+    const deeper: readonly SectionPixels[] = [
+      {
+        untilPos: 10,
+        pixels: { ...A4_PAGE_PIXELS, bodyHeight: PAGE, marginBottom: 10 },
+        type: null,
+      },
+      {
+        untilPos: Number.POSITIVE_INFINITY,
+        pixels: { ...A4_PAGE_PIXELS, bodyHeight: PAGE, marginBottom: 90 },
+        type: null,
+      },
+    ];
+
     expect(
-      pageLayout({ blocks: blocks(500), pageBodyHeight: 0, pageStep: STEP })
-    ).toMatchObject({ pushes: [], splits: [] });
+      pageLayout({ blocks: blocks(300, 300, 100), sections: deeper })
+    ).toMatchObject({ marginBottom: 90 });
+    // A document ending inside the first section is left that section's own margin
+    expect(
+      pageLayout({ blocks: blocks(300, 300), sections: deeper })
+    ).toMatchObject({ marginBottom: 10 });
+  });
+
+  it("a keep does not reach across a section boundary", () => {
+    // Without the boundary the 50 would be pushed to carry the 100 along with it
+    const result = pageLayout({
+      blocks: blocks(900, { height: 50, keepWithNext: true }, 100),
+      sections: TWO_SECTIONS,
+    });
+
+    expect(result.pushes.map((push) => push.pos)).toEqual([20]);
+    expect(result.pages).toHaveLength(2);
+  });
+
+  it("does nothing for a page height that cannot be measured", () => {
+    const flat: SectionPixels[] = [
+      {
+        untilPos: Number.POSITIVE_INFINITY,
+        pixels: { ...A4_PAGE_PIXELS, bodyHeight: 0 },
+        type: null,
+      },
+    ];
+    expect(pageLayout({ blocks: blocks(500), sections: flat })).toMatchObject({
+      pushes: [],
+      splits: [],
+    });
+    expect(pageLayout({ blocks: blocks(500), sections: [] })).toMatchObject({
+      pushes: [],
+      splits: [],
+    });
   });
 
   it("one page's body height is 25.7cm, the A4 fallback minus its margins", () => {
@@ -533,6 +733,51 @@ describe("pageLayout", () => {
     );
     expect(style).toContain(editorCssVariables.pageMarginLeft);
     expect(style).toContain(editorCssVariables.pageHeight);
+  });
+});
+
+describe("the paper of each section", () => {
+  const first: DocumentSection = {
+    index: 0,
+    firstBlock: 0,
+    lastBlock: 1,
+    anchor: { kind: "paragraph", pos: 20 },
+    props: DEFAULT_SECTION,
+  };
+  const last: DocumentSection = {
+    index: 1,
+    firstBlock: 2,
+    lastBlock: 3,
+    anchor: { kind: "body" },
+    props: { ...DEFAULT_SECTION, geometry: LETTER_GEOMETRY },
+  };
+
+  it("is the paper that section names, up to the last position it covers", () => {
+    const papers = sectionPixels([first, last]);
+    expect(papers.map((paper) => paper.untilPos)).toEqual([
+      20,
+      Number.POSITIVE_INFINITY,
+    ]);
+    expect(papers[0]?.pixels).toEqual(A4_PAGE_PIXELS);
+    expect(papers[1]?.pixels).toEqual(pagePixels(LETTER_GEOMETRY));
+  });
+
+  it("carries the kind of start each section declares", () => {
+    const carried = sectionPixels([
+      { ...first, props: { ...DEFAULT_SECTION, type: "continuous" } },
+      last,
+    ]);
+    expect(carried.map((paper) => paper.type)).toEqual(["continuous", null]);
+  });
+
+  it("lays a block out on the first section that reaches it", () => {
+    const papers = sectionPixels([first, last]);
+    // The paragraph carrying a break closes its own section, so it is laid out on that paper
+    expect(sectionPaperAt(papers, 20)).toEqual(A4_PAGE_PIXELS);
+    expect(sectionPaperAt(papers, 21)).toEqual(pagePixels(LETTER_GEOMETRY));
+    // A block past every section named, and a document naming none at all, fall back
+    expect(sectionPaperAt(papers.slice(0, 1), 9999)).toEqual(A4_PAGE_PIXELS);
+    expect(sectionPaperAt([], 0)).toEqual(A4_PAGE_PIXELS);
   });
 });
 

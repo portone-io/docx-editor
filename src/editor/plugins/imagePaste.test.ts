@@ -8,10 +8,13 @@ import type { EditorView } from "prosemirror-view";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   documentXmlOf,
+  LETTER_LANDSCAPE_SECT_PR,
+  LETTER_SECT_PR,
   makeImageDocx,
   TINY_PNG,
   TINY_PNG_DATA_URL,
 } from "../../__testing__/docx";
+import { posOfText } from "../../__testing__/editing";
 import { importDocx } from "../../docx/importDocx";
 import { MAX_IMAGE_BYTES } from "../../docx/media";
 import type { SessionStore } from "../../docx/session";
@@ -19,6 +22,9 @@ import { emuToPx, pxToEmu, toImageExtent } from "../../ooxml/image";
 import { editorClassNames } from "../../styles/classNames";
 import { PASTED_IMAGE_ATTRIBUTE } from "../clipboard/images";
 import { createEditorState, createEditorView } from "../createEditor";
+
+const RUN = (text: string) =>
+  `<w:r><w:t xml:space="preserve">${text}</w:t></w:r>`;
 
 const cellXml = (text: string) =>
   `<w:tc><w:p><w:r><w:t xml:space="preserve">${text}</w:t></w:r></w:p></w:tc>`;
@@ -40,6 +46,14 @@ function openEditor(
   });
   view.dispatch(view.state.tr.setSelection(new AllSelection(view.state.doc)));
   return { view, session };
+}
+
+/** Puts the caret in the paragraph holding this text, which is where a paste lands */
+function caretAtText(view: EditorView, needle: string): void {
+  const at = posOfText(view.state.doc, needle);
+  view.dispatch(
+    view.state.tr.setSelection(TextSelection.create(view.state.doc, at))
+  );
 }
 
 function firstImage(doc: PMNode): PMNode | null {
@@ -681,6 +695,55 @@ describe("pasting images carried by HTML", () => {
 
     await vi.waitFor(() => expect(view.state.doc.textContent).toBe("fallback"));
     expect(firstImage(view.state.doc)).toBeNull();
+    view.destroy();
+  });
+
+  /**
+   * Letter upright leaves 864px of body height and the same paper on its side 624px, so an image
+   * 700px tall fits the first section whole and has to be shrunk for the second.
+   */
+  it("shrinks a pasted image to the page of the section it lands in", async () => {
+    decodesAs(300, 700);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => imageResponse())
+    );
+    const { view } = openEditor(
+      `<w:p>${RUN("Upright")}</w:p>` +
+        `<w:p><w:pPr>${LETTER_SECT_PR}</w:pPr>${RUN("Last upright")}</w:p>` +
+        `<w:p>${RUN("Sideways")}</w:p>${LETTER_LANDSCAPE_SECT_PR}`
+    );
+    caretAtText(view, "Sideways");
+
+    expect(paste(view, '<img src="https://cdn.example/tall.png">')).toBe(true);
+
+    await vi.waitFor(() => expect(firstImage(view.state.doc)).not.toBeNull());
+    const extent = toImageExtent(firstImage(view.state.doc)?.attrs.extent);
+    // Fitted to the body of the sideways paper it was pasted onto, not to the 700px the upright
+    // first section would have left it
+    expect(extent && emuToPx(extent.cy)).toBeCloseTo(624, 0);
+    expect(extent && emuToPx(extent.cx)).toBeCloseTo((300 * 624) / 700, 0);
+    view.destroy();
+  });
+
+  it("leaves a pasted image the height its own section has room for", async () => {
+    decodesAs(300, 700);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => imageResponse())
+    );
+    const { view } = openEditor(
+      `<w:p>${RUN("Upright")}</w:p>` +
+        `<w:p><w:pPr>${LETTER_SECT_PR}</w:pPr>${RUN("Last upright")}</w:p>` +
+        `<w:p>${RUN("Sideways")}</w:p>${LETTER_LANDSCAPE_SECT_PR}`
+    );
+    caretAtText(view, "Upright");
+
+    expect(paste(view, '<img src="https://cdn.example/tall.png">')).toBe(true);
+
+    await vi.waitFor(() => expect(firstImage(view.state.doc)).not.toBeNull());
+    const extent = toImageExtent(firstImage(view.state.doc)?.attrs.extent);
+    expect(extent).toEqual({ cx: pxToEmu(300), cy: pxToEmu(700) });
     view.destroy();
   });
 

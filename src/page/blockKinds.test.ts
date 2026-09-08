@@ -9,7 +9,7 @@ import { type BlockKind, blockKindFor } from "./blockKinds";
 import { DEFAULT_BLOCK_KINDS } from "./kinds";
 import { measureSheet } from "./measureBlocks";
 import { pageDecorations, setPageMarks } from "./pageDecorations";
-import { pageLayout } from "./pageLayout";
+import { A4_PAGE_PIXELS, pageLayout } from "./pageLayout";
 
 let view: EditorView | null = null;
 
@@ -225,7 +225,16 @@ describe("a kind the editor was built with", () => {
     // The block below it holds no line break, so it fell through to the paragraph kind
     expect(blocks[1]?.candidates).toEqual([]);
 
-    const layout = pageLayout({ blocks, pageBodyHeight: PAGE, pageStep: 100 });
+    const layout = pageLayout({
+      blocks,
+      sections: [
+        {
+          untilPos: Number.POSITIVE_INFINITY,
+          pixels: { ...A4_PAGE_PIXELS, bodyHeight: PAGE, pageStep: 100 },
+          type: null,
+        },
+      ],
+    });
     expect(layout.cuts.map((cut) => cut.at)).toEqual([breakAt]);
 
     setPageMarks(live, { pushes: layout.pushes, cuts: layout.cuts });

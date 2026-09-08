@@ -10,7 +10,7 @@ import {
 } from "../clipboard/images";
 import { plainTextPaste } from "../clipboard/parser";
 import { readContextOf } from "../clipboard/readContext";
-import { documentBodyHeightPx, documentBodyWidthPx } from "../documentStyles";
+import { documentBodyWidthPx, sectionBodyHeightPx } from "../documentStyles";
 import { insertPlainTextAt } from "../plainText";
 
 type PasteId = object;
@@ -329,8 +329,10 @@ export function imagePaste(): Plugin<ImagePasteState> {
           view,
           html,
           text,
+          // One sheet is drawn at one width, the first section's, and a pasted image is fitted
+          // to it; how tall a page is, though, is the paper of the section it lands in
           maxWidthPx: documentBodyWidthPx(view.state),
-          maxHeightPx: documentBodyHeightPx(view.state),
+          maxHeightPx: sectionBodyHeightPx(view.state, from),
           canceled: false,
           controller: null,
         });

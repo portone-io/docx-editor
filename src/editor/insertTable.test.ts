@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import {
   decode,
   LETTER_FIXTURE,
+  LETTER_LANDSCAPE_SECT_PR,
   LETTER_SECT_PR,
   makeDocx,
   readFixture,
@@ -188,6 +189,41 @@ describe("the insert table command", () => {
     expect(gridCols.reduce((sum, width) => sum + width, 0)).not.toBe(
       A4_BODY_WIDTH.twips
     );
+  });
+
+  /**
+   * A document written in two sections, the first on Letter upright and the second on Letter
+   * turned sideways. The paragraph carrying the first section's `w:sectPr` ends that section, so
+   * the paragraphs after it belong to the section the body itself closes.
+   */
+  it("fits the table to the paper of the section it is inserted in", () => {
+    const upright =
+      '<w:p><w:r><w:t xml:space="preserve">upright</w:t></w:r></w:p>' +
+      `<w:p><w:pPr>${LETTER_SECT_PR}</w:pPr>` +
+      '<w:r><w:t xml:space="preserve">last upright</w:t></w:r></w:p>';
+    const sideways =
+      '<w:p><w:r><w:t xml:space="preserve">sideways</w:t></w:r></w:p>';
+    const { doc, session } = importDocx(
+      makeDocx(upright + sideways + LETTER_LANDSCAPE_SECT_PR)
+    );
+    const opened = editorStateForSession({ doc, session });
+    const widthAt = (needle: string): TableWidth | null => {
+      const state = opened.apply(
+        opened.tr.setSelection(
+          TextSelection.create(doc, posOfText(doc, needle))
+        )
+      );
+      const inserted = insertedTable(state, 2, 2).doc;
+      const table = inserted.child(
+        needle === "upright" ? 1 : inserted.childCount - 2
+      );
+      expect(table.type.name).toBe("table");
+      return toTableWidth(table.attrs.tblW);
+    };
+
+    // Letter upright leaves 9360 dxa of body and Letter sideways leaves 12960
+    expect(widthAt("upright")).toEqual({ type: "dxa", twips: 9360 });
+    expect(widthAt("sideways")).toEqual({ type: "dxa", twips: 12960 });
   });
 
   /**

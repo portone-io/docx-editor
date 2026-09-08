@@ -1,6 +1,13 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { LETTER_GEOMETRY, LETTER_SECT_PR, makeDocx } from "../__testing__/docx";
+import {
+  LETTER_GEOMETRY,
+  LETTER_LANDSCAPE_GEOMETRY,
+  LETTER_LANDSCAPE_SECT_PR,
+  LETTER_SECT_PR,
+  makeDocx,
+} from "../__testing__/docx";
+import { posOfText } from "../__testing__/editing";
 import { importDocx } from "../docx/importDocx";
 import { A4_BODY_WIDTH, A4_PORTRAIT } from "../docx/pageGeometry";
 import { editorCssVariables } from "../styles/classNames";
@@ -13,10 +20,14 @@ import {
   documentBodyWidthPx,
   documentDefaultTabStopPt,
   documentGeometry,
+  sectionGeometryAt,
 } from "./documentStyles";
 import { type EditorDocument, NO_DOCUMENT } from "./editorDocument";
 
-const BODY = '<w:p><w:r><w:t xml:space="preserve">Body</w:t></w:r></w:p>';
+const RUN = (text: string) =>
+  `<w:r><w:t xml:space="preserve">${text}</w:t></w:r>`;
+
+const BODY = `<w:p>${RUN("Body")}</w:p>`;
 
 /** A state built the way the editor builds one for this document */
 function opened(sectPr: string) {
@@ -37,6 +48,31 @@ describe("the paper the state carries", () => {
     const { doc } = importDocx(makeDocx(BODY + LETTER_SECT_PR));
     // The geometry is handed to the state, not read off the doc, so this one is the fallback
     expect(documentGeometry(createEditorState(doc))).toEqual(A4_PORTRAIT);
+  });
+
+  it("is the section's own paper at a position, whatever the first section names", () => {
+    const upright = `${BODY}<w:p><w:pPr>${LETTER_SECT_PR}</w:pPr>${RUN("last upright")}</w:p>`;
+    const sideways = `<w:p>${RUN("sideways")}</w:p>`;
+    const { doc, session } = importDocx(
+      makeDocx(upright + sideways + LETTER_LANDSCAPE_SECT_PR)
+    );
+    const state = editorStateForSession({ doc, session });
+
+    expect(sectionGeometryAt(state, posOfText(doc, "Body"))).toEqual(
+      LETTER_GEOMETRY
+    );
+    expect(sectionGeometryAt(state, posOfText(doc, "sideways"))).toEqual(
+      LETTER_LANDSCAPE_GEOMETRY
+    );
+    // The sheet is drawn on one paper, which stays the first section's
+    expect(documentGeometry(state)).toEqual(LETTER_GEOMETRY);
+  });
+
+  it("reads a section off the document, so a state built without one still has it", () => {
+    const { doc } = importDocx(makeDocx(BODY + LETTER_SECT_PR));
+    expect(sectionGeometryAt(createEditorState(doc), 0)).toEqual(
+      LETTER_GEOMETRY
+    );
   });
 
   it("gives out the body width in the pixels an image is fitted to", () => {

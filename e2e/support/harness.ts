@@ -73,6 +73,41 @@ export function spaces(page: Page): Promise<string> {
   return page.evaluate(() => window.docxHarness.spaces());
 }
 
+/**
+ * Where each grey band between two pages is drawn, top to bottom, measured on the sheet.
+ *
+ * The band that opens between one page and the next stands at the end of the page above it, so
+ * the distance between two of them is the height of the page in between.
+ */
+export function pageBands(page: Page): Promise<number[]> {
+  return page.$$eval(`.${editorClassNames.pageSplit}`, (bands) =>
+    bands.map((band) =>
+      band instanceof HTMLElement
+        ? Number.parseFloat(band.style.top)
+        : Number.NaN
+    )
+  );
+}
+
+/** The width of the paper as drawn, its margins included */
+export function sheetWidth(page: Page): Promise<number> {
+  return page.$eval(
+    `.${editorClassNames.sheet}`,
+    (sheet) => sheet.getBoundingClientRect().width
+  );
+}
+
+/**
+ * The height of the paper as drawn, which the editor grows to the number of pages so that the
+ * last page reads as a whole sheet. The band positions are measured from its top
+ */
+export function sheetHeight(page: Page): Promise<number> {
+  return page.$eval(
+    `.${editorClassNames.sheet}`,
+    (sheet) => sheet.getBoundingClientRect().height
+  );
+}
+
 export function caretBox(page: Page): Promise<CaretBox> {
   return page.evaluate(() => window.docxHarness.caretBox());
 }

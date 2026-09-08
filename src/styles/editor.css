@@ -583,10 +583,12 @@ button.docx-editor-comment-body {
    * is the same paper `A4_PORTRAIT` names in `docx/pageGeometry.ts`.
    *
    * The height is used only as a minimum, so that even short text feels like a full
-   * sheet and longer text simply grows it.
-   * The body left inside these margins is the width of a new table and the height
-   * between page boundaries; `page/pageLayout.ts` works both out from the very same
-   * geometry, so the divider on screen lands where the sheet actually ends.
+   * sheet and longer text simply grows it, and the editor supplies one grown to the
+   * last page's own bottom margin where a later section's is deeper than this one's.
+   * The body left inside these margins is what the sheet itself is drawn at. The width
+   * of a new table and the height between two page boundaries come from the paper of
+   * the section they stand in, which `page/pageLayout.ts` works out from the very same
+   * kind of geometry, so the divider on screen lands where that page actually ends.
    */
   --docx-editor-page-width: 21cm;
   --docx-editor-page-height: 29.7cm;
@@ -672,7 +674,10 @@ button.docx-editor-comment-body {
   border-top: 1px dotted rgb(26 79 208 / 40%);
 }
 
-/* Display-only projections of the first section's header and footer stories. */
+/*
+ * Display-only projections of the header and footer stories of the section each page
+ * belongs to (`page/PageGuides.tsx`).
+ */
 .docx-editor-page-header,
 .docx-editor-page-footer {
   position: absolute;

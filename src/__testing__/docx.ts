@@ -68,6 +68,28 @@ export const LETTER_SECT_PR =
   "</w:sectPr>";
 
 /**
+ * US Letter on its side, the way Word writes a landscape section: the width and the height are
+ * already swapped, and `w:orient` only says which way round they were turned.
+ *
+ * Beside `LETTER_GEOMETRY` it gives a document a second section on another paper, so a test can
+ * tell a value read off the first section from one read off the section a block sits in.
+ */
+export const LETTER_LANDSCAPE_GEOMETRY: PageGeometry = {
+  widthTwips: 15840,
+  heightTwips: 12240,
+  marginLeftTwips: 1440,
+  marginRightTwips: 1440,
+  marginTopTwips: 1440,
+  marginBottomTwips: 1440,
+};
+
+export const LETTER_LANDSCAPE_SECT_PR =
+  "<w:sectPr>" +
+  '<w:pgSz w:w="15840" w:h="12240" w:orient="landscape"/>' +
+  '<w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="720" w:footer="720" w:gutter="0"/>' +
+  "</w:sectPr>";
+
+/**
  * The same paper, written the other way ST_TwipsMeasure admits it: as universal measures.
  *
  * A word processor writes a section like this, and every value in it says exactly what

@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createEditorState } from "../editor/createEditor";
 import { docxSchema } from "../schema";
 import { editorCssVariables } from "../styles/classNames";
+import { A4_PAGE_PIXELS, type SectionPixels } from "./pageLayout";
 import { usePageLayout } from "./usePageLayout";
 
 declare global {
@@ -63,14 +64,24 @@ function measurements(layer: HTMLElement) {
     ).length;
 }
 
+/** The sheet heights written on the overlay box, in the order they were measured */
+function sheetHeights(layer: HTMLElement) {
+  const written = vi.spyOn(layer.style, "setProperty");
+  return () =>
+    written.mock.calls
+      .filter(([name]) => name === editorCssVariables.sheetHeight)
+      .map(([, value]) => value);
+}
+
 interface HostProps {
   view: EditorView;
   layer: RefObject<HTMLElement | null>;
   revision: unknown;
+  sections?: readonly SectionPixels[];
 }
 
-function Host({ view: live, layer, revision }: HostProps) {
-  usePageLayout({ view: live, layer, enabled: true, revision });
+function Host({ view: live, layer, revision, sections }: HostProps) {
+  usePageLayout({ view: live, layer, enabled: true, revision, sections });
   return null;
 }
 
@@ -142,6 +153,28 @@ describe("the page measurement", () => {
 
     composition(live, false);
     await untilTaken(taken, 1);
+  });
+
+  it("stretches the sheet to the bottom margin of the page it ends on", async () => {
+    const live = editor();
+    // The padding the sheet is drawn with is the first section's (`editor/createEditor`), and
+    // the document ends on a section whose bottom margin is deeper than that
+    live.dom.style.padding = "20px";
+    const sections: readonly SectionPixels[] = [
+      {
+        untilPos: Number.POSITIVE_INFINITY,
+        pixels: { ...A4_PAGE_PIXELS, bodyHeight: 500, marginBottom: 80 },
+        type: null,
+      },
+    ];
+    const layer: RefObject<HTMLElement | null> = { current: host };
+    const heights = sheetHeights(host);
+    render({ view: live, layer, revision: live.state.doc, sections });
+
+    // The sheet's own top padding, one page of body, and the margin under that page
+    await act(() =>
+      vi.waitFor(() => expect(heights()).toEqual([`${20 + 500 + 80}px`]))
+    );
   });
 
   it("is still taken after StrictMode's simulated remount", async () => {
