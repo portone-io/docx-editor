@@ -174,7 +174,7 @@ This fixture must retain:
 - Distinct `ascii`, `hAnsi`, and `eastAsia` font slots, including mixed Latin and Japanese text in one run.
 - Major and minor theme-font references with a custom theme font scheme.
 - East Asian `w:lang` values and the `w:kinsoku`, `w:wordWrap`, `w:overflowPunct`, `w:autoSpaceDE`, `w:autoSpaceDN`, and `w:eastAsianLayout` properties.
-- Explicit sizes, no numbered paragraphs, a numbering part available for new lists, and one unmerged table.
+- Explicit sizes, no numbered paragraphs, a numbering part no paragraph uses, and one unmerged table.
 
 ### `letter-page.docx`
 
