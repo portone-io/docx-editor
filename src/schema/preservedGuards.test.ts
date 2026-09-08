@@ -64,6 +64,55 @@ describe("a guard over the markers a document was opened with", () => {
     ).toBe(false);
   });
 
+  it("refuses a transaction that drops one half of a bookmark", () => {
+    const state = bookmarked();
+    const marker = nodeRange(state.doc, "rawInline");
+
+    expect(
+      transactionAllowed(state.tr.delete(marker.from, marker.to), state)
+    ).toBe(false);
+  });
+
+  it("refuses a transaction that drops a field character", () => {
+    const state = bookmarked(
+      `<w:p><w:r><w:fldChar w:fldCharType="begin"/>` +
+        '<w:instrText xml:space="preserve"> PAGE </w:instrText>' +
+        '<w:fldChar w:fldCharType="end"/></w:r>' +
+        `${runXml("n")}</w:p>`
+    );
+    const piece = nodeRange(state.doc, "rawRunContent");
+
+    expect(
+      transactionAllowed(state.tr.delete(piece.from, piece.to), state)
+    ).toBe(false);
+    expect(editShut(state, { kind: "replace", ...piece })).toBe(true);
+  });
+
+  it("lets a transaction delete a revision chip whole", () => {
+    const state = bookmarked(
+      `<w:p>${runXml("m")}<w:ins w:id="1" w:author="Reviewer A" ` +
+        `w:date="2026-01-01T00:00:00Z">${runXml("k")}</w:ins>` +
+        `${runXml("n")}</w:p>`
+    );
+    const chip = nodeRange(state.doc, "rawInline");
+
+    expect(transactionAllowed(state.tr.delete(chip.from, chip.to), state)).toBe(
+      true
+    );
+    expect(editShut(state, { kind: "replace", ...chip })).toBe(false);
+  });
+
+  it("lets a transaction delete a proofErr", () => {
+    const state = bookmarked(
+      `<w:p><w:proofErr w:type="spellStart"/>${runXml("m")}</w:p>`
+    );
+    const mark = nodeRange(state.doc, "rawInline");
+
+    expect(transactionAllowed(state.tr.delete(mark.from, mark.to), state)).toBe(
+      true
+    );
+  });
+
   it("refuses a step that plants a second note reference", () => {
     const state = noted();
     const { from } = nodeRange(state.doc, "noteReference");

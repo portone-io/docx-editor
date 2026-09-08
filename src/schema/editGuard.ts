@@ -47,7 +47,7 @@ export type EditIntent =
 export type EditGuardName =
   | "protection"
   | "lock"
-  | "bookmark"
+  | "preserved"
   | "note"
   | "section";
 

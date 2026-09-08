@@ -339,7 +339,7 @@ const PLACES: readonly Place[] = [
   },
   {
     name: "a selection running across a bookmark marker",
-    guards: ["protection", "bookmark"],
+    guards: ["protection", "preserved"],
     state: (protection) => acrossNode("rawInline", protection),
   },
   {
