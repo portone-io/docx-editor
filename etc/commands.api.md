@@ -181,46 +181,45 @@ export const decreaseListLevel: Command;
 // @public
 export function documentBodyWidthPx(state: EditorState): number;
 
-// @public (undocumented)
+// @public
 export interface DocumentComment {
     // (undocumented)
-    author: string | null;
+    readonly author: string | null;
     // (undocumented)
-    authorId: string | null;
+    readonly authorId: string | null;
     // (undocumented)
-    date: string | null;
+    readonly date: string | null;
     // (undocumented)
-    from: number;
+    readonly from: number;
     // (undocumented)
-    id: string;
+    readonly id: string;
     // (undocumented)
-    initials: string | null;
+    readonly initials: string | null;
     // (undocumented)
-    referencePos: number;
+    readonly referencePos: number;
     // (undocumented)
-    replies: readonly DocumentCommentReply[];
+    readonly replies: readonly DocumentCommentReply[];
     // (undocumented)
-    resolved: boolean;
+    readonly resolved: boolean;
+    readonly text: string;
     // (undocumented)
-    text: string;
-    // (undocumented)
-    to: number;
+    readonly to: number;
 }
 
 // @public (undocumented)
 export interface DocumentCommentReply {
     // (undocumented)
-    author: string | null;
+    readonly author: string | null;
     // (undocumented)
-    authorId: string | null;
+    readonly authorId: string | null;
     // (undocumented)
-    date: string | null;
+    readonly date: string | null;
     // (undocumented)
-    id: string;
+    readonly id: string;
     // (undocumented)
-    initials: string | null;
+    readonly initials: string | null;
     // (undocumented)
-    text: string;
+    readonly text: string;
 }
 
 // @public
@@ -256,17 +255,17 @@ export function documentHasLocked(doc: Node_2): boolean;
 // @public (undocumented)
 export interface DocumentNote {
     // (undocumented)
-    id: string;
+    readonly id: string;
     // Warning: (ae-forgotten-export) The symbol "NoteKind" needs to be exported by the entry point index.d.ts
     //
     // (undocumented)
-    kind: NoteKind;
+    readonly kind: NoteKind;
     // (undocumented)
-    label: string;
+    readonly label: string;
     // (undocumented)
-    referencePos: number;
+    readonly referencePos: number;
     // (undocumented)
-    text: string;
+    readonly text: string;
 }
 
 // @public
@@ -487,6 +486,9 @@ export function selectionLock(state: EditorState): SelectionLock;
 
 // @public
 export function selectionTouchesLocked(state: EditorState): boolean;
+
+// @public
+export function setCommentBody(id: string, body: Node_2): Command;
 
 // @public
 export function setCommentResolved(id: string, resolved: boolean): Command;
