@@ -4,7 +4,6 @@ import {
   type FormattingContext,
   type ParagraphStyleOption,
   paragraphAttrsFor,
-  styleIdOf,
 } from "../../docx/formatting";
 import {
   type ParagraphProps,
@@ -23,6 +22,7 @@ import {
   MAX_ILVL,
   templateList,
 } from "../../numbering/listTemplate";
+import { styleIdOf } from "../../ooxml/props";
 import { docxSchema } from "../../schema";
 import { COPIED_STYLE_ATTRIBUTE } from "../../schema/clipboard";
 import { editorClassNames } from "../../styles/classNames";

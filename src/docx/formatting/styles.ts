@@ -37,8 +37,6 @@ import { NO_THEME_FONTS, type ThemeFonts } from "../theme";
 import { readParagraphFormat, readRunFormat } from "./direct";
 import { layerParagraphValues, type ParagraphFormatLayer } from "./tabStops";
 
-export { styleIdOf } from "../../ooxml/props";
-
 /** The kind of object a style dresses (`w:style/@w:type`, ST_StyleType) */
 export type StyleType = "paragraph" | "character" | "table" | "numbering";
 

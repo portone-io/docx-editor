@@ -20,7 +20,7 @@ import {
   readFixture,
 } from "../../__testing__/docx";
 import { rangeOfText, select } from "../../__testing__/editing";
-import { NO_FORMATTING, styleIdOf } from "../../docx/formatting";
+import { NO_FORMATTING } from "../../docx/formatting";
 import { importDocx } from "../../docx/importDocx";
 import type { SessionStore } from "../../docx/session";
 import {
@@ -28,6 +28,7 @@ import {
   toParagraphFormat,
   toRunFormat,
 } from "../../model/format";
+import { styleIdOf } from "../../ooxml/props";
 import { docxSchema } from "../../schema";
 import { displayOnly } from "../../schema/displayDerivation";
 import { editorClassNames } from "../../styles/classNames";

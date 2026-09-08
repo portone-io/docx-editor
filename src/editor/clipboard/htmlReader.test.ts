@@ -11,12 +11,12 @@ import {
   makeStyledNumberedDocx,
 } from "../../__testing__/docx";
 import { exportDocx } from "../../docx/exportDocx";
-import { styleIdOf } from "../../docx/formatting";
 import { importDocx } from "../../docx/importDocx";
 import type { SessionStore } from "../../docx/session";
 import { toParagraphFormat, toRunFormat } from "../../model/format";
 import { newListsOf } from "../../numbering/listRegistry";
 import { templateList } from "../../numbering/listTemplate";
+import { styleIdOf } from "../../ooxml/props";
 import { editorClassNames } from "../../styles/classNames";
 import { listRefOf } from "../commands/listCommands";
 import { createEditorView, editorStateForSession } from "../createEditor";
