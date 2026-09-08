@@ -1,10 +1,13 @@
 // @vitest-environment jsdom
+
+import { unzipSync } from "fflate";
 import {
   DOMSerializer,
   DOMParser as ProseMirrorDOMParser,
 } from "prosemirror-model";
 import { describe, expect, it } from "vitest";
 import {
+  decode,
   fixtureNames,
   makeDocx,
   producerFixtureNames,
@@ -154,6 +157,27 @@ describe("the notes a document opens with", () => {
         element: "w:ins",
       }),
     ]);
+  });
+
+  it("stops reporting a revision container once an edit has taken it away", () => {
+    const { doc, session } = importDocx(
+      makeDocx(
+        `<w:p>${run("a")}<w:ins w:id="1" w:author="x" w:date="2026-01-01T00:00:00Z">` +
+          `${run("inserted")}</w:ins>${run("b")}</w:p>`
+      )
+    );
+    const state = createEditorState(doc);
+    expect(documentFidelity(state)).toHaveLength(1);
+
+    // Nothing guards a container that carries its content whole, so a selection over it deletes it
+    const emptied = state.apply(state.tr.delete(1, state.doc.content.size - 1));
+
+    expect(documentFidelity(emptied)).toEqual([]);
+    const written = exportDocxReport(emptied.doc, session);
+    expect(written.notes).toEqual([]);
+    expect(
+      decode(unzipSync(written.bytes)[session.mainPartPath])
+    ).not.toContain("<w:ins");
   });
 
   it("reports a proofing mark, which nothing draws, as hidden preserved inline", () => {

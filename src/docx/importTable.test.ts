@@ -1356,6 +1356,22 @@ const DEMOTED_TABLES: Readonly<Record<string, number>> = {
   "preserved-markup.docx": 1,
 };
 
+describe("a cell paragraph carrying markup the editor does not model", () => {
+  it("stays an editable paragraph, keeping the element inside its run", () => {
+    const node = requireTable(
+      "<w:tbl>" +
+        grid(1000) +
+        "<w:tr><w:tc><w:p><w:r><w:lastRenderedPageBreak/>" +
+        "<w:t>a</w:t></w:r></w:p></w:tc></w:tr></w:tbl>"
+    );
+    const block = node.child(0).child(0).child(0);
+
+    expect(block.type.name).toBe("paragraph");
+    expect(block.textContent).toBe("a");
+    expect(block.child(0).type.name).toBe("rawRunContent");
+  });
+});
+
 describe("tables in the fixtures", () => {
   it.each(fixtureNames)(
     "%s: leaves as preserved blocks only the tables it is written to",
