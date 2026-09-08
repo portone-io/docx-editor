@@ -91,9 +91,14 @@ async function clipboardContent(): Promise<ClipboardContent> {
  */
 async function pasteFromClipboard(view: EditorView): Promise<void> {
   const content = await clipboardContent();
+  if (!content.html && !content.text) return;
+  const data = new DataTransfer();
+  if (content.html) data.setData("text/html", content.html);
+  if (content.text) data.setData("text/plain", content.text);
+  const event = new ClipboardEvent("paste", { clipboardData: data });
   view.focus();
-  if (content.html && view.pasteHTML(content.html)) return;
-  if (content.text) view.pasteText(content.text);
+  if (content.html && view.pasteHTML(content.html, event)) return;
+  if (content.text) view.pasteText(content.text, event);
 }
 
 interface MenuItem {

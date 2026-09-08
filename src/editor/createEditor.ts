@@ -125,16 +125,16 @@ export function createEditorState(
       // above, is what takes such a conversion back
       listInputRules(),
       dropCursor(),
-      // Clipboard priority is files, resolvable HTML images, table cells, then the clipboard
-      // plugin, which reads and writes the clipboard itself and answers for no paste of its own.
+      // Images get the first reading. The clipboard then handles only empty readings and text
+      // fallbacks; tableEditing owns insertion into a cell selection for every nonempty slice.
       imageFiles(),
       imagePaste(),
+      docxClipboard(),
       // A press that grabs a table edge must be intercepted before a cell-selection drag starts.
       // For DOM events the plugin registered first wins, so both resizers precede `tableEditing`.
       columnResize(),
       rowResize(),
       tableEditing(),
-      docxClipboard(),
       // Comment anchors live in the model; this paints their ranges without changing document XML.
       // The list beside the page, the lookup the comment commands ask, and these ranges are the
       // one walk this plugin holds (`plugins/commentDecorations`)

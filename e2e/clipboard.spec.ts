@@ -1,7 +1,8 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 import { editorClassNames } from "../src/styles/classNames";
 import {
   blocks,
+  docText,
   firstTextParagraph,
   openHarness,
   selectText,
@@ -11,6 +12,77 @@ import {
 const TINY_PNG_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNg" +
   "AAIAAAUAAen63NgAAAAASUVORK5CYII=";
+
+async function browserPaste(
+  page: Page,
+  html: string,
+  text: string
+): Promise<void> {
+  await page.evaluate(
+    ({ html, text, sheetClass }) => {
+      const data = new DataTransfer();
+      if (html) data.setData("text/html", html);
+      if (text) data.setData("text/plain", text);
+      const sheet = document.querySelector(`.${sheetClass}`);
+      if (!(sheet instanceof HTMLElement))
+        throw new Error("editor sheet missing");
+      sheet.dispatchEvent(
+        new ClipboardEvent("paste", {
+          bubbles: true,
+          cancelable: true,
+          clipboardData: data,
+        })
+      );
+    },
+    { html, text, sheetClass: editorClassNames.sheet }
+  );
+}
+
+test("Shift paste ignores an HTML image and the next ordinary paste loads it", async ({
+  page,
+}) => {
+  let requests = 0;
+  await page.route("https://assets.example/plain-paste.png", (route) => {
+    requests += 1;
+    return route.fulfill({
+      body: Buffer.from(TINY_PNG_BASE64, "base64"),
+      contentType: "image/png",
+      headers: { "access-control-allow-origin": "*" },
+    });
+  });
+  await openHarness(page, "demo");
+  const target = firstTextParagraph(await blocks(page));
+  await selectText(page, target.index, 0, Math.min(4, target.docText.length));
+  const html =
+    '<p><b>Formatted text</b><img src="https://assets.example/plain-paste.png" alt="plain paste image"></p>';
+  await page.keyboard.down("Shift");
+  await browserPaste(page, html, "Text only");
+  await page.keyboard.up("Shift");
+  expect(await docText(page)).toContain("Text only");
+  const image = page.locator(
+    `img.${editorClassNames.image}[alt="plain paste image"]`
+  );
+  await expect(image).toHaveCount(0);
+  expect(requests).toBe(0);
+
+  await browserPaste(page, html, "Text only");
+  await expect(image).toBeVisible();
+  expect(requests).toBe(1);
+});
+
+test("unreadable HTML uses its text fallback and empty text does not delete the selection", async ({
+  page,
+}) => {
+  await openHarness(page, "demo");
+  const target = firstTextParagraph(await blocks(page));
+  await selectText(page, target.index, 0, Math.min(4, target.docText.length));
+  await browserPaste(page, "<!-- producer metadata -->", "Fallback text");
+  expect(await docText(page)).toContain("Fallback text");
+  await selectText(page, target.index, 0, 4);
+  const before = await docText(page);
+  await browserPaste(page, "", "\u0001");
+  expect(await docText(page)).toBe(before);
+});
 
 test("a browser paste keeps supported font formatting", async ({ page }) => {
   await openHarness(page, "demo");

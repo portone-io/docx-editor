@@ -242,6 +242,31 @@ function drop(view: EditorView, carried: Transferred): boolean {
  * to the plain-text one.
  */
 describe("pasting and dropping image files", () => {
+  it("uses only text for Shift paste and still accepts a subsequent file-only paste", async () => {
+    decodesAs(200, 100);
+    const view = openEditor();
+    view.dom.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "V",
+        shiftKey: true,
+        bubbles: true,
+      })
+    );
+    expect(paste(view, { text: "description ", files: [pngFile()] })).toBe(
+      true
+    );
+    expect(view.state.doc.textContent).toBe("description Body");
+    view.dom.dispatchEvent(
+      new KeyboardEvent("keyup", {
+        key: "Shift",
+        keyCode: 16,
+        bubbles: true,
+      })
+    );
+    expect(paste(view, { files: [pngFile()] })).toBe(true);
+    await vi.waitFor(() => expect(firstImage(view.state.doc)).toBeDefined());
+  });
+
   it("takes a pasted image file, and the text of the same paste does not go in", () => {
     const view = openEditor();
     expect(paste(view, { text: "picture.png", files: [pngFile()] })).toBe(true);

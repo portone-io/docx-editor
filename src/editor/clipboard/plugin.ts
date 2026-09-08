@@ -3,8 +3,9 @@
  *
  * Everything the clipboard carries in or out passes through the props declared here: what a copy
  * is written as, what a paste is read as, and what a drop from outside becomes. ProseMirror asks
- * these before it asks any `handlePaste`, and this plugin declares none, so a paste it has read
- * goes in through ProseMirror's own insertion with the `paste` and `uiEvent` meta a plugin
+ * these before it asks any `handlePaste`. This plugin handles only an empty reading, preserving
+ * the selection or retrying the text fallback. Content goes in through ProseMirror's insertion
+ * with the `paste` and `uiEvent` meta a plugin
  * watching for one reads (`prosemirror-view`'s `doPaste`), and a table decides for itself what a
  * paste over a cell selection means (`prosemirror-tables`).
  */
@@ -317,15 +318,37 @@ export function docxClipboard(options: ClipboardOptions = {}): Plugin {
       );
     },
     props: {
+      handleDOMEvents: {
+        paste() {
+          // A file-only clipboard skips both parsers. Clear the previous mode even if a consumer
+          // handled that paste before its event reached our built-in image handlers.
+          parser.setPlainText(false);
+          return false;
+        },
+      },
       clipboardParser: parser,
       clipboardSerializer: serializer,
-      clipboardTextParser: plainTextSlice,
+      clipboardTextParser(text, context, plain) {
+        // `plain` here means Shift/API text paste. transformPasted's similarly named argument
+        // is also true for an ordinary paste with no HTML, which may still carry an image file.
+        parser.setPlainText(plain);
+        return plainTextSlice(text, context);
+      },
       clipboardTextSerializer: clipboardText,
       transformCopied: copiedSlice,
-      transformPasted(slice) {
+      transformPasted(slice, _view, plain) {
+        if (!plain) parser.setPlainText(false);
         const read = parser.takeRead();
         started = read?.newLists ?? null;
         return read?.slice ?? slice;
+      },
+      handlePaste(view, event, slice) {
+        if (slice.content.size > 0) return false;
+        // No reader recognized the HTML. Its text may still be useful; an empty text reading,
+        // including stripped control characters, must not turn a paste into a deletion.
+        const text = event.clipboardData?.getData("text/plain") ?? "";
+        if (!parser.isPlainText(event) && text) view.pasteText(text, event);
+        return true;
       },
       handleDrop(view, event) {
         if (view.dragging) return false;

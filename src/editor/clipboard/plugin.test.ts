@@ -25,7 +25,6 @@ import {
   editorStateForSession,
 } from "../createEditor";
 import { defineClipboardEvent } from "./__testing__/clipboardEvent";
-import { docxClipboard } from "./plugin";
 
 const HEADING_STYLES =
   '<w:style w:type="paragraph" w:default="1" w:styleId="Normal">' +
@@ -243,6 +242,43 @@ describe("the clipboard plugin", () => {
     view.destroy();
   });
 
+  it.each([false, true])(
+    "uses the text fallback for unreadable HTML (cell selection: %s)",
+    (cells) => {
+      const { view } = openEditor(makeDocx(cells ? TABLE : PARAGRAPH));
+      if (cells) selectAllCells(view);
+      else selectSource(view);
+      paste(view, {
+        "text/html": "<!-- clipboard producer metadata -->",
+        "text/plain": "fallback",
+      });
+      if (cells)
+        expect(cellTexts(view.state.doc)).toEqual(Array(4).fill("fallback"));
+      else expect(view.state.doc.textContent).toBe("fallback");
+      view.destroy();
+    }
+  );
+
+  it.each([false, true])(
+    "keeps the selection when a paste has no usable content (cell selection: %s)",
+    (cells) => {
+      const { view } = openEditor(makeDocx(cells ? TABLE : PARAGRAPH));
+      if (cells) selectAllCells(view);
+      else selectSource(view);
+      const before = view.state;
+      const cases: Record<string, string>[] = [
+        { "text/plain": "\u0001" },
+        { "text/html": "<!-- no content -->" },
+      ];
+      for (const data of cases) {
+        paste(view, data);
+        expect(view.state.doc.eq(before.doc)).toBe(true);
+        expect(view.state.selection.eq(before.selection)).toBe(true);
+      }
+      view.destroy();
+    }
+  );
+
   it("keeps a Shift paste as plain text with w:br line breaks", () => {
     const { view, session } = openEditor(makeDocx(PARAGRAPH));
     view.dispatch(
@@ -281,9 +317,8 @@ describe("the clipboard plugin", () => {
     const { view } = openEditor(makeDocx(PARAGRAPH), [watcher]);
     paste(view, { "text/plain": "pasted", "text/html": "<p>pasted</p>" });
 
-    // A `handlePaste` of its own would put the content in itself, and the meta ProseMirror's own
-    // insertion carries - which a consumer plugin reads a paste off - would never be written
-    expect(docxClipboard().props.handlePaste).toBeUndefined();
+    // Nonempty content reaches ProseMirror's insertion, even though the plugin handles empty
+    // readings and their text fallback before tableEditing can consume an empty slice.
     expect(events).toEqual(["paste"]);
     view.destroy();
   });

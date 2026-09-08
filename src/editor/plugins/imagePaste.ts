@@ -8,6 +8,7 @@ import {
   type ResolvedClipboardImages,
   resolveClipboardImages,
 } from "../clipboard/images";
+import { plainTextPaste } from "../clipboard/parser";
 import { readContextOf } from "../clipboard/readContext";
 import { documentBodyHeightPx, documentBodyWidthPx } from "../documentStyles";
 import { insertPlainTextAt } from "../plainText";
@@ -290,6 +291,7 @@ export function imagePaste(): Plugin<ImagePasteState> {
     props: {
       decorations: (state) => imagePasteKey.getState(state)?.decorations,
       handlePaste(view, event) {
+        if (plainTextPaste(view, event)) return false;
         // The image goes in in place of whatever is selected, so what the guards answer for is
         // that replacement (`schema/guards`)
         if (

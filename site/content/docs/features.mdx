@@ -24,7 +24,7 @@ This page is the user-facing support summary. API details live in
 | Footnotes and endnotes | View references and plain-text note bodies while editing surrounding text. A reference is preserved rather than edited: a selection running across one cannot be replaced, so typing or deleting over it leaves the text as it stands, and the picture, line break and page break controls are unavailable while it is held. |
 | Headers and footers | Visually preview the first section's plain-text first, even, and default stories, including decimal `PAGE` and `NUMPAGES` fields. |
 | Content controls | Edit or lock supported text and table-cell controls. |
-| Clipboard | Paste supported character formatting, paragraphs, destination-matched heading styles, line breaks, links, and common lists. Unsupported web styling is reduced to readable text. |
+| Clipboard | Paste supported character formatting, paragraphs, destination-matched heading styles, line breaks, links, and common lists. Pasted text fills every selected table cell. Right-click Paste also accepts formatted text and images; plain-text paste ignores accompanying formatting and images. Unreadable content uses any available text fallback, or leaves the selection intact when there is nothing to insert. |
 | Editor | Use built-in controls, selectable document zoom, undo and redo, keyboard navigation, and IME composition, in a read-only, comment-only, or editing mode. |
 
 ## Keyboard shortcuts
@@ -38,6 +38,7 @@ This page is the user-facing support summary. API details live in
 | `Mod+Enter` | Inserts a page break. |
 | `Mod+B`, `Mod+I`, `Mod+U` | Toggles bold, italic, and underline. |
 | `Mod+Shift+X` | Toggles strikethrough. |
+| `Mod+Shift+V` | Pastes the clipboard's plain text, ignoring accompanying HTML and images. |
 | `Mod+K` | Opens the link panel over the selection. With nothing to link it reports that it did nothing, so the browser keeps its own binding. |
 | `Mod+Z` | Undo. |
 | `Mod+Shift+Z`, `Mod+Y` | Redo. |

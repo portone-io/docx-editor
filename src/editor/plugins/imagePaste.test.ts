@@ -159,6 +159,37 @@ afterEach(() => {
 });
 
 describe("pasting images carried by HTML", () => {
+  it("ignores an HTML image for plain paste, then loads the next ordinary paste", async () => {
+    decodesAs(160, 80);
+    const fetch = vi.fn(async () => imageResponse());
+    vi.stubGlobal("fetch", fetch);
+    const { view } = openEditor();
+    const html = '<p><b>plain</b><img src="https://cdn.example/pic.png"></p>';
+    view.dom.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "V",
+        shiftKey: true,
+        bubbles: true,
+      })
+    );
+    paste(view, html, "plain");
+    expect(fetch).not.toHaveBeenCalled();
+    expect(firstImage(view.state.doc)).toBeNull();
+    expect(view.state.doc.textContent).toBe("plain");
+
+    view.dom.dispatchEvent(
+      new KeyboardEvent("keyup", {
+        key: "Shift",
+        keyCode: 16,
+        bubbles: true,
+      })
+    );
+    paste(view, html, "plain");
+    await vi.waitFor(() => expect(firstImage(view.state.doc)).not.toBeNull());
+    expect(fetch).toHaveBeenCalledTimes(1);
+    view.destroy();
+  });
+
   it.each([
     ["readable", TINY_PNG_DATA_URL],
     ["unreadable", "https://cdn.example/missing.png"],

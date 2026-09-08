@@ -1,4 +1,5 @@
 import { DOMParser, Slice } from "prosemirror-model";
+import type { EditorView } from "prosemirror-view";
 import { docxSchema } from "../../schema";
 import type { PastedContent } from "./htmlReader";
 import type { HtmlReadContext } from "./readContext";
@@ -13,6 +14,8 @@ import type { ClipboardReader } from "./readers";
  */
 export class DocxClipboardParser extends DOMParser {
   private read: PastedContent | null = null;
+  private textOnly = false;
+  private pasteEvent: ClipboardEvent | null = null;
 
   constructor(
     private readonly readers: readonly ClipboardReader[],
@@ -23,6 +26,7 @@ export class DocxClipboardParser extends DOMParser {
 
   parseSlice(dom: Node): Slice {
     this.read = null;
+    this.setPlainText(false);
     const context = this.contextOf();
     if (context === null) return Slice.empty;
     for (const reader of this.readers) {
@@ -47,4 +51,26 @@ export class DocxClipboardParser extends DOMParser {
     this.read = null;
     return read;
   }
+
+  /** A new reading replaces the mode left by the previous clipboard event */
+  setPlainText(plain: boolean): void {
+    this.textOnly = plain;
+    this.pasteEvent = null;
+  }
+
+  isPlainText(event: ClipboardEvent): boolean {
+    // A file-only paste skips parsing altogether. Bind a reading to the first event its handlers
+    // see, so a later event cannot reuse the text-only decision from an earlier paste.
+    if (this.pasteEvent === null) this.pasteEvent = event;
+    return this.pasteEvent === event && this.textOnly;
+  }
+}
+
+/** Whether the current paste chose text, so image handlers must leave its HTML and files alone */
+export function plainTextPaste(
+  view: EditorView,
+  event: ClipboardEvent
+): boolean {
+  const parser = view.someProp("clipboardParser");
+  return parser instanceof DocxClipboardParser && parser.isPlainText(event);
 }
