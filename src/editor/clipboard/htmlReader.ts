@@ -38,6 +38,7 @@ import {
 } from "./inlineFormatting";
 import type { ListKinds } from "./internalChannel";
 import type { HtmlReadContext } from "./readContext";
+import { detectHtmlSource } from "./source";
 
 const BLOCK_TAGS = new Set([
   "ADDRESS",
@@ -381,7 +382,10 @@ export function readHtml(
   context: HtmlReadContext
 ): PastedContent | null {
   const open = sliceDepth(root);
-  const reader = new HtmlReader(context, open === 0);
+  const reader = new HtmlReader(
+    { ...context, source: detectHtmlSource(root) },
+    open === 0
+  );
   const blocks = reader.read(root);
   return blocks.length === 0
     ? null

@@ -7,6 +7,7 @@ import { numIdsIn } from "../commands/listCommands";
 import { documentFormatting, documentParagraphStyles } from "../documentStyles";
 import type { ImageToInsert } from "../insertImage";
 import { canStartNewList } from "../plugins/numberingDecorations";
+import type { HtmlSource } from "./source";
 
 /**
  * Everything a piece of HTML is read against.
@@ -27,6 +28,12 @@ export interface HtmlReadContext {
   };
   /** The images already loaded for this read, by the token the markup carries */
   images: ReadonlyMap<string, ImageToInsert>;
+  /**
+   * The application that wrote the markup being read (`./source`). It is a property of the markup
+   * and not of the document, so a context built before any markup is in hand names no application
+   * and `readHtml` fills it in from what it is handed.
+   */
+  source: HtmlSource;
 }
 
 export function readContextOf(
@@ -43,5 +50,6 @@ export function readContextOf(
       canCreate: canStartNewList(state),
     },
     images,
+    source: "unknown",
   };
 }
