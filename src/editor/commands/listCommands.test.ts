@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+
+import { undo } from "prosemirror-history";
 import type { Node as PMNode } from "prosemirror-model";
 import type { Command, EditorState } from "prosemirror-state";
 import { describe, expect, it } from "vitest";
@@ -12,6 +14,8 @@ import { posOfText, runCommand, select } from "../../__testing__/editing";
 import { NO_FORMATTING } from "../../docx/formatting";
 import { importDocx } from "../../docx/importDocx";
 import { toParagraphFormat } from "../../model/format";
+import { newListsOf } from "../../numbering/listRegistry";
+import { templateList } from "../../numbering/listTemplate";
 import {
   EMPTY_NUMBERING,
   type Numbering,
@@ -20,7 +24,10 @@ import {
 import { createEditorState, editorStateForSession } from "../createEditor";
 import { type EditorDocument, NO_DOCUMENT } from "../editorDocument";
 import { docxKeymap } from "../plugins/keymap";
-import { paragraphMarkers } from "../plugins/numberingDecorations";
+import {
+  documentNumbering,
+  paragraphMarkers,
+} from "../plugins/numberingDecorations";
 import {
   activeListKind,
   decreaseListLevel,
@@ -252,6 +259,51 @@ describe("starting a new list", () => {
     expect(numbered && numbered.numId % 2).toBe(0);
     expect(bulleted && bulleted.numId % 2).toBe(1);
     expect(numbered?.numId).not.toBe(bulleted?.numId);
+  });
+
+  it("records the definition the list was started with on the document node", () => {
+    const state = bothParagraphs(openState(body, threeLevelNumbering()));
+    const listed = runCommand(state, toggleBulletList);
+    const numId = listRef(paragraphAt(listed.doc, 0))?.numId;
+    const registered = newListsOf(listed.doc.attrs.newLists);
+
+    expect(numId).toBeDefined();
+    expect([...registered.keys()]).toEqual([numId]);
+    // The definition is the one a bullet list is started with, whatever number it was given
+    expect(registered.get(numId ?? 0)).toEqual(templateList("bullet"));
+  });
+
+  it("draws the list from the definition it registered rather than from its number", () => {
+    const state = bothParagraphs(openState(body, threeLevelNumbering()));
+    const listed = runCommand(state, toggleBulletList);
+
+    expect(markerTexts(listed.doc, documentNumbering(listed))).toEqual([
+      "●",
+      "●",
+    ]);
+  });
+
+  it("undo takes the definition back off with the list", () => {
+    const state = bothParagraphs(openState(body, threeLevelNumbering()));
+    const listed = runCommand(state, toggleNumberedList);
+    expect(newListsOf(listed.doc.attrs.newLists).size).toBe(1);
+
+    const back = runCommand(listed, undo);
+
+    expect(newListsOf(back.doc.attrs.newLists).size).toBe(0);
+    expect(back.doc.eq(state.doc)).toBe(true);
+  });
+
+  it("leaving the list gives back the number and the definition it took", () => {
+    const state = bothParagraphs(openState(body, threeLevelNumbering()));
+    const listed = runCommand(state, toggleNumberedList);
+    const plain = runCommand(bothParagraphs(listed), removeFromList);
+
+    expect(newListsOf(plain.doc.attrs.newLists).size).toBe(0);
+    const again = runCommand(bothParagraphs(plain), toggleNumberedList);
+    expect(listRef(paragraphAt(again.doc, 0))).toEqual(
+      listRef(paragraphAt(listed.doc, 0))
+    );
   });
 
   it("a new list paragraph records no indentation and takes the level's on screen", () => {

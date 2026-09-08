@@ -163,7 +163,7 @@ export function editorStateForSession(
 ): EditorState {
   return createEditorState(opened.doc, {
     ...options,
-    document: editorDocumentOf(opened.session),
+    document: editorDocumentOf(opened.session, opened.doc),
   });
 }
 

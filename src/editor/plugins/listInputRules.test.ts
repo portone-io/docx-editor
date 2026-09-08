@@ -15,11 +15,11 @@ import {
 import { importDocx } from "../../docx/importDocx";
 import type { SessionStore } from "../../docx/session";
 import { toParagraphFormat } from "../../model/format";
-import { type Numbering, parseNumbering } from "../../numbering/parseNumbering";
+
 import { activeListKind, toggleNumberedList } from "../commands/listCommands";
 import { createEditorView, editorStateForSession } from "../createEditor";
 import { docxKeymap } from "./keymap";
-import { paragraphMarkers } from "./numberingDecorations";
+import { documentNumbering, paragraphMarkers } from "./numberingDecorations";
 
 /** A paragraph with nothing typed into it yet */
 const EMPTY_PARAGRAPH = "<w:p/>";
@@ -38,7 +38,6 @@ function listPPr(numId: number, ilvl: number): string {
 interface Opened {
   view: EditorView;
   session: SessionStore;
-  numbering: Numbering;
 }
 
 const mounted: { view: EditorView | null } = { view: null };
@@ -68,7 +67,7 @@ function open(body: string, options: { numbering?: boolean } = {}): Opened {
     onStateChange: () => {},
   });
   mounted.view = view;
-  return { view, session, numbering: parseNumbering(session.numberingXml) };
+  return { view, session };
 }
 
 /** Puts the caret at a character offset inside the paragraph at `index` */
@@ -132,8 +131,8 @@ function pPrOf(node: PMNode): string {
 }
 
 /** The numbers drawn on screen, in document order */
-function markerTexts({ view, numbering }: Opened): string[] {
-  return paragraphMarkers(view.state.doc, numbering).map(
+function markerTexts({ view }: Opened): string[] {
+  return paragraphMarkers(view.state.doc, documentNumbering(view.state)).map(
     (marker) => marker.text
   );
 }

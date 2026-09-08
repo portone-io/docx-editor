@@ -67,9 +67,16 @@ interface PlannedChange {
   props: ParagraphProps;
 }
 
+/**
+ * What an edit records beside the paragraphs themselves, such as the definition of the list they
+ * are joining. It is written into the same transaction, so undo takes the two back together.
+ */
+export type AlongsideParagraphs = (tr: Transaction) => void;
+
 function writeChanges(
   state: EditorState,
-  changed: readonly PlannedChange[]
+  changed: readonly PlannedChange[],
+  alongside: AlongsideParagraphs | undefined
 ): Transaction {
   const tr = state.tr;
   const formatting = documentFormatting(state);
@@ -84,6 +91,7 @@ function writeChanges(
       ),
     });
   }
+  alongside?.(tr);
   return tr;
 }
 
@@ -91,13 +99,16 @@ function writeChanges(
 export function editParagraphs(
   state: EditorState,
   dispatch: ((tr: Transaction) => void) | undefined,
-  surgery: ParagraphSurgery
+  surgery: ParagraphSurgery,
+  alongside?: AlongsideParagraphs
 ): boolean {
   const changed = editableParagraphs(state).flatMap((spot) => {
     const props = surgery(spot.node);
     return props ? [{ spot, props }] : [];
   });
   if (changed.length === 0) return false;
-  if (dispatch) dispatch(writeChanges(state, changed).scrollIntoView());
+  if (dispatch) {
+    dispatch(writeChanges(state, changed, alongside).scrollIntoView());
+  }
   return true;
 }

@@ -11,6 +11,8 @@ import {
 } from "../__testing__/docx";
 import { importDocx } from "../docx/importDocx";
 import { documentNumbering as sessionNumbering } from "../docx/session";
+import { newListsValue } from "../numbering/listRegistry";
+import { templateList } from "../numbering/listTemplate";
 import { createEditorState, editorStateForSession } from "./createEditor";
 import { documentFormatting, documentGeometry } from "./documentStyles";
 import {
@@ -98,7 +100,7 @@ function opened() {
 describe("reading an opened document into editor values", () => {
   it("reads every session field the component used to copy", () => {
     const { session } = opened();
-    const document = editorDocumentOf(session);
+    const document = editorDocumentOf(session, opened().doc);
 
     expect(document.session).toBe(session);
     expect(document.formatting).toBe(session.formatting);
@@ -159,9 +161,30 @@ describe("reading an opened document into editor values", () => {
     const bare = importDocx(makeDocx(BODY));
 
     expect(declared.session.numberingPartPath).toBeNull();
-    expect(editorDocumentOf(declared.session).canStartNewList).toBe(true);
+    expect(
+      editorDocumentOf(declared.session, declared.doc).canStartNewList
+    ).toBe(true);
     // Declaring the part it adds is the one thing a package can leave the export no room for
-    expect(editorDocumentOf(bare.session).canStartNewList).toBe(false);
+    expect(editorDocumentOf(bare.session, bare.doc).canStartNewList).toBe(
+      false
+    );
+  });
+
+  it("the definitions a list started while editing left on the node stand beside the document's own", () => {
+    const { doc, session } = opened();
+    const registered = new Map([[42, templateList("bullet")]]);
+    const carrying = doc.type.create(
+      { newLists: newListsValue(registered) },
+      doc.content
+    );
+    const document = editorDocumentOf(session, carrying);
+
+    expect(document.formatting.numbering.lists).toBe(
+      session.formatting.numbering.lists
+    );
+    expect(document.formatting.numbering.added).toEqual(registered);
+    // Nothing else about the session is read differently for it
+    expect(document.formatting.styles).toBe(session.formatting.styles);
   });
 
   it("a state built without an opened document reads the empty snapshot", () => {
