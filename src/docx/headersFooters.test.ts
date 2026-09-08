@@ -29,6 +29,7 @@ import { storyFromText } from "./story";
 
 const encoder = new TextEncoder();
 const W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const MC_NS = "http://schemas.openxmlformats.org/markup-compatibility/2006";
 const HEADER_REL =
   "http://schemas.openxmlformats.org/officeDocument/2006/relationships/header";
 
@@ -137,6 +138,19 @@ describe("header and footer stories", () => {
     expect(headerFooterOn(stories.headers, stories, 2)?.align).toBe("right");
   });
 
+  it("reads no alignment past a first paragraph that declares none", () => {
+    const parts = unzipSync(makeHeadersFootersDocx());
+    parts["word/header1.xml"] = encoder.encode(
+      `<w:hdr xmlns:w="${W_NS}">` +
+        "<w:p><w:r><w:t>Plain</w:t></w:r></w:p>" +
+        '<w:p><w:pPr><w:jc w:val="right"/></w:pPr>' +
+        "<w:r><w:t>Right</w:t></w:r></w:p></w:hdr>"
+    );
+
+    const stories = openedStories(zipSync(parts));
+    expect(headerFooterOn(stories.headers, stories, 2)?.align).toBeNull();
+  });
+
   it("leaves a selected but undeclared first or even story blank", () => {
     const stories = openedStories(makeHeadersFootersDocx());
     const missing: HeadersFooters = {
@@ -207,6 +221,24 @@ describe("header and footer stories", () => {
     );
   });
 
+  it("shows a text box a producer offered twice through mc:AlternateContent once", () => {
+    const parts = unzipSync(makeHeadersFootersDocx());
+    const box =
+      "<w:txbxContent><w:p><w:r><w:t>Text box</w:t></w:r></w:p></w:txbxContent>";
+    parts["word/header1.xml"] = encoder.encode(
+      `<w:hdr xmlns:w="${W_NS}" xmlns:mc="${MC_NS}"><w:p>` +
+        "<w:r><w:t>Visible</w:t></w:r>" +
+        '<mc:AlternateContent><mc:Choice Requires="wps">' +
+        `<w:drawing>${box}</w:drawing></mc:Choice>` +
+        `<mc:Fallback><w:pict>${box}</w:pict></mc:Fallback>` +
+        "</mc:AlternateContent></w:p></w:hdr>"
+    );
+
+    expect(shown(openedStories(zipSync(parts)), "headers", 2, 2)).toBe(
+      "Visible"
+    );
+  });
+
   it("keeps the cached result of a field it does not work out again", () => {
     const parts = unzipSync(makeHeadersFootersDocx());
     parts["word/header2.xml"] = encoder.encode(
@@ -222,6 +254,27 @@ describe("header and footer stories", () => {
     expect(shown(openedStories(zipSync(parts)), "headers", 1, 3)).toBe(
       "Quarterly report"
     );
+  });
+
+  it("prints no page number for a PAGE field written inside another field's instruction", () => {
+    const parts = unzipSync(makeHeadersFootersDocx());
+    parts["word/header2.xml"] = encoder.encode(
+      `<w:hdr xmlns:w="${W_NS}"><w:p>` +
+        '<w:r><w:fldChar w:fldCharType="begin"/></w:r>' +
+        '<w:r><w:instrText xml:space="preserve"> IF </w:instrText></w:r>' +
+        '<w:r><w:fldChar w:fldCharType="begin"/></w:r>' +
+        '<w:r><w:instrText xml:space="preserve"> PAGE </w:instrText></w:r>' +
+        '<w:r><w:fldChar w:fldCharType="end"/></w:r>' +
+        '<w:r><w:instrText xml:space="preserve"> = 1 "first" "rest" </w:instrText></w:r>' +
+        '<w:r><w:fldChar w:fldCharType="separate"/></w:r>' +
+        "<w:r><w:t>first</w:t></w:r>" +
+        '<w:r><w:fldChar w:fldCharType="end"/></w:r>' +
+        "</w:p></w:hdr>"
+    );
+
+    // The nested field is part of what the IF field was told rather than a number the page
+    // carries, so only the result the IF field cached is drawn
+    expect(shown(openedStories(zipSync(parts)), "headers", 1, 3)).toBe("first");
   });
 
   it("keeps reading past a field that never ends", () => {

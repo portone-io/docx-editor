@@ -338,15 +338,34 @@ export function storyFromText(text: string): PMNode {
 }
 
 /**
+ * The elements that draw something of their own rather than a line of this story's text.
+ *
+ * A text box carries paragraphs inside itself, so what it draws is neither the run it stands in
+ * nor a line of the story around it. `mc:AlternateContent` is the same content offered twice
+ * (§9.2, Part 3), so reading it as text would say the text box twice over.
+ */
+const EMBEDDED: ReadonlySet<string> = new Set([
+  "drawing",
+  "pict",
+  "object",
+  "AlternateContent",
+]);
+
+/**
  * What one leaf of a story puts on screen.
  *
  * A break ends a line, and a fragment the editor keeps rather than models says what it stands for
  * - the character a `w:noBreakHyphen` draws, the words inside a field - which is the same answer
- * `docx/importPolicy` gave when a body was flattened on the way in.
+ * `docx/importPolicy` gave when a body was flattened on the way in. Everything reading a story as
+ * plain text - a comment body, a footnote body, a header preview - asks here rather than keeping a
+ * vocabulary of its own, so the three of them cannot disagree.
  */
-function leafText(leaf: PMNode): string {
+export function storyLeafText(leaf: PMNode): string {
+  if (leaf.isText) return leaf.text ?? "";
   if (leaf.type === docxSchema.nodes.hardBreak) return "\n";
   if (!isPreservedNode(leaf)) return "";
+  const element: unknown = leaf.attrs.element;
+  if (typeof element === "string" && EMBEDDED.has(element)) return "";
   if (leaf.attrs.display === "break") return "\n";
   return typeof leaf.attrs.text === "string" ? leaf.attrs.text : "";
 }
@@ -354,7 +373,7 @@ function leafText(leaf: PMNode): string {
 /** What a story reads as on screen: its paragraphs joined by newlines, its breaks and tabs kept */
 export function storyText(story: PMNode | null): string {
   if (story === null) return "";
-  return story.textBetween(0, story.content.size, "\n", leafText);
+  return story.textBetween(0, story.content.size, "\n", storyLeafText);
 }
 
 /**

@@ -21,7 +21,6 @@ import {
 import { isOnElement } from "../ooxml/units";
 import { decodeUtf8, encodeUtf8, parseXml, R_NS, W_NS } from "../ooxml/xml";
 import { docxSchema } from "../schema";
-import { isPreservedNode } from "../schema/preservedFragments";
 import { sameSource } from "../schema/sourceEquality";
 import { type StoryKey, storyKey, storyNodeOf } from "../schema/stories";
 import { NO_EXPORT_REFS } from "./exportRefs";
@@ -36,7 +35,12 @@ import {
 } from "./sections";
 import { serializeStory } from "./serializeStory";
 import type { SessionStore } from "./session";
-import { type ImportedStory, readStory, type StoryDeps } from "./story";
+import {
+  type ImportedStory,
+  readStory,
+  type StoryDeps,
+  storyLeafText,
+} from "./story";
 
 /** One story a section may show, as the document currently says it */
 export interface HeaderFooterContent {
@@ -160,14 +164,19 @@ export function readHeaderFooterStories(
   };
 }
 
-/** What the first paragraph of a story is aligned to, which is what the whole preview is drawn with */
+/**
+ * What the first paragraph of a story is aligned to, which is what the whole preview is drawn with.
+ *
+ * Only that paragraph is read: a story whose first paragraph names no alignment is drawn the way
+ * the reader's own writing direction lays it out, not the way some later paragraph is aligned.
+ */
 function firstAlign(story: PMNode): ParagraphAlign | null {
-  let align: ParagraphAlign | null = null;
-  story.forEach((block) => {
-    if (align !== null || block.type !== docxSchema.nodes.paragraph) return;
-    align = toParagraphFormat(block.attrs.format)?.align ?? null;
-  });
-  return align;
+  for (let at = 0; at < story.childCount; at += 1) {
+    const block = story.child(at);
+    if (block.type !== docxSchema.nodes.paragraph) continue;
+    return toParagraphFormat(block.attrs.format)?.align ?? null;
+  }
+  return null;
 }
 
 function variantContent(
@@ -238,25 +247,12 @@ function pageField(instruction: string): PageFieldName | null {
   return name === "PAGE" || name === "NUMPAGES" ? name : null;
 }
 
-/**
- * What a drawing, a picture and an embedded object put on the page is not header text: a text box
- * carries paragraphs of its own, and the preview is the one line the header itself reads as.
- */
-const EMBEDDED: ReadonlySet<string> = new Set(["drawing", "pict", "object"]);
-
-/** What one leaf of a header paragraph reads as, which is the answer `docx/importPolicy` gives */
-function leafText(node: PMNode): string {
-  if (node.isText) return node.text ?? "";
-  if (node.type === docxSchema.nodes.hardBreak) return "\n";
-  if (!isPreservedNode(node)) return "";
-  const element: unknown = node.attrs.element;
-  if (typeof element === "string" && EMBEDDED.has(element)) return "";
-  if (node.attrs.display === "break") return "\n";
-  return typeof node.attrs.text === "string" ? node.attrs.text : "";
+/** What one field of a paragraph takes off the screen, both ends of the range included */
+interface Hidden {
+  readonly field: FieldSpan;
+  readonly from: number;
+  readonly to: number;
 }
-
-/** The first and the last position a field takes off the screen, both ends included */
-type Hidden = readonly [number, number];
 
 /**
  * What each field of a paragraph takes off the screen.
@@ -266,10 +262,28 @@ type Hidden = readonly [number, number];
  * instruction it was given, since an instruction is what the field was told rather than what it
  * printed. A simple field holds its result inside itself and so hides nothing at all.
  */
-function hiddenBy(span: FieldSpan): Hidden | null {
-  if (pageField(span.instr) !== null) return [span.begin, span.end];
-  if (span.begin === span.end) return null;
-  return [span.begin, span.separate ?? span.end];
+function hiddenBy(field: FieldSpan): Hidden | null {
+  if (pageField(field.instr) !== null) {
+    return { field, from: field.begin, to: field.end };
+  }
+  if (field.begin === field.end) return null;
+  return { field, from: field.begin, to: field.separate ?? field.end };
+}
+
+/**
+ * Whether a field standing here is one another field takes off the screen.
+ *
+ * A field's own range covers where it begins, so only the fields around it are asked: a `PAGE`
+ * written inside the instruction of an `{ IF }` is text that field was told rather than a number
+ * the page carries, and nothing of it is drawn.
+ */
+function nested(hidden: readonly Hidden[], field: FieldSpan): boolean {
+  return hidden.some(
+    (other) =>
+      other.field !== field &&
+      field.begin >= other.from &&
+      field.begin <= other.to
+  );
 }
 
 function paragraphText(
@@ -277,16 +291,16 @@ function paragraphText(
   page: number,
   totalPages: number
 ): string {
-  const spans = fieldSpans(paragraph, 0);
-  const hidden = spans.flatMap((span): Hidden[] => {
-    const range = hiddenBy(span);
+  const fields = fieldSpans(paragraph, 0);
+  const hidden = fields.flatMap((field): Hidden[] => {
+    const range = hiddenBy(field);
     return range === null ? [] : [range];
   });
   const numbers = new Map(
-    spans.flatMap((span): [number, string][] => {
-      const name = pageField(span.instr);
-      if (name === null) return [];
-      return [[span.begin, name === "PAGE" ? `${page}` : `${totalPages}`]];
+    fields.flatMap((field): [number, string][] => {
+      const name = pageField(field.instr);
+      if (name === null || nested(hidden, field)) return [];
+      return [[field.begin, name === "PAGE" ? `${page}` : `${totalPages}`]];
     })
   );
   const pieces: string[] = [];
@@ -294,8 +308,8 @@ function paragraphText(
     const number = numbers.get(at);
     if (number !== undefined) pieces.push(number);
     if (isFieldCharacter(child)) return;
-    if (hidden.some(([from, to]) => at >= from && at <= to)) return;
-    pieces.push(leafText(child));
+    if (hidden.some(({ from, to }) => at >= from && at <= to)) return;
+    pieces.push(storyLeafText(child));
   });
   return pieces.join("");
 }
