@@ -86,6 +86,11 @@ export interface SectionPixels {
   pixels: PagePixels;
 }
 
+/** The one section a document naming none is laid out on */
+export const A4_SECTION_PIXELS: readonly SectionPixels[] = [
+  { untilPos: Number.POSITIVE_INFINITY, pixels: A4_PAGE_PIXELS },
+];
+
 /**
  * The paper of every section of a document, in the pixels the sheet is drawn with.
  *

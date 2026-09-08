@@ -25,6 +25,7 @@ import type {
 } from "./api";
 import { longTableFixture } from "./longTableFixture";
 import { tabFixture } from "./tabFixture";
+import { twoSectionsFixture } from "./twoSectionsFixture";
 
 const fixtureUrls = import.meta.glob<string>("../../__fixtures__/*.docx", {
   query: "?url",
@@ -44,12 +45,14 @@ function fixtureUrl(name: string): string {
 }
 
 async function loadFixture(name: string): Promise<DocxBytes> {
-  const generated = name === "long-table" || name === "tabs";
+  const generated =
+    name === "long-table" || name === "tabs" || name === "two-sections";
   const fixture = generated ? DEFAULT_FIXTURE : name;
   const response = await fetch(fixtureUrl(fixture));
   const bytes = new Uint8Array(await response.arrayBuffer());
   if (name === "long-table") return longTableFixture(bytes);
   if (name === "tabs") return tabFixture(bytes);
+  if (name === "two-sections") return twoSectionsFixture(bytes);
   return bytes;
 }
 

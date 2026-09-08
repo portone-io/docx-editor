@@ -14,19 +14,18 @@ import {
   type RefObject,
   useCallback,
   useEffect,
-  useMemo,
   useRef,
   useState,
 } from "react";
-import type { PageGeometry } from "../docx/pageGeometry";
 import { editorCssVariables } from "../styles/classNames";
 import { measureSheet } from "./measureBlocks";
 import { setPageMarks } from "./pageDecorations";
 import {
-  A4_PAGE_PIXELS,
+  A4_SECTION_PIXELS,
   PAGE_SPLIT_PX,
   pageLayout,
-  pagePixels,
+  type SectionPixels,
+  sectionPaperAt,
 } from "./pageLayout";
 
 /** One place where a page parts from the next. The position is measured on the sheet */
@@ -66,8 +65,11 @@ interface PageLayoutOptions {
   enabled: boolean;
   /** A value that differs every time the text changes */
   revision: unknown;
-  /** The paper the open document names. A4 where a document names none */
-  geometry?: PageGeometry;
+  /**
+   * The paper of each section of the open document (`page/pageLayout`), read once per document
+   * change by the caller. A4 where a document names none, and where none is open
+   */
+  sections?: readonly SectionPixels[];
 }
 
 /**
@@ -130,14 +132,13 @@ export function usePageLayout({
   layer,
   enabled,
   revision,
-  geometry,
+  sections,
 }: PageLayoutOptions): PageOverlay | null {
   const [overlay, setOverlay] = useState<PageOverlay | null>(null);
-  // The paper is fixed the moment the document is opened, so the pixels are worked out once
-  const page = useMemo(
-    () => (geometry ? pagePixels(geometry) : A4_PAGE_PIXELS),
-    [geometry]
-  );
+  const papers =
+    sections === undefined || sections.length === 0
+      ? A4_SECTION_PIXELS
+      : sections;
 
   const remeasure = useFrameThrottle(
     () => {
@@ -145,10 +146,12 @@ export function usePageLayout({
       if (!view || !box || !enabled) return;
 
       const measured = measureSheet(view, box);
-      const layout = pageLayout({
-        blocks: measured.blocks,
-        sections: [{ untilPos: Number.POSITIVE_INFINITY, pixels: page }],
-      });
+      const layout = pageLayout({ blocks: measured.blocks, sections: papers });
+      /** The paper of the page that block opens, which is the paper of its own section */
+      const paperOf = (pos: number) => sectionPaperAt(papers, pos);
+      // One sheet is drawn at one width, the first section's (`styles/editor.css`), so where a
+      // page stands across it is that paper's while how tall it stands is its own section's
+      const sheet = paperOf(0);
       setPageMarks(view, { pushes: layout.pushes, cuts: layout.cuts });
 
       // Stretch the sheet to the number of pages so the last one also looks like a full page
@@ -161,28 +164,33 @@ export function usePageLayout({
         top: measured.top,
         width: measured.width,
         sheetHeight,
+        // A gap opens below the page that ends at this place, so it is that page's own margin
+        // the band is drawn under
         marks: layout.splits.map((split) => ({
           page: split.page,
           top:
             measured.contentTop +
             split.y +
-            (split.crossed ? 0 : page.marginBottom),
+            (split.crossed
+              ? 0
+              : paperOf(layout.pages[split.page - 2]?.pos ?? 0).marginBottom),
           height: split.crossed ? 0 : PAGE_SPLIT_PX,
           crossed: split.crossed,
         })),
         // A page crossed into has no margin, so the place it was split at is its top corner
         pages: layout.pages.map((start) => {
+          const paper = paperOf(start.pos);
           const paperTop =
             measured.contentTop +
             start.bodyStart -
-            (start.crossed ? 0 : page.marginTop);
+            (start.crossed ? 0 : paper.marginTop);
           return {
             page: start.page,
             pos: start.pos,
-            headerTop: paperTop + page.marginTop / 2,
-            footerTop: paperTop + page.pageHeight - page.marginBottom / 2,
-            left: page.marginLeft,
-            width: page.bodyWidth,
+            headerTop: paperTop + paper.marginTop / 2,
+            footerTop: paperTop + paper.pageHeight - paper.marginBottom / 2,
+            left: sheet.marginLeft,
+            width: sheet.bodyWidth,
             crossed: start.crossed,
           };
         }),
