@@ -154,9 +154,14 @@ export function usePageLayout({
       const sheet = paperOf(0);
       setPageMarks(view, { pushes: layout.pushes, cuts: layout.cuts });
 
-      // Stretch the sheet to the number of pages so the last one also looks like a full page
+      // Stretch the sheet to the number of pages so the last one also looks like a full page.
+      // The padding it is drawn with is the first section's, so where the document ends on a
+      // deeper bottom margin the sheet is stretched to that margin instead: otherwise the last
+      // page's footer would be drawn past the end of the paper
       const sheetHeight =
-        measured.contentTop + layout.bodyHeight + measured.contentBottom;
+        measured.contentTop +
+        layout.bodyHeight +
+        Math.max(measured.contentBottom, layout.marginBottom);
       box.style.setProperty(editorCssVariables.sheetHeight, `${sheetHeight}px`);
 
       const next: PageOverlay = {

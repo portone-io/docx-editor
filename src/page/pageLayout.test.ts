@@ -601,6 +601,29 @@ describe("pageLayout", () => {
     expect(result.pages).toHaveLength(2);
   });
 
+  it("leaves the sheet the bottom margin of the page the document ends on", () => {
+    const deeper: readonly SectionPixels[] = [
+      {
+        untilPos: 10,
+        pixels: { ...A4_PAGE_PIXELS, bodyHeight: PAGE, marginBottom: 10 },
+        type: null,
+      },
+      {
+        untilPos: Number.POSITIVE_INFINITY,
+        pixels: { ...A4_PAGE_PIXELS, bodyHeight: PAGE, marginBottom: 90 },
+        type: null,
+      },
+    ];
+
+    expect(
+      pageLayout({ blocks: blocks(300, 300, 100), sections: deeper })
+    ).toMatchObject({ marginBottom: 90 });
+    // A document ending inside the first section is left that section's own margin
+    expect(
+      pageLayout({ blocks: blocks(300, 300), sections: deeper })
+    ).toMatchObject({ marginBottom: 10 });
+  });
+
   it("a keep does not reach across a section boundary", () => {
     // Without the boundary the 50 would be pushed to carry the 100 along with it
     const result = pageLayout({

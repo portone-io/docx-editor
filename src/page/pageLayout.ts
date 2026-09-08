@@ -214,6 +214,12 @@ export interface PageLayout {
   pages: PageStart[];
   /** The body height with the last page filled out in full */
   bodyHeight: number;
+  /**
+   * The margin under that last page, which is its own section's. The sheet is padded from the
+   * first section's paper alone (`editor/createEditor`), so a document ending on a deeper bottom
+   * margin needs the sheet drawn down to this.
+   */
+  marginBottom: number;
 }
 
 export interface PageLayoutInput {
@@ -339,7 +345,7 @@ export function pageLayout({ blocks, sections }: PageLayoutInput): PageLayout {
     (section) => section.pixels.bodyHeight > 0
   )?.pixels;
   if (roomy === undefined) {
-    return { pushes, cuts, splits, pages, bodyHeight: 0 };
+    return { pushes, cuts, splits, pages, bodyHeight: 0, marginBottom: 0 };
   }
 
   /** The section each block sits in, in document order */
@@ -471,5 +477,6 @@ export function pageLayout({ blocks, sections }: PageLayoutInput): PageLayout {
     pages,
     // The last page is filled out in full on the paper of the section it opens with
     bodyHeight: round(pageStart + paper.bodyHeight),
+    marginBottom: paper.marginBottom,
   };
 }
