@@ -2,13 +2,14 @@ import { isHistoryTransaction } from "prosemirror-history";
 import { Plugin, PluginKey, type Transaction } from "prosemirror-state";
 import { Decoration, DecorationSet, type EditorView } from "prosemirror-view";
 import { editShut, selectionIntents } from "../../schema/guards";
+import { readHtmlSlice, withPastedContent } from "../clipboard/htmlReader";
 import {
   hasResolvableClipboardImages,
   type ResolvedClipboardImages,
   resolveClipboardImages,
 } from "../clipboard/images";
+import { readContextOf } from "../clipboard/readContext";
 import { documentBodyHeightPx, documentBodyWidthPx } from "../documentStyles";
-import { richHtmlSlice, withPastedContent } from "../externalClipboard";
 import { insertPlainTextAt } from "../plainText";
 
 type PasteId = object;
@@ -145,11 +146,13 @@ export function imagePaste(): Plugin<ImagePasteState> {
     const content =
       resolved === null || resolved.images.size === 0
         ? null
-        : richHtmlSlice(
-            task.view.state,
-            task.view.dom.ownerDocument,
-            resolved.source,
-            resolved.images
+        : readHtmlSlice(
+            readContextOf(
+              task.view.state,
+              task.view.dom.ownerDocument,
+              resolved.images
+            ),
+            resolved.source
           );
     if (content !== null) {
       task.view.dispatch(
