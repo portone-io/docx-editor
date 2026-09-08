@@ -295,7 +295,23 @@ class HtmlReader {
     return inner;
   }
 
-  /** What a block reader may ask of this reading */
+  /** What the first reader to answer for this element reads it as, or null where none does */
+  private readBlock(
+    element: HTMLElement,
+    context: InlineContext,
+    host: HtmlBlockHost
+  ): readonly PMNode[] | null {
+    for (const reader of this.blockReaders) {
+      const read = reader.read(element, context, host);
+      if (read !== null) return read;
+    }
+    return null;
+  }
+
+  /**
+   * What a block reader may ask of this reading. One is made per level of the reading, since a
+   * reader asks whether it stands inside a table and that answer is the level's own.
+   */
   private hostView(): HtmlBlockHost {
     return {
       context: this.context,
@@ -337,12 +353,10 @@ class HtmlReader {
     for (const child of parent.childNodes) {
       const element =
         child.nodeType === child.ELEMENT_NODE ? (child as HTMLElement) : null;
-      const reader =
-        element &&
-        this.blockReaders.find((candidate) => candidate.matches(element, host));
-      if (element && reader) {
+      const read = element && this.readBlock(element, context, host);
+      if (read) {
         flush();
-        this.blocks.push(...reader.read(element, context, host));
+        this.blocks.push(...read);
       } else if (element?.tagName === "UL" || element?.tagName === "OL") {
         flush();
         this.readList(element, context, 0, null);

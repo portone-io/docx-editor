@@ -13,6 +13,7 @@ import type { GridRect } from "../../docx/tableFormatting";
 import {
   createTableNodeFrom,
   isTableSide,
+  MAX_TABLE_SIDE,
   type TableCellPlan,
 } from "../../docx/tableTemplate";
 import { type ListKind, MAX_ILVL } from "../../numbering/listTemplate";
@@ -47,20 +48,21 @@ export interface HtmlBlockHost {
   listNumber(key: string, kind: ListKind): number | null;
 }
 
-/** One kind of element read as blocks of its own rather than as text where it stands */
+/**
+ * One kind of element read as blocks of its own rather than as text where it stands.
+ *
+ * A reader answers null for an element it has nothing to say about, so that deciding whether an
+ * element is its own and reading it are one pass rather than two.
+ */
 export interface HtmlBlockReader {
-  /** Whether this reader is the one to read the element where it stands */
-  matches(element: HTMLElement, host: HtmlBlockHost): boolean;
   read(
     element: HTMLElement,
     inline: InlineContext,
     host: HtmlBlockHost
-  ): readonly PMNode[];
+  ): readonly PMNode[] | null;
 }
 
 const CELL_TAGS = new Set(["TD", "TH"]);
-/** No cell reaches further than a table may be wide */
-const MAX_SPAN = 50;
 const ROW_GROUP_TAGS = new Set(["THEAD", "TBODY", "TFOOT"]);
 
 /** One cell of an HTML table and the block of the grid it covers */
@@ -69,31 +71,25 @@ interface PlacedCell {
   rect: GridRect;
 }
 
-/** An HTML table laid out as a grid: what a table node is built from */
-interface TableGrid {
-  rows: number;
-  cols: number;
-  cells: readonly (readonly PlacedCell[])[];
-}
-
 /**
  * The rows of this table alone. A browser puts the rows a writer left bare into a `<tbody>` of its
  * own, and a table standing inside a cell belongs to that cell rather than to this grid.
  */
 function rowsOf(table: HTMLElement): HTMLElement[] {
   return [...table.children].flatMap((child) => {
-    if (child.tagName === "TR") return [child as HTMLElement];
+    if (!(child instanceof HTMLElement)) return [];
+    if (child.tagName === "TR") return [child];
     if (!ROW_GROUP_TAGS.has(child.tagName)) return [];
-    return [...child.children]
-      .filter((row) => row.tagName === "TR")
-      .map((row) => row as HTMLElement);
+    return [...child.children].flatMap((row) =>
+      row instanceof HTMLElement && row.tagName === "TR" ? [row] : []
+    );
   });
 }
 
 function cellsOf(row: HTMLElement): HTMLElement[] {
-  return [...row.children]
-    .filter((cell) => CELL_TAGS.has(cell.tagName))
-    .map((cell) => cell as HTMLElement);
+  return [...row.children].flatMap((cell) =>
+    cell instanceof HTMLElement && CELL_TAGS.has(cell.tagName) ? [cell] : []
+  );
 }
 
 /** How far a cell reaches. A span that is missing, unreadable or absurd reaches one cell */
@@ -114,7 +110,7 @@ function spanOf(
  * holding no cell of its own is left out rather than written as an empty row, since the model has
  * a merge standing only where it starts. Null where the table is too large to model.
  */
-function gridOf(table: HTMLElement): TableGrid | null {
+function gridOf(table: HTMLElement): readonly (readonly PlacedCell[])[] | null {
   const rows = rowsOf(table).filter((row) => cellsOf(row).length > 0);
   if (!isTableSide(rows.length)) return null;
   const covered = rows.map(() => new Set<number>());
@@ -124,9 +120,9 @@ function gridOf(table: HTMLElement): TableGrid | null {
     let left = 0;
     for (const element of cellsOf(row)) {
       while (covered[top]?.has(left)) left += 1;
-      const colspan = spanOf(element, "colspan", MAX_SPAN);
+      const colspan = spanOf(element, "colspan", MAX_TABLE_SIDE);
       const rowspan = Math.min(
-        spanOf(element, "rowspan", MAX_SPAN),
+        spanOf(element, "rowspan", MAX_TABLE_SIDE),
         rows.length - top
       );
       for (let covering = top; covering < top + rowspan; covering += 1) {
@@ -142,7 +138,7 @@ function gridOf(table: HTMLElement): TableGrid | null {
       cols = Math.max(cols, left);
     }
   });
-  return isTableSide(cols) ? { rows: rows.length, cols, cells } : null;
+  return isTableSide(cols) ? cells : null;
 }
 
 /**
@@ -157,24 +153,18 @@ function gridOf(table: HTMLElement): TableGrid | null {
  * the inner one is left to the reading around it, which takes its text into the cell.
  */
 export const tableBlockReader: HtmlBlockReader = {
-  matches: (element, host) =>
-    element.tagName === "TABLE" && !host.inTable && gridOf(element) !== null,
   read: (element, inline, host) => {
+    if (element.tagName !== "TABLE" || host.inTable) return null;
     const grid = gridOf(element);
-    if (grid === null) return [];
+    if (grid === null) return null;
     const inside = contextFor(inline, element);
-    const cells: readonly (readonly TableCellPlan[])[] = grid.cells.map((row) =>
+    const cells: readonly (readonly TableCellPlan[])[] = grid.map((row) =>
       row.map(({ element: cell, rect }) => ({
         rect,
         content: host.readCell(cell, contextFor(inside, cell)),
       }))
     );
-    return [
-      createTableNodeFrom(
-        { rows: grid.rows, cols: grid.cols, cells },
-        host.context.geometry
-      ),
-    ];
+    return [createTableNodeFrom(cells, host.context.geometry)];
   },
 };
 
@@ -182,7 +172,8 @@ export const tableBlockReader: HtmlBlockReader = {
  * How Word says a paragraph is an item of a list: which list definition it belongs to, how deep it
  * sits, and which list of the document it is one of (`mso-list:l0 level1 lfo1`).
  */
-const WORD_LIST = /mso-list:\s*l(\d+)\s+level(\d+)\s+lfo(\d+)/i;
+const WORD_LIST =
+  /mso-list:\s*l(?<list>\d+)\s+level(?<level>\d+)\s+lfo(?<applied>\d+)/i;
 
 /** The marker Word draws for a reader that numbers no lists itself */
 const IGNORED_MARKER = /mso-list:\s*Ignore/i;
@@ -200,11 +191,11 @@ interface WordListItem {
 }
 
 function wordListItemOf(element: HTMLElement): WordListItem | null {
-  const found = WORD_LIST.exec(element.getAttribute("style") ?? "");
-  if (found === null) return null;
-  const level = Number.parseInt(found[2] ?? "", 10);
+  const found = WORD_LIST.exec(element.getAttribute("style") ?? "")?.groups;
+  if (found === undefined) return null;
+  const level = Number.parseInt(found.level ?? "", 10);
   return {
-    key: `${found[1]}/${found[3]}`,
+    key: `${found.list}/${found.applied}`,
     // Word counts its levels from one, and no document has more levels than the model holds
     level: Number.isFinite(level)
       ? Math.min(Math.max(level, 1), MAX_ILVL + 1) - 1
@@ -221,7 +212,7 @@ function wordListItemOf(element: HTMLElement): WordListItem | null {
  */
 function withoutMarker(element: HTMLElement): {
   marker: string;
-  content: Node[];
+  content: readonly Node[];
 } {
   const content: Node[] = [];
   let marker = "";
@@ -234,8 +225,8 @@ function withoutMarker(element: HTMLElement): {
       continue;
     }
     const ignored =
-      child.nodeType === child.ELEMENT_NODE &&
-      IGNORED_MARKER.test((child as HTMLElement).getAttribute("style") ?? "");
+      child instanceof HTMLElement &&
+      IGNORED_MARKER.test(child.getAttribute("style") ?? "");
     if (inMarker || ignored) marker += child.textContent ?? "";
     else content.push(child);
   }
@@ -250,11 +241,10 @@ function withoutMarker(element: HTMLElement): {
  * one element. Whether the list counts its items is only visible in the marker Word drew.
  */
 export const wordListReader: HtmlBlockReader = {
-  matches: (element, host) =>
-    host.context.source === "word" && wordListItemOf(element) !== null,
   read: (element, inline, host) => {
+    if (host.context.source !== "word") return null;
     const item = wordListItemOf(element);
-    if (item === null) return [];
+    if (item === null) return null;
     const { marker, content } = withoutMarker(element);
     const kind: ListKind = COUNTED_MARKER.test(marker) ? "numbered" : "bullet";
     return [

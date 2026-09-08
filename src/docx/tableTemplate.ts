@@ -29,7 +29,7 @@ import {
  * The limit on how many rows and cells one table can hold.
  * The toolbar grid lets you pick from something smaller (6x6); this only blocks absurd values.
  */
-const MAX_TABLE_SIDE = 50;
+export const MAX_TABLE_SIDE = 50;
 
 /** Whether the value can be used as a row count or a cell count */
 export function isTableSide(value: number): boolean {
@@ -169,24 +169,16 @@ export interface TableCellPlan {
   content?: readonly PMNode[];
 }
 
-/** A table laid out by its caller: how big its grid is, and which cells start in each row */
-export interface TablePlan {
-  rows: number;
-  cols: number;
-  cells: readonly (readonly TableCellPlan[])[];
-}
-
-/** The plan of a table of single cells, which is what the toolbar inserts */
-function evenPlan(rows: number, cols: number): TablePlan {
-  return {
-    rows,
-    cols,
-    cells: Array.from({ length: rows }, (_, row) =>
-      Array.from({ length: cols }, (_, col) => ({
-        rect: { top: row, bottom: row + 1, left: col, right: col + 1 },
-      }))
-    ),
-  };
+/** The cells of a table of single cells, which is what the toolbar inserts */
+function evenCells(
+  rows: number,
+  cols: number
+): readonly (readonly TableCellPlan[])[] {
+  return Array.from({ length: rows }, (_, row) =>
+    Array.from({ length: cols }, (_, col) => ({
+      rect: { top: row, bottom: row + 1, left: col, right: col + 1 },
+    }))
+  );
 }
 
 /**
@@ -203,7 +195,7 @@ export function createTableNode(
   cols: number,
   geometry: PageGeometry = A4_PORTRAIT
 ): PMNode {
-  return createTableNodeFrom(evenPlan(rows, cols), geometry);
+  return createTableNodeFrom(evenCells(rows, cols), geometry);
 }
 
 /**
@@ -211,14 +203,16 @@ export function createTableNode(
  * takes, where the cells are neither all one wide nor all empty.
  *
  * Everything the table itself wears is the same as a newly inserted one's, so a pasted table is
- * drawn and written exactly like a table the toolbar put there. The grid size the plan states is
- * what the cells are measured and dressed against, so it must cover every cell the plan places.
+ * drawn and written exactly like a table the toolbar put there. The grid the cells are measured
+ * and dressed against is the one they cover between them, row by row.
  */
 export function createTableNodeFrom(
-  plan: TablePlan,
+  plan: readonly (readonly TableCellPlan[])[],
   geometry: PageGeometry = A4_PORTRAIT
 ): PMNode {
-  const { rows, cols } = plan;
+  const placed = plan.flat();
+  const rows = Math.max(plan.length, ...placed.map((cell) => cell.rect.bottom));
+  const cols = Math.max(1, ...placed.map((cell) => cell.rect.right));
   const total = bodyWidth(geometry).twips;
   const gridCols = evenGridCols(cols, total);
   const tblPr = tablePropsXml(total);
@@ -251,6 +245,6 @@ export function createTableNodeFrom(
       gridCols,
       format: outer,
     },
-    plan.cells.map((row) => rowNode(row.map(cellAt)))
+    plan.map((row) => rowNode(row.map(cellAt)))
   );
 }
