@@ -97,6 +97,17 @@ export function sheetWidth(page: Page): Promise<number> {
   );
 }
 
+/**
+ * The height of the paper as drawn, which the editor grows to the number of pages so that the
+ * last page reads as a whole sheet. The band positions are measured from its top
+ */
+export function sheetHeight(page: Page): Promise<number> {
+  return page.$eval(
+    `.${editorClassNames.sheet}`,
+    (sheet) => sheet.getBoundingClientRect().height
+  );
+}
+
 export function caretBox(page: Page): Promise<CaretBox> {
   return page.evaluate(() => window.docxHarness.caretBox());
 }
