@@ -19,6 +19,7 @@ import {
 } from "../../../docx/story";
 import { docxSchema } from "../../../schema";
 import { guardedCommand } from "../../../schema/guards";
+import { isWrapperType } from "../../../schema/wrappers";
 import {
   reservedCommentIds,
   reservedCommentParaIds,
@@ -140,8 +141,8 @@ function wrapperMarksAt(
 ): readonly Mark[] {
   const resolved = state.doc.resolve(pos);
   const adjacent = side === "before" ? resolved.nodeBefore : resolved.nodeAfter;
-  return (adjacent?.marks ?? resolved.marks()).filter(
-    (mark) => mark.type.name === "sdt" || mark.type.name === "link"
+  return (adjacent?.marks ?? resolved.marks()).filter((mark) =>
+    isWrapperType(mark.type)
   );
 }
 

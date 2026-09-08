@@ -29,19 +29,38 @@ export const WRAPPER_ATTRS = {
   key: { default: 0 },
 } as const;
 
+/**
+ * What the schema says about one mark type, worked out once. Both answers are read for every
+ * inline node the writer and the guards walk, and neither can change over a type's life.
+ */
+interface TypeFacts {
+  /** Whether marks of this type wrap the content they cover (`WRAPPER_GROUP`) */
+  wrapper: boolean;
+  /** Where the type stands among the schema's marks, which is the order they were declared in */
+  rank: number;
+}
+
+const FACTS = new WeakMap<MarkType, TypeFacts>();
+
+function factsOf(type: MarkType): TypeFacts {
+  const known = FACTS.get(type);
+  if (known) return known;
+  const facts: TypeFacts = {
+    wrapper: (type.spec.group ?? "").split(" ").includes(WRAPPER_GROUP),
+    rank: Object.keys(type.schema.marks).indexOf(type.name),
+  };
+  FACTS.set(type, facts);
+  return facts;
+}
+
 /** Whether marks of this type wrap the content they cover (`WRAPPER_GROUP`) */
 export function isWrapperType(type: MarkType): boolean {
-  return (type.spec.group ?? "").split(" ").includes(WRAPPER_GROUP);
+  return factsOf(type).wrapper;
 }
 
 function depthOf(mark: Mark): number {
   const depth: unknown = mark.attrs.depth;
   return typeof depth === "number" ? depth : 0;
-}
-
-/** Where this mark's type stands among the schema's marks, which is the order they were declared in */
-function rankOf(mark: Mark): number {
-  return Object.keys(mark.type.schema.marks).indexOf(mark.type.name);
 }
 
 /**
@@ -52,10 +71,13 @@ function rankOf(mark: Mark): number {
  * `depth` existed.
  */
 export function wrapperMarks(node: PMNode): readonly Mark[] {
-  const wrappers = node.marks.filter((mark) => isWrapperType(mark.type));
+  const marks = node.marks;
+  if (marks.length === 0) return marks;
+  const wrappers = marks.filter((mark) => factsOf(mark.type).wrapper);
   if (wrappers.length < 2) return wrappers;
-  return [...wrappers].sort(
-    (a, b) => depthOf(a) - depthOf(b) || rankOf(a) - rankOf(b)
+  return wrappers.sort(
+    (a, b) =>
+      depthOf(a) - depthOf(b) || factsOf(a.type).rank - factsOf(b.type).rank
   );
 }
 
@@ -76,7 +98,7 @@ export function wrapperOf(node: PMNode, name: string): Mark | null {
 export function innermostDepth(marks: readonly Mark[]): number {
   return marks.reduce(
     (deepest, mark) =>
-      isWrapperType(mark.type) ? Math.max(deepest, depthOf(mark)) : deepest,
+      factsOf(mark.type).wrapper ? Math.max(deepest, depthOf(mark)) : deepest,
     -1
   );
 }

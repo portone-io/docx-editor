@@ -521,8 +521,9 @@ describe("taking a link off", () => {
 });
 
 /**
- * A lock over part of a link is the one way a single link comes to run into locked text: a link
- * arriving with a control inside it is preserved whole rather than read (`spec/notes/hyperlinks.md`).
+ * A lock over part of a link leaves that link running into locked text: a control the file wrote
+ * inside a link holds the whole of what it wraps, but one made here over part of a link does not
+ * (`editor/commands/lockCommands`).
  * Half a link cannot be taken off or retargeted without recreating the split this all came from, so
  * a link a lock holds any part of is left alone entirely.
  */

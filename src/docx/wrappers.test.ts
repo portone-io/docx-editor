@@ -4,6 +4,9 @@ import { unzipSync } from "fflate";
 import type { Node as PMNode } from "prosemirror-model";
 import { describe, expect, it } from "vitest";
 import { decode, documentXmlOf, makeLinkedDocx } from "../__testing__/docx";
+import { rangeOfText, runCommand, select } from "../__testing__/editing";
+import { setLink } from "../editor/commands/linkCommands";
+import { createEditorState } from "../editor/createEditor";
 import { parseXml, R_NS } from "../ooxml/xml";
 import { wrapperMarks } from "../schema/wrappers";
 import { type ExportRefs, NO_EXPORT_REFS } from "./exportRefs";
@@ -142,6 +145,29 @@ describe("a document holding a hyperlink that holds a control", () => {
     expect(doc.child(0).type.name).toBe("paragraph");
     expect(documentXmlOf(doc, session)).toBe(
       decode(unzipSync(bytes)["word/document.xml"])
+    );
+  });
+
+  it("a link made in the editor inside a control lands inside it", () => {
+    const bytes = makeLinkedDocx(
+      `<w:p>${control(run("read the terms"))}</w:p>`,
+      {
+        rId9: TERMS,
+      }
+    );
+    const { doc } = importDocx(bytes);
+    const state = createEditorState(doc);
+    const { from, to } = rangeOfText(state.doc, "terms");
+    const linked = runCommand(select(state, from, to), setLink(TERMS));
+
+    const marks = wrapperMarks(linked.doc.resolve(from + 1).parent.child(1));
+    expect(marks.map((mark) => mark.type.name)).toEqual(["sdt", "link"]);
+    expect(marks.map((mark) => mark.attrs.depth)).toEqual([0, 1]);
+    // One control still, with the link written inside the one `w:sdtContent`
+    const written = serializeParagraph(linked.doc.child(0), REFS);
+    expect(written.match(/<w:sdt[ >]/g)).toHaveLength(1);
+    expect(written).toContain(
+      `<w:hyperlink r:id="rId9">${run("terms")}</w:hyperlink></w:sdtContent>`
     );
   });
 });

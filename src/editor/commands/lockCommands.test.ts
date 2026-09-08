@@ -482,6 +482,39 @@ describe("a lock made in the editor", () => {
   });
 });
 
+/**
+ * A control and a link nest either way round (`schema/wrappers`), so where a new lock goes is a
+ * question the depth answers: inside every wrapper the whole stretch already stands in, and
+ * outside a wrapper it only partly stands in.
+ */
+describe("a lock made inside a hyperlink", () => {
+  const link = (inner: string) =>
+    `<w:hyperlink w:anchor="x">${inner}</w:hyperlink>`;
+
+  it("stands inside the link where the whole stretch does", () => {
+    const state = opened(`<w:p>${link(run("read the terms"))}</w:p>`);
+    const next = ran(state, lockSelection, 10, 15);
+    const xml = serializeParagraph(next.doc.child(0));
+
+    expect(next.doc.child(0).textContent).toBe("read the terms");
+    expect(sdtMarkOf(next.doc.child(0).child(1)).attrs.depth).toBe(1);
+    // The link is still the one it was, with the control written inside it
+    expect(xml.match(/<w:hyperlink/g)).toHaveLength(1);
+    expect(xml).toContain(`${run("read the ")}<w:sdt`);
+    expect(xml).toContain(`</w:sdtContent></w:sdt></w:hyperlink>`);
+  });
+
+  it("wraps the link where only part of the stretch stands in it", () => {
+    const state = opened(`<w:p>${run("see ")}${link(run("our terms"))}</w:p>`);
+    const next = ran(state, lockSelection, 1, 8);
+    const xml = serializeParagraph(next.doc.child(0));
+
+    expect(sdtMarkOf(next.doc.child(0).child(0)).attrs.depth).toBe(0);
+    expect(xml.match(/<w:sdt[ >]/g)).toHaveLength(1);
+    expect(xml).toContain(`<w:sdtContent>${run("see ")}<w:hyperlink`);
+  });
+});
+
 describe("a control Word wrote, once its lock is lifted", () => {
   const WORD_PR =
     "<w:sdtPr>" +

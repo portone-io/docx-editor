@@ -7,6 +7,7 @@ import type { Mark, Node as PMNode } from "prosemirror-model";
 import type { Command, EditorState } from "prosemirror-state";
 import { docxSchema } from "../../schema";
 import { openStretches } from "../../schema/guards";
+import { innermostDepth, wrapperMarks, wrapperOf } from "../../schema/wrappers";
 
 const linkType = docxSchema.marks.link;
 
@@ -39,11 +40,18 @@ function linkMarkOf(marks: readonly Mark[]): Mark | null {
   return marks.find((mark) => mark.type === linkType) ?? null;
 }
 
+/** The link this inline node stands inside. A link never holds a link, so there is at most one */
+function linkOf(node: PMNode): Mark | null {
+  return wrapperOf(node, linkType.name);
+}
+
 /** One piece of inline content a link can go on, and the link it already wears */
 interface LinkPiece {
   from: number;
   to: number;
   link: Mark | null;
+  /** The wrappers it already stands inside, which a link made here goes inside as well */
+  wrappers?: readonly Mark[];
 }
 
 /**
@@ -73,7 +81,12 @@ function piecesIn(doc: PMNode, from: number, to: number): LinkPiece[] {
     const start = Math.max(pos, from);
     const end = Math.min(pos + node.nodeSize, to);
     if (start < end) {
-      pieces.push({ from: start, to: end, link: linkMarkOf(node.marks) });
+      pieces.push({
+        from: start,
+        to: end,
+        link: linkOf(node),
+        wrappers: wrapperMarks(node),
+      });
     }
     return false;
   });
@@ -96,7 +109,7 @@ interface LinkSpan {
 function linkSpans(parent: PMNode, start: number): LinkSpan[] {
   const spans: LinkSpan[] = [];
   parent.forEach((child, offset) => {
-    const link = linkMarkOf(child.marks);
+    const link = linkOf(child);
     if (!link) return;
     const from = start + offset;
     const to = from + child.nodeSize;
@@ -195,10 +208,15 @@ function selectionPieces(state: EditorState): LinkPiece[] {
  * A piece already inside a link keeps everything that link carries and only changes where it
  * points, so its tooltip, its history flag and the rest of its opening tag survive the retargeting
  * (`docx/hyperlink` rewrites the one attribute). A piece inside none gets a link of its own, which
- * the export writes an opening tag and a relationship for.
+ * the export writes an opening tag and a relationship for, laid inside every wrapper the piece
+ * already stands in so that a link made inside a content control goes back out inside it.
  */
 function linkMarkFor(piece: LinkPiece, href: string): Mark {
-  return linkType.create({ ...piece.link?.attrs, href });
+  if (piece.link) return linkType.create({ ...piece.link.attrs, href });
+  return linkType.create({
+    href,
+    depth: innermostDepth(piece.wrappers ?? []) + 1,
+  });
 }
 
 /**
