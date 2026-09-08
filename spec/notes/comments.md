@@ -32,6 +32,8 @@ A range comment uses matching start and end markers plus a reference with the sa
 
 Imported ranges whose markers occur inside supported paragraphs can cross paragraphs. Markers in block-level or unsupported containers remain inside their preserved enclosing XML and are outside comment editing. New comments are limited to a non-empty selection within one paragraph, which lets the editor place one unambiguous start/end pair without changing surrounding document structures.
 
+A pasted copy of a commented range carries neither its markers nor its reference. The three elements name one entry of the Comments part, and nothing here duplicates that entry, so a copy of the anchors alone would point a second range at it.
+
 ## Editing model
 
 The markers are typed, invisible inline nodes. Decorations highlight the text between a matching pair, while comment author, date, initials, and body travel on the reference node and are read from or written to the Comments part.
