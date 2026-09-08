@@ -22,3 +22,6 @@ every placeholder now draws as `docx-editor-raw-block`.
 - A placeholder can now be moved between the body and a table cell and still export.
 - `table` and `tableRow` gain a `leadingXml` attr, `tableRow` and `tableCell` a `trailingXml` attr:
   the markers each carries between its children.
+
+Table markers remain protected against deletion, duplication and reordering, including markers
+whose ranges cross into a cell paragraph. Export checks read those fragments in document order.

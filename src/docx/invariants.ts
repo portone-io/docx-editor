@@ -19,6 +19,7 @@ import {
   W_NS,
   withXmlParser,
 } from "../ooxml/xml";
+import { visitPreservedFragments } from "../schema/preservedFragments";
 import {
   commentReferencesIn,
   commentsChanged,
@@ -59,50 +60,6 @@ interface ExportInvariant {
   check(doc: PMNode, session: SessionStore): readonly ExportProblem[];
 }
 
-/**
- * The XML a node's bookmark markers stand in, or null for a node that holds none.
- *
- * A marker inside a paragraph is a `rawInline` of its own and one directly under the body is a
- * `rawBlock`, while one inside a container nobody could read stays in that container's XML
- * (spec/notes/bookmarks.md "What we preserve"), which a `rawBlock` either carries or points at.
- * A marker between a table's rows or a row's cells is an attr of the table rather than a node.
- */
-function markerSourceOf(node: PMNode, session: SessionStore): string | null {
-  if (node.type.name === "table") return tableMarkerXml(node) || null;
-  if (node.type.name === "rawInline") {
-    return typeof node.attrs.xml === "string" ? node.attrs.xml : null;
-  }
-  if (node.type.isInGroup("preserved")) {
-    return typeof node.attrs.xml === "string"
-      ? node.attrs.xml
-      : (originalBlock(node, session)?.xml ?? null);
-  }
-  return null;
-}
-
-function markerAttr(node: PMNode, attr: "leadingXml" | "trailingXml"): string {
-  const xml: unknown = node.attrs[attr];
-  return typeof xml === "string" ? xml : "";
-}
-
-/**
- * Every marker a table carries around its rows and its cells, in the order the file holds them.
- *
- * They are read here rather than one node at a time so that a start and an end split between a
- * row and a cell are still seen in the order they will be written back in.
- */
-function tableMarkerXml(table: PMNode): string {
-  const parts = [markerAttr(table, "leadingXml")];
-  for (const row of table.children) {
-    parts.push(markerAttr(row, "leadingXml"));
-    for (const cell of row.children) {
-      parts.push(markerAttr(cell, "trailingXml"));
-    }
-    parts.push(markerAttr(row, "trailingXml"));
-  }
-  return parts.join("");
-}
-
 /** OOXML requires every bookmark end to identify an earlier unmatched start, and every start to be ended */
 const bookmarkPairs: ExportInvariant = {
   name: "bookmarkPairs",
@@ -110,12 +67,12 @@ const bookmarkPairs: ExportInvariant = {
     const problems: ExportProblem[] = [];
     const open = new Map<string, number>();
     const used = new Set<string>();
-    doc.descendants((node, pos) => {
-      const source = markerSourceOf(node, session);
-      if (source === null) return true;
+    visitPreservedFragments(doc, (node, pos, xml) => {
+      const source = xml ?? originalBlock(node, session)?.xml ?? null;
+      if (source === null) return;
       // Use the document's namespace scope, and let the parser distinguish elements from
       // comments/CDATA and decode attribute references just as the final writer check does.
-      if (!source.includes("bookmark")) return true;
+      if (!source.includes("bookmark")) return;
       let root: Element;
       try {
         root = parseXml(
@@ -127,7 +84,7 @@ const bookmarkPairs: ExportInvariant = {
           message: "preserved bookmark XML could not be parsed",
           pos,
         });
-        return true;
+        return;
       }
       for (const marker of Array.from(root.getElementsByTagName("*"))) {
         if (
@@ -163,7 +120,6 @@ const bookmarkPairs: ExportInvariant = {
           });
         }
       }
-      return true;
     });
     for (const [id, pos] of open) {
       problems.push({

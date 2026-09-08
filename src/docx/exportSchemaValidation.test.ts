@@ -517,6 +517,24 @@ describe("the exported package against the OOXML schemas", () => {
     expectPartsValidate("row-level bookmark", parts);
   });
 
+  it("a bookmark starting inside a cell and ending after it remains valid", () => {
+    const bytes = makeDocx(
+      '<w:tbl><w:tblPr/><w:tblGrid><w:gridCol w:w="1000"/></w:tblGrid>' +
+        '<w:tr><w:tc><w:p><w:bookmarkStart w:id="9" w:name="Range"/>' +
+        "<w:r><w:t>First</w:t></w:r></w:p></w:tc>" +
+        '<w:bookmarkEnd w:id="9"/></w:tr></w:tbl>'
+    );
+    expectPartsValidate(
+      "original cross-cell bookmark",
+      wordprocessingParts(bytes)
+    );
+    const opened = importDocx(bytes);
+    const parts = wordprocessingParts(
+      exportDocx(withEditedFirst(opened.doc, "table", EDITED), opened.session)
+    );
+    expectPartsValidate("rebuilt cross-cell bookmark", parts);
+  });
+
   /**
    * The numbering part the export writes from scratch, whose root has to declare the prefix the
    * definitions inside it are written under for the schemas to read it at all.

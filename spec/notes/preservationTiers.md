@@ -37,7 +37,7 @@ This matters more than it sounds. Word writes one on every page of a document it
 
 Part 1 §17.16.18 defines a complex field as a `w:fldChar` of type `begin`, the instruction that follows it as `w:instrText`, an optional `w:fldChar` of type `separate`, the result last drawn for it, and a `w:fldChar` of type `end`. The field is those pieces read in that order; one of them taken away leaves the rest saying something the file never said, and nothing this editor writes can put such a piece back.
 
-They are therefore `guarded`, alongside the range markers whose two ends a document falls apart without: `w:bookmarkStart`/`w:bookmarkEnd` (§17.13.6), `w:permStart`/`w:permEnd` (§17.13.7), and the move ranges of §17.13.5. The guard reads that one attribute rather than a list of element names, so what a file cannot lose is decided in the table and nowhere else.
+They are therefore `guarded`, alongside the range markers whose two ends a document falls apart without: `w:bookmarkStart`/`w:bookmarkEnd` (§17.13.6), `w:permStart`/`w:permEnd` (§17.13.7), and the move ranges of §17.13.5. For preserved nodes the guard reads that attribute. Markers carried in a table, row or cell attribute have no node of their own: the guard reads their XML using the same range-marker vocabulary as the policy (`src/ooxml/rangeMarkers.ts`), ignoring producer traces such as `proofErr`. It compares those markers and guarded nodes together in document order.
 
 A container that carries its content whole is not guarded. A `w:ins`, a `w:del`, a `w:fldSimple` or a `w:smartTag` says everything it says inside itself, so removing it removes a self-contained piece of the document and leaves nothing dangling. Those are drawn as chips a reader can select and delete.
 
