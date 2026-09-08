@@ -213,8 +213,11 @@ test("the composer leaves the page where the reader left it", async ({
   if (!target) throw new Error("the fixture holds no paragraph long enough");
 
   await selectText(page, target.index, 2, 6);
-  await editor.evaluate((element) => {
-    element.scrollTop = element.scrollHeight;
+  // Scrolling to the end would leave a selection on the closing page off screen from the start
+  await page.evaluate(() => {
+    const anchor = window.getSelection()?.anchorNode;
+    const element = anchor instanceof Element ? anchor : anchor?.parentElement;
+    element?.scrollIntoView({ block: "center" });
   });
   await settle(page);
   const before = await editor.evaluate((element) => element.scrollTop);

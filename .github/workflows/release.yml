@@ -123,6 +123,7 @@ jobs:
     if: needs.release.outputs.published == 'true'
     permissions:
       contents: write # the verified demo version commit; no npm publishing permission
+      pull-requests: write # the pull request pinning main to the release
     uses: $/.github/workflows/site-release.yml
     with:
       version: ${{ needs.release.outputs.version }}

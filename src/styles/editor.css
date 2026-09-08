@@ -928,10 +928,19 @@ button.docx-editor-comment-body {
  * held as data rather than as an `href`, so a click here places the caret the way a click on any
  * other text does, and opening the address is the link panel's business.
  * A color the run itself carries paints over this one, the same as any other run formatting.
+ * The line is a border rather than an underline so that it runs on across a tab, which a text
+ * decoration is not painted over.
  */
 .docx-editor-link {
   color: #1a56db;
   border-bottom: 1px solid currentcolor;
+}
+
+/* A word processor underlines a link through the `Hyperlink` style, so the line above would be a second one */
+.docx-editor-link:has([data-underline]):not(
+  :has(.docx-editor-run:not([data-underline]))
+) {
+  border-bottom: none;
 }
 
 /*

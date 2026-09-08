@@ -29,6 +29,9 @@ export function runMarkSpec(
       "data-rattrs": text(attrs.rAttrs),
       "data-rpr": text(attrs.rPr),
       "data-fmt": formatJson(format),
+      // Read by `styles/editor.css` to stand a link's own line down
+      "data-underline":
+        format?.underline && format.underline !== "none" ? "" : undefined,
     },
     0,
   ];

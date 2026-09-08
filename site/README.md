@@ -28,7 +28,7 @@ The library it imports is deliberately not listed: the site installs it from npm
 | --- | --- | --- |
 | `pnpm dev` / `pnpm build:demo` | Development demo | Current `src/` |
 | `pnpm dev:site` | Current working tree, with hot reload | npm `latest`, resolved at startup |
-| `pnpm build:site` / Vercel preview of `main` | Checked-out site and docs | Exact committed release pin |
+| `pnpm build:site` / Vercel preview of `main` | Checked-out site and docs | Exact committed release pin, which a pull request moves to each release |
 | Vercel production, from the `production` branch | Site and docs as of the latest release | That release |
 
 The site and demo pin the same published library version, including its CSS and version badge. Local site startup needs network access and may update `site/package.json`, `demo/package.json`, and `pnpm-lock.yaml` when a newer release exists. The running server keeps that version until restarted.
@@ -36,6 +36,11 @@ The site and demo pin the same published library version, including its CSS and 
 ### Automatic updates after publishing
 
 After npm publishing succeeds, [Update site release](../.github/workflows/site-release.yml) checks out the release commit, installs that exact version, builds the site, and writes the result to the `production` branch as the release commit plus one commit updating the two manifests and lockfile. Vercel's production deployment must track `production`; `main` deploys as a preview. The live site therefore changes only at a release, and a docs-only fix reaches it with the next one. Failed updates leave the previous release in place.
+
+The workflow then opens a pull request from `production` to `main`, because nothing else moves the pins there and `main` would otherwise keep building an older library.
+`production` is the release commit plus that pin commit, so it is already the head of the pull request, and one left open follows the next release too.
+The workflow opens nothing when `main` already pins the released version.
+A workflow token opens it, so its checks wait for approval exactly as the release pull request's do: **Approve workflows to run**, in the merge box, starts them.
 
 If the update fails, run **Update site release** on `main` in GitHub Actions with the already published version. It rebuilds `production` from scratch, so rerunning is always safe. If `production` is right but its deployment failed, retry in Vercel. Neither requires republishing npm.
 
