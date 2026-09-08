@@ -18,8 +18,8 @@ import {
   ONE_LIST_NUMBERING,
   readFixture,
 } from "../__testing__/docx";
-import { canExport } from "../editor/commands/exportQueries";
 import { runCommand } from "../__testing__/editing";
+import { canExport } from "../editor/commands/exportQueries";
 import {
   toggleBulletList,
   toggleNumberedList,
@@ -34,6 +34,7 @@ import {
   paragraphMarkers,
 } from "../editor/plugins/numberingDecorations";
 import { toParagraphFormat } from "../model/format";
+import { templateList } from "../numbering/listTemplate";
 import { parseNumbering } from "../numbering/parseNumbering";
 import { R_NS, W_NS } from "../ooxml/xml";
 import { exportDocx } from "./exportDocx";
@@ -458,6 +459,44 @@ function openedAt(bytes: Uint8Array): EditorState {
 
 describe("the definition a new list is exported with", () => {
   const body = '<w:p><w:r><w:t xml:space="preserve">first</w:t></w:r></w:p>';
+
+  it.each([
+    { start: 1e21 },
+    { run: { bold: true } },
+    {
+      indent: {
+        startTwips: 720,
+        endTwips: null,
+        hangingTwips: -1,
+        firstLineTwips: null,
+      },
+    },
+  ])("refuses a registered value it cannot preserve (%j)", (invalid) => {
+    const opened = importDocx(makeDeclaredDocx(body));
+    const listed = runCommand(
+      editorStateForSession(opened),
+      toggleNumberedList
+    );
+    const ref = toParagraphFormat(listed.doc.child(0).attrs.format)?.numbering;
+    assert(ref);
+    const level = templateList("numbered").levels.get(0);
+    assert(level);
+    const state = listed.apply(
+      listed.tr.setDocAttribute("newLists", [
+        {
+          numId: ref.numId,
+          levels: [{ ilvl: 0, ...level, ...invalid }],
+        },
+      ])
+    );
+    expect(canExport(state)).toBe(false);
+    expect(
+      exportProblems(state.doc, opened.session).map((problem) => problem.code)
+    ).toEqual(["unsupported-content"]);
+    expect(exportErrorCode(() => exportDocx(state.doc, opened.session))).toBe(
+      "unsupported-content"
+    );
+  });
 
   it("is the one the list was registered with and not one derived from its number", () => {
     const bytes = makeNumberedDocx(body, EVEN_LIST_NUMBERING);

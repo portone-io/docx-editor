@@ -92,12 +92,19 @@ export function listFor(
   return numbering.lists.get(numId) ?? numbering.added.get(numId);
 }
 
-function highest(groups: readonly Iterable<number>[]): number {
-  let max = 0;
-  for (const group of groups) {
-    for (const numId of group) if (numId > max) max = numId;
-  }
-  return max;
+/** Reserves safe positive ids, using gaps if incrementing the highest id would lose precision. */
+export function numberingIdAllocator(ids: Iterable<number>): () => number {
+  const used = new Set(ids);
+  let highest = 0;
+  for (const id of used) if (id > highest) highest = id;
+  let next = Number.isSafeInteger(highest + 1) ? highest + 1 : 1;
+  return () => {
+    while (used.has(next)) next += 1;
+    const id = next;
+    used.add(id);
+    next = Number.isSafeInteger(id + 1) ? id + 1 : 1;
+    return id;
+  };
 }
 
 /**
@@ -111,8 +118,11 @@ export function allocateList(
   used: Iterable<number>,
   list: NewList
 ): { numId: number; numbering: Numbering } {
-  const numId =
-    highest([numbering.lists.keys(), numbering.added.keys(), used]) + 1;
+  const numId = numberingIdAllocator([
+    ...numbering.lists.keys(),
+    ...numbering.added.keys(),
+    ...used,
+  ])();
   return {
     numId,
     numbering: {

@@ -8,20 +8,19 @@
  */
 
 import { splicePart } from "../ooxml/partSplice";
+import { ST_DecimalNumber } from "../ooxml/simpleTypes";
 import { wAttr } from "../ooxml/units";
 import { elementChildren, parseXml } from "../ooxml/xml";
-import { abstractNumXml, numXml } from "./listTemplate";
+import { abstractNumXml, numberingIdAllocator, numXml } from "./listTemplate";
 import type { NewList } from "./parseNumbering";
 
-/** The largest definition id already in use */
-function maxAbstractNumId(xml: string): number {
-  let max = 0;
-  for (const child of elementChildren(parseXml(xml).documentElement)) {
-    if (child.localName !== "abstractNum") continue;
-    const id = Number.parseInt(wAttr(child, "abstractNumId") ?? "", 10);
-    if (Number.isFinite(id)) max = Math.max(max, id);
-  }
-  return max;
+/** The definition ids a new definition must not reuse. */
+function abstractNumIds(xml: string): number[] {
+  return elementChildren(parseXml(xml).documentElement).flatMap((child) => {
+    if (child.localName !== "abstractNum") return [];
+    const id = ST_DecimalNumber.parse(wAttr(child, "abstractNumId"));
+    return id === null ? [] : [id];
+  });
 }
 
 /**
@@ -34,13 +33,13 @@ export function addListDefinitions(
 ): string {
   if (lists.size === 0) return xml;
 
-  const firstAbstractNumId = maxAbstractNumId(xml) + 1;
+  const takeId = numberingIdAllocator(abstractNumIds(xml));
   const additions = [...lists]
     .sort(([left], [right]) => left - right)
-    .map(([numId, list], index) => ({
+    .map(([numId, list]) => ({
       numId,
       list,
-      abstractNumId: firstAbstractNumId + index,
+      abstractNumId: takeId(),
     }));
 
   return splicePart(xml, {

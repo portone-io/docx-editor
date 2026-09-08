@@ -1,13 +1,9 @@
 ---
-"@portone/docx-editor": patch
+"@portone/docx-editor": minor
 ---
 
-A new list is exported with the definition it was created with instead of one derived from its numbering id.
+New and pasted lists are exported with their registered definitions instead of a format inferred from their numbering IDs. Undo restores the registration along with the edit. A new list with a missing or unsupported definition is refused as `unsupported-content` and reported by `exportProblems` before export.
 
-Starting a list used to leave nothing behind but the number the paragraph was given, and the shape of the list - numbered or bulleted, and the symbols each level counts in - was worked out again from whether that number happened to be even or odd. The number is now nothing but a name: the definition is recorded on the document when the list is started, drawn from as the markers are drawn, and written into numbering.xml as it stands. A list pasted from outside is defined the same way.
+List and abstract definition IDs remain distinct when a document already uses the largest safely representable integer. Values that cannot be written faithfully are rejected instead of silently changed or discarded.
 
-Undo takes a list's definition back with the edit that made it, and leaving a list gives back both the number and the definition it took, so a number is never spent on a list that is no longer there.
-
-A document whose paragraph names a list that nothing defines - neither the file nor anything started while editing - is refused rather than written out with the list missing. `exportProblems` reports it ahead of the write, under `unsupported-content` and at the paragraph it stands at, the code that already covers a document holding what no correct file can be written from.
-
-For `@portone/docx-editor/core`: `Numbering` now carries `added`, the definition of each list started while editing, beside the `lists` the file defines. Those definitions have the new `NewList` shape, and the levels of a definition are handed out as read-only maps.
+On the core entry, `Numbering` gains `added` and the new `NewList` and `NewListLevel` types describe registered definitions. Level maps are read-only; new definitions support restart, legal numbering and suffix values, while marker run formatting and custom tab stops remain excluded from registration.

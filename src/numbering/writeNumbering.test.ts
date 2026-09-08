@@ -48,6 +48,18 @@ function oneLevel(values: Partial<NewListLevel>): Map<number, NewList> {
 }
 
 describe("splicing in new list definitions", () => {
+  it("does not round distinct definition ids together after the largest safe id", () => {
+    const original = ORIGINAL.replaceAll(
+      'abstractNumId="2"',
+      `abstractNumId="${Number.MAX_SAFE_INTEGER}"`
+    ).replace('w:val="2"', `w:val="${Number.MAX_SAFE_INTEGER}"`);
+    const written = parseNumbering(
+      addListDefinitions(original, standard(2, 3))
+    );
+    expect(written.lists.get(2)?.levels.get(0)?.format).toBe("decimal");
+    expect(written.lists.get(3)?.levels.get(0)?.format).toBe("bullet");
+    expect(written.lists.get(1)?.levels.size).toBe(1);
+  });
   it("leaves the original text as it is when there is nothing to add", () => {
     expect(addListDefinitions(ORIGINAL, NO_LISTS)).toBe(ORIGINAL);
   });

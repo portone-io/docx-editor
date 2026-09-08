@@ -19,6 +19,48 @@ function carried(...numIds: readonly number[]): unknown {
 }
 
 describe("what the document node carries", () => {
+  it.each([
+    ["start", 1e21],
+    ["ilvl", 9],
+    ["restartAfterLevel", "0"],
+    ["legal", "false"],
+    ["run", { bold: true }],
+    ["tabStops", [{ positionPt: 36, alignment: "left" }]],
+    [
+      "indent",
+      {
+        startTwips: 1.5,
+        endTwips: null,
+        hangingTwips: null,
+        firstLineTwips: null,
+      },
+    ],
+    [
+      "indent",
+      {
+        startTwips: null,
+        endTwips: null,
+        hangingTwips: -1,
+        firstLineTwips: null,
+      },
+    ],
+  ])(
+    "refuses a definition whose %s cannot be written faithfully (%j)",
+    (field, replacement) => {
+      const value = carried(2);
+      if (!Array.isArray(value)) throw new Error("expected a registry value");
+      value[0].levels[0][field] = replacement;
+      expect(newListsOf(value).size).toBe(0);
+    }
+  );
+
+  it("refuses duplicate list ids and duplicate levels instead of losing one definition", () => {
+    const value = carried(2);
+    if (!Array.isArray(value)) throw new Error("expected a registry value");
+    expect(newListsOf([...value, ...value]).size).toBe(0);
+    value[0].levels.push(value[0].levels[0]);
+    expect(newListsOf(value).size).toBe(0);
+  });
   it("reads back every definition it was given", () => {
     const lists = register(2, 5);
 

@@ -28,6 +28,12 @@ function defining(...numIds: readonly number[]): Numbering {
 }
 
 describe("giving a new list a number", () => {
+  it("uses an unused safe id when the highest id cannot be incremented", () => {
+    const numbering = defining(1, Number.MAX_SAFE_INTEGER);
+    const first = allocateList(numbering, [2], templateList("numbered"));
+    const second = allocateList(first.numbering, [2], templateList("numbered"));
+    expect([first.numId, second.numId]).toEqual([3, 4]);
+  });
   it("takes the number after the highest one the document defines", () => {
     const { numId } = allocateList(defining(1, 4), [], templateList("bullet"));
 

@@ -8,6 +8,8 @@
  * through this file so that nothing else can end up in the register.
  */
 
+import { ST_SignedTwipsMeasure, ST_TwipsMeasure } from "../ooxml/simpleTypes";
+import { MAX_ILVL } from "./listTemplate";
 import {
   LEVEL_ALIGNS,
   LEVEL_SUFFIXES,
@@ -29,18 +31,23 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function toIndentSlot(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
 function toLevelIndent(value: unknown): LevelIndent | null {
   if (!isRecord(value)) return null;
-  return {
-    startTwips: toIndentSlot(value.startTwips),
-    endTwips: toIndentSlot(value.endTwips),
-    hangingTwips: toIndentSlot(value.hangingTwips),
-    firstLineTwips: toIndentSlot(value.firstLineTwips),
-  };
+  const { startTwips, endTwips, hangingTwips, firstLineTwips } = value;
+  const signed = (slot: unknown): slot is number | null =>
+    slot === null ||
+    (typeof slot === "number" && ST_SignedTwipsMeasure.format(slot) !== null);
+  const unsigned = (slot: unknown): slot is number | null =>
+    slot === null ||
+    (typeof slot === "number" && ST_TwipsMeasure.format(slot) !== null);
+  if (
+    !signed(startTwips) ||
+    !signed(endTwips) ||
+    !unsigned(hangingTwips) ||
+    !unsigned(firstLineTwips)
+  )
+    return null;
+  return { startTwips, endTwips, hangingTwips, firstLineTwips };
 }
 
 /** One level of a registered list, as the document node carries it */
@@ -64,25 +71,42 @@ function levelValue(
 function toLevel(value: unknown): { ilvl: number; level: NewListLevel } | null {
   if (!isRecord(value)) return null;
   const { ilvl, format, text, start } = value;
-  if (typeof ilvl !== "number" || !Number.isInteger(ilvl)) return null;
+  if (
+    typeof ilvl !== "number" ||
+    !Number.isSafeInteger(ilvl) ||
+    ilvl < 0 ||
+    ilvl > MAX_ILVL
+  )
+    return null;
   if (typeof format !== "string" || !isNumberFormat(format)) return null;
   if (typeof text !== "string") return null;
-  if (typeof start !== "number" || !Number.isInteger(start)) return null;
+  if (typeof start !== "number" || !Number.isSafeInteger(start)) return null;
   const suffix = LEVEL_SUFFIXES.find((known) => known === value.suffix);
   const align = LEVEL_ALIGNS.find((known) => known === value.align);
   if (suffix === undefined || align === undefined) return null;
-  const restart = value.restartAfterLevel;
-  const restartAfterLevel =
-    typeof restart === "number" && Number.isInteger(restart) ? restart : null;
+  const restartAfterLevel = value.restartAfterLevel;
+  if (
+    restartAfterLevel !== null &&
+    (typeof restartAfterLevel !== "number" ||
+      !Number.isSafeInteger(restartAfterLevel) ||
+      restartAfterLevel < -1 ||
+      restartAfterLevel >= MAX_ILVL)
+  )
+    return null;
+  if (typeof value.legal !== "boolean") return null;
+  if (value.run !== undefined && value.run !== null) return null;
+  if (value.tabStops !== undefined) return null;
+  const indent = toLevelIndent(value.indent);
+  if (value.indent !== null && indent === null) return null;
   return {
     ilvl,
     level: {
       format,
       text,
       start,
-      indent: toLevelIndent(value.indent),
+      indent,
       restartAfterLevel,
-      legal: value.legal === true,
+      legal: value.legal,
       suffix,
       align,
       run: null,
@@ -93,12 +117,13 @@ function toLevel(value: unknown): { ilvl: number; level: NewListLevel } | null {
 function toList(value: unknown): { numId: number; list: NewList } | null {
   if (!isRecord(value)) return null;
   const { numId, levels } = value;
-  if (typeof numId !== "number" || !Number.isInteger(numId)) return null;
+  if (typeof numId !== "number" || !Number.isSafeInteger(numId) || numId <= 0)
+    return null;
   if (!Array.isArray(levels)) return null;
   const read = new Map<number, NewListLevel>();
   for (const entry of levels) {
     const level = toLevel(entry);
-    if (level === null) return null;
+    if (level === null || read.has(level.ilvl)) return null;
     read.set(level.ilvl, level.level);
   }
   return read.size === 0 ? null : { numId, list: { levels: read } };
@@ -133,7 +158,7 @@ export function newListsOf(value: unknown): NewLists {
   const lists = new Map<number, NewList>();
   for (const entry of value) {
     const read = toList(entry);
-    if (read === null) return NO_NEW_LISTS;
+    if (read === null || lists.has(read.numId)) return NO_NEW_LISTS;
     lists.set(read.numId, read.list);
   }
   return lists;
