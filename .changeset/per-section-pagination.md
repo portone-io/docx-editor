@@ -9,8 +9,9 @@ and could not be widened past it.
 
 Each page is now as tall as the body its own section leaves, a section break starts a new page
 unless it is marked continuous, and a table is fitted to the body width of the section it is
-inserted or dragged in. A page number still carries on across a section boundary rather than
-restarting where the section asks.
+inserted or dragged in. An image pasted into a section is fitted to the height that section's paper
+leaves. A page number still carries on across a section boundary rather than restarting where the
+section asks.
 
 One sheet is still drawn at one width, the first section's, because nothing draws two paper widths
 on one sheet. A landscape section is therefore paginated on landscape pages but drawn on the

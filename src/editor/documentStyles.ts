@@ -46,8 +46,9 @@ export function documentParagraphStyles(
  * (`page/pageLayout`). A document the editor knows no paper for is drawn on the same A4 every
  * document was drawn on before the geometry was read.
  *
- * Anything deciding a value for one spot in the document - the width of a table put there - asks
- * `sectionGeometryAt` instead, since a later section may be written on another paper.
+ * Anything deciding a value for one spot in the document - the width of a table put there, the
+ * height a pasted image is fitted to - asks `sectionGeometryAt` instead, since a later section may
+ * be written on another paper.
  */
 export function documentGeometry(state: EditorState): PageGeometry {
   return documentOf(state).geometry;
@@ -84,7 +85,14 @@ export function documentBodyWidthPx(state: EditorState): number {
   return bodyWidth(documentGeometry(state)).px;
 }
 
-/** The height one page of body content occupies, in pixels. */
-export function documentBodyHeightPx(state: EditorState): number {
-  return twipsToPx(bodyHeightTwips(documentGeometry(state)));
+/**
+ * The height one page of body content occupies at this position, in pixels: the height the paper
+ * of the section that block sits in leaves.
+ *
+ * It is the height an image taller than the page is shrunk to when it is pasted there, so a tall
+ * image dropped into a section on shorter paper is fitted to that section rather than to the
+ * sheet's own.
+ */
+export function sectionBodyHeightPx(state: EditorState, pos: number): number {
+  return twipsToPx(bodyHeightTwips(sectionGeometryAt(state, pos)));
 }
