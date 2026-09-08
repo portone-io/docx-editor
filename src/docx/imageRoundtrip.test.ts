@@ -17,6 +17,7 @@ import {
   TINY_PNG,
   TINY_PNG_BASE64,
   TINY_PNG_DATA_URL,
+  withBlocks,
 } from "../__testing__/docx";
 import { type ImageExtent, imageBase64Of } from "../ooxml/image";
 import { docxSchema } from "../schema";
@@ -53,7 +54,7 @@ function replaceInline(
       ? block.copy(Fragment.from(block.children.map(replace)))
       : block
   );
-  return docxSchema.nodes.doc.create(null, blocks);
+  return withBlocks(doc, blocks);
 }
 
 function resizeImages(doc: PMNode, extent: ImageExtent): PMNode {
@@ -77,7 +78,7 @@ function insertImage(doc: PMNode, attrs: Record<string, unknown>): PMNode {
   const blocks = doc.children.map((block, index) =>
     index === 0 ? withImage : block
   );
-  return docxSchema.nodes.doc.create(null, blocks);
+  return withBlocks(doc, blocks);
 }
 
 function partsOf(bytes: Uint8Array): Record<string, Uint8Array> {
@@ -442,7 +443,7 @@ describe("an image inside a table cell", () => {
     const row = table.child(0);
     const cell = row.child(0);
     const paragraph = cell.child(0);
-    const edited = docxSchema.nodes.doc.create(null, [
+    const edited = withBlocks(doc, [
       table.copy(
         Fragment.from([
           row.copy(

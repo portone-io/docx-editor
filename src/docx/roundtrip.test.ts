@@ -15,6 +15,8 @@ import {
   makeImageDocx,
   makeLinkedDocx,
   readFixture,
+  surroundings,
+  withBlocks,
 } from "../__testing__/docx";
 import { posOfText } from "../__testing__/editing";
 import { createEditorState } from "../editor/createEditor";
@@ -220,24 +222,14 @@ describe("locality of an edit", () => {
       doc.forEach((child, _offset, i) => {
         blocks.push(i === targetIndex ? editFirstText(child) : child);
       });
-      const editedDoc = docxSchema.nodes.doc.create(null, blocks);
+      const editedDoc = withBlocks(doc, blocks);
       const out = exportDocx(editedDoc, session);
 
       const exported = unzipSync(out);
       const documentXml = decode(exported[session.mainPartPath]);
 
       // The original fragments before and after the edited block are still there, byte for byte
-      const head =
-        session.documentPrefix +
-        session.blocks
-          .slice(0, targetIndex)
-          .map((b) => b.xml)
-          .join("");
-      const tail =
-        session.blocks
-          .slice(targetIndex + 1)
-          .map((b) => b.xml)
-          .join("") + session.documentSuffix;
+      const { head, tail } = surroundings(editedDoc, session, targetIndex);
       expect(documentXml.startsWith(head)).toBe(true);
       expect(documentXml.endsWith(tail)).toBe(true);
 
@@ -281,7 +273,7 @@ function replaceAllText(doc: PMNode, text: string): PMNode {
     });
     blocks.push(block.copy(Fragment.from(inline)));
   });
-  return docxSchema.nodes.doc.create(null, blocks);
+  return withBlocks(doc, blocks);
 }
 
 describe("regenerating a paragraph", () => {

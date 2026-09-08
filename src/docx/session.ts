@@ -75,7 +75,7 @@ export class SessionStore implements DocxSession, SessionIdentity {
   readonly defaults: DocumentDefaults;
   /** The effective automatic tab interval read from settings.xml. Used for display only. */
   readonly defaultTabStopPt: number;
-  /** The paper this document is written on, read from the first section. Used for display only: the `w:sectPr` itself goes back out in the preserved tail */
+  /** The paper this document is written on, read from the first section. Used for display only: the `w:sectPr` itself goes back out as the text it arrived as */
   readonly geometry: PageGeometry;
   /** Everything the display values of a paragraph or a run are resolved against: the style chain, the defaults, the list definitions */
   readonly formatting: FormattingContext;
@@ -89,7 +89,7 @@ export class SessionStore implements DocxSession, SessionIdentity {
   readonly comments: ImportedComments;
   /** Comment ids referenced by the original main story. A missing id after editing means deletion. */
   readonly commentReferenceIds: ReadonlySet<string>;
-  /** First-section header and footer stories projected for the page preview. */
+  /** The first section's header and footer stories, projected for the page preview. */
   readonly headersFooters: HeadersFooters;
 
   constructor(opened: Omit<SessionStore, "kind">) {

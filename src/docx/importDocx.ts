@@ -38,7 +38,7 @@ import {
   readParagraphStyles,
   styledParagraph,
 } from "./formatting";
-import { readHeadersFooters } from "./headersFooters";
+import { NO_HEADERS_FOOTERS, readHeadersFooters } from "./headersFooters";
 import { readLinkTargets } from "./hyperlink";
 import { buildParagraph, type ImportSources } from "./importParagraph";
 import { buildPreservedBlock } from "./importPreserved";
@@ -47,9 +47,10 @@ import { readImageSources } from "./media";
 import { NUMBERING_REL_TYPE } from "./newLists";
 import { readNotes } from "./notes";
 import { readPart, relatedPartPath } from "./packageParts";
-import { readBodyGeometry } from "./pageGeometry";
+import { A4_PORTRAIT } from "./pageGeometry";
 import { readRelationships } from "./relationships";
 import { type BodyScan, scanBody } from "./scan";
+import { firstSectPrElement, readSectionProperties } from "./sections";
 import {
   BODY_STORY_KEY,
   blockKey,
@@ -178,25 +179,29 @@ function assertScanMatchesDom(children: Element[], scan: BodyScan): void {
 }
 
 /**
- * Folds the `w:sectPr` at the very end of the body into the tail instead of making it a document node.
+ * Takes the `w:sectPr` at the very end of the body out of the blocks, so that it can be carried by
+ * the document node rather than stand among the blocks an edit works on (§17.6.18).
  *
- * The page setup is not visible in Word's body either, and there is nothing about it to edit.
- * Left as a document node it would disappear on select-all + delete, and whatever was written
- * afterwards would go out with no page setup at all.
- * Attached to the tail, the byte sequence stays as it was, so an edit-free round trip is undisturbed too.
+ * The page setup is not a block in Word's body either, and a block is what select-all + delete
+ * takes away; on the document node it survives that and still rides the transaction that changes
+ * it. The slice keeps whatever stood in front of it, so an untouched document goes back out as the
+ * bytes it arrived as.
  *
- * A sectPr anywhere other than the very end is a shape no healthy document has, so it is simply
- * left as a preservation block.
+ * A `w:sectPr` anywhere other than the very end is a shape no healthy document has, so it is
+ * simply left as a preservation block.
  */
-function foldTrailingSectPr(scan: BodyScan): BodyScan {
+function splitTrailingSectPr(scan: BodyScan): BodyScan & {
+  sectPr: string | null;
+} {
   const last = scan.blocks.at(-1);
-  // In a document whose body is nothing but a sectPr, folding it away would leave no block to edit
-  if (scan.blocks.length < 2 || !last) return scan;
-  if (localPart(last.name) !== "sectPr") return scan;
+  if (!last || localPart(last.name) !== "sectPr") {
+    return { ...scan, sectPr: null };
+  }
   return {
     prefix: scan.prefix,
     blocks: scan.blocks.slice(0, -1),
-    suffix: last.xml + scan.suffix,
+    suffix: scan.suffix,
+    sectPr: last.xml,
   };
 }
 
@@ -257,8 +262,10 @@ function readDocx(input: DocxBytes): {
   const children = elementChildren(body);
   assertScanMatchesDom(children, scanned);
 
-  const geometry = readBodyGeometry(body);
-  const scan = foldTrailingSectPr(scanned);
+  const firstSectPr = firstSectPrElement(body);
+  const firstSection = firstSectPr ? readSectionProperties(firstSectPr) : null;
+  const geometry = firstSection?.geometry ?? A4_PORTRAIT;
+  const scan = splitTrailingSectPr(scanned);
   const blockElements = children.slice(0, scan.blocks.length);
 
   const stylesXml = readPart(
@@ -307,7 +314,9 @@ function readDocx(input: DocxBytes): {
     labels.set(id, label);
     return label;
   };
-  const headersFooters = readHeadersFooters(parts, mainPartPath, body);
+  const headersFooters = firstSection
+    ? readHeadersFooters(parts, mainPartPath, firstSection)
+    : NO_HEADERS_FOOTERS;
   const sources: ImportSources = {
     images: readImageSources(parts, mainPartPath),
     themeFonts,
@@ -328,7 +337,19 @@ function readDocx(input: DocxBytes): {
       formatting
     )
   );
-  const doc = docxSchema.nodes.doc.create(null, blockNodes);
+  if (blockNodes.length === 0 && scan.sectPr !== null) {
+    // A section-only body needs a place to type. Its original block is empty XML, so the
+    // paragraph is written only after an edit and an untouched file remains byte-identical.
+    blockNodes.push(
+      withStyleFormats(
+        docxSchema.nodes.paragraph.create({
+          srcId: blockKey({ sessionId }, BODY_STORY_KEY, 0),
+        }),
+        formatting
+      )
+    );
+  }
+  const doc = docxSchema.nodes.doc.create({ sectPr: scan.sectPr }, blockNodes);
   return {
     doc,
     notes: fidelityNotesOf(doc, mainPartPath),
@@ -339,7 +360,10 @@ function readDocx(input: DocxBytes): {
       documentPrefix: scan.prefix,
       documentSuffix: scan.suffix,
       documentHadBom: hadBom,
-      blocks: blockNodes.map((node, i) => ({ xml: scan.blocks[i].xml, node })),
+      blocks: blockNodes.map((node, i) => ({
+        xml: scan.blocks[i]?.xml ?? "",
+        node,
+      })),
       defaults: stylesDom
         ? readDocumentDefaults(stylesDom, themeFonts)
         : NO_DOCUMENT_DEFAULTS,

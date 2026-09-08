@@ -206,13 +206,23 @@ function excusedPaths(
  * written under, the section properties that set the paper and its margins, and every block kept
  * as the XML it arrived as. A comment is written inside a paragraph, so nothing a comment edit
  * writes reaches this text.
+ *
+ * The section closing the body is read off the document node rather than out of the tail
+ * (`docx/sections`), and it belongs here for the same reason the rest does: a submission is free
+ * to rewrite the paper it is written on, and the story comparison would not see it.
  */
-function aroundTheStory(session: SessionStore): string {
-  const preserved = session.blocks
+function aroundTheStory(story: Story): string {
+  const preserved = story.session.blocks
     .filter((block) => !isModelledBlock(block.node))
     .map((block) => block.xml)
     .join("");
-  return session.documentPrefix + preserved + session.documentSuffix;
+  const sectPr: unknown = story.doc.attrs.sectPr;
+  return (
+    story.session.documentPrefix +
+    preserved +
+    (typeof sectPr === "string" ? sectPr : "") +
+    story.session.documentSuffix
+  );
 }
 
 /**
@@ -322,49 +332,55 @@ function gainedPartsAreNew(
 /** Whether every part outside the document story is the one the file arrived with */
 function packageKept(
   policy: ProtectionPolicy<string, string>,
-  before: SessionStore,
-  after: SessionStore
+  before: Story,
+  after: Story
 ): ChangeVerdict<never, PackageReason> {
-  if (before.mainPartPath !== after.mainPartPath) {
-    return { ok: false, reason: "part-changed", part: before.mainPartPath };
+  const was = before.session;
+  const now = after.session;
+  if (was.mainPartPath !== now.mainPartPath) {
+    return { ok: false, reason: "part-changed", part: was.mainPartPath };
   }
-  const relsPath = relsPathOf(before.mainPartPath);
+  const relsPath = relsPathOf(was.mainPartPath);
   const untouched = new Set([
-    before.mainPartPath,
+    was.mainPartPath,
     relsPath,
     CONTENT_TYPES_PATH,
-    ...excusedPaths(policy, before),
-    ...excusedPaths(policy, after),
+    ...excusedPaths(policy, was),
+    ...excusedPaths(policy, now),
   ]);
-  for (const path of new Set([...before.parts.keys(), ...after.parts.keys()])) {
+  for (const path of new Set([...was.parts.keys(), ...now.parts.keys()])) {
     if (untouched.has(path)) continue;
-    const was = before.parts.get(path);
-    const now = after.parts.get(path);
-    if (was === undefined || now === undefined || !sameBytes(was, now)) {
+    const arrived = was.parts.get(path);
+    const submitted = now.parts.get(path);
+    if (
+      arrived === undefined ||
+      submitted === undefined ||
+      !sameBytes(arrived, submitted)
+    ) {
       return { ok: false, reason: "part-changed", part: path };
     }
   }
   if (
     !relationshipsKept(
-      readRelationships(before.parts, relsPath),
-      readRelationships(after.parts, relsPath),
+      readRelationships(was.parts, relsPath),
+      readRelationships(now.parts, relsPath),
       policy.parts.map((kind) => kind.relType)
     ) ||
-    !gainedPartsAreNew(policy, before, after)
+    !gainedPartsAreNew(policy, was, now)
   ) {
     return { ok: false, reason: "relationship-changed", part: relsPath };
   }
   if (
     !contentTypesKept(
-      contentTypes(before.parts.get(CONTENT_TYPES_PATH)),
-      contentTypes(after.parts.get(CONTENT_TYPES_PATH)),
+      contentTypes(was.parts.get(CONTENT_TYPES_PATH)),
+      contentTypes(now.parts.get(CONTENT_TYPES_PATH)),
       policy.parts.map((kind) => kind.contentType)
     )
   ) {
     return { ok: false, reason: "part-changed", part: CONTENT_TYPES_PATH };
   }
   if (aroundTheStory(before) !== aroundTheStory(after)) {
-    return { ok: false, reason: "part-changed", part: before.mainPartPath };
+    return { ok: false, reason: "part-changed", part: was.mainPartPath };
   }
   return { ok: true };
 }
@@ -465,7 +481,7 @@ export function verifyChange<S extends string, P extends string>(
   return withXmlParser(xmlParser, () => {
     const before = importDocx(original);
     const after = importDocx(submitted);
-    const packaged = packageKept(policy, before.session, after.session);
+    const packaged = packageKept(policy, before, after);
     if (!packaged.ok) return packaged;
     const story = policy.storyKept(before, after, authorId, options);
     return story.ok

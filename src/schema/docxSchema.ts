@@ -279,6 +279,13 @@ export const docxSchema = new Schema({
          * numbering.xml. Read back through `numbering/listRegistry`.
          */
         newLists: { default: null },
+        /**
+         * The section properties that close the body: the paper the document's last section is
+         * written on, its headers and its page numbering (§17.6.18). Held as the fragment the
+         * document wrote, so an untouched document goes back out as the bytes it arrived as.
+         * Read through `docx/sections`.
+         */
+        sectPr: { default: null },
       },
     },
     paragraph: {

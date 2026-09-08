@@ -34,6 +34,7 @@ import {
   producerFixtureNames,
   readFixture,
   readProducerFixture,
+  withBlocks,
 } from "../__testing__/docx";
 import { posOfText } from "../__testing__/editing";
 import {
@@ -46,7 +47,6 @@ import {
 import { toggleBulletList } from "../editor/commands/listCommands";
 import { createEditorState } from "../editor/createEditor";
 import { parseXml, R_NS, W_NS } from "../ooxml/xml";
-import { docxSchema } from "../schema";
 import { setCellPadding } from "../table";
 import { type EditedBlock, withEditedFirst } from "./__testing__/blockEdits";
 import { withoutIgnorableMarkup } from "./__testing__/mce";
@@ -61,6 +61,7 @@ import { MC_NS, W14_NS } from "./comments/constants";
 import { exportDocx } from "./exportDocx";
 import { importDocx } from "./importDocx";
 import { CONTENT_TYPES_PATH } from "./packageParts";
+import { setSectionChild } from "./sections";
 import type { SessionStore } from "./session";
 
 const XSD_NS = "http://www.w3.org/2001/XMLSchema";
@@ -323,7 +324,7 @@ function withoutTables(doc: PMNode): PMNode {
   doc.forEach((block) => {
     if (block.type.name !== "table") blocks.push(block);
   });
-  return docxSchema.nodes.doc.create(null, blocks);
+  return withBlocks(doc, blocks);
 }
 
 /** The whole of the first body paragraph that holds text, which a probe of its own works on */
@@ -609,6 +610,30 @@ describe("the exported package against the OOXML schemas", () => {
     expect(parts.has("word/header1.xml")).toBe(true);
     expect(parts.has("word/footer1.xml")).toBe(true);
     expectPartsValidate("headers and footers", parts);
+  });
+
+  it("a section whose margins were rewritten still validates", () => {
+    const { doc, session } = importDocx(readFixture(LETTER_FIXTURE));
+    const original: unknown = doc.attrs.sectPr;
+    if (typeof original !== "string") {
+      throw new Error(`${LETTER_FIXTURE} closes its body with no section`);
+    }
+    const narrowed = doc.type.create(
+      {
+        ...doc.attrs,
+        sectPr: setSectionChild(
+          original,
+          "pgMar",
+          '<w:pgMar w:top="720" w:right="720" w:bottom="720" w:left="720"' +
+            ' w:header="720" w:footer="720" w:gutter="0"/>'
+        ),
+      },
+      doc.content
+    );
+    const parts = wordprocessingParts(exportDocx(narrowed, session));
+
+    expect(parts.get(session.mainPartPath)).toContain('<w:pgMar w:top="720"');
+    expectPartsValidate("rewritten section margins", parts);
   });
 
   it.each(fixtureNames)(

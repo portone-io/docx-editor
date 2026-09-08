@@ -85,7 +85,10 @@ const MARKER_PAIR =
 const MARKERS_WITH_TEXT = `${MARKER_PAIR}smuggled`;
 
 const NODE_FRAGMENTS: RawAttrTable = {
-  doc: { newLists: null },
+  // The document node is never drawn into the DOM, so neither of its source attrs reaches a
+  // `data-` attribute for a rule to read back: the section that closes the body is written
+  // straight into the exported part instead (`docx/exportDocx`)
+  doc: { newLists: null, sectPr: null },
   paragraph: {
     pAttrs: {
       attribute: "data-pattrs",

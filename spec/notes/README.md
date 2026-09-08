@@ -8,6 +8,7 @@ These notes record reusable OOXML interpretations, interoperability findings, an
 - [Formatting hierarchy](./formattingHierarchy.md)
 - [Comments](./comments.md)
 - [Content controls](./contentControls.md)
+- [Sections](./sections.md)
 - [Table cell layout](./tableCellLayout.md)
 - [Table styles](./tableStyles.md)
 - [Headers and footers](./headersAndFooters.md)

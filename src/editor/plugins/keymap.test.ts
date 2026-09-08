@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 import type { EditorState } from "prosemirror-state";
 import { describe, expect, it } from "vitest";
-import { makeDocx } from "../../__testing__/docx";
+import { LETTER_SECT_PR, makeDocx } from "../../__testing__/docx";
 import { runCommand, select } from "../../__testing__/editing";
+import { exportDocx } from "../../docx/exportDocx";
 import { importDocx } from "../../docx/importDocx";
 import { serializeParagraph } from "../../docx/serializeParagraph";
 import {
@@ -142,6 +143,27 @@ describe("the break shortcuts", () => {
   );
 });
 
+describe("Enter", () => {
+  /** A section closed by the paragraph the caret sits in, which is where §17.6.17 puts one */
+  const SECT_PR = '<w:sectPr><w:pgSz w:w="12240" w:h="15840"/></w:sectPr>';
+
+  const sectionBreaksIn = (state: EditorState, index: number) =>
+    serializeParagraph(state.doc.child(index)).match(/<w:sectPr[ />]/g) ?? [];
+
+  it("leaves the break on the later paragraph at the end of a section", () => {
+    const body =
+      `<w:p><w:pPr>${SECT_PR}</w:pPr>` +
+      '<w:r><w:t xml:space="preserve">abcd</w:t></w:r></w:p>' +
+      "<w:p/>";
+    const state = createEditorState(importDocx(makeDocx(body)).doc);
+    const split = runCommand(select(state, 5), docxKeymap.Enter);
+
+    expect(split.doc.childCount).toBe(3);
+    expect(sectionBreaksIn(split, 0)).toEqual([]);
+    expect(sectionBreaksIn(split, 1)).toEqual(["<w:sectPr>"]);
+  });
+});
+
 describe("Tab", () => {
   it("inserts a document tab in an ordinary paragraph", () => {
     const next = runCommand(select(opened("abcd"), 3), docxKeymap.Tab);
@@ -184,4 +206,16 @@ describe("the link key", () => {
     const locked = runCommand(select(opened("abcd"), 1, 5), lockSelection);
     expect(docxKeymap["Mod-k"](select(locked, 1, 5))).toBe(false);
   });
+});
+
+it("keeps the first blank paragraph after Enter in a section-only body", () => {
+  const { doc, session } = importDocx(makeDocx(LETTER_SECT_PR));
+  const split = runCommand(createEditorState(doc), docxKeymap.Enter);
+  const typed = split.apply(split.tr.insertText("second paragraph"));
+  expect(typed.doc.childCount).toBe(2);
+  const reopened = importDocx(exportDocx(typed.doc, session)).doc;
+  expect(reopened.childCount).toBe(2);
+  expect(reopened.child(0).textContent).toBe("");
+  expect(reopened.child(1).textContent).toBe("second paragraph");
+  expect(reopened.attrs.sectPr).toBe(LETTER_SECT_PR);
 });

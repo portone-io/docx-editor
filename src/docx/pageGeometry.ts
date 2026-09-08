@@ -1,8 +1,8 @@
 /**
  * The paper a document is written on: its size and its margins.
  *
- * A document says so in the `w:sectPr` at the end of its body. The values are read for the screen
- * only: the `w:sectPr` itself rides out with the rest of the preserved tail, so what a document
+ * A document says so in a `w:sectPr`, one per section (`./sections`). The values are read for the
+ * screen only: the `w:sectPr` itself rides out as the text it arrived as, so what a document
  * declares is never rewritten from these numbers.
  *
  * Everything here is in twips (1/1440 inch), the unit `w:pgSz` and `w:pgMar` are written in.
@@ -91,6 +91,9 @@ function readMargin(value: number | null, fallback: number): number {
 /**
  * The geometry a `w:sectPr` element lays down, with anything it leaves unsaid taken from A4.
  *
+ * The reading is deliberately forgiving: it runs against a document already opened, and a
+ * `w:sectPr` that cannot be read is a reason to draw A4, never a reason to refuse the file.
+ *
  * `w:orient` is not applied on top of the size: Word writes the width and the height already
  * swapped for a landscape section, so honouring both would turn the paper back upright.
  */
@@ -172,27 +175,3 @@ export function bodyWidth(geometry: PageGeometry): BodyWidth {
  * It is what a caller with no document to ask still gets: 11906 - 1247 * 2 = 9412 dxa.
  */
 export const A4_BODY_WIDTH: BodyWidth = bodyWidth(A4_PORTRAIT);
-
-/**
- * The geometry of the first section of an already parsed body.
- *
- * A document may hold a `w:sectPr` per section, each with a paper of its own. The screen draws
- * one paper for the whole document, so the first section decides it; the rest ride out
- * untouched in their preserved blocks and are drawn on the first section's paper.
- * `site/content/docs/features.mdx` records that limit.
- *
- * The reading is deliberately forgiving: this runs against a document already opened, and a
- * `w:sectPr` we cannot read is a reason to draw A4, never a reason to refuse the file.
- */
-export function readBodyGeometry(body: Element): PageGeometry {
-  return readPageGeometry(firstSectPrIn(body));
-}
-
-function firstSectPrIn(root: Element): Element | null {
-  const found = root.getElementsByTagName("w:sectPr").item(0);
-  if (found) return found;
-  for (const el of root.getElementsByTagName("*")) {
-    if (el.localName === "sectPr") return el;
-  }
-  return null;
-}

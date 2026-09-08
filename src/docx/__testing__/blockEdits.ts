@@ -7,6 +7,7 @@
  */
 
 import { Fragment, type Node as PMNode } from "prosemirror-model";
+import { withBlocks } from "../../__testing__/docx";
 import { docxSchema } from "../../schema";
 
 export type EditedBlock = "paragraph" | "table";
@@ -51,7 +52,7 @@ export function withEditedBlock(
     if (edited === null) throw new Error(`block ${index} holds no text`);
     blocks.push(edited);
   });
-  return docxSchema.nodes.doc.create(null, blocks);
+  return withBlocks(doc, blocks);
 }
 
 /** The document with the first block of this kind edited */

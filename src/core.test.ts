@@ -15,6 +15,7 @@ import {
   makeDocx,
   ONE_LIST_NUMBERING,
   readFixture,
+  withBlocks,
 } from "./__testing__/docx";
 import { rangeOfText } from "./__testing__/editing";
 import {
@@ -102,7 +103,7 @@ function editFirstText(doc: PMNode, text: string): PMNode {
     blocks.push(block.copy(Fragment.from(inline)));
   });
   if (!edited) throw new Error("the fixture has no text to edit");
-  return docxSchema.nodes.doc.create(null, blocks);
+  return withBlocks(doc, blocks);
 }
 
 function numberingRefsIn(doc: PMNode): NumberingRef[] {

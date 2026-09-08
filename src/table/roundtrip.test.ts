@@ -464,8 +464,9 @@ describe.each(TABLE_EDITS)("once %s", (_edit, edit) => {
     (name) => {
       const { doc, session } = importDocx(readFixture(name));
       const { index } = firstTable(doc);
-      const documentXml = documentXmlOf(edit(doc), session);
-      const { head, tail } = surroundings(session, index);
+      const edited = edit(doc);
+      const documentXml = documentXmlOf(edited, session);
+      const { head, tail } = surroundings(edited, session, index);
 
       expect(documentXml.startsWith(head)).toBe(true);
       expect(documentXml.endsWith(tail)).toBe(true);

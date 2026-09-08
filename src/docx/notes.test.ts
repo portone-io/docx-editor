@@ -7,6 +7,7 @@ import {
   decode,
   makeNotesDocx,
   NOTE_BODY,
+  withBlocks,
 } from "../__testing__/docx";
 import { documentNotes } from "../editor/commands/noteQueries";
 import { createEditorState } from "../editor/createEditor";
@@ -26,9 +27,7 @@ function editFirstText(doc: PMNode): PMNode {
       inline.push(child);
     }
   });
-  return docxSchema.nodes.doc.create(null, [
-    paragraph.copy(Fragment.from(inline)),
-  ]);
+  return withBlocks(doc, [paragraph.copy(Fragment.from(inline))]);
 }
 
 describe("footnotes and endnotes", () => {

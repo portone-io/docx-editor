@@ -215,18 +215,36 @@ export function setChild(
   xml: string | null,
   parent?: string
 ): Props {
+  return setChildren(props, name, xml === null ? [] : [xml], parent);
+}
+
+/**
+ * Replaces every child of one name with this list of them, in the order given.
+ *
+ * `CT_SectPr` lets a section name a header and a footer once per variant, so a name standing more
+ * than once is a list rather than a single child, and writing one of them is writing the list. An
+ * empty list takes them all away.
+ */
+export function setChildren(
+  props: Props,
+  name: string,
+  xmls: readonly string[],
+  parent?: string
+): Props {
   const order = childOrderOf(localPart(props.tag), parent);
   const at = props.children.findIndex((entry) => entry.name === name);
 
-  // Keeps the spot it originally occupied, and what stood in front of it. If the same name
-  // appears several times, only the first spot survives
-  if (at !== -1 && xml !== null) {
+  // The first one keeps the spot it originally occupied, and what stood in front of it; the rest
+  // follow it, and any further spot the same name held is given up
+  if (at !== -1 && xmls.length > 0) {
     const rest = dropChildren(props.children.slice(at + 1), name);
     return {
       ...props,
       children: [
         ...props.children.slice(0, at),
-        { ...props.children[at], xml },
+        ...xmls.map((xml, index) =>
+          index === 0 ? { ...props.children[at], xml } : { name, xml }
+        ),
         ...rest.kept,
       ],
       ...tailWith(props, rest.carried),
@@ -234,13 +252,17 @@ export function setChild(
   }
 
   const { kept, carried } = dropChildren(props.children, name);
-  if (xml === null) {
+  if (xmls.length === 0) {
     return { ...props, children: kept, ...tailWith(props, carried) };
   }
   const index = insertIndex(kept, name, order, props.tag);
   return {
     ...props,
-    children: [...kept.slice(0, index), { name, xml }, ...kept.slice(index)],
+    children: [
+      ...kept.slice(0, index),
+      ...xmls.map((xml) => ({ name, xml })),
+      ...kept.slice(index),
+    ],
     ...tailWith(props, carried),
   };
 }
