@@ -132,7 +132,22 @@ export const NODE_ATTR_ROLES: AttrTable = {
     label: { role: "display", class: "derived" },
     text: { role: "display", class: "derived" },
   },
-  rawInline: { xml: { role: "source", class: "preserved" } },
+  rawRunContent: {
+    xml: { role: "source", class: "preserved" },
+    // What the fragment is and how it is drawn are read off the preservation table when the
+    // document is opened and never worked out again, so they travel with the fragment itself
+    element: { role: "session", class: "identity" },
+    display: { role: "session", class: "derived" },
+    text: { role: "session", class: "derived" },
+    guarded: { role: "session", class: "derived" },
+  },
+  rawInline: {
+    xml: { role: "source", class: "preserved" },
+    element: { role: "session", class: "identity" },
+    display: { role: "session", class: "derived" },
+    text: { role: "session", class: "derived" },
+    guarded: { role: "session", class: "derived" },
+  },
 };
 
 export const MARK_ATTR_ROLES: AttrTable = {

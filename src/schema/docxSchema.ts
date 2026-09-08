@@ -12,7 +12,11 @@
  * checks coverage. The plugin guide defines the supported public surface.
  */
 
-import { Schema } from "prosemirror-model";
+import {
+  type DOMOutputSpec,
+  type Node as PMNode,
+  Schema,
+} from "prosemirror-model";
 import {
   spanCount,
   toBandSizes,
@@ -164,6 +168,79 @@ function rawXml(
   shape: RawXmlShape
 ): string | null | false {
   return acceptRawXml(shape, dom.getAttribute(attribute));
+}
+
+/**
+ * How a preserved fragment is drawn, baked into the node's attrs when the document is opened
+ * (`docx/importPolicy`) so that this layer reads a value rather than a vocabulary.
+ *
+ * `hidden` puts nothing on screen, `text` draws the character the fragment stands for, `break`
+ * ends the line where it stood, and `chip` draws a small box naming the element.
+ */
+export type PreservedDisplay = "hidden" | "text" | "break" | "chip";
+
+function preservedDisplayOf(value: unknown): PreservedDisplay {
+  switch (value) {
+    case "text":
+      return "text";
+    case "break":
+      return "break";
+    case "chip":
+      return "chip";
+    default:
+      return "hidden";
+  }
+}
+
+/** The attributes every preserved fragment is drawn with, whatever level it was kept at */
+function preservedAttributes(
+  node: PMNode,
+  className: string
+): Record<string, string | undefined> {
+  return {
+    class: className,
+    "data-xml": text(node.attrs.xml),
+    "data-element": text(node.attrs.element),
+    "data-display": preservedDisplayOf(node.attrs.display),
+    "data-text": text(node.attrs.text),
+    "data-guarded": node.attrs.guarded === true ? "1" : undefined,
+  };
+}
+
+/**
+ * What one preserved fragment draws.
+ *
+ * A chip says which element it stands for, and shows the text that element held where it has one,
+ * so a field result or a tracked insertion reads on screen as what it is rather than as a gap.
+ */
+function preservedDom(node: PMNode, className: string): DOMOutputSpec {
+  const attributes = preservedAttributes(node, className);
+  const display = preservedDisplayOf(node.attrs.display);
+  const preview = text(node.attrs.text);
+  const element = text(node.attrs.element);
+  if (display === "break") return ["span", attributes, ["br"]];
+  if (display === "text") return ["span", attributes, preview ?? ""];
+  if (display === "chip") {
+    return [
+      "span",
+      { ...attributes, title: element ?? UNKNOWN_PLACEHOLDER },
+      preview !== undefined && preview !== "" ? preview : (element ?? "?"),
+    ];
+  }
+  return ["span", attributes];
+}
+
+/** What a preserved fragment's attrs read back as, for either of the two nodes that carry one */
+function preservedAttrs(dom: HTMLElement): Record<string, unknown> | false {
+  const xml = rawXml(dom, "data-xml", ANY_ELEMENT);
+  if (xml === false) return false;
+  return {
+    xml,
+    element: dom.getAttribute("data-element"),
+    display: preservedDisplayOf(dom.getAttribute("data-display")),
+    text: dom.getAttribute("data-text"),
+    guarded: dom.getAttribute("data-guarded") === "1",
+  };
 }
 
 const TABLE_PLACEHOLDER = "Table (unsupported layout, original is preserved)";
@@ -915,29 +992,58 @@ export const docxSchema = new Schema({
         },
       ],
     },
+    /**
+     * One child of a run the editor has no node for, kept as the XML it came as.
+     *
+     * It wears the run mark, so it is written back inside the same `<w:r>` as the text beside it,
+     * which is where `EG_RunInnerContent` says it may stand.
+     */
+    rawRunContent: {
+      group: "inline",
+      inline: true,
+      atom: true,
+      marks: "run sdt link",
+      attrs: {
+        xml: { default: null },
+        /** The local name of the element, for example `fldChar` */
+        element: { default: null },
+        display: { default: "hidden" },
+        /** What a `text` display draws, and the preview a chip shows */
+        text: { default: null },
+        /** Whether the deletion guard answers for this fragment (`schema/preservedGuards`) */
+        guarded: { default: false },
+      },
+      toDOM(node) {
+        return preservedDom(node, editorClassNames.rawRunContent);
+      },
+      parseDOM: [
+        {
+          tag: `span.${editorClassNames.rawRunContent}`,
+          getAttrs: preservedAttrs,
+        },
+      ],
+    },
     /** The node that carries a non-run element inside a paragraph (a bookmark, for instance) exactly as it came */
     rawInline: {
       group: "inline",
       inline: true,
       atom: true,
       marks: "sdt link",
-      attrs: { xml: { default: null } },
+      attrs: {
+        xml: { default: null },
+        /** The local name of the element; `r` for a run with no content, kept whole */
+        element: { default: null },
+        display: { default: "hidden" },
+        text: { default: null },
+        guarded: { default: false },
+      },
       toDOM(node) {
-        return [
-          "span",
-          {
-            class: editorClassNames.rawInline,
-            "data-xml": text(node.attrs.xml),
-          },
-        ];
+        return preservedDom(node, editorClassNames.rawInline);
       },
       parseDOM: [
         {
           tag: `span.${editorClassNames.rawInline}`,
-          getAttrs: (dom) => {
-            const xml = rawXml(dom, "data-xml", ANY_ELEMENT);
-            return xml === false ? false : { xml };
-          },
+          getAttrs: preservedAttrs,
         },
       ],
     },
