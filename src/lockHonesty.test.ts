@@ -118,9 +118,18 @@ const SECTION_BODY =
   '<w:p><w:pPr><w:sectPr><w:pgSz w:w="11906" w:h="16838"/></w:sectPr></w:pPr>' +
   `${runXml("ends")}</w:p>`;
 
+const FIELD_P =
+  `<w:p>${runXml("field before")}<w:r>` +
+  '<w:fldChar w:fldCharType="begin"/>' +
+  "<w:instrText> PAGE </w:instrText>" +
+  '<w:fldChar w:fldCharType="end"/></w:r>' +
+  `${runXml("field after")}</w:p>`;
+
 function opened(protection: EditingProtection): EditorState {
   return createEditorState(
-    importDocx(makeNotesDocx(BODY + NOTE_BODY + BOOKMARK_P + SECTION_BODY)).doc,
+    importDocx(
+      makeNotesDocx(BODY + NOTE_BODY + BOOKMARK_P + FIELD_P + SECTION_BODY)
+    ).doc,
     {
       protection,
       author: { id: "me", name: "Me" },
@@ -348,6 +357,11 @@ const PLACES: readonly Place[] = [
     name: "a caret against a bookmark marker",
     guards: ["protection"],
     state: (protection) => afterNode("rawInline", protection),
+  },
+  {
+    name: "a selection running across a field piece",
+    guards: ["protection", "preserved"],
+    state: (protection) => acrossNode("rawRunContent", protection),
   },
   {
     name: "a selection running across a footnote reference",

@@ -88,6 +88,46 @@ describe("a guard over the markers a document was opened with", () => {
     expect(editShut(state, { kind: "replace", ...piece })).toBe(true);
   });
 
+  it("allows moving a complete field to every position in the surrounding text", () => {
+    const state = bookmarked(
+      `<w:p>${runXml("alpha")}<w:r>` +
+        '<w:fldChar w:fldCharType="begin"/>' +
+        "<w:instrText> PAGE </w:instrText>" +
+        '<w:fldChar w:fldCharType="end"/></w:r>' +
+        `${runXml("omega")}</w:p>`
+    );
+    const { from } = nodeRange(state.doc, "rawRunContent");
+    const field = state.doc.slice(from, from + 3);
+    const removed = state.tr.delete(from, from + 3);
+    expect(transactionAllowed(removed, state)).toBe(false);
+    for (
+      let destination = 1;
+      destination < removed.doc.child(0).nodeSize;
+      destination++
+    ) {
+      const tr = state.tr.delete(from, from + 3);
+      tr.replace(destination, destination, field);
+      expect(transactionAllowed(tr, state), `destination ${destination}`).toBe(
+        true
+      );
+      expect(state.apply(tr).doc.eq(tr.doc)).toBe(true);
+    }
+  });
+
+  it("refuses reordering field pieces even when none is lost", () => {
+    const state = bookmarked(
+      '<w:p><w:r><w:fldChar w:fldCharType="begin"/>' +
+        "<w:instrText> PAGE </w:instrText>" +
+        '<w:fldChar w:fldCharType="end"/></w:r></w:p>'
+    );
+    const { from, to } = nodeRange(state.doc, "rawRunContent");
+    const begin = state.doc.slice(from, to);
+    const tr = state.tr.delete(from, to);
+    tr.replace(3, 3, begin);
+    expect(transactionAllowed(tr, state)).toBe(false);
+    expect(state.apply(tr).doc.eq(state.doc)).toBe(true);
+  });
+
   it("lets a transaction delete a revision chip whole", () => {
     const state = bookmarked(
       `<w:p>${runXml("m")}<w:ins w:id="1" w:author="Reviewer A" ` +

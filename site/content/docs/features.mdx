@@ -57,7 +57,7 @@ binding such as `Mod+K` without replacing the editor.
 | --- | --- |
 | Additional Word character formatting and character styles | Existing formatting that the editor does not display or edit is preserved. |
 | Bookmarks | Existing bookmark ranges are preserved at their document positions, invisible and impossible to remove. A selection running across one of the markers cannot be replaced, so typing or deleting over it leaves the text as it stands, and the picture, line break and page break controls are unavailable while it is held. Move the selection clear of the marker to edit the text around it. The same holds for a permission range and for the markers of a moved passage. |
-| Document fields | A field code and the result drawn for it are shown as small boxes in the text and cannot be edited or removed. The paragraph around a field stays editable. |
+| Document fields | Complex-field markers and instructions are shown as small boxes that cannot be edited or removed. Their cached result remains editable text. A simple field is one box showing its cached result and can be removed whole. The paragraph around either kind stays editable. |
 | Section breaks | A paragraph carrying a section break keeps it. The paragraph cannot be joined away, since nothing puts a lost section back, and pressing Enter in it keeps the break on the last paragraph of the section instead of copying it onto both halves. |
 | Tracked changes | An insertion or a deletion is shown as a small box carrying its text, and can be selected and removed whole; the passage inside it cannot be edited. A table's `w:tblGridChange` is preserved as it came. A rebuilt table is the exception in one place: the cells continuing a vertical merge are written from the cell that starts it, so properties of their own do not come along. |
 | Other Word markup inside a paragraph | A symbol, a positional tab, a content control the editor could not take apart, and any other element it has no model for are shown as small boxes where they stood, and the paragraph around them stays editable. |
@@ -77,8 +77,9 @@ binding such as `Mod+K` without replacing the editor.
 Content outside the supported editing surface is not silently discarded. Untouched package parts
 and document blocks are written back from their original XML, and an element the editor has no
 model for is kept where it stood: inside its run, beside the runs of its paragraph, or as a block.
-A paragraph is never stood down for holding one. A placeholder is left only where there is nowhere
-to keep the element, which is a marker or a wrapper standing between the rows or cells of a table.
+A paragraph stays editable around its preserved elements. Unsupported blocks remain placeholders,
+as do tables whose structure cannot be modelled, including tables with markers or wrappers
+between their rows or cells.
 
 What a given document kept this way is not a guess: `documentFidelity` lists it, and `importDocx`
 returns the same list for a file opened outside the editor.
