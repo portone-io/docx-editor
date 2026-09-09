@@ -34,10 +34,8 @@ If CI failed on the commit itself, re-run CI first; the workflow waits on its re
 
 ## The version the site's demo runs
 
-Changesets preserves the published demo pins during release preparation through `bumpVersionsWithWorkspaceProtocolOnly`.
-After publishing succeeds, [Update site release](../.github/workflows/site-release.yml) rebuilds the `production` branch, which Vercel serves, from the release commit and the published version.
-It then opens a pull request from `production` to `main`, unless `main` already pins that version, so the `main` preview and local site builds follow the release once it is merged.
-A workflow token opens that pull request, so its checks wait for **Approve workflows to run** in the merge box, the one approval a release still asks of a person.
+On `main` the site and the demo run the editor from this repository's sources, so nothing there names a release and nothing there moves after one.
+After publishing succeeds, [Update site release](../.github/workflows/site-release.yml) checks out the release commit, installs the published version into the site and the demo, builds the site, and writes the result to the `production` branch, which Vercel serves.
 See [automatic site updates and recovery](../site/README.md#automatic-updates-after-publishing).
 
 ## Tags and GitHub releases

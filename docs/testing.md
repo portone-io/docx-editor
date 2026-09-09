@@ -13,7 +13,7 @@ Use `pnpm check` for the default local gate. Run the specialized checks when a c
 | `pnpm test:package` | Published tarball contents, leaf-import size, declaration reports, and the core entry in a Node runtime with no DOM |
 | `pnpm verify:package` | Fresh installation, declarations, entries, bundle, and stylesheet |
 | `pnpm test:e2e` | Playwright tests against a locally installed Chrome |
-| `pnpm check:demo-library` | The site and demo pins match their installed packages and do not resolve to the working tree |
+| `pnpm check:demo-library` | The site and demo both run the library from the sources, or both pin the same published release and have it installed |
 | `pnpm test:site-release` | Offline Node tests for released-demo preparation and the production branch rebuild |
 | `pnpm test:release` | Offline Node tests for the release pull request command |
 
