@@ -76,6 +76,14 @@ const proposal = {
   "gh pr create": "https://example.com/pull/9",
 };
 const env = { PATH: "/usr/bin" };
+const title = "chore: release 0.6.0";
+const body = [
+  `Merging this publishes \`${library}@0.6.0\`.`,
+  "",
+  "### Minor Changes",
+  "",
+  "- A new thing.",
+].join("\n");
 
 test("release notes are one version's CHANGELOG entry without its heading", () => {
   assert.equal(
@@ -97,13 +105,6 @@ test("the release pull request is cut from origin/main and opened by the person 
     version: "0.6.0",
     url: "https://example.com/pull/9",
   });
-  const body = [
-    "### Minor Changes",
-    "",
-    "- A new thing.",
-    "",
-    `Merging this publishes \`${library}@0.6.0\`.`,
-  ].join("\n");
   assert.deepEqual(shell.lines(), [
     "git status --porcelain --untracked-files=no",
     "gh auth status",
@@ -114,10 +115,10 @@ test("the release pull request is cut from origin/main and opened by the person 
     "gh auth token",
     "pnpm changeset version",
     "git add --update",
-    `git commit --message chore: release --message ${library}@0.6.0`,
+    `git commit --message ${title} --message ${library}@0.6.0`,
     "git push --force-with-lease --set-upstream origin release/next",
     "gh pr list --state open --head release/next --base main --json number,url --limit 1",
-    `gh pr create --base main --head release/next --title chore: release --body ${body}`,
+    `gh pr create --base main --head release/next --title ${title} --body ${body}`,
     "git checkout feature/x",
   ]);
   assert.equal(
@@ -163,7 +164,7 @@ test("an open release pull request is rewritten rather than opened again", async
   assert.equal(result.url, "https://example.com/pull/9");
   const pulls = shell.lines().filter((line) => line.startsWith("gh pr "));
   assert.equal(pulls.length, 2);
-  assert.match(pulls[1], /^gh pr edit 9 --body ### Minor Changes/);
+  assert.equal(pulls[1], `gh pr edit 9 --title ${title} --body ${body}`);
 });
 
 for (const [reason, answers, message] of [

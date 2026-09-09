@@ -9,9 +9,9 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const library = "@portone/docx-editor";
 const branch = "release/next";
 const base = "main";
-const title = "chore: release";
 
 export const tagOf = (version) => `${library}@${version}`;
+const titleOf = (version) => `chore: release ${version}`;
 
 /** The CHANGELOG entry for one version, without its heading. */
 export function releaseNotes(changelog, version) {
@@ -48,7 +48,9 @@ async function signedIn(sh) {
 /**
  * Turns the changesets pending on main into a version bump and CHANGELOG entry on
  * a pull request opened as the person running this, so its checks start at once.
- * The branch name is fixed, so running this again rewrites the same pull request.
+ * Its title and body both name the version merging it publishes. The branch name
+ * is fixed, so running this again rewrites the same pull request, title included,
+ * because a rerun can arrive at a different version.
  * Merging the pull request is what publishes.
  */
 export async function proposeRelease(
@@ -84,6 +86,7 @@ export async function proposeRelease(
     await readFile(join(directory, "package.json"), "utf8")
   );
   const tag = tagOf(version);
+  const title = titleOf(version);
   // Only tracked files move: the bump, the CHANGELOG, and the consumed changesets.
   await sh("git", ["add", "--update"]);
   await sh("git", ["commit", "--message", title, "--message", tag]);
@@ -95,11 +98,11 @@ export async function proposeRelease(
     branch,
   ]);
   const body = [
+    `Merging this publishes \`${tag}\`.`,
     releaseNotes(
       await readFile(join(directory, "CHANGELOG.md"), "utf8"),
       version
     ).trim(),
-    `Merging this publishes \`${tag}\`.`,
   ].join("\n\n");
   const [open] = JSON.parse(
     await sh("gh", [
@@ -119,7 +122,15 @@ export async function proposeRelease(
   );
   let url;
   if (open) {
-    await sh("gh", ["pr", "edit", String(open.number), "--body", body]);
+    await sh("gh", [
+      "pr",
+      "edit",
+      String(open.number),
+      "--title",
+      title,
+      "--body",
+      body,
+    ]);
     url = open.url;
   } else {
     url = await sh("gh", [
