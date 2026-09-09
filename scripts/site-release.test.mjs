@@ -26,14 +26,30 @@ const inputs = (root) =>
   Promise.all(files.map((path) => readFile(join(root, path), "utf8")));
 const noWait = async () => {};
 
+const entry = (root, dir) =>
+  join(root, dir, "node_modules", library, "package.json");
 async function installed(root, version) {
   for (const dir of ["site", "demo"]) {
+    await rm(entry(root, dir), { force: true });
     await json(root, `${dir}/node_modules/${library}/package.json`, {
       name: library,
       version,
     });
   }
   await writeFile(join(root, "pnpm-lock.yaml"), `installed: ${version}\n`);
+}
+/** Declares the workspace link in both consumers and points their installs at the sources. */
+async function linked(root) {
+  for (const dir of ["site", "demo"]) {
+    const manifest = JSON.parse(
+      await readFile(join(root, `${dir}/package.json`))
+    );
+    manifest.dependencies[library] = "workspace:*";
+    await json(root, `${dir}/package.json`, manifest);
+    await rm(entry(root, dir), { force: true });
+    await symlink(join(root, "package.json"), entry(root, dir));
+  }
+  await writeFile(join(root, "pnpm-lock.yaml"), "linked: workspace\n");
 }
 async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), "site-release-test-"));
@@ -52,7 +68,7 @@ async function fixture(t) {
   return root;
 }
 
-test("the CLI accepts a newer root version but rejects source linked as the released demo", async (t) => {
+test("the CLI names the sources or the installed release, and rejects a mix", async (t) => {
   const root = await fixture(t);
   // Copy under scripts so the CLI finds this workspace, also exercising macOS /var aliases.
   await mkdir(join(root, "scripts"));
@@ -60,20 +76,45 @@ test("the CLI accepts a newer root version but rejects source linked as the rele
     join(root, "scripts/check.mjs"),
     await readFile(join(repository, "scripts/demo-library-pin.mjs"))
   );
-  const { stdout } = await execute(process.execPath, [
-    join(root, "scripts/check.mjs"),
-  ]);
-  assert.match(stdout, /@portone\/docx-editor@0\.2\.1 is installed/);
+  const cli = async () =>
+    (await execute(process.execPath, [join(root, "scripts/check.mjs")])).stdout;
+  assert.match(await cli(), /@portone\/docx-editor@0\.2\.1 is installed/);
+  assert.deepEqual(await check(root), { source: "npm", version: "0.2.1" });
+
+  // A pinned consumer whose install is the working tree is not running the release
   await json(root, "package.json", { name: library, version: "0.2.1" });
-  const entry = join(root, "demo/node_modules", library, "package.json");
-  await rm(entry);
-  await symlink(join(root, "package.json"), entry);
-  await assert.rejects(check(root), /working tree/);
+  await rm(entry(root, "demo"));
+  await symlink(join(root, "package.json"), entry(root, "demo"));
+  await assert.rejects(check(root), /resolves to the working tree/);
+
+  await linked(root);
+  assert.match(await cli(), /resolves to the sources/);
+  assert.deepEqual(await check(root), { source: "workspace" });
+
+  // A linked consumer whose install is a published copy is not running the sources
+  await rm(entry(root, "site"));
+  await json(root, "site/node_modules/@portone/docx-editor/package.json", {
+    name: library,
+    version: "0.2.1",
+  });
+  await assert.rejects(check(root), /not the working tree/);
+
+  // One consumer linked and the other pinned never agree
+  await installed(root, "0.2.1");
+  await json(root, "site/package.json", {
+    name: `${library}-site`,
+    version: "0.0.0",
+    private: true,
+    dependencies: { [library]: "0.2.1" },
+  });
+  await assert.rejects(check(root), /same library/);
 });
 
 for (const version of ["latest", "0.3.0"]) {
   test(`preparing ${version} waits for the release and updates both consumers in CI`, async (t) => {
     const root = await fixture(t);
+    // The release commit links the sources; the pin is what moves it onto the release
+    if (version !== "latest") await linked(root);
     let views = 0;
     let installs = 0;
     await pin(root, {
@@ -91,7 +132,7 @@ for (const version of ["latest", "0.3.0"]) {
         await installed(root, "0.3.0");
       },
     });
-    assert.equal(await check(root), "0.3.0");
+    assert.deepEqual(await check(root), { source: "npm", version: "0.3.0" });
     assert.deepEqual([views, installs], [2, 2]);
   });
 }
@@ -153,13 +194,7 @@ const git = async (_command, args) => ({
 const repo = "repos/owner/repo";
 
 /** Answers GitHub as if production served `served` (absent when null) and returns the calls made. */
-function github({
-  served = null,
-  exists = false,
-  rejected = null,
-  mainPin = null,
-  proposed = null,
-} = {}) {
+function github({ served = null, exists = false, rejected = null } = {}) {
   const calls = [];
   const reply = (status, payload) => ({
     ok: status < 400,
@@ -174,14 +209,6 @@ function github({
       return served
         ? reply(200, { dependencies: { [library]: served } })
         : reply(404, { message: "Not Found" });
-    if (path.startsWith(`${repo}/contents/site/package.json?ref=main`))
-      return mainPin
-        ? reply(200, { dependencies: { [library]: mainPin } })
-        : reply(404, { message: "Not Found" });
-    if (path === `${repo}/pulls?head=owner:production&base=main&state=open`)
-      return reply(200, proposed ? [{ html_url: proposed }] : []);
-    if (path === `${repo}/pulls`)
-      return reply(201, { html_url: "https://example.com/pull/1" });
     if (path === `${repo}/git/ref/heads/production`)
       return exists ? reply(200, {}) : reply(404, { message: "Not Found" });
     if (
@@ -215,7 +242,7 @@ test("production is rebuilt as the release commit plus the verified inputs", asy
   const before = await inputs(root);
   for (const exists of [false, true]) {
     const remote = github({ exists });
-    assert.equal(await publish(root, "0.2.1", publishOptions(remote)), true);
+    await publish(root, "0.2.1", publishOptions(remote));
     const [, , moved, committed] = remote.calls;
     assert.deepEqual(
       remote.calls.map((call) => `${call.method} ${call.path}`),
@@ -226,9 +253,6 @@ test("production is rebuilt as the release commit plus the verified inputs", asy
           ? `PATCH ${repo}/git/refs/heads/production`
           : `POST ${repo}/git/refs`,
         "POST graphql",
-        `GET ${repo}/contents/site/package.json?ref=main`,
-        `GET ${repo}/pulls?head=owner:production&base=main&state=open`,
-        `POST ${repo}/pulls`,
       ]
     );
     assert.deepEqual(
@@ -259,54 +283,6 @@ test("a retried release cannot downgrade what production serves", async (t) => {
   assert.equal(remote.calls.length, 1);
 });
 
-test("unchanged inputs move production to the release commit without a commit", async (t) => {
-  const remote = github({ exists: true });
-  assert.equal(
-    await publish(
-      await fixture(t),
-      "0.2.1",
-      publishOptions(remote, async (_command, args) => ({
-        stdout: args[0] === "diff" ? "" : head,
-      }))
-    ),
-    false
-  );
-  assert.deepEqual(
-    remote.calls.map((call) => call.method),
-    ["GET", "GET", "PATCH", "GET", "GET", "POST"]
-  );
-});
-
-const pulls = (remote) =>
-  remote.calls.filter((call) => call.path.startsWith(`${repo}/pulls`));
-
-test("the release is proposed on main from the production branch", async (t) => {
-  const remote = github({ exists: true });
-  await publish(await fixture(t), "0.2.1", publishOptions(remote));
-  const [, opened] = pulls(remote);
-  assert.equal(`${opened.method} ${opened.path}`, `POST ${repo}/pulls`);
-  assert.deepEqual(
-    [opened.body.head, opened.body.base],
-    ["production", "main"]
-  );
-  assert.match(opened.body.body, /already runs 0\.2\.1/);
-});
-
-test("an open proposal is reported instead of opened again", async (t) => {
-  const remote = github({ exists: true, proposed: "https://example.com/7" });
-  await publish(await fixture(t), "0.2.1", publishOptions(remote));
-  assert.deepEqual(
-    pulls(remote).map((call) => call.method),
-    ["GET"]
-  );
-});
-
-test("nothing is proposed when main already pins the release", async (t) => {
-  const remote = github({ exists: true, mainPin: "0.2.1" });
-  await publish(await fixture(t), "0.2.1", publishOptions(remote));
-  assert.deepEqual(pulls(remote), []);
-});
-
 test("unrelated or mismatched inputs stop before GitHub is touched", async (t) => {
   const root = await fixture(t);
   const remote = github();
@@ -322,6 +298,12 @@ test("unrelated or mismatched inputs stop before GitHub is touched", async (t) =
     publish(root, "0.3.0", publishOptions(remote)),
     /does not match/
   );
+  // The release commit itself links the sources, and production must run the release
+  await linked(root);
+  await assert.rejects(
+    publish(root, "0.2.1", publishOptions(remote)),
+    /does not match/
+  );
   assert.equal(remote.calls.length, 0);
 });
 
@@ -333,9 +315,10 @@ test("a rejected commit reports GitHub's reason", async (t) => {
   );
 });
 
-test("Changesets bumps the library without moving demo pins to an unpublished version", async (t) => {
+test("Changesets bumps the library and leaves the workspace links in place", async (t) => {
   const root = await fixture(t);
   await json(root, "package.json", { name: library, version: "0.2.1" });
+  await linked(root);
   const before = await inputs(root);
   await writeFile(
     join(root, "pnpm-workspace.yaml"),

@@ -100,8 +100,8 @@ importers:
   demo:
     dependencies:
       '@portone/docx-editor':
-        specifier: 0.4.0
-        version: 0.4.0(prosemirror-commands@1.7.2)(prosemirror-dropcursor@1.8.3)(prosemirror-history@1.5.0)(prosemirror-inputrules@1.5.1)(prosemirror-keymap@1.2.3)(prosemirror-model@1.25.11)(prosemirror-state@1.4.4)(prosemirror-tables@1.8.5)(prosemirror-transform@1.12.1)(prosemirror-view@1.42.3)(react@19.2.8)
+        specifier: workspace:*
+        version: link:..
       react:
         specifier: ^19.2.8
         version: 19.2.8
@@ -125,8 +125,8 @@ importers:
   site:
     dependencies:
       '@portone/docx-editor':
-        specifier: 0.4.0
-        version: 0.4.0(prosemirror-commands@1.7.2)(prosemirror-dropcursor@1.8.3)(prosemirror-history@1.5.0)(prosemirror-inputrules@1.5.1)(prosemirror-keymap@1.2.3)(prosemirror-model@1.25.11)(prosemirror-state@1.4.4)(prosemirror-tables@1.8.5)(prosemirror-transform@1.12.1)(prosemirror-view@1.42.3)(react@19.2.8)
+        specifier: workspace:*
+        version: link:..
       '@portone/docx-editor-demo':
         specifier: workspace:*
         version: link:../demo
@@ -849,22 +849,6 @@ packages:
   '@pnpm/deps.graph-sequencer@1100.0.1':
     resolution: {integrity: sha512-pOr5+q1fLYKwFN3LAJuGZEnfXDcQ73zqgDHMtGy+K+uIoUqyY+6MeDCWFwfu+4EFuq76I5EPFofoNAI+Bmmq4A==}
     engines: {node: '>=22.13'}
-
-  '@portone/docx-editor@0.4.0':
-    resolution: {integrity: sha512-tfFM3uajy04Y7ehLCHIUuw3ROBOwphwYgHEgl8/0vQgVFgafr0Y71jzBu9zmp5UAhcnqExZEzTZivey2xPuj+Q==}
-    engines: {node: '>=22'}
-    peerDependencies:
-      prosemirror-commands: ^1.5.2
-      prosemirror-dropcursor: ^1.8.2
-      prosemirror-history: ^1.5.0
-      prosemirror-inputrules: ^1.5.0
-      prosemirror-keymap: ^1.2.2
-      prosemirror-model: ^1.19.4
-      prosemirror-state: ^1.4.3
-      prosemirror-tables: ^1.8.5
-      prosemirror-transform: ^1.12.0
-      prosemirror-view: ^1.41.6
-      react: '>=18'
 
   '@radix-ui/number@1.1.3':
     resolution: {integrity: sha512-Road2bidD0uu/1BGDOWNdPI06g0lIRy6IF9GZcIrDK2KGItfor8IQwQa+yM2ERgHM1MmHxaxpTzk0/Jp42lNfA==}
@@ -2780,9 +2764,6 @@ packages:
   prosemirror-transform@1.12.0:
     resolution: {integrity: sha512-GxboyN4AMIsoHNtz5uf2r2Ru551i5hWeCMD6E2Ib4Eogqoub0NflniaBPVQ4MrGE5yZ8JV9tUHg9qcZTTrcN4w==}
 
-  prosemirror-transform@1.12.1:
-    resolution: {integrity: sha512-t4F5615FycnCqsX7ShTUs8+jfnwcf46kuFRvSl/3qFx2QTZ4DjgowesLHQXcFP7G//TjesqZG3WtgL7vdyVJyA==}
-
   prosemirror-view@1.42.3:
     resolution: {integrity: sha512-oTN7EtH+CpwxU9NrwEYWd0UZ4JUx7l048l5A2Xppm4p/60isZYLnth9QVQmC3VRIvdrIWCxwZSd+Uz791G31/w==}
 
@@ -3834,22 +3815,6 @@ snapshots:
       playwright: 1.62.1
 
   '@pnpm/deps.graph-sequencer@1100.0.1': {}
-
-  '@portone/docx-editor@0.4.0(prosemirror-commands@1.7.2)(prosemirror-dropcursor@1.8.3)(prosemirror-history@1.5.0)(prosemirror-inputrules@1.5.1)(prosemirror-keymap@1.2.3)(prosemirror-model@1.25.11)(prosemirror-state@1.4.4)(prosemirror-tables@1.8.5)(prosemirror-transform@1.12.1)(prosemirror-view@1.42.3)(react@19.2.8)':
-    dependencies:
-      fflate: 0.8.3
-      lucide-react: 1.34.0(react@19.2.8)
-      prosemirror-commands: 1.7.2
-      prosemirror-dropcursor: 1.8.3
-      prosemirror-history: 1.5.0
-      prosemirror-inputrules: 1.5.1
-      prosemirror-keymap: 1.2.3
-      prosemirror-model: 1.25.11
-      prosemirror-state: 1.4.4
-      prosemirror-tables: 1.8.5
-      prosemirror-transform: 1.12.1
-      prosemirror-view: 1.42.3
-      react: 19.2.8
 
   '@radix-ui/number@1.1.3': {}
 
@@ -5898,10 +5863,6 @@ snapshots:
       prosemirror-view: 1.42.3
 
   prosemirror-transform@1.12.0:
-    dependencies:
-      prosemirror-model: 1.25.11
-
-  prosemirror-transform@1.12.1:
     dependencies:
       prosemirror-model: 1.25.11
 
