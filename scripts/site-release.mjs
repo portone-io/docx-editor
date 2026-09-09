@@ -21,14 +21,6 @@ function versionParts(version) {
   return version.split(".").map(BigInt);
 }
 
-export function publishedVersion(output) {
-  const matches = JSON.parse(output).filter((pkg) => pkg.name === library);
-  if (matches.length !== 1)
-    throw new Error("Expected one published DOCX editor package");
-  versionParts(matches[0].version);
-  return matches[0].version;
-}
-
 export function assertNotOlder(version, current) {
   const next = versionParts(version);
   const previous = versionParts(current);

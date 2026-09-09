@@ -14,7 +14,7 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { check, pin } from "./demo-library-pin.mjs";
-import { prepare, publish, publishedVersion } from "./site-release.mjs";
+import { prepare, publish } from "./site-release.mjs";
 
 const execute = promisify(execFile);
 const repository = fileURLToPath(new URL("..", import.meta.url));
@@ -144,16 +144,6 @@ test("site preparation awaits installation and propagates install or build failu
       failed === "install" ? ["install"] : ["install", "build"]
     );
   }
-});
-
-test("the published version is selected by name", () => {
-  const version = publishedVersion(
-    JSON.stringify([
-      { name: "another-package", version: "9.0.0" },
-      { name: library, version: "0.2.0" },
-    ])
-  );
-  assert.equal(version, "0.2.0");
 });
 
 const head = "a".repeat(40);
