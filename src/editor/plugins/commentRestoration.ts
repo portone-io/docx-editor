@@ -1,30 +1,20 @@
 /**
  * Keeps a comment when the text it was written for goes away.
  *
- * Deleting commented text is an edit of the body, not a decision about the thread: a reader who
- * rewrites a sentence has not answered what was said about it. So a body edit that takes a
- * comment's nodes away has them put back at the spots the edit left, and the thread carries on -
- * anchored where one of its two range markers survived, detached where both went with the text
- * (`DocumentComment.anchored`). What the comment and its replies say needs nothing put back: a body
- * is a story on the document node (`docx/story`), and a deletion in the body does not reach it.
+ * Deleting commented text is an edit of the body, not a decision about the thread, so a body edit
+ * that takes a comment's nodes away has them put back at the spots the edit left: the thread stays
+ * anchored where one range marker survived, detached where both went (`DocumentComment.anchored`).
  *
- * That story is also what tells this from taking a comment down on purpose, since `removeComment`
- * is the one edit that drops it. A comment is therefore put back only while its story stands, which
- * needs neither an instruction passed from the command nor a reading of the history: undo puts the
- * story back along with everything else, and redo of a removal drops it again. The cost is that a
- * reference the comments part held no body for is never put back, and a comment saying nothing is
- * nothing to keep.
+ * The comment's story (`docx/story`) tells such an edit from `removeComment`: a body deletion does
+ * not reach the story, so a comment is put back while its story stands, which only `removeComment`
+ * takes away. The cost is that a reference the comments part held no body for is never put back.
  *
- * Two limits are worth naming. A restoration is an ordinary transaction and the guards judge it
- * (`editor/plugins/lockedContent`), so a spot no insertion is allowed at is no home: the nodes go
- * to the nearest spot the guards leave open, and a document leaving none anywhere - every textblock
- * inside a locked control - loses the comment. And a range marker with no home takes its surviving
- * counterpart down with it, so that no export carries half a range.
+ * A restoration is an ordinary transaction the guards judge (`editor/plugins/lockedContent`): the
+ * nodes take the nearest spot left open, and a document leaving none loses the comment. A range
+ * marker with no home takes its surviving counterpart down, so no export carries half a range.
  *
- * An open IME composition needs no deferral of the kind `displayDerivation` makes. That plugin
- * rewrites the node being composed in, which is what takes a composition down; this one puts an
- * atom in beside the composed text and leaves the text itself alone, and Chrome carries the
- * composition on through it (`e2e/hangulComposition.spec.ts`).
+ * A restoration needs no deferral around an open IME composition: the nodes go in beside the
+ * composed text rather than rewriting it (`e2e/hangulComposition.spec.ts`).
  */
 
 import type { Node as PMNode } from "prosemirror-model";
