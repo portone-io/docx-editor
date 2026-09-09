@@ -1,0 +1,100 @@
+---
+title: Comments and notes
+description: Write, edit, resolve and read comment threads, and read the document's footnotes and endnotes.
+---
+
+Everything on this page comes from `@portone/docx-editor/commands`.
+
+## Comment commands
+
+| Command | What it does |
+| --- | --- |
+| `addComment(comment, at?)` | Adds a comment to a stretch of text: the one named, or the current selection. |
+| `canAddComment(state, at?)` | Whether that stretch, or the current selection, can receive one. |
+| `updateComment(id, text)` | Replaces a comment's text and keeps its formatting. |
+| `setCommentBody(id, body)` | Replaces a comment's body with a formatted one. |
+| `removeComment(id)` | Deletes a comment and its replies. |
+| `addCommentReply(id, reply)` | Adds a reply and reopens the thread when it was resolved. |
+| `updateCommentReply(commentId, replyId, text)` | Replaces a reply's text. |
+| `removeCommentReply(commentId, replyId)` | Deletes one reply. |
+| `setCommentResolved(id, resolved)` | Marks a thread resolved or open. |
+| `selectComment(id)` | Selects the commented text and scrolls it into view; for a detached comment, puts the caret at its reference. |
+
+`NewComment` is `{ text, author, authorId?, initials?, date? }`, where `date` is an ISO 8601 string
+defaulting to now.
+Pass `author` (the display name), `initials`, and `authorId` from `mode.author`, so the comment is
+recorded as that person's.
+
+## Comment records
+
+`documentComments(state)` returns every comment in document order as a `DocumentComment`:
+
+| Field | What it holds |
+| --- | --- |
+| `id` | The comment's id, which every other command takes. |
+| `author`, `authorId`, `initials` | Who wrote it, as the document records them. Null where the document names none. |
+| `date` | When it was written. Null where the document names none. |
+| `text` | The body as plain text. |
+| `from`, `to` | The stretch it marks. |
+| `referencePos` | Where its reference stands in the document. |
+| `anchored` | Whether it still marks a stretch of text. `false` once the commented text was deleted; `from` and `to` then equal the reference position. |
+| `resolved` | Whether the thread is resolved. |
+| `replies` | Its replies, each a `DocumentCommentReply` with `id`, `author`, `authorId`, `initials`, `date`, and `text`. |
+
+The records are read-only; copy one to change it.
+[Features](/docs/features/comments-and-notes) describes what the built-in panel does with detached
+and resolved comments.
+
+## Formatted bodies
+
+`setCommentBody` takes a `doc` node of `docxSchema`, so a composer of your own can write a bold run,
+a paragraph style, or a second paragraph:
+
+```ts
+import { docxSchema } from "@portone/docx-editor";
+import { setCommentBody } from "@portone/docx-editor/commands";
+
+const body = docxSchema.nodes.doc.create(null, [
+  docxSchema.nodes.paragraph.create(null, [
+    docxSchema.text("Please check", [
+      docxSchema.marks.run.create({ rPr: "<w:rPr><w:b/></w:rPr>" }),
+    ]),
+  ]),
+  docxSchema.nodes.paragraph.create(null, docxSchema.text("the second line.")),
+]);
+
+setCommentBody(comment.id, body)(view.state, view.dispatch);
+```
+
+It answers `false` for a body that is not a `doc` node, one that is only whitespace, or an unknown
+id.
+`updateComment` and `updateCommentReply` answer `false` when the text is unchanged.
+
+## Commenting on a range
+
+`addComment` and `canAddComment` take an optional `{ from, to }`; the range must be a non-empty span
+inside one paragraph, or the command returns `false`.
+A composer that stays open while the document is edited should keep the range it opened over, map it
+through `transaction.mapping` on every change, and pass it on submit.
+
+## Who may edit a comment
+
+`canEditComment(state, commentId, replyId?)` answers whether the current author may edit or delete
+a comment or reply:
+
+- A comment with a recorded identity belongs to that author; an edit by anyone else is refused.
+- A comment with no recorded identity belongs to everyone.
+- Re-anchoring a comment onto other text counts as editing it.
+- A comment's author never changes after it is written.
+- `mode.editableComments: "all"` opens every comment to the current author.
+- Replying, resolving, and reopening are open to everyone under `comment` and `edit`.
+- Deleting a root comment deletes its replies, whoever wrote them.
+
+A server checks the same rules with
+[`onlyCommentsChangedBy`](/docs/core/verifying-a-commenters-file).
+
+## Footnotes and endnotes
+
+`documentNotes(state)` returns the footnotes and endnotes the document references, in
+first-reference order, each a read-only `DocumentNote` with `kind` (`"footnote"` or `"endnote"`),
+`id`, `label`, `text`, and `referencePos`.

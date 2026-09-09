@@ -1,0 +1,42 @@
+---
+title: Zoom
+description: Let the editor own the zoom level, or own it from the host application.
+---
+
+The editor fits the page to its available width by default.
+
+## Choosing the zoom
+
+Use `defaultZoom` when the editor should own the selection, or `zoom` with `onZoomChange` when the
+host should own it:
+
+```tsx
+import { DocxEditor, type DocxEditorZoom } from "@portone/docx-editor";
+import { useState } from "react";
+
+const author = { id: user.id, name: user.name };
+
+function Preview({ file }: { file: File }) {
+  const [zoom, setZoom] = useState<DocxEditorZoom>("fit-width");
+
+  return (
+    <DocxEditor
+      document={file}
+      mode={{ kind: "edit", author }}
+      zoom={zoom}
+      onZoomChange={setZoom}
+    />
+  );
+}
+```
+
+`DocxEditorZoom` is `"fit-width"` or a number from `0.25` through `2`.
+`DEFAULT_ZOOM_LEVELS` from the root entry holds the levels the built-in picker offers.
+A read-only or comment editor has no toolbar, but `zoom` works in every mode.
+
+## What zoom changes
+
+Zoom changes the browser presentation only: not pagination, the document model, or the exported
+file.
+The editor publishes the current factor as the `--docx-editor-zoom` custom property, which
+[Styling](/docs/styling#properties-the-editor-writes) describes.

@@ -1,0 +1,52 @@
+---
+title: Preserved content
+description: What the editor keeps untouched, and how it behaves while you edit around it.
+---
+
+## How preservation works
+
+Untouched package parts and document blocks go back out unchanged, and an element the editor has
+no model for is kept where it stood while the paragraph around it stays editable.
+An unsupported block, or a table whose structure cannot be modelled, stands as a placeholder.
+A section break is kept as well; [Pages and sections](/docs/features/pages-and-sections#sections)
+covers what it means while you edit.
+
+## Character formatting and styles
+
+Character formatting and character styles the editor does not display or edit are preserved.
+
+## Bookmarks and ranges
+
+Bookmark ranges, permission ranges, and the markers of a moved passage are kept at their positions,
+invisible and impossible to remove.
+A selection that runs across one of the markers cannot be replaced, so typing or deleting over it
+leaves the text as it stands; move the selection clear of the marker to edit around it.
+Markers between a table's rows or cells also decide which
+[table edits](/docs/features/tables#limitations) are available.
+
+## Fields
+
+A complex field shows its markers and instructions as small boxes that cannot be edited or removed;
+its cached result stays editable text.
+A simple field is one box showing its cached result and can be removed whole.
+Nothing recalculates a field, so a page number or a total stays as it was written.
+
+## Tracked changes
+
+A tracked insertion or deletion is shown as a small box carrying its text, which can be selected
+and removed whole but not edited inside.
+A table's `w:tblGridChange` is preserved as it came.
+
+## Content controls
+
+Edit or lock supported text and table-cell content controls; a control nested inside another
+control or a hyperlink is editable text and goes back out nested as it came.
+A control the editor could not take apart is shown as a box.
+[Locked content](/docs/editor-api/modes-and-locks#locked-content) covers locking a control.
+
+## Other markup
+
+A symbol, a positional tab, and any other element without a model are shown as small boxes where
+they stood.
+`documentFidelity` and `importDocx` list what a document kept this way; see
+[what a document loses](/docs/core#what-a-document-loses).

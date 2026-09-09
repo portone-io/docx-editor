@@ -1,0 +1,43 @@
+---
+title: Plugins and presets
+description: Replace the values the built-in pickers offer, add ProseMirror plugins, and what a plugin may rely on.
+---
+
+## Presets
+
+`DocxEditorPresets` has one optional field per picker: `fonts`, `colors`, `fontSizes`,
+`lineSpacings`, and `cellBorders`.
+Pass it as the `presets` prop; an omitted field keeps the package's list, which the root entry
+exports as `DEFAULT_FONTS`, `DEFAULT_COLORS`, `DEFAULT_FONT_SIZES`, `DEFAULT_LINE_SPACINGS`, and
+`DEFAULT_CELL_BORDERS`.
+The prop is read on every render.
+A font or size the document itself uses is offered whether or not the list holds it, and the color
+controls accept any three- or six-digit HEX color besides the presets.
+
+## Plugins
+
+Pass ProseMirror plugins through the `plugins` prop.
+They sit ahead of the built-in plugins, so a keymap of yours can override a binding such as `Mod-k`.
+
+A plugin that sets its own `clipboardSerializer` replaces the editor's, which is not exported.
+Do not build one from the schema with `DOMSerializer.fromSchema(docxSchema)`: it puts raw XML and
+comment identities on the clipboard, and the editor no longer recognizes the copy when it is pasted
+back.
+
+A plugin that writes raw OOXML into an attr such as a paragraph's `pPr` or a run's `rPr` must write
+exactly the shape that attr is exported as: one element under the attr's name, or the attributes
+of an opening tag.
+Anything else is dropped the next time the editor reads the page back, and the paragraph, run,
+control, or link loses what the attr held.
+
+## What a plugin may rely on
+
+The supported plugin surface is the node and mark names of `docxSchema`, `srcId`, the `format`
+attrs and their `to*Format` readers, and the names and types exported by the four entry points.
+Changes to this surface follow the package's versioning policy.
+`srcId` is an opaque reference within the session that opened the document, not a persistent id.
+
+Raw OOXML attrs such as `pPr`, `rPr`, `tcPr`, `xml`, `sdtPrefix`, `linkPrefix`, and `referenceXml`
+are internal and may change in any release.
+Export does not validate handwritten attrs, so an invalid one can fail export or produce an
+invalid file.

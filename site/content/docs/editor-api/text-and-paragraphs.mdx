@@ -1,0 +1,96 @@
+---
+title: Text and paragraphs
+description: Commands and queries for character formatting, fonts, paragraphs, lists, breaks, and history.
+---
+
+Everything on this page comes from `@portone/docx-editor/commands`.
+
+## Character formatting
+
+| Command | Query | What it does |
+| --- | --- | --- |
+| `toggleBold` | `isBoldActive` | Turns bold on or off. |
+| `toggleItalic` | `isItalicActive` | Turns italic on or off. |
+| `toggleUnderline` | `isUnderlineActive` | Switching it on writes a single underline; a run already underlined keeps the kind it has. |
+| `toggleStrike` | `isStrikeActive` | Turns strikethrough on or off. |
+| `setTextColor(hex)` | `activeTextColor` | Writes the color as `#RRGGBB`. Null withdraws it. |
+| `setTextBackground(hex)` | `activeTextBackground` | Writes the background as `#RRGGBB`. Null withdraws it, along with any highlight an older document wrote there. |
+
+`canFormatText` enables the whole group.
+It returns `false` when a lock covers the whole selection, or when the caret stands where nothing
+can be typed; a selection that only overlaps a lock can still be formatted.
+
+## Fonts
+
+| Command | Query | What it does |
+| --- | --- | --- |
+| `setFontFamily(name)` | `activeFontFamily(state, fontFallbacks?)` | Sets the font by name. Null withdraws the setting and falls back to the document default. |
+| `setFontSize(pt)` | `activeFontSize(state)` | Sets the size in points. Null withdraws the setting and falls back to the document default. |
+
+Both readers answer with a `kind`:
+
+- `kind: "font"` or `kind: "size"`: every selected character shares this value.
+- `kind: "default"`: no value is written down, and `name` or `pt` is what is rendered.
+- `kind: "mixed"`: the selection holds several values.
+
+Pass `activeFontFamily` the same `FontFallbacks` the editor was given, so the default it reports is
+the font on screen.
+
+`documentDefaults(state)` returns the document's own `fontFamily`, `fontSizePt`, and `lineSpacing`,
+each null where the document wrote none.
+`documentFontNames(doc, defaults)` returns every font name the document uses.
+
+## Paragraphs
+
+| Command | Query | Gate |
+| --- | --- | --- |
+| `setParagraphStyle(styleId)` | `activeParagraphStyle` | |
+| `setParagraphAlign(align)` | `activeParagraphAlign` | `canSetParagraphAlign` |
+| `setLineSpacing(spacing)` | `activeLineSpacing` | `canSetLineSpacing` |
+| `increaseIndent`, `decreaseIndent` | | `canIncreaseIndent`, `canDecreaseIndent` |
+
+`documentParagraphStyles(state)` returns the document's styles as `ParagraphStyleOption` records:
+`id`, `name`, `isDefault` for the style a paragraph with no style takes, `primary` for a style
+meant for a prominent gallery, and `hidden` for one to keep out of a picker.
+`setParagraphStyle(null)` puts a paragraph back on the default style.
+
+`activeParagraphStyle` returns `{ kind: "shared", styleId }`, with a null id for the default style,
+`{ kind: "mixed" }`, or `{ kind: "none" }` when the selection holds no paragraph.
+`activeParagraphAlign` returns `{ kind: "shared", align }` or `{ kind: "mixed" }`.
+
+`LineSpacing` is `{ rule: "auto", lines }`, `{ rule: "exact", pt }`, or `{ rule: "atLeast", pt }`,
+and `SINGLE_LINE_SPACING` is the spacing of a paragraph nobody spaced.
+`activeLineSpacing` returns null when the selection mixes several.
+
+The indent commands move an ordinary paragraph's left indent by half an inch, and move a list
+paragraph one level instead.
+
+## Lists
+
+| Command | Query | What it does |
+| --- | --- | --- |
+| `toggleNumberedList` | `activeListKind` | Starts a numbered list, or takes the paragraphs out of one. |
+| `toggleBulletList` | `activeListKind` | Starts a bulleted list, or takes the paragraphs out of one. |
+| `increaseListLevel` | `isInList` | Moves a list item one level deeper. |
+| `decreaseListLevel` | `isInList` | Moves a list item one level back up. |
+
+`activeListKind` returns `"numbered"`, `"bullet"`, or null.
+Paragraphs turned into a list together become one continuous list.
+The list commands report that they do not apply when the open document cannot take a numbering
+definition; [Checking before export](/docs/core/errors#checking-before-export) covers that code.
+
+## Breaks and tabs
+
+`insertLineBreak` breaks the line without splitting the paragraph, and `insertPageBreak` starts the
+next page; the keyboard binds them to Shift+Enter and Mod+Enter.
+Each replaces the selection, and reports that it does not apply where a lock, a preserved marker,
+or the mode shuts that spot.
+
+`insertTab` inserts the same editable DOCX tab as the built-in Tab binding, inside an ordinary
+paragraph only.
+
+## History
+
+Import `undo` and `redo` from `@portone/docx-editor/commands`, not from prosemirror-history: only
+the package's own commands can replay an edit that touched locked content.
+Under the `comment` mode they take back a comment but not a body edit.

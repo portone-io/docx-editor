@@ -1,0 +1,132 @@
+---
+title: Editor API
+description: Commands, queries, presets, and plugins for controls of your own.
+---
+
+These pages cover what a mounted `DocxEditor` exposes to the application around it: the commands
+and queries your own controls call, and the plugins and presets it takes.
+[Core API](/docs/core) covers import and export without an editor.
+
+## Hide the built-in controls
+
+`mode.toolbar` turns the toolbar off, and `contextMenus` leaves the right button to the browser:
+
+```tsx
+<DocxEditor
+  document={file}
+  mode={{
+    kind: "edit",
+    author: { id: user.id, name: user.name },
+    toolbar: false,
+  }}
+  contextMenus={false}
+/>
+```
+
+A `comment` editor has no toolbar, and its right-click menu offers Copy and Add comment only.
+
+## Commands and queries
+
+Commands follow the ProseMirror command contract: called with an `EditorState` alone, a command
+reports whether it applies; called with a dispatch function, it performs the edit.
+
+```tsx
+import type {
+  Command,
+  EditorState,
+  EditorView,
+} from "@portone/docx-editor";
+import { isBoldActive, toggleBold, undo } from "@portone/docx-editor/commands";
+
+function Toolbar({ view, state }: { view: EditorView; state: EditorState }) {
+  const run = (command: Command) => {
+    command(state, (transaction) => view.dispatch(transaction), view);
+    view.focus();
+  };
+
+  return (
+    <div>
+      <button
+        type="button"
+        aria-pressed={isBoldActive(state)}
+        onClick={() => run(toggleBold)}
+      >
+        Bold
+      </button>
+      <button type="button" disabled={!undo(state)} onClick={() => run(undo)}>
+        Undo
+      </button>
+    </div>
+  );
+}
+```
+
+`onReady` hands over the editor view, and `onChange` fires on every state change, selection moves
+included.
+
+| Import | What it holds |
+| --- | --- |
+| `@portone/docx-editor/commands` | Text, paragraph, list, break, tab, history, image, link, comment, note and lock commands and queries, the export queries, and `insertTable`. |
+| `@portone/docx-editor/table` | Everything acting on a table already in the document: rows, columns, merging, and cell formatting. |
+| `@portone/docx-editor` | The component, the `DEFAULT_*` preset lists, `docxSchema`, and the shared types. |
+
+Name prefixes say what a function returns: `is*Active` a boolean toggle, `active*` the current
+value or `"mixed"`, `can*` whether the action applies, `isIn*` containment, `selection*` and
+`document*` a reading of the selection or the whole document, `editing*` the protection level,
+and `DEFAULT_X` the built-in default of the prop or field `x`.
+
+Every command already accounts for locked content, the editor's mode, and preserved markers, so
+it reports that it does not apply wherever the edit would be refused.
+Wrap a command from elsewhere in `canRunCommand(command, state)` to hold it to the same rules.
+
+## Export controls
+
+`canExport` reports whether the document can be written back.
+`documentExportProblems` lists every reason it could not, each with the `DocxExportError` code and
+the `pos` where the problem stands.
+[Checking before export](/docs/core/errors#checking-before-export) lists the codes.
+
+`documentFidelity` lists what the open document holds that the editor cannot model: markup kept
+but invisible, and the placeholders standing in for content it could not open for editing.
+Each note carries a `pos` a panel can select.
+[Core API](/docs/core#what-a-document-loses) describes the note fields.
+
+## Guides
+
+<Cards>
+  <Card
+    href="/docs/editor-api/text-and-paragraphs"
+    title="Text and paragraphs"
+    description="Character formatting, fonts, paragraph styles, lists, breaks, tabs, and history."
+  />
+  <Card
+    href="/docs/editor-api/tables"
+    title="Tables"
+    description="Insert a table, edit its rows and columns, and format its cells."
+  />
+  <Card
+    href="/docs/editor-api/images-and-links"
+    title="Images and links"
+    description="Take an image file into the document, and create or change a hyperlink."
+  />
+  <Card
+    href="/docs/editor-api/comments-and-notes"
+    title="Comments and notes"
+    description="Write, edit, resolve and read comment threads, and read footnotes and endnotes."
+  />
+  <Card
+    href="/docs/editor-api/zoom"
+    title="Zoom"
+    description="Let the editor own the zoom level, or own it from the host application."
+  />
+  <Card
+    href="/docs/editor-api/modes-and-locks"
+    title="Modes and locks"
+    description="What each mode lets through, and the locks the document itself carries."
+  />
+  <Card
+    href="/docs/editor-api/plugins-and-presets"
+    title="Plugins and presets"
+    description="Replace the picker values, add ProseMirror plugins, and what a plugin may rely on."
+  />
+</Cards>

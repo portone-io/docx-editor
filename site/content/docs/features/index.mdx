@@ -1,0 +1,91 @@
+---
+title: Features
+description: What the editor edits, what it preserves untouched, and its current limitations.
+---
+
+`@portone/docx-editor` edits common DOCX body content and preserves what lies outside its editing
+surface.
+API details live in [Editor API](/docs/editor-api) and [Core API](/docs/core).
+
+## Support summary
+
+| Area | What you can do |
+| --- | --- |
+| [Text formatting](/docs/features/text-and-paragraphs#text-formatting) | Edit bold, italic, strikethrough, underline, palette or custom HEX colors, highlight, fonts, and font size. Document defaults and paragraph or character styles are reflected in the text and the controls. |
+| [Paragraphs](/docs/features/text-and-paragraphs#paragraphs) | Apply paragraph styles, alignment, indentation, line spacing, line breaks, and page breaks. Keep with next holds a paragraph on the same page as the block after it. |
+| [Tabs](/docs/features/text-and-paragraphs#tabs) | Insert, paste, format, navigate, select, and align document tabs. Tab leaders and bar tabs are kept in the file but not drawn. |
+| [Lists](/docs/features/text-and-paragraphs#lists) | Create and edit bullet and numbered lists, including nested levels, drawn as the document's own list definition asks. A list counting in an unsupported format is shown with decimal numbers. |
+| [Tables](/docs/features/tables) | Insert and remove rows, columns, and tables; merge, split, resize, format, align, and pad cells; table styles and repeating header rows are drawn. A table the editor cannot model is shown as a placeholder. |
+| [Images](/docs/features/images-and-links#images) | Insert, paste, drop, select, and resize inline images. |
+| [Hyperlinks](/docs/features/images-and-links#hyperlinks) | Create, change, remove, and open external links. |
+| [Comments](/docs/features/comments-and-notes#comments) | View anchored threads and create, edit, reply to, resolve, reopen, and delete comments, each recorded with its author. Deleting commented text never deletes the comment. |
+| [Footnotes and endnotes](/docs/features/comments-and-notes#footnotes-and-endnotes) | See references and note bodies while you edit the text around them. Editing a note is not offered yet. |
+| [Headers and footers](/docs/features/pages-and-sections#headers-and-footers) | Preview each section's first, even, and default headers and footers, page numbers included. Editing a header or footer is not offered yet. |
+| [Content controls](/docs/features/preserved-content#content-controls) | Edit or lock supported text and table-cell controls, including nested ones. A control the editor cannot take apart is shown as a box. |
+| [Clipboard](/docs/features/clipboard) | Copy and paste within the document, in from another application, and out to other applications, with formatting. Comment markers, bookmarks, and note references are not copied. |
+| [Modes](/docs/features/modes) | Open a document read-only, for commenting only, or for editing, and switch modes on an open document. A lock the document carries holds in every mode. |
+| [Editor](/docs/features/keyboard-shortcuts) | Built-in controls, selectable zoom, undo and redo, keyboard navigation, and IME composition. |
+
+## Documents the editor opens
+
+The editor reads and writes ECMA-376 Transitional, the format Word saves; Strict packages are
+refused.
+A refused file reports why, under one of the [import codes](/docs/core/errors#import-codes).
+
+## Preservation
+
+Nothing outside the editing surface is discarded: untouched parts go back out unchanged, and
+content the editor has no model for stands as a placeholder.
+Import or export fails with a stable error code rather than returning a damaged document.
+[Preserved content](/docs/features/preserved-content) covers what is kept, and
+[what a document loses](/docs/core#what-a-document-loses) how to list it.
+
+## Guides
+
+<Cards>
+  <Card
+    href="/docs/features/modes"
+    title="Modes"
+    description="Read-only, comment-only, and editing, and what each lets a reader do."
+  />
+  <Card
+    href="/docs/features/text-and-paragraphs"
+    title="Text and paragraphs"
+    description="Formatting, paragraph styles, tabs, and lists."
+  />
+  <Card
+    href="/docs/features/tables"
+    title="Tables"
+    description="Editing tables, table styles, and tables that run over a page."
+  />
+  <Card
+    href="/docs/features/images-and-links"
+    title="Images and links"
+    description="Inline images and external hyperlinks."
+  />
+  <Card
+    href="/docs/features/comments-and-notes"
+    title="Comments and notes"
+    description="Comment threads, resolving, and footnotes and endnotes."
+  />
+  <Card
+    href="/docs/features/clipboard"
+    title="Clipboard"
+    description="What copy and paste carries inside the document and across applications."
+  />
+  <Card
+    href="/docs/features/pages-and-sections"
+    title="Pages and sections"
+    description="Page boundaries, section breaks, and headers and footers."
+  />
+  <Card
+    href="/docs/features/preserved-content"
+    title="Preserved content"
+    description="Bookmarks, fields, tracked changes, content controls, and other kept markup."
+  />
+  <Card
+    href="/docs/features/keyboard-shortcuts"
+    title="Keyboard shortcuts"
+    description="The keys the editor binds and how an application can take one over."
+  />
+</Cards>

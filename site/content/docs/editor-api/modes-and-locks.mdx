@@ -1,0 +1,56 @@
+---
+title: Modes and locks
+description: What each mode lets through, and the locks the document itself carries.
+---
+
+## Modes
+
+`mode.kind` puts the editor under a protection:
+
+| `mode.kind` | What goes through |
+| --- | --- |
+| `readOnly` | Nothing. The text can be selected and copied; comments can be read. |
+| `comment` | Comments alone: adding, editing, deleting, replying, resolving, and reopening. |
+| `edit` | Everything. |
+
+[Props](/docs/props#mode) covers the prop, and [Modes](/docs/features/modes) describes each kind
+as a reader experiences it.
+Nothing about the mode is written to the file.
+
+A command reports `false` for whatever the protection refuses: under `comment`, a formatting
+command reports `false` while `canAddComment` still reports `true`.
+A control of your own reads the level with `editingProtection`:
+
+```tsx
+import { editingProtection } from "@portone/docx-editor/commands";
+
+const level = editingProtection(state); // "none" | "readOnly" | "comments"
+```
+
+[Who may edit a comment](/docs/editor-api/comments-and-notes#who-may-edit-a-comment) answers the
+separate question of comment ownership.
+
+## Locked content
+
+A lock is part of the document, travels with the file, and is honored in every mode; no prop turns
+it off.
+`mode: { kind: "edit", locking: true }` adds the built-in menu entries that lock and unlock.
+
+```tsx
+import {
+  lockSelection,
+  selectionLock,
+  unlockSelection,
+} from "@portone/docx-editor/commands";
+
+const lock = selectionLock(state); // "none" | "lockable" | "locked" | "mixed"
+```
+
+`selectionLock` answers `lockable` when there is text to lock, `locked` when the selection reaches
+a lock to lift, and `mixed` for both.
+`lockSelection` and `unlockSelection` are ordinary commands and report whether they apply.
+Only a text selection can be locked; a caret touching a locked field, or anywhere inside a locked
+cell, is enough to unlock it.
+
+`selectionTouchesLocked(state)` answers whether the selection meets locked content at all.
+`documentHasLocked(doc)` reports whether the document carries any lock.

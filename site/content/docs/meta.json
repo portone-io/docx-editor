@@ -4,9 +4,9 @@
     "index",
     "getting-started",
     "features",
-    "custom-controls",
-    "styling",
     "props",
+    "styling",
+    "editor-api",
     "core"
   ]
 }

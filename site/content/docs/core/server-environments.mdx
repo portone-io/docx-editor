@@ -1,0 +1,43 @@
+---
+title: Server environments
+description: Hand in an XML parser, or install a DOMParser global, anywhere that is not a browser.
+---
+
+Reading a DOCX needs an XML parser.
+Browsers have one; anywhere else, provide one.
+
+## Passing a parser
+
+```ts
+import { JSDOM } from "jsdom";
+import { importDocx } from "@portone/docx-editor/core";
+
+const { DOMParser } = new JSDOM().window;
+
+const { doc, session } = importDocx(source, { xmlParser: new DOMParser() });
+```
+
+`importDocx`, `exportDocx`, `exportProblems`, and `onlyCommentsChangedBy` take `xmlParser` in their
+options; `documentNumbering` and `parseNumbering` take it as their second argument.
+The parser must implement `parseFromString(source, "application/xml")` and return a real DOM
+document, since the readers use the standard DOM API: `documentElement`, `children`, `childNodes`,
+`attributes`, `getAttribute` and `getElementsByTagName` with their namespace-aware forms,
+`localName`, `nodeName`, `nodeType`, `nodeValue`, `namespaceURI`, `textContent`, `parentElement`,
+`ownerDocument`, and `cloneNode`.
+Unreadable markup must throw or return a document holding a `parsererror` element; either is
+reported as `malformed-xml`.
+
+The package bundles no parser, and jsdom is the only implementation it tests.
+Serverless functions and edge runtimes are unsupported for now.
+Configure the parser to disable external entities and external fetching.
+
+## A DOMParser global
+
+Installing a `DOMParser` global works too, and every call then leaves the option out:
+
+```ts
+globalThis.DOMParser = new JSDOM().window.DOMParser;
+```
+
+A call with neither is refused with `DocxImportError` and the code `no-xml-parser`.
+Nothing else from the browser is needed: no `Node`, `document`, or `window` global.

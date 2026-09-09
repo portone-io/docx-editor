@@ -1,0 +1,71 @@
+---
+title: Verifying a commenter's file
+description: Check on the server that a file returned by a comment editor differs from the original in comments alone.
+---
+
+A file returned by a `comment` editor should differ from the original in comments alone.
+The editor enforces that in the browser only, so check it again where the file arrives:
+
+```ts
+import { onlyCommentsChangedBy } from "@portone/docx-editor/core";
+
+const verdict = onlyCommentsChangedBy(original, submitted, user.id);
+if (!verdict.ok) console.warn(verdict.reason);
+```
+
+## What must hold
+
+The comparison covers the whole package:
+
+- Every part is byte-identical, except the comments, extended comments, and people parts.
+- The main document part is unchanged outside its body blocks.
+- Its relationships and `[Content_Types].xml` gain only what those three parts need.
+- The story reads as it did with the comments taken out, and every changed comment is this author's.
+- Every entry of those three parts is unchanged, or is one this editor writes and this author could
+  have written; adding a person cannot claim an existing unattributed comment.
+- XML comments and processing instructions outside those entries are unchanged; layout whitespace
+  may differ.
+
+`editableComments` in the options says whose comments may have changed: `"own"` (the default) is
+this author's and the unattributed ones, `"all"` is every comment.
+
+## The verdict
+
+```ts
+type CommentOnlyVerdict =
+  | { ok: true }
+  | {
+      ok: false;
+      reason: "body-changed" | "comment-not-owned" | "comment-author-forged";
+    }
+  | {
+      ok: false;
+      reason:
+        | "part-changed"
+        | "relationship-changed"
+        | "comment-markup-rejected";
+      part: string;
+    };
+```
+
+| `reason` | What it means |
+| --- | --- |
+| `body-changed` | The document differs in something other than its comments, including a body edit that deleted commented text. |
+| `comment-not-owned` | Somebody else's comment or reply was rewritten, re-anchored, or deleted. |
+| `comment-author-forged` | A new comment claims another identity, or an existing comment's author was rewritten. |
+| `part-changed` | A part outside the comment parts differs, or the main part changed outside its body. `part` names it. |
+| `relationship-changed` | The main part's relationships changed beyond what a comment part needs. `part` names the relationship part. |
+| `comment-markup-rejected` | A comment part holds an entry this editor would not write for this author. `part` names it. |
+
+## How files are compared
+
+The story is compared as this editor would write it, so two spellings of the same markup (attribute
+order, `100%` against `5000`, split runs) are accepted.
+Three things the editor rebuilds are not compared: a table's `w:gridCol` list, a drawing's extent,
+and table properties the model no longer needs.
+Where integrity must hold to the byte, compare the parts yourself.
+
+Run the verifier on a package at least as new as the editor that wrote the file.
+Unreadable bytes throw `DocxImportError`.
+[Who may edit a comment](/docs/editor-api/comments-and-notes#who-may-edit-a-comment) describes the
+ownership rule the verdict holds to.

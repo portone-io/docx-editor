@@ -1,0 +1,15 @@
+{
+  "title": "Features",
+  "defaultOpen": true,
+  "pages": [
+    "modes",
+    "text-and-paragraphs",
+    "tables",
+    "images-and-links",
+    "comments-and-notes",
+    "clipboard",
+    "pages-and-sections",
+    "preserved-content",
+    "keyboard-shortcuts"
+  ]
+}

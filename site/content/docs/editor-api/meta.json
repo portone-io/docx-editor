@@ -1,0 +1,13 @@
+{
+  "title": "Editor API",
+  "defaultOpen": true,
+  "pages": [
+    "text-and-paragraphs",
+    "tables",
+    "images-and-links",
+    "comments-and-notes",
+    "zoom",
+    "modes-and-locks",
+    "plugins-and-presets"
+  ]
+}

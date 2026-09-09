@@ -1,0 +1,53 @@
+---
+title: Images and links
+description: Take an image file into the document, and create, change, or remove a hyperlink.
+---
+
+Both groups come from `@portone/docx-editor/commands`.
+
+## Images
+
+`insertImageFiles(view, files)` takes image files all the way into the document and skips one it
+cannot read.
+`IMAGE_FILE_ACCEPT` is the `accept` string for a file input, and `imageFilesIn(carrier)` picks the
+image files out of a file input, a drop, or a clipboard event.
+
+```tsx
+import {
+  IMAGE_FILE_ACCEPT,
+  imageFilesIn,
+  insertImageFiles,
+} from "@portone/docx-editor/commands";
+
+<input
+  type="file"
+  accept={IMAGE_FILE_ACCEPT}
+  multiple
+  onChange={(event) => insertImageFiles(view, imageFilesIn(event.target))}
+/>
+```
+
+To place an image yourself, `readImageFile(file, maxWidthPx?)` resolves to an `ImageToInsert`
+(`src` as a data URL, `extent`, optional `alt`), or to null for a file the editor cannot carry or
+the browser cannot decode.
+`fittedExtent(width, height, maxWidthPx?, maxHeightPx?)` shrinks an image wider than the body to
+the body width and never grows one.
+`documentBodyWidthPx(state)` is that width for the open document; left out, both use A4's.
+`insertImage(image)` puts the image in place of the selection.
+`canInsertImage(state)` returns `false` where no inline node can stand, where a control locked
+against deletion or a preserved marker is held, and wherever the mode shuts the body.
+
+## Links
+
+External links are editable; bookmark links stay preserved.
+
+| Command | What it does |
+| --- | --- |
+| `setLink(url)` | Links the selection to the address. |
+| `removeLink` | Removes the link, and reports `false` when there is none. |
+| `canSetLink(state)` | Whether a link may go on at all, asked before an address is typed. |
+| `activeLink(state)` | The address of the link at the selection, or null. |
+| `activeLinkSpan(state)` | The one link the selection is inside, as `{ from, to, href }`, or null when the selection reaches past a link or covers two. |
+
+An address without a scheme is written as an `http` address; a relative path or a `#bookmark` is
+written as given.

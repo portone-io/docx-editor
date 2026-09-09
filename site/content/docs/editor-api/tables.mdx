@@ -1,0 +1,58 @@
+---
+title: Tables
+description: Insert a table, edit its rows and columns, and format the cells inside it.
+---
+
+`insertTable` comes from `@portone/docx-editor/commands`; everything acting on a table already in
+the document comes from `@portone/docx-editor/table`.
+
+## Insert a table
+
+```ts
+import { canInsertTable, insertTable } from "@portone/docx-editor/commands";
+
+const enabled = canInsertTable(state);
+insertTable({ rows: 3, columns: 4 })(state, view.dispatch);
+```
+
+The new table goes right after the block the caret is in, never inside another table, as wide as
+the body text of its section, with the caret in its first cell.
+
+## Rows, columns, and cells
+
+Every structural command is a `TableCommand`, `(state, dispatch?) => boolean`.
+
+| Command | What it does |
+| --- | --- |
+| `addRowBefore`, `addRowAfter` | Adds a row above or below the current one. |
+| `addColumnBefore`, `addColumnAfter` | Adds a column to the left or right of the current one. |
+| `deleteRow`, `deleteColumn` | Removes the current row or column. |
+| `deleteTable` | Removes the whole table. |
+| `mergeCells` | Merges the selected block into one cell. |
+| `splitCell` | Splits the merged cell the caret sits in. |
+
+`isInTable(state)` reports whether the caret is inside a table.
+`canMergeCells` needs a rectangular selection of more than one cell with no merged cell sticking
+out past it; `canSplitCell` needs a cell merged horizontally or vertically.
+A structural command reports that it does not apply when it would remove a locked cell or merge
+one into another.
+
+## Cell formatting
+
+| Command | Query | Gate |
+| --- | --- | --- |
+| `setCellVerticalAlign(align)` | `activeCellVerticalAlign` | `canSetCellFormatting` |
+| `setCellPadding(sides)` | `activeCellPadding` | `canSetCellFormatting` |
+| `setCellBackground(hex)` | `activeCellBackground` | `canSetCellFormatting` |
+| `setCellBorders(preset)` | | `canSetCellFormatting` |
+| `setCellBorderColor(hex)` | `activeCellBorderColor` | `canSetCellBorderColor` |
+
+Each command acts on the cell holding the caret, or on every cell of a cell selection, and reports
+`false` when every selected cell already carries the value.
+Each reader answers with `MixedCellValue<T>`: the value, `"mixed"` where the selected cells
+disagree, or null where none wrote one down; `activeCellPadding` answers per side.
+`setCellPadding` writes only the sides supplied, in points.
+`setCellBorders` takes a `CellBorderPreset`: `"all"` and `"none"` cover every side of every
+selected cell, and `"outer"` only the sides on the edge of the selected block.
+The root entry exports `DEFAULT_CELL_BORDERS`, the `CellBorderOption` rows the built-in menu
+offers.

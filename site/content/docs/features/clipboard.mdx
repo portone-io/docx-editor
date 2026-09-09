@@ -1,0 +1,30 @@
+---
+title: Clipboard
+description: What copy and paste carries inside the document and across applications.
+---
+
+## Within the same document
+
+Copy and paste keeps paragraph and character formatting, tabs, breaks, images, links, and tables,
+and a copied grid of cells pasted over selected cells fills them in place.
+Comment markers, bookmarks, and note references are not copied; cutting commented text leaves the
+comment behind, the way [deleting the text](/docs/features/comments-and-notes#deleting-commented-text)
+does.
+
+## Pasting from elsewhere
+
+Pasting from another document or application keeps supported character formatting, paragraphs,
+line breaks, links, tables, and common lists, including the lists Word writes as plain paragraphs;
+heading styles are matched to the destination document.
+Pasted text fills every selected table cell.
+Unreadable content falls back to the clipboard's plain text, or leaves the selection intact.
+
+## Copying to other applications
+
+A copy carries the text, its styles, tables, images, and links, and none of the document's own
+markup, comment authorship, or note bodies.
+
+## Plain text and the context menu
+
+`Mod+Shift+V` pastes the clipboard's plain text, ignoring any formatting and images.
+Right-click Paste accepts formatted text and images.

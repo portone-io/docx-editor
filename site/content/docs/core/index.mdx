@@ -1,0 +1,94 @@
+---
+title: Core API
+description: Programmatic DOCX import and export without mounting an editor.
+---
+
+`@portone/docx-editor/core` imports and exports DOCX without mounting an editor.
+`importDocx` returns a ProseMirror document and an opaque session that holds the rest of the
+package.
+
+## Import and export
+
+Keep the session and pass it back to `exportDocx` with the original or transformed document:
+
+```ts
+import { exportDocx, importDocx } from "@portone/docx-editor/core";
+
+const { doc, session } = importDocx(source);
+const bytes = exportDocx(doc, session);
+```
+
+Both take an `ArrayBuffer` or `Uint8Array`.
+Outside a browser, pass an XML parser; [Server environments](/docs/core/server-environments)
+explains how.
+The session must not be constructed or modified; `documentNumbering(session)` and
+`documentPartPath(session)` read from it.
+
+## What a document loses
+
+Markup the editor cannot model is carried through the round trip, but some of it is invisible on
+the page and some stands behind a placeholder nobody can edit.
+`notes` lists every such piece:
+
+```ts
+const { doc, session, notes } = importDocx(source);
+
+for (const note of notes) {
+  console.log(note.severity, note.code, note.element, note.block);
+}
+```
+
+| Field | What it holds |
+| --- | --- |
+| `severity` | `hidden` (kept, nothing on screen), `placeholder` (kept behind an uneditable placeholder), or `approximated` (not emitted yet). |
+| `code` | `range-marker` for one end of a bookmark or similar range, `preserved-inline` and `preserved-block` for markup kept where it stood, `preserved-run-content` for a piece of a run, `table-demoted` for a table the editor could not model, `paragraph-demoted` (not emitted for a document being opened). |
+| `element` | The original element name, such as `w:bookmarkStart`. |
+| `part` | The package path of the part it came from. |
+| `block` | The body block it falls in. |
+| `pos` | Its position in the document, which a reader can select. |
+
+An empty list does not guarantee a lossless round trip; the writer's known losses are not notes.
+
+`exportDocxReport(doc, session)` writes the file and returns `{ bytes, notes }` for the document it
+wrote; `exportDocx` returns the bytes alone, and both take the same options.
+Inside an editor, [`documentFidelity`](/docs/editor-api#export-controls) returns the same list for
+the document as it stands.
+
+## Import limits
+
+- A single inflated part is limited to 32 MiB and the package total to 64 MiB.
+- Package paths that escape the archive and XML containing a DTD are rejected.
+- An image over 16 MiB is kept in the package but not rendered.
+
+## Utilities
+
+- `docxSchema`, the schema the imported document is built on.
+- `documentNumbering(session, options?)` reads the document's lists as the editor draws them, and
+  `parseNumbering(xml, options?)` reads a numbering part on its own; pass `links` (numbering style
+  id to list) to resolve lists defined through a numbering style.
+- `toRunFormat`, `toParagraphFormat`, `toCellFormat`, `toRowFormat`, `toTableFormat`,
+  `toTableWidth`, and `toImageExtent` read a node's `format` attr into its typed shape, or `null`.
+- `emuToPx` and `pxToEmu` convert between EMU, the document's length unit, and CSS pixels.
+
+[What a plugin may rely on](/docs/editor-api/plugins-and-presets#what-a-plugin-may-rely-on) says
+which parts of the document model are stable across releases.
+
+## Guides
+
+<Cards>
+  <Card
+    href="/docs/core/server-environments"
+    title="Server environments"
+    description="Hand in an XML parser, or install a DOMParser global, anywhere that is not a browser."
+  />
+  <Card
+    href="/docs/core/verifying-a-commenters-file"
+    title="Verifying a commenter's file"
+    description="Check on the server that a returned file differs from the original in comments alone."
+  />
+  <Card
+    href="/docs/core/errors"
+    title="Errors"
+    description="The stable codes a refused import or export carries, and how to ask before writing."
+  />
+</Cards>

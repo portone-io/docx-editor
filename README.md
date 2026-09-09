@@ -47,7 +47,7 @@ export function Editor({
 - Preserves document structures and package parts across edits, and records who wrote each comment.
 - Reads document styles, theme fonts, page layout, and CJK font information for display.
 
-See [Feature support](https://docx-editor.portone.io/docs/features) for the support matrix. Build [custom controls](https://docx-editor.portone.io/docs/custom-controls) or use [programmatic DOCX import and export](https://docx-editor.portone.io/docs/core).
+See [Feature support](https://docx-editor.portone.io/docs/features) for the support matrix. Build controls of your own with the [Editor API](https://docx-editor.portone.io/docs/editor-api) or use [programmatic DOCX import and export](https://docx-editor.portone.io/docs/core).
 
 The full [documentation](https://docx-editor.portone.io/docs) lives on the documentation site.
 

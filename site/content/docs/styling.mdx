@@ -3,23 +3,18 @@ title: Styling
 description: The stylesheet, the CSS custom properties an application may set, and font fallbacks.
 ---
 
-The editor ships one stylesheet and expects it to be imported once:
+Import the stylesheet once; it includes the ProseMirror base styles:
 
 ```ts
 import "@portone/docx-editor/styles.css";
 ```
 
-It carries the ProseMirror base styles it needs, so there is nothing else to import.
-The paper itself is drawn from the open document: page size, margins, default font, and default
-line height all come from that document rather than from the stylesheet, so a document keeps its own
-appearance whatever the surrounding application looks like.
+The paper itself (page size, margins, default font, and line height) comes from the open document,
+not from the stylesheet.
 
 ## The frame
 
-`DocxEditor` renders an outer frame that already looks finished without a wrapper: a neutral border
-and rounded corners around the toolbar and the paper.
-Both are read from custom properties, so an application restyles them in place instead of wrapping
-the editor in a box of its own.
+The editor's outer frame has a neutral border and rounded corners, read from custom properties:
 
 ```css
 .my-editor {
@@ -28,9 +23,9 @@ the editor in a box of its own.
 }
 ```
 
-Pass that class through `className`, or set the properties on any ancestor.
-`style` reaches the same frame, which is where a height comes from when the surrounding layout does
-not give one.
+Pass the class through `className`, or set the properties on any ancestor.
+`style` reaches the same frame, which is where a height comes from when the layout does not give
+one.
 
 ## Properties you may set
 
@@ -43,28 +38,16 @@ not give one.
 
 ## Properties the editor writes
 
-The editor sets several other properties of its own on the elements it renders, and an application
-should read them rather than assign them.
-`--docx-editor-zoom` carries the current zoom factor, published so that panels outside the zoomed
-page layer can scale with the paper; the page size, margins, sheet height, default font, default
-line height, list marker width, and tab width are all measured from the open document and change
-as the document changes.
-Setting one of them by hand puts the visible layout out of step with the measurements the editor
-made, which is what the page guides and the comment positions are drawn from.
-
-`--docx-editor-zoom` is worth reading when custom controls sit next to the paper and should scale
-with it.
-[Custom controls](/docs/custom-controls#document-zoom) covers the zoom props themselves.
+The editor also sets properties of its own, measured from the open document: `--docx-editor-zoom`,
+the page size and margins, the default font and line height, and the marker and tab widths.
+Read them if a control of yours sits beside the paper; do not set them.
+[Zoom](/docs/editor-api/zoom) covers the zoom props.
 
 ## Font fallbacks
 
-A document names the fonts it was written with, and a reader's machine usually carries only some of
-them.
-The editor keeps the declared name first and appends a fallback stack after it, so text lands on a
-font of the right shape rather than on the browser's default.
-The built-in set knows the CJK and Latin office font names and ends on a Latin sans for everything
-else.
-
+The editor keeps each declared font name first and appends a fallback stack, so a font missing
+from the reader's machine lands on one of the right shape.
+The built-in set knows the CJK and Latin office font names and ends on a Latin sans.
 Pass `fontFallbacks` to stand different fonts in:
 
 ```tsx
@@ -89,19 +72,12 @@ const author = { id: user.id, name: user.name };
 />;
 ```
 
-A group is one family: every name in it is drawn with the same stack, and matching ignores letter
-case because documents vary in how they write a font name.
-`defaultStack` covers a name in no group and the paper of a document that declares no font at all,
-and `defaultFontName` is the name the toolbar shows in that case, so it should be a font
-`defaultStack` really renders.
+Every name in a group is drawn with the group's stack, matched ignoring letter case.
+`defaultStack` covers a name in no group and a document that declares no font, and
+`defaultFontName` is the name the toolbar shows in that case.
 `DEFAULT_FONT_FALLBACKS` is exported for a set built by extending the built-in one.
 
-The package names fonts and never downloads them.
-The built-in Korean stacks name Pretendard first, for instance, but loading it is the application's
-own business; a machine without it falls through to the operating system's fonts.
-
-Fallbacks are display only.
-The exported document keeps the fonts it declared, and `fontFallbacks` is read once when the editor
-mounts, so building the object inline on every render is harmless.
-The paragraph style picker and the HTML written to the clipboard keep the built-in set, which is
-shared beyond a single editor.
+The package names fonts and never downloads them; the built-in Korean stacks name Pretendard
+first, but loading it is the application's business.
+Fallbacks affect display only; the exported document keeps the fonts it declared.
+The paragraph style picker and the HTML written to the clipboard keep the built-in set.

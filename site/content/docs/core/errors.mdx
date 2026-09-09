@@ -1,0 +1,79 @@
+---
+title: Errors
+description: The stable codes a refused import or export carries, and how to ask before writing.
+---
+
+`DocxImportError` and `DocxExportError` carry a stable `code`; their messages may be reworded.
+Both classes are exported from the root entry as well.
+
+```ts
+import { DocxImportError, importDocx } from "@portone/docx-editor/core";
+
+try {
+  importDocx(source);
+} catch (error) {
+  if (error instanceof DocxImportError) {
+    console.error(error.code);
+  }
+  throw error;
+}
+```
+
+## Import codes
+
+| Code | Why the document was refused |
+| --- | --- |
+| `no-xml-parser` | No `xmlParser` was passed and there is no `DOMParser` global. See [Server environments](/docs/core/server-environments). |
+| `not-a-docx` | The bytes are not a readable zip container, or its entries are not a DOCX package's. |
+| `too-large` | The package inflates beyond the [import limits](/docs/core#import-limits). |
+| `missing-part` | The package has no main document part. |
+| `missing-body` | The main part has no body. |
+| `malformed-xml` | The XML cannot be parsed, declares a DTD, or is inconsistent. |
+| `unsupported-conformance` | The package is ECMA-376 Strict; the editor reads and writes Transitional. |
+| `unsupported-content` | The document holds markup that could not be written back unchanged, including a main part that does not bind the `w` prefix to the Transitional namespace. |
+
+`not-a-docx` and `too-large` are usually the person's to fix; the others describe the file.
+
+## Checking before export
+
+`exportProblems(doc, session)` reports the reasons `exportDocx` would refuse the document, in the
+order the writer would raise them:
+
+```ts
+import { exportDocx, exportProblems } from "@portone/docx-editor/core";
+
+const problems = exportProblems(doc, session);
+if (problems.length > 0) {
+  console.warn(problems[0].code, problems[0].message);
+} else {
+  const bytes = exportDocx(doc, session);
+}
+```
+
+Each problem carries the `code` and `message` the `DocxExportError` would carry, and `pos` when
+the problem stands at a place in the document.
+
+| Code | What is reported |
+| --- | --- |
+| `malformed-xml` | A bookmark marker whose partner is gone, or a comment part with no root element once a comment has changed. |
+| `invalid-table` | A vertical merge reaching past the last row of its table. |
+| `lost-original` | A preserved block that lost its original XML, or a placeholder pasted in from another open document. |
+| `unsupported-content` | A preserved block copied so that it stands in two places, a paragraph in a list nothing defines, or a namespace prefix already bound to another namespace. |
+| `missing-content-types` | A part the writer adds (an image, a numbering part, a comment part) in a package with no content types part to declare it in. |
+
+`exportDocx` throws the first entry of the same list.
+An empty list does not guarantee that writing will succeed: a `DocxExportError` the list did not
+predict is still thrown under the same codes, for a plugin that wrote an invalid node or attr, or
+for a bug in the editor.
+Both functions need an XML parser, and are refused with the import code `no-xml-parser` without
+one.
+An export failure leaves the editor state untouched.
+Inside an editor, [`canExport`](/docs/editor-api#export-controls) asks the same question of the
+state.
+
+## In the React component
+
+When import fails, the component renders `renderImportError` or its built-in panel in place of the
+editor; only `DocxImportError` is rendered, and anything else is thrown for an error boundary.
+`downloadDocx` returns `blocked` with the problems above rather than throwing, while `exportBytes`
+throws `DocxExportError`; a refusal the list did not predict is thrown by both.
