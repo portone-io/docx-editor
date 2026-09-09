@@ -12,11 +12,11 @@ import {
   makeStyledDocx,
   TINY_PNG_DATA_URL,
 } from "../../__testing__/docx";
-import { styleIdOf } from "../../docx/formatting";
 import { importDocx } from "../../docx/importDocx";
 import type { SessionStore } from "../../docx/session";
 import { toRunFormat } from "../../model/format";
 import { emuToPx } from "../../ooxml/image";
+import { styleIdOf } from "../../ooxml/props";
 import { docxSchema } from "../../schema";
 import { editorClassNames } from "../../styles/classNames";
 import {

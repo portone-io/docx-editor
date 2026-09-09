@@ -67,8 +67,8 @@ Folders at the same rank cannot import each other, so `page` and `table` share p
 Subfolders are organizational and inherit the rank of their top-level folder. They split a feature's
 parsing, writing, rendering, or interaction responsibilities without creating another layer.
 For example, `docx/formatting` separates direct-format parsing, the run property table, style layering, and the hierarchy resolver, `page/kinds`
-gives each breakable block shape its own measurer and decorator, `editor/clipboard` holds everything the clipboard carries in or out
-in one plugin, while
+gives each breakable block shape its own measurer and decorator, `editor/clipboard` holds the clipboard's props and the readers a paste is read with
+in one plugin and leaves what a copy goes out as to `schema/clipboard`, while
 `editor/commands/comments` and `editor/commands/formatting` separate shared models, reads, and edits.
 
 `src/folderBoundaries.test.ts` enforces the ranks, requires every production file to be reachable from an entry point, and rejects an unranked folder. The dependency direction keeps file processing independent from the view layer.

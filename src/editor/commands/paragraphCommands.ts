@@ -18,7 +18,6 @@ import {
   type ResolvedParagraph,
   resolveParagraph,
   runMarkUnder,
-  styleIdOf,
 } from "../../docx/formatting";
 import {
   type ParagraphProps,
@@ -26,6 +25,7 @@ import {
   withParagraphStyle,
 } from "../../docx/paraProps";
 import { type ParagraphAlign, toParagraphFormat } from "../../model/format";
+import { styleIdOf } from "../../ooxml/props";
 import { docxSchema } from "../../schema";
 import { lockedMarkOf } from "../../schema/locks";
 import { documentFormatting } from "../documentStyles";

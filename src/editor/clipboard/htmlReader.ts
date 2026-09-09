@@ -4,7 +4,6 @@ import {
   type FormattingContext,
   type ParagraphStyleOption,
   paragraphAttrsFor,
-  styleIdOf,
 } from "../../docx/formatting";
 import {
   type ParagraphProps,
@@ -23,7 +22,9 @@ import {
   MAX_ILVL,
   templateList,
 } from "../../numbering/listTemplate";
+import { styleIdOf } from "../../ooxml/props";
 import { docxSchema } from "../../schema";
+import { COPIED_STYLE_ATTRIBUTE } from "../../schema/clipboard";
 import { editorClassNames } from "../../styles/classNames";
 import { numIdsIn } from "../commands/listCommands";
 import { PASTED_IMAGE_ATTRIBUTE } from "./images";
@@ -84,12 +85,6 @@ interface BlockContext {
   inline: InlineContext;
   paragraph: ParagraphProps | null;
 }
-
-/**
- * The paragraph style a copy carries, which is the one thing a paste needs that the drawing does
- * not already say. It is the style's id alone, where the editor draws the whole `w:pPr`.
- */
-export const COPIED_STYLE_ATTRIBUTE = "data-style";
 
 function normalizedStyleName(value: string): string {
   return value.toLowerCase().replace(/[\s_-]+/g, "");

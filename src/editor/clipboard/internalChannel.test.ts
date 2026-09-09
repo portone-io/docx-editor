@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import type { Node as PMNode } from "prosemirror-model";
-import { NodeSelection, TextSelection } from "prosemirror-state";
+import { AllSelection, NodeSelection, TextSelection } from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
 import type { EditorView } from "prosemirror-view";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -75,6 +75,15 @@ function copy(view: EditorView): Record<string, string> {
     view.state.selection.content()
   );
   return { "text/html": dom.innerHTML, "text/plain": text };
+}
+
+/** The kind of every block the document holds, in the order it holds them */
+function namesIn(doc: PMNode): string[] {
+  const names: string[] = [];
+  doc.forEach((block) => {
+    names.push(block.type.name);
+  });
+  return names;
 }
 
 function paste(view: EditorView, data: Record<string, string>): void {
@@ -422,6 +431,38 @@ describe("the internal clipboard channel", () => {
 
     expect(view.state.doc.childCount).toBe(2);
     expect(view.state.doc.lastChild?.textContent).toContain("Caps");
+    view.destroy();
+  });
+  /**
+   * A block the editor could not model draws no text of its own, so it writes nothing to the
+   * clipboard and a cut of one leaves HTML and plain text both empty. `prosemirror-view` gives up
+   * on that clipboard before any reader runs, which would lose the very block this editor is still
+   * holding the content of.
+   */
+  it("pastes back a cut block the editor only kept, in the same session", () => {
+    const { view } = open(makeDocx(LOADED_PARAGRAPH));
+    const kept = docxSchema.nodes.rawBlock.create({
+      xml: "<w:tbl>a table nobody could take apart</w:tbl>",
+      name: "w:tbl",
+      display: "chip",
+    });
+    view.dispatch(
+      view.state.tr.replaceWith(0, view.state.doc.content.size, kept)
+    );
+    expect(namesIn(view.state.doc)).toEqual(["rawBlock"]);
+
+    view.dispatch(view.state.tr.setSelection(new AllSelection(view.state.doc)));
+    const copied = copy(view);
+    // Nothing it holds is text, and nothing it holds is another application's to draw
+    expect(copied["text/plain"]).toBe("");
+
+    view.dispatch(view.state.tr.deleteSelection());
+    paste(view, copied);
+
+    expect(namesIn(view.state.doc)).toContain("rawBlock");
+    expect(view.state.doc.child(0).attrs.xml).toBe(
+      "<w:tbl>a table nobody could take apart</w:tbl>"
+    );
     view.destroy();
   });
 });

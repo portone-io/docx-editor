@@ -237,4 +237,18 @@ test("a browser paste copies an image from this editor as a new image", async ({
   await expect(image).toBeVisible();
   await expect(image).not.toHaveAttribute("data-xml");
   await expect(image).toHaveAttribute("width", "100");
+
+  // A real copy out of this editor carries no `data-extent`: the document's own measure stays
+  // behind and the size travels as the pixels the picture was drawn at
+  await browserPaste(
+    page,
+    `<img class="${editorClassNames.image}" ` +
+      `src="data:image/png;base64,${TINY_PNG_BASE64}" ` +
+      'alt="drawn seal" width="150" height="75">',
+    "seal"
+  );
+  const drawn = page.locator(`img.${editorClassNames.image}[alt="drawn seal"]`);
+  await expect(drawn).toBeVisible();
+  await expect(drawn).toHaveAttribute("width", "150");
+  await expect(drawn).toHaveAttribute("height", "75");
 });

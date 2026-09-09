@@ -15,7 +15,6 @@ import {
   readRunFormat,
   readStyles,
   type StyleFormat,
-  styleIdOf,
 } from "./formatting";
 import { readThemeFonts, type ThemeFonts } from "./theme";
 
@@ -1136,33 +1135,6 @@ describe("readParagraphStyles", () => {
   it("leaves out a style with no styleId", () => {
     expect(optionsOf('<w:style w:type="paragraph"/>')).toEqual([]);
     expect(optionsOf("")).toEqual([]);
-  });
-});
-
-describe("styleIdOf", () => {
-  it("pulls out the styleId the paragraph points at", () => {
-    expect(
-      styleIdOf(
-        '<w:pPr><w:pStyle w:val="Heading1"/><w:jc w:val="center"/></w:pPr>'
-      )
-    ).toBe("Heading1");
-  });
-
-  it("is null when it points at nothing", () => {
-    expect(styleIdOf('<w:pPr><w:jc w:val="center"/></w:pPr>')).toBeNull();
-    expect(styleIdOf(null)).toBeNull();
-    expect(styleIdOf(42)).toBeNull();
-  });
-
-  // The answer is kept per fragment, and "no name in it" is an answer like any other
-  it("keeps answering the same for a fragment it has already read", () => {
-    const named = '<w:pPr><w:pStyle w:val="Quote"/></w:pPr>';
-    expect(styleIdOf(named)).toBe("Quote");
-    expect(styleIdOf(named)).toBe("Quote");
-
-    const unreadable = "<w:pPr><w:pStyle/></w:pPr>";
-    expect(styleIdOf(unreadable)).toBeNull();
-    expect(styleIdOf(unreadable)).toBeNull();
   });
 });
 

@@ -3,6 +3,7 @@ import { type RunSettings, rPrOf } from "../../docx/formatting";
 import { readRunProps } from "../../docx/runProps";
 import { HALF_POINTS_PER_PT, ST_HpsMeasure } from "../../ooxml/simpleTypes";
 import { docxSchema } from "../../schema";
+import { safeHref } from "../../schema/clipboard";
 import { editorClassNames } from "../../styles/classNames";
 
 const IGNORED_TAGS = new Set([
@@ -192,19 +193,6 @@ function styleOf(parent: InlineStyle, element: HTMLElement): InlineStyle {
   const background = cssHex(element.style.backgroundColor);
   if (background !== null) style.background = background;
   return style;
-}
-
-/**
- * The address a link may carry, whichever way it travels.
- *
- * A copy writes one out and a paste reads one in, and an address this rule turns down is one
- * neither end should act on, so both ask here.
- */
-export function safeHref(value: string | null): string | null {
-  const href = value?.trim() ?? "";
-  if (href === "") return null;
-  if (/^(?:https?|mailto|tel):/i.test(href)) return href;
-  return /^(?:[./]|#)/.test(href) ? href : null;
 }
 
 export function contextFor(
