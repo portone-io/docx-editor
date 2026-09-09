@@ -47,6 +47,13 @@ export interface DocumentComment {
   readonly from: number;
   readonly to: number;
   readonly referencePos: number;
+  /**
+   * Whether the comment still marks a stretch of the document: both range markers stand, and the
+   * opening one stands before the closing one. A comment that lost both markers with the text an
+   * edit deleted is detached - `from` and `to` are then both where its reference stands - and is
+   * drawn nowhere on the page.
+   */
+  readonly anchored: boolean;
   readonly resolved: boolean;
   readonly replies: readonly DocumentCommentReply[];
 }

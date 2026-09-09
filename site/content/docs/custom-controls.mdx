@@ -126,6 +126,17 @@ protection](#modes-and-protection) explains the rule behind it. Every field of t
 returns is read-only: they are the editor's own, worked out once per edit, so a control that wants
 to change one copies it rather than writing into it.
 
+`documentComments` also reports `anchored`, which is `false` for a comment that no longer marks a
+stretch of the document. Deleting commented text never deletes the comment: a range marker the
+deletion took is put back as long as the other one stands, so a comment whose text was trimmed stays
+anchored on what is left, and only one that lost both markers comes back detached. A detached
+comment reports `from` and `to` at its reference, and `selectComment` takes the caret there rather
+than selecting anything. The built-in panel keeps such a comment off the rail beside the page, since
+there is nothing to draw it next to, and lists it under All comments marked *Original content
+deleted*, with a card that does nothing when clicked. A resolved comment keeps its anchor and loses
+its highlight, so clicking its card - which runs `selectComment` and scrolls the text into view - is
+how a reader finds the text it was written about.
+
 A comment body keeps its formatting. `updateComment` replaces one with plain text; `setCommentBody`
 replaces one with a document of `docxSchema`, so a composer of your own can write a body with a
 bold run, a paragraph style, or a second paragraph:

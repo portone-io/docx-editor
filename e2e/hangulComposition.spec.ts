@@ -36,6 +36,8 @@ import {
   lock,
   lockedText,
   openHarness,
+  rightClick,
+  selectText,
   settle,
 } from "./support/harness";
 import {
@@ -271,4 +273,70 @@ test("a hangul composition inside a locked control changes nothing", async ({
   // The refused composition is over rather than standing open for want of a compositionend
   expect(await composing(page)).toBe(false);
   expect((await compositions(page)).end).toBe(0);
+});
+
+/** The stretch the comment goes on, counted from the start of the paragraph's content */
+const COMMENTED_FROM = 2;
+const COMMENTED_LENGTH = 6;
+
+/** The positions a comment's own nodes take: the two range markers and the reference */
+const COMMENT_NODES = 3;
+
+/**
+ * A composition that opens over a whole paragraph, comment and all, which is the one edit that has
+ * a node put back into the very textblock the browser is composing in.
+ *
+ * `displayDerivation` defers under an open composition because it rewrites the node being composed
+ * in, and a redraw is what takes a composition down. The restoration only puts an atom in beside
+ * the composed text, and this is what holds that difference to a real browser.
+ */
+test("a hangul composition over a whole comment lands, and the comment stays", async ({
+  page,
+}) => {
+  await openHarness(page, "kitchen-sink");
+  const target = (await blocks(page)).find(
+    (block) => block.type === "paragraph" && block.docText.length > 20
+  );
+  if (!target) throw new Error("the fixture holds no paragraph long enough");
+
+  await selectText(page, target.index, COMMENTED_FROM, COMMENTED_LENGTH);
+  await rightClick(page);
+  await page.getByRole("menuitem", { name: "Add comment" }).click();
+  await page.getByRole("textbox", { name: "Comment text" }).fill("Review this");
+  await page.getByRole("button", { name: "Comment", exact: true }).click();
+  await settle(page);
+
+  // Everything the paragraph holds, the comment's three nodes among it
+  await selectText(
+    page,
+    target.index,
+    0,
+    target.docText.length + COMMENT_NODES
+  );
+  const cdp = await imeSession(page);
+  for (const stage of ASSEMBLING) {
+    await setComposition(cdp, stage);
+    const drawn = (await blocks(page))[target.index];
+    expect(drawn?.domText, `screen at buffer ${stage}`).toBe(stage);
+    // The reference is already back, ahead of the buffer, and drawing nothing: the restoration
+    // lands in the same frame as the deletion rather than waiting for the composition to end
+    expect(drawn?.docText, `document at buffer ${stage}`).toBe(`\n${stage}`);
+    // The one thing it may not do is take the composition down under the caret
+    expect(await composing(page)).toBe(true);
+  }
+  await commitComposition(cdp, "안");
+  await settle(page);
+
+  expect((await blocks(page))[target.index]?.domText).toBe("안");
+  expect(await composing(page)).toBe(false);
+  expect((await compositions(page)).end).toBe(1);
+
+  // The thread the composition wrote over is still the document's, with no text left to stand by
+  await page.getByRole("button", { name: "Show comments" }).click();
+  const detached = page.locator(
+    '[data-comment-position][data-detached="true"]'
+  );
+  await expect(detached).toHaveCount(1);
+  await expect(detached).toContainText("Review this");
+  await expect(detached).toContainText("Original content deleted");
 });
