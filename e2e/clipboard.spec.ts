@@ -38,6 +38,43 @@ async function browserPaste(
   );
 }
 
+/** The shape Word puts on the clipboard for a heading and a two-column table under it */
+const WORD_TABLE_HTML =
+  '<meta name=Generator content="Microsoft Word 15 (filtered medium)">' +
+  "<div class=WordSection1>" +
+  "<p class=MsoNormal>Balloon manifest<o:p></o:p></p>" +
+  "<table class=MsoTableGrid border=1 cellspacing=0 cellpadding=0>" +
+  "<tr><td><p class=MsoNormal>Crate<o:p></o:p></p></td>" +
+  "<td><p class=MsoNormal>Weight<o:p></o:p></p></td></tr>" +
+  "<tr><td><p class=MsoNormal>Ballast<o:p></o:p></p></td>" +
+  "<td><p class=MsoNormal>Twelve kilograms<o:p></o:p></p></td></tr>" +
+  "</table></div>";
+
+test("a browser paste keeps a table from Word as a table", async ({ page }) => {
+  await openHarness(page, "demo");
+  const target = firstTextParagraph(await blocks(page));
+  await selectText(page, target.index, 0, Math.min(4, target.docText.length));
+
+  await browserPaste(
+    page,
+    WORD_TABLE_HTML,
+    "Balloon manifest\nCrate\tWeight\nBallast\tTwelve kilograms"
+  );
+  await settle(page);
+
+  const pasted = page
+    .locator(`table.${editorClassNames.table}`)
+    .filter({ hasText: "Ballast" });
+  await expect(pasted).toHaveCount(1);
+  await expect(pasted.locator("td")).toHaveCount(4);
+  await expect(pasted.locator("td").first()).toHaveText("Crate");
+  await expect(
+    page
+      .locator(`p.${editorClassNames.paragraph}`)
+      .filter({ hasText: "Balloon manifest" })
+  ).toHaveCount(1);
+});
+
 test("Shift paste ignores an HTML image and the next ordinary paste loads it", async ({
   page,
 }) => {

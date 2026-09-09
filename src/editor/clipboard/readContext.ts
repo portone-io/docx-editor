@@ -3,10 +3,16 @@ import type {
   FormattingContext,
   ParagraphStyleOption,
 } from "../../docx/formatting";
+import type { PageGeometry } from "../../docx/pageGeometry";
 import { numIdsIn } from "../commands/listCommands";
-import { documentFormatting, documentParagraphStyles } from "../documentStyles";
+import {
+  documentFormatting,
+  documentParagraphStyles,
+  sectionGeometryAt,
+} from "../documentStyles";
 import type { ImageToInsert } from "../insertImage";
 import { canStartNewList } from "../plugins/numberingDecorations";
+import type { HtmlSource } from "./source";
 
 /**
  * Everything a piece of HTML is read against.
@@ -20,6 +26,8 @@ export interface HtmlReadContext {
   /** The document the markup is read into an element of */
   document: Document;
   formatting: FormattingContext;
+  /** The paper a block read into the document lands on, which is the width a pasted table takes */
+  geometry: PageGeometry;
   paragraphStyles: readonly ParagraphStyleOption[];
   numbering: {
     used: ReadonlySet<number>;
@@ -27,6 +35,12 @@ export interface HtmlReadContext {
   };
   /** The images already loaded for this read, by the token the markup carries */
   images: ReadonlyMap<string, ImageToInsert>;
+  /**
+   * The application that wrote the markup being read (`./source`). It is a property of the markup
+   * and not of the document, so a context built before any markup is in hand names no application
+   * and `readHtml` fills it in from what it is handed.
+   */
+  source: HtmlSource;
 }
 
 export function readContextOf(
@@ -37,11 +51,13 @@ export function readContextOf(
   return {
     document,
     formatting: documentFormatting(state),
+    geometry: sectionGeometryAt(state, state.selection.from),
     paragraphStyles: documentParagraphStyles(state),
     numbering: {
       used: numIdsIn(state.doc),
       canCreate: canStartNewList(state),
     },
     images,
+    source: "unknown",
   };
 }

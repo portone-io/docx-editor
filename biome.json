@@ -7,6 +7,9 @@
     "useIgnoreFile": true
   },
   "json": { "formatter": { "enabled": false } },
+  "files": {
+    "includes": ["**", "!src/editor/clipboard/__testing__/html/**"]
+  },
   "javascript": {
     "globals": [
       "expect",
