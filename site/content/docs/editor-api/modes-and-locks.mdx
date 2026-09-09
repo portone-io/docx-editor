@@ -1,0 +1,75 @@
+---
+title: Modes and locks
+description: What each mode lets through, and the locks the document itself carries.
+---
+
+## Modes
+
+`mode.kind` puts the editor under a protection:
+
+| `mode.kind` | What goes through |
+| --- | --- |
+| `readOnly` | Nothing. The text can be selected and copied; comments can be read. |
+| `comment` | Comments alone: adding, editing, deleting, replying, resolving, and reopening. |
+| `edit` | Everything. |
+
+[Props](/docs/props#mode) covers the prop and the rest of the union.
+[Modes](/docs/features/modes) describes each kind as a reader experiences it.
+
+The kinds are named after OOXML's document protection levels, but nothing is written to the file;
+a `w:documentProtection` the document carries is preserved as it is.
+
+Under `comment` a formatting command reports `false`, `canAddComment` still reports `true` over a
+selection, and undo takes back a comment but not a body edit, from the keyboard as well as from
+the panel.
+A [lock](#locked-content) is refused the same way.
+A control of your own reads the level with `editingProtection`:
+
+```tsx
+import { editingProtection } from "@portone/docx-editor/commands";
+
+const level = editingProtection(state); // "none" | "readOnly" | "comments"
+```
+
+Whose comments the current author may edit is a separate question, which [Who may edit a
+comment](/docs/editor-api/comments-and-notes#who-may-edit-a-comment) answers.
+
+## Locked content
+
+A lock is an OOXML content control that shuts its contents, so it is part of the document rather
+than editor state: it survives a round trip and travels with the file.
+A lock the open document already carries is honored in every mode, `readOnly` and `comment`
+included, and no prop turns it off.
+What `mode: { kind: "edit", locking: true }` adds is the authoring side, the built-in menu entries
+that put a lock on and take one off, since settling part of a document is a template author's act
+rather than something every reader of a form should be handed.
+
+Custom controls read the selection with `selectionLock`, which answers with one of four states
+instead of a pair of booleans a menu has to combine:
+
+```tsx
+import {
+  lockSelection,
+  selectionLock,
+  unlockSelection,
+} from "@portone/docx-editor/commands";
+
+const lock = selectionLock(state); // "none" | "lockable" | "locked" | "mixed"
+```
+
+`lockable` means there is text to shut, `locked` that the selection reaches a lock to lift, and
+`mixed` that it does both.
+`lockSelection` and `unlockSelection` are ordinary commands, so each reports whether it applies
+before it is offered.
+
+Locking wraps one control per paragraph the selection runs through, and only a text selection has
+anything to lock: a selected image or a block of table cells is not a stretch of text a control can
+hold.
+Reaching the edge of a control counts as reaching it, so a caret resting against either end of a
+locked field, or anywhere inside a locked cell, is enough to unlock it.
+A lock is lifted whole, and unlocking keeps the control itself, removing only its lock.
+
+`selectionTouchesLocked(state)` answers whether the selection meets locked content at all, which is
+what a control outside this package asks before editing.
+`documentHasLocked(doc)` takes the document rather than the state and reports whether the file
+carries any lock, which is how a screen decides to show its locking affordances at all.

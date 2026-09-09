@@ -1,0 +1,51 @@
+---
+title: Modes
+description: Read-only, comment-only, and editing, and what each lets a reader do.
+---
+
+A document opens read-only, for commenting only, or for editing, and the `mode` prop chooses which.
+[Props](/docs/props#mode) describes the prop itself.
+
+## Read-only
+
+A read-only document takes no edits and no comments.
+It has no toolbar and no context menus.
+The text can still be selected and copied, and the comments the document carries can be read.
+
+## Comment-only
+
+The body of a comment-only document cannot be changed, while its text can be selected and copied.
+Comments can be added, edited, deleted, replied to, resolved, and reopened.
+There is no toolbar, and the right-click menu offers Copy and Add comment only.
+Undo and redo take back a comment but not a body edit, from the keyboard as well as from the panel.
+A formatting shortcut does nothing.
+
+## Editing
+
+An editing document takes everything, and the built-in toolbar stands above the paper unless `toolbar: false` leaves it out.
+The right-click menu adds Cut, Paste, and Delete, and with `locking: true` it also offers Lock and Unlock.
+Zoom, page guides, and the comment panel are available in every mode, though the toolbar's zoom picker appears only here.
+
+## Switching modes
+
+The mode can change on an open document, and so can the comment author and whose comments may be edited.
+The editor switches in place and keeps the view, its history, and the application's own plugins.
+Nothing about the mode is written to the saved file, and a document protection the file already carries is preserved as it is.
+
+## Your comments and other people's
+
+Every comment written here records its author.
+Edit and Delete are offered on your own comments, and on comments that carry no recorded identity, such as ones written in Word or written before identities were recorded.
+An application can open every comment to everyone with `editableComments: "all"`.
+Replying, resolving, and reopening are open to every commenter, and deleting a comment deletes its replies.
+[Who may edit a comment](/docs/editor-api/comments-and-notes#who-may-edit-a-comment) states the rule precisely.
+
+## Locked content
+
+A lock is a content control in the document, so it travels with the file.
+A lock the document carries is honored in every mode and no prop turns it off, so locked text cannot be edited.
+Putting locks on and taking them off is offered only while editing with `locking: true`, from the right-click menu.
+Locking works on a stretch of selected text, one control per paragraph the selection runs through, and a caret touching a locked control's edge is enough to unlock it.
+[Locked content](/docs/editor-api/modes-and-locks#locked-content) covers the rest.
+
+[Modes and locks](/docs/editor-api/modes-and-locks) in the Editor API covers how a control of your own reads the mode.

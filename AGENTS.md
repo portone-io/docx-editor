@@ -15,9 +15,11 @@ Keep one source of truth for each concern and link to it instead of repeating it
 - Read [docs/testing.md](./docs/testing.md) before changing test structure or packaging checks.
 - Read [docs/releasing.md](./docs/releasing.md) before changing how a version is decided, published, or announced.
 - The user-facing documentation lives in the site's MDX pages, which the site serves; edit them there rather than mirroring them elsewhere.
-  - Read [site/content/docs/features.mdx](./site/content/docs/features.mdx) for a support claim or a behavior change.
-  - Read [site/content/docs/core.mdx](./site/content/docs/core.mdx) for programmatic DOCX import and export, including verifying a commenter's file on the server.
-  - Read [site/content/docs/custom-controls.mdx](./site/content/docs/custom-controls.mdx) for commands, queries, plugins, custom controls, or the comment ownership rule.
+  - Read [site/content/docs/features/index.mdx](./site/content/docs/features/index.mdx) for the support summary, then the page under [site/content/docs/features/](./site/content/docs/features/) for the area being changed: modes, text and paragraphs, tables, images and links, comments and notes, clipboard, pages and sections, preserved content, or keyboard shortcuts, for a support claim or a behavior change.
+  - Read [site/content/docs/core/index.mdx](./site/content/docs/core/index.mdx) for programmatic DOCX import and export; [core/server-environments.mdx](./site/content/docs/core/server-environments.mdx) holds the parser requirements and [core/errors.mdx](./site/content/docs/core/errors.mdx) the error codes.
+  - Read [site/content/docs/core/verifying-a-commenters-file.mdx](./site/content/docs/core/verifying-a-commenters-file.mdx) for verifying a commenter's file on the server.
+  - Read [site/content/docs/editor-api/index.mdx](./site/content/docs/editor-api/index.mdx) for the command contract and vocabulary, then the page under [site/content/docs/editor-api/](./site/content/docs/editor-api/) for the area being changed: text and paragraphs, tables, images and links, comments and notes, zoom, modes and locks, or plugins and presets.
+    - `comments-and-notes.mdx` holds the comment ownership rule, and `plugins-and-presets.mdx` the plugin stability boundary.
   - Read [site/content/docs/props.mdx](./site/content/docs/props.mdx) for the `mode` union.
 - Read [site/README.md](./site/README.md) for how the documentation and landing site is built and run.
 - Read [e2e/README.md](./e2e/README.md) only for a real-browser, IME, focus, or keyboard task.
@@ -39,7 +41,7 @@ Prefer precise types over `any` and broad type assertions. Use narrowing, type g
 
 ### Naming
 
-Follow the [public API vocabulary](./site/content/docs/custom-controls.mdx#commands-and-queries) when adding or renaming an export.
+Follow the [public API vocabulary](./site/content/docs/editor-api/index.mdx#commands-and-queries) when adding or renaming an export.
 
 ### Usability
 

@@ -1,0 +1,5 @@
+{
+  "title": "Core API",
+  "defaultOpen": true,
+  "pages": ["server-environments", "verifying-a-commenters-file", "errors"]
+}

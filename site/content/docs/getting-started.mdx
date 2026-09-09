@@ -37,16 +37,6 @@ needs.
 
 `document` takes a `File`, a `Blob`, an `ArrayBuffer`, or a `Uint8Array`, so the file arrives
 however your application already holds it.
-A file input hands over a `File` directly:
-
-```tsx
-<input
-  type="file"
-  accept=".docx"
-  onChange={(event) => setFile(event.target.files?.[0] ?? null)}
-/>
-```
-
 A document fetched from a server needs no more than its response body:
 
 ```ts
@@ -83,9 +73,11 @@ export function Editor({ file }: { file: File }) {
 }
 ```
 
-`mode` says what the editor is for; `author` names the person its comments are written under,
-taken from your application's signed-in user.
-[Props](/docs/props#mode) describes the kinds.
+`mode` says what the editor is for - a reader's surface, a commenter's, or an editor's - and
+`author` names the person its comments are written under, taken from your application's signed-in
+user.
+[Props](/docs/props#mode) describes the kinds, and [Modes](/docs/features/modes) what each lets a
+person do.
 The editor fills the height it is given, so put it in a box with one.
 
 </Step>
@@ -99,37 +91,18 @@ It reports `unavailable` while no document is open yet and `empty` when there is
 exporting.
 
 ```tsx
-import {
-  DocxEditor,
-  type DocxEditorHandle,
-  downloadDocx,
-} from "@portone/docx-editor";
-import { useRef } from "react";
+import { downloadDocx } from "@portone/docx-editor";
 
-export function Editor({ file }: { file: File }) {
-  const editorRef = useRef<DocxEditorHandle | null>(null);
+const download = () => {
+  const result = downloadDocx(editorRef.current, { fileName: file.name });
+  if (result.status === "blocked") {
+    console.warn(result.problems.map((problem) => problem.code));
+  }
+};
 
-  const download = () => {
-    const result = downloadDocx(editorRef.current, { fileName: file.name });
-    if (result.status === "exported") console.log(result.byteLength);
-    if (result.status === "blocked") {
-      console.warn(result.problems.map((problem) => problem.code));
-    }
-  };
-
-  return (
-    <>
-      <button onClick={download} type="button">
-        Export .docx
-      </button>
-      <DocxEditor
-        ref={editorRef}
-        document={file}
-        mode={{ kind: "edit", author: { id: user.id, name: user.name } }}
-      />
-    </>
-  );
-}
+<button onClick={download} type="button">
+  Export .docx
+</button>;
 ```
 
 `downloadDocx` returns `blocked` with the problems when the document cannot be written back
@@ -151,32 +124,13 @@ is for.
 
 If a refusal panel appears in place of the editor, the document was not opened, and the panel names
 the reason.
-[Core API](/docs/core#errors) lists the codes behind those refusals.
+Pass `renderImportError` to write that refusal in your own words; without it the built-in panel is
+drawn, so a refused document is never silent.
+[Errors](/docs/core/errors) lists the codes behind those refusals.
 
 </Step>
 
 </Steps>
-
-## Choose what the editor is for
-
-`mode` decides what the editor offers.
-`{ kind: "readOnly" }` takes no edits and no comments, and therefore has no toolbar or context
-menus.
-`{ kind: "comment", author }` lets a reviewer select and comment on the text without changing it.
-`{ kind: "edit", author }` takes everything, and its `locking` option adds the controls for
-settling part of a document.
-
-```tsx
-<DocxEditor
-  document={file}
-  mode={{ kind: "comment", author: { id: user.id, name: user.name } }}
-  renderImportError={(error) => <p role="alert">{error.code}</p>}
-/>
-```
-
-Without `renderImportError`, a built-in panel naming the reason is drawn, so a refused document is
-never silent either way.
-[Props](/docs/props) lists the rest of the component's surface.
 
 ## Next.js and other prerendering frameworks
 
@@ -203,5 +157,5 @@ TypeScript sources rather than to built output, which is the case for a workspac
 
 Read [Features](/docs/features) for what the editor edits and preserves,
 [Props](/docs/props) for the component's full surface,
-[Custom controls](/docs/custom-controls) to replace the built-in toolbar, and
+[Editor API](/docs/editor-api) to build controls of your own, and
 [Core API](/docs/core) for import and export without an editor.

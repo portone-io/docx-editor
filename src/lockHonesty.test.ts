@@ -372,7 +372,8 @@ const PLACES: readonly Place[] = [
   {
     // The selection crosses the boundary the break sits on, so anything that replaces it joins
     // the section paragraph away. Every command is refused here, legitimate deletions included:
-    // the guard cannot yet tell one from the other, which `features.mdx` writes down as a limit
+    // the guard cannot yet tell one from the other, which
+    // `features/pages-and-sections.mdx` writes down as a limit
     name: "a selection running across a section paragraph",
     guards: ["protection", "section"],
     state: (protection) => {

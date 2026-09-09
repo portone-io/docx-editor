@@ -21,6 +21,27 @@ const config = {
       { source: "/docs/:path*.md", destination: "/llms.mdx/docs/:path*" },
     ];
   },
+  // The Custom controls section was renamed to Editor API, and the READMEs already
+  // published to npm link to the old address
+  async redirects() {
+    return [
+      {
+        source: "/docs/custom-controls",
+        destination: "/docs/editor-api",
+        permanent: true,
+      },
+      {
+        source: "/docs/custom-controls.md",
+        destination: "/docs/editor-api.md",
+        permanent: true,
+      },
+      {
+        source: "/docs/custom-controls/:path*",
+        destination: "/docs/editor-api/:path*",
+        permanent: true,
+      },
+    ];
+  },
 };
 
 export default withMDX(config);

@@ -4,6 +4,12 @@
 
 It is published at [docx-editor.portone.io](https://docx-editor.portone.io).
 
+## Docs pages
+
+Every docs page is an MDX file under `content/docs`, and the `meta.json` beside it fixes the order the sidebar shows.
+A folder holding its own `meta.json` and an `index.mdx` becomes a sidebar group whose title opens the index page, and that folder's `pages` list must not name `index`, because Fumadocs then stops treating the file as the folder's index and lists it as an ordinary page.
+`llms.txt` and the `.md` routes follow the same tree, so a page moved into a folder moves in both.
+
 Run it from the repository root:
 
 ```sh
@@ -52,4 +58,6 @@ Every docs page is also served as Markdown at `<page url>.md`, so an agent can r
 `/llms.txt` indexes those Markdown pages in navigation order, and each HTML page points at its own Markdown with `rel="alternate"`, so an agent can find them either way.
 `next.config.mjs` rewrites the `.md` suffix onto `/llms.mdx/docs`, the route that renders a page as Markdown, because a dynamic segment cannot carry the suffix without colliding with the docs page route.
 The Markdown body comes from Fumadocs' `includeProcessedMarkdown` postprocess option, which `lib/source.ts` enables so a page can return its processed body.
+`lib/markdown.ts` then flattens the page's `Cards` into a Markdown list, drops the `Steps` wrappers around its headings, and rewrites every `/docs` link as an absolute `.md` URL, leaving fenced code untouched.
+An agent reading a single page therefore never meets JSX or a host-relative link.
 Each Markdown response carries an HTTP `Link` canonical naming its HTML page, because the two URLs serve the same content and only the HTML one should be indexed.

@@ -1,0 +1,71 @@
+---
+title: Tables
+description: Insert a table, edit its rows and columns, and format the cells inside it.
+---
+
+Putting a new table into the body is `insertTable` from `@portone/docx-editor/commands`.
+Everything acting on a table already in the document comes from `@portone/docx-editor/table`.
+
+## Insert a table
+
+```ts
+import { canInsertTable, insertTable } from "@portone/docx-editor/commands";
+
+const enabled = canInsertTable(state);
+insertTable({ rows: 3, columns: 4 })(state, view.dispatch);
+```
+
+`TableSize` is the `{ rows, columns }` the command takes. The new table goes right after the body
+block the caret sits in, so the text being written is not split in two, and never inside another
+table: a table in a cell is only ever preserved, so one created there would become an untouchable
+blob once the document was saved and reopened. It is as wide as one line of body text on the paper
+of the section it goes into, and the caret lands in its first cell.
+
+## Rows, columns, and cells
+
+Every structural command has the type `TableCommand`, which is
+`(state, dispatch?) => boolean`: the same contract as a ProseMirror command without the view
+argument.
+
+| Command | What it does |
+| --- | --- |
+| `addRowBefore`, `addRowAfter` | Adds a row above or below the current one. |
+| `addColumnBefore`, `addColumnAfter` | Adds a column to the left or right of the current one. |
+| `deleteRow`, `deleteColumn` | Removes the current row or column. |
+| `deleteTable` | Removes the whole table. |
+| `mergeCells` | Merges the selected block into one cell. |
+| `splitCell` | Splits the merged cell the caret sits in. |
+
+`isInTable(state)` reports whether the caret sits inside a table at all, which is what enables the
+group. `canMergeCells` and `canSplitCell` are the two commands asked without a dispatch, so a menu
+entry and the click behind it cannot answer differently. A merge needs a rectangular selection of
+more than one cell with no merged cell sticking out past it; a split needs a cell merged
+horizontally or vertically. Both also answer for the guards: a structural edit that would carry a
+locked cell off, swallow one into another, or plant a lock in cells it was never put in reports
+that it does not apply.
+
+## Cell formatting
+
+Table-cell controls use `canSetCellFormatting`, `activeCellVerticalAlign`, `setCellVerticalAlign`,
+`activeCellPadding`, and `setCellPadding`. The gate query covers the whole selection, alignment
+reports `top`, `center`, `bottom`, or `mixed`, and each padding side independently reports a point
+value, `mixed`, or `null`. A padding command writes only the sides supplied. `activeCellBorderColor`,
+`canSetCellBorderColor`, and `setCellBorderColor` operate on effective visible borders; editing a
+border inherited from its table or table style creates a direct override only on the visible sides
+of the selected cells.
+
+`activeCellBackground` and `setCellBackground(hex)` read and write the cell fill as `#RRGGBB`, and
+null takes the fill away.
+`setCellBorders(preset)` draws or clears the lines of the selected cells, where `CellBorderPreset`
+is `"all"`, `"outer"`, or `"none"`. `all` and `none` speak for every side of every selected cell,
+while `outer` writes only the sides lying on the edge of the selected block and leaves the lines
+inside it alone, the same as Word. The root entry exports `DEFAULT_CELL_BORDERS` and the
+`CellBorderOption` records the built-in menu is drawn from, so a menu of your own can offer the
+same rows.
+
+A job acts on the cell holding the caret, or on every cell a cell selection covers. Each reader
+answers with `MixedCellValue<T>`, which is the value itself, `"mixed"` where the selected cells
+disagree, and null where none of them wrote one down. A cell already in the state a job wants is
+left untouched so its original XML survives, which is also how a control knows whether an entry has
+anything to do: a command asked without a dispatch reports false when every selected cell already
+carries the value.

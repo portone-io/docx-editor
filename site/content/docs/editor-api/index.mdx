@@ -1,0 +1,155 @@
+---
+title: Editor API
+description: Commands, queries, presets, and plugins for controls of your own.
+---
+
+This section is what a mounted `DocxEditor` exposes to the application around it: the commands and
+queries controls of your own call, and the plugins and presets it takes. [Core API](/docs/core) is
+import and export without an editor.
+`DocxEditor` can keep its editing surface while a host application replaces the built-in toolbar
+and context menus.
+
+## Hide the built-in controls
+
+`mode.toolbar` turns the toolbar off, and `contextMenus`, a prop of its own, leaves the right
+button to the browser:
+
+```tsx
+<DocxEditor
+  document={file}
+  mode={{
+    kind: "edit",
+    author: { id: user.id, name: user.name },
+    toolbar: false,
+  }}
+  contextMenus={false}
+/>
+```
+
+A `comment` editor has no toolbar to hide, and its right-click menu is already cut down to Copy and
+Add comment.
+
+## Commands and queries
+
+Commands follow the ProseMirror command contract. Calling one with an `EditorState` reports whether
+it applies, while passing a dispatch function performs the edit.
+
+```tsx
+import type {
+  Command,
+  EditorState,
+  EditorView,
+} from "@portone/docx-editor";
+import { isBoldActive, toggleBold, undo } from "@portone/docx-editor/commands";
+
+function Toolbar({ view, state }: { view: EditorView; state: EditorState }) {
+  const run = (command: Command) => {
+    command(state, (transaction) => view.dispatch(transaction), view);
+    view.focus();
+  };
+
+  return (
+    <div>
+      <button
+        type="button"
+        aria-pressed={isBoldActive(state)}
+        onClick={() => run(toggleBold)}
+      >
+        Bold
+      </button>
+      <button type="button" disabled={!undo(state)} onClick={() => run(undo)}>
+        Undo
+      </button>
+    </div>
+  );
+}
+```
+
+`onReady` provides the editor view, and `onChange` fires whenever the editor state changes. Use
+both to keep custom controls in sync with the current selection.
+
+Three entry points carry what a control needs:
+
+| Import | What it holds |
+| --- | --- |
+| `@portone/docx-editor/commands` | Text, paragraph, list, break, tab, history, image, link, comment, note and lock commands and queries, the export queries, and `insertTable`. |
+| `@portone/docx-editor/table` | Everything acting on a table already in the document: rows, columns, merging, and cell formatting. |
+| `@portone/docx-editor` | The component itself, the preset values and their `DEFAULT_*` lists, `docxSchema`, and the shared types. |
+
+The query prefixes describe what they return:
+
+- `is*Active` reports a boolean toggle.
+- `active*` reports the current value or a mixed selection.
+- `can*` reports whether the related action applies.
+- `isIn*` reports containment.
+
+`DEFAULT_X` names the built-in default for the prop or field named `x`. Selection-level readers use
+`selection*`, while document-level readers use `document*`. A reader of the protection the editor
+itself runs under, which the document does not record, uses `editing*`.
+
+Package commands account for locked content, for the editor's mode, and for the content the editor
+preserves rather than edits before reporting that they apply, so a control built on them is disabled
+exactly where the edit would be refused. Preserved bookmark markers and note references are part of
+that: neither can be put back once it is gone, so a command that would sweep one away reports that
+it does not apply. Wrap third-party or application commands with `canRunCommand(command, state)`
+when they also need to respect the same rules.
+
+## Export controls
+
+`canExport` reports whether the document as it stands can be written back, and
+`documentExportProblems` lists every reason it could not, each under the code `DocxExportError`
+would carry and with its `pos` where the problem stands in the document, so an export control is
+drawn from the same list the writer refuses over; [Checking before
+export](/docs/core/errors#checking-before-export) lists the codes.
+
+`documentFidelity` returns what the open document holds that the editor cannot model: markup that
+is preserved but invisible, and the placeholders standing in for content it could not open for
+editing.
+Each note carries a `pos`, so a panel listing them can move the selection to the one a reader picks.
+The list is read off the document as it stands, so a note goes as soon as an edit takes away what
+it was about.
+[Core API](/docs/core#what-a-document-loses) describes the note fields, and returns the same list
+from `importDocx` and `exportDocxReport`.
+
+## Guides
+
+<Cards>
+  <Card
+    href="/docs/editor-api/text-and-paragraphs"
+    title="Text and paragraphs"
+    description="Character formatting, fonts, paragraph styles, lists, breaks, tabs, and history."
+  />
+  <Card
+    href="/docs/editor-api/tables"
+    title="Tables"
+    description="Insert a table, edit its rows and columns, and format its cells."
+  />
+  <Card
+    href="/docs/editor-api/images-and-links"
+    title="Images and links"
+    description="Take an image file into the document, and create or change a hyperlink."
+  />
+  <Card
+    href="/docs/editor-api/comments-and-notes"
+    title="Comments and notes"
+    description="Write, edit, resolve and read comment threads, and read footnotes and endnotes."
+  />
+  <Card
+    href="/docs/editor-api/zoom"
+    title="Zoom"
+    description="Let the editor own the zoom level, or own it from the host application."
+  />
+  <Card
+    href="/docs/editor-api/modes-and-locks"
+    title="Modes and locks"
+    description="What each mode lets through, and the locks the document itself carries."
+  />
+  <Card
+    href="/docs/editor-api/plugins-and-presets"
+    title="Plugins and presets"
+    description="Replace the picker values, add ProseMirror plugins, and what a plugin may rely on."
+  />
+</Cards>
+
+See [Features](/docs/features) for behavioral limits and the published TypeScript declarations for
+complete signatures.

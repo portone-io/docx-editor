@@ -1,0 +1,83 @@
+---
+title: Errors
+description: The stable codes a refused import or export carries, and how to ask before writing.
+---
+
+`DocxImportError` and `DocxExportError` expose stable `code` values for application handling.
+Error messages are intended for developers and may be reworded.
+
+```ts
+import { DocxImportError, importDocx } from "@portone/docx-editor/core";
+
+try {
+  importDocx(source);
+} catch (error) {
+  if (error instanceof DocxImportError) {
+    console.error(error.code);
+  }
+  throw error;
+}
+```
+
+Both classes are exported from the root entry as well, so a React screen can switch on the same codes without importing the core entry.
+
+## Import codes
+
+| Code | Why the document was refused |
+| --- | --- |
+| `no-xml-parser` | The runtime has no XML parser: no `xmlParser` was passed and there is no `DOMParser` global. |
+| `not-a-docx` | The bytes are not a readable zip container, its entry names are not a package's, or an entry does not hold what it claims to. |
+| `too-large` | The package asks to inflate beyond the [import limits](/docs/core#import-limits). |
+| `missing-part` | The package carries no main document part. |
+| `missing-body` | The main part carries no body. |
+| `malformed-xml` | The XML cannot be parsed, declares a DTD, or its markup is inconsistent. |
+| `unsupported-conformance` | The package is an ECMA-376 Strict one. This editor reads and writes Transitional, which is what Word saves by default. |
+| `unsupported-content` | The document holds markup that could not be written back out unchanged. |
+
+`no-xml-parser` is about where the call was made rather than about the file, and a browser never reaches it; [Server environments](/docs/core/server-environments) covers it.
+A file a person picked can fail with any of the rest, so the code is worth showing: `not-a-docx` and `too-large` are usually the person's to fix, while the others describe the file itself.
+A main document root that does not bind `w` to the Transitional WordprocessingML namespace is refused as `unsupported-content`, since the WordprocessingML writer emits that prefix.
+
+## Checking before export
+
+`exportProblems(doc, session)` reports known reasons `exportDocx` would refuse the document, before anything is written and in the order the writer would raise them:
+
+```ts
+import { exportDocx, exportProblems } from "@portone/docx-editor/core";
+
+const problems = exportProblems(doc, session);
+if (problems.length > 0) {
+  console.warn(problems[0].code, problems[0].message);
+} else {
+  const bytes = exportDocx(doc, session);
+}
+```
+
+Each problem carries the `code` and `message` the `DocxExportError` would carry, and `pos` where the problem stands at a place in the document, which a screen can select; a problem of the package or of the session carries none.
+
+| Code | What is reported |
+| --- | --- |
+| `malformed-xml` | A bookmark marker whose partner is gone, or a comment part with no root element to rewrite around once a comment has changed. |
+| `invalid-table` | A vertical merge reaching past the last row of its table. |
+| `lost-original` | A preserved block that has lost its original XML, or a placeholder pasted in from another open document: a placeholder is written from the file it was read out of, so one from another file cannot be. |
+| `unsupported-content` | A preserved block, such as a body-level bookmark marker or an element the editor does not model, copied so that it stands in two places: there is one original to write and nothing to rebuild the second from; or a paragraph in a list nothing defines. Reported where the block or the paragraph stands. The built-in list controls record a definition for every list they start, so a paragraph put into a list by a plugin of your own is how the second one is reached. |
+| `missing-content-types` | A part the writer adds, be it an image, the numbering part a new list is defined in, or a comment-related part, in a package that has no content types part to declare it in. The built-in list controls report that they do not apply where a new list would need that declaration. |
+
+The checks report these codes for the conditions they cover, and `exportDocx` throws the first entry of the same list with its code and message.
+An empty list does not guarantee that writing will succeed.
+Inside an editor, [`canExport`](/docs/editor-api#export-controls) asks the same question of the state.
+A write that needs a namespace prefix already bound to a different namespace is also refused as `unsupported-content`; this includes a local declaration that changes the meaning of a newly written hyperlink.
+
+A refusal the list does not foresee is still thrown: `unsupported-content` for a node or an image of a kind the writer cannot put out, `lost-original` or `malformed-xml` for a node a plugin stripped of an attribute the writer needs or a raw fragment it wrote that does not hold its shape, and `malformed-xml` naming the part for any rewritten part of the package that does not read back as XML, since every part the writer produces is parsed before the file is repacked.
+None of those is reached by typing; each names a plugin's doing or a bug in the editor.
+
+Writing reads the document it produced back, so `exportDocx` needs an XML parser as much as `importDocx` does, and `exportProblems` reads the list definitions to tell a new list from one the document already had, so it takes the same `xmlParser` option.
+A call on a runtime with none is refused ahead of all of these, with `DocxImportError` and the import code `no-xml-parser`; [Server environments](/docs/core/server-environments) covers it.
+
+An export failure leaves the editor state untouched, so a screen can report the reason and let the person carry on editing.
+
+## In the React component
+
+The component renders a refusal in place of the editor when import fails, either through `renderImportError` or through the built-in panel, which turns each import code into a sentence.
+Only `DocxImportError` becomes a rendered refusal; anything else, a `Blob` that could not be read included, is thrown for an error boundary above to take.
+On the way out, `downloadDocx` asks the list above first and returns `blocked` with the problems rather than throwing, while `exportBytes` throws `DocxExportError` as it is; a refusal the list did not foresee is thrown by both.

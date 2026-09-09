@@ -13,9 +13,9 @@ import { createEditorState } from "./editor/createEditor";
  * The entry read where a server reads it, which is the one place the global it was told to
  * install is the only one there is.
  *
- * `site/content/docs/core.mdx` offers a `DOMParser` global as the alternative to the `xmlParser`
- * option and asks for nothing else, and the rest of the suite runs under jsdom, where every other
- * global is there to be reached for by accident.
+ * `site/content/docs/core/server-environments.mdx` offers a `DOMParser` global as the alternative
+ * to the `xmlParser` option and asks for nothing else, and the rest of the suite runs under jsdom,
+ * where every other global is there to be reached for by accident.
  */
 describe("under the one global the documentation offers a server", () => {
   // `vitest.config.ts` does not isolate files, so a global left behind is one the next node

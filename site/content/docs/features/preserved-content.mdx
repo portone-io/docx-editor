@@ -1,0 +1,76 @@
+---
+title: Preserved content
+description: What the editor keeps untouched, and how it behaves while you edit around it.
+---
+
+## How preservation works
+
+Content outside the supported editing surface is not silently discarded.
+Untouched package parts and document blocks are written back from their original XML, and an
+element the editor has no model for is kept where it stood: inside its run, beside the runs of its
+paragraph, or as a block.
+
+A paragraph stays editable around the content preserved inside it, and a table stays a table around
+a bookmark that spans one of its columns.
+
+Unsupported blocks stand as placeholders, as do tables whose structure cannot be modelled,
+including a table with a content control or a tracked change around a whole row.
+
+A section break is kept as well; [Pages and sections](/docs/features/pages-and-sections#sections)
+covers what it means while you edit.
+
+## Character formatting and styles
+
+Character formatting and character styles that the editor does not display or edit are preserved.
+
+## Bookmarks and ranges
+
+Bookmark ranges are kept at their document positions, invisible and impossible to remove.
+
+A selection running across one of the markers cannot be replaced, so typing or deleting over it
+leaves the text as it stands, and the picture, line break, and page break controls are unavailable
+while it is held.
+Move the selection clear of the marker to edit the text around it.
+
+The same holds for a permission range and for the markers of a moved passage.
+
+Markers carried between a table's rows or cells also shape which
+[table edits](/docs/features/tables#limitations) are available.
+
+## Fields
+
+The markers and instructions of a complex field are shown as small boxes that cannot be edited or
+removed, and its cached result stays editable text.
+A simple field is one box showing its cached result, and it can be removed whole.
+The paragraph around either kind stays editable.
+
+Nothing recalculates a field.
+A page number or a total the document already drew stays as it was written, even after you edit
+the cached result.
+
+## Tracked changes
+
+A tracked insertion or deletion is shown as a small box carrying its text.
+The box can be selected and removed whole, but the passage inside it cannot be edited.
+
+A table's `w:tblGridChange` is preserved as it came.
+A rebuilt table is the exception in one place: the cells continuing a vertical merge are written
+from the cell that starts the merge, so properties of their own do not come along.
+
+## Content controls
+
+Edit or lock supported text and table-cell content controls.
+A control standing inside another control or inside a hyperlink, at any depth, is editable text
+like any other, and goes back out nested as it came.
+A control the editor could not take apart is shown as a box.
+
+[Locked content](/docs/editor-api/modes-and-locks#locked-content) covers locking a control.
+
+## Other markup
+
+A symbol, a positional tab, and any other element the editor has no model for are shown as small
+boxes where they stood, and the paragraph around them stays editable.
+
+`documentFidelity` lists what a given document kept this way, and `importDocx` returns the same
+list for a file opened outside the editor, described in
+[what a document loses](/docs/core#what-a-document-loses).

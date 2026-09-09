@@ -1,0 +1,60 @@
+---
+title: Plugins and presets
+description: Replace the values the built-in pickers offer, add ProseMirror plugins, and what a plugin may rely on.
+---
+
+## Presets
+
+The root entry exports the preset values used by the built-in controls, including `DEFAULT_COLORS`,
+`DEFAULT_FONT_SIZES`, `DEFAULT_LINE_SPACINGS`, `DEFAULT_CELL_BORDERS`, and `DEFAULT_FONTS`. Pass
+replacement lists through the `presets` prop when the built-in controls should offer different
+values. Color presets remain quick choices; the built-in color controls also accept any three- or
+six-digit HEX color.
+
+`DocxEditorPresets` has one optional field per picker - `fonts`, `colors`, `fontSizes`,
+`lineSpacings`, and `cellBorders` - and an omitted field keeps the package's own list. The prop is
+read on every render, unlike `plugins` and `fontFallbacks`, so a list built from state can change
+while the editor stands. A font or a size the document itself uses is offered whether or not the
+list holds it.
+
+The same lists are what a toolbar of your own draws its choices from, alongside
+`DEFAULT_ZOOM_LEVELS` and `DEFAULT_FONT_FALLBACKS`.
+
+## Plugins
+
+Pass ProseMirror plugins through the `plugins` prop. Consumer keymaps receive keyboard events
+before the built-in keymap, so an application can override bindings such as `Mod-k` without
+replacing the editor.
+
+A plugin that sets its own `clipboardSerializer` replaces the one a copy is written with, and the
+editor's own is not exported to wrap. A serializer built from the schema, such as
+`DOMSerializer.fromSchema(docxSchema)`, puts the page's own drawing on the clipboard: the original
+XML fragments behind each paragraph, run, and table, and the author and identity behind each
+comment, all of which the editor's copy leaves out. Such a copy also leaves without the name this
+editor recognizes its own copies by, so pasting it back reads it as HTML from somewhere else
+rather than as the content it was.
+
+A plugin that writes raw OOXML into a node or mark attr, such as a paragraph's `pPr`, a run's
+`rPr`, or a content control's opening tag, has to write the shape that attr goes back out as: a
+single element under the name the attr carries, the attributes of an opening tag on their own, or
+an opening tag with nothing inside it yet. The editor reads the page back after an IME composition
+or a browser edit, and a fragment that is none of those is turned down there, taking its node or
+mark down one level with it. A paragraph then keeps its text and loses its properties, a run loses
+its formatting, and a content control or a hyperlink loses its wrapper.
+
+## What a plugin may rely on
+
+The supported plugin surface includes the node and mark names of `docxSchema`, `srcId`, the
+`format` attrs and their `to*Format` readers, and the names and types exported by the four entry
+points. Changes to this surface follow the package's public API versioning policy.
+Treat `srcId` as an opaque reference within the session that opened the document; its value is not
+a persistent identifier across imports.
+
+Raw OOXML attrs such as `pPr`, `rPr`, `tcPr`, `xml`, `sdtPrefix`, `linkPrefix`, and `referenceXml`
+are internal and may change in any release. Prefer commands and typed format readers to depending
+on their names or writing them directly.
+
+The DOM checks described above run when the editor reads the page back. A programmatic node edit
+can bypass that path. Export checks XML well-formedness and selected document invariants, but does
+not validate every raw attr against its expected shape or the full OOXML schema. Handwritten attrs
+can therefore cause an export error or produce an invalid DOCX file.

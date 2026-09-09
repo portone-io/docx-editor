@@ -147,7 +147,8 @@ describe("two spellings of the same thing", () => {
  * gone, so the comparison cannot report a difference it can no longer see. That makes this list
  * the one to watch: it stands for what the editor loses when it rebuilds a block, it shrinks as
  * the writer learns to carry more, and a case joining it is a preservation defect rather than a
- * comparison detail. `site/content/docs/core.mdx` names the same losses to a reader.
+ * comparison detail. `site/content/docs/core/verifying-a-commenters-file.mdx` names the same losses
+ * to a reader.
  */
 describe("content this editor does not keep", () => {
   it("reads a cell property the writer rebuilds from the model as the model says it", () => {
