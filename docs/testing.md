@@ -13,6 +13,7 @@ Use `pnpm check` for the default local gate. Run the specialized checks when a c
 | `pnpm test:package` | Published tarball contents, leaf-import size, declaration reports, and the core entry in a Node runtime with no DOM |
 | `pnpm verify:package` | Fresh installation, declarations, entries, bundle, and stylesheet |
 | `pnpm test:e2e` | Playwright tests against a locally installed Chrome |
+| `pnpm bench` | Local import, state creation, edit, and export scaling measurements |
 | `pnpm check:demo-library` | The site and demo both run the library from the sources, or both pin the same published release and have it installed |
 | `pnpm test:site-release` | Offline Node tests for released-demo preparation and the production branch rebuild |
 | `pnpm test:release` | Offline Node tests for the release pull request command |
@@ -22,6 +23,8 @@ The unit suite requires `xmllint` for OOXML schema validation. `verify:package` 
 `check:demo-library` is offline. `test:site-release` uses Node's test runner to check release preparation, failures, and safe production branch rebuilds in temporary workspaces. It runs the actual Changesets version command; registry, installation, and GitHub responses are substituted.
 
 `pnpm spec 17.5.2.23` looks up an OOXML specification section. It is a utility, not a test.
+
+`pnpm bench` prints timings and adjacent-size ratios for synthetic documents. It is excluded from `pnpm check`; compare repeated runs on the same machine.
 
 ## Unit and integration tests
 

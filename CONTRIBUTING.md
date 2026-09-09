@@ -44,6 +44,7 @@ Run a specialized check when your change affects its area:
 pnpm test:package
 pnpm verify:package
 pnpm test:e2e
+pnpm bench
 ```
 
 [Testing](https://github.com/portone-io/docx-editor/blob/main/docs/testing.md) explains the scope and prerequisites of every check.
