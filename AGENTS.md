@@ -14,7 +14,7 @@ Keep one source of truth for each concern and link to it instead of repeating it
 - Read [docs/architecture.md](./docs/architecture.md) before moving code, changing folder dependencies, or adding an entry point.
 - Read [docs/testing.md](./docs/testing.md) before changing test structure or packaging checks.
 - Read [docs/releasing.md](./docs/releasing.md) before changing how a version is decided, published, or announced.
-- The user-facing documentation lives in the site's MDX pages, which the site serves; edit them there rather than mirroring them elsewhere.
+- Read [site/AGENTS.md](./site/AGENTS.md) before editing user-facing documentation. The site's MDX pages are the source served to users; edit them there rather than mirroring them elsewhere.
   - Read [site/content/docs/features/index.mdx](./site/content/docs/features/index.mdx) for the support summary, then the page under [site/content/docs/features/](./site/content/docs/features/) for the area being changed: modes, text and paragraphs, tables, images and links, comments and notes, clipboard, pages and sections, preserved content, or keyboard shortcuts, for a support claim or a behavior change.
   - Read [site/content/docs/core/index.mdx](./site/content/docs/core/index.mdx) for programmatic DOCX import and export; [core/server-environments.mdx](./site/content/docs/core/server-environments.mdx) holds the parser requirements and [core/errors.mdx](./site/content/docs/core/errors.mdx) the error codes.
   - Read [site/content/docs/core/verifying-a-commenters-file.mdx](./site/content/docs/core/verifying-a-commenters-file.mdx) for verifying a commenter's file on the server.

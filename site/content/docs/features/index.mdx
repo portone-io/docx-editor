@@ -12,7 +12,7 @@ API details live in [Editor API](/docs/editor-api) and [Core API](/docs/core).
 | Area | What you can do |
 | --- | --- |
 | [Text formatting](/docs/features/text-and-paragraphs#text-formatting) | Edit bold, italic, strikethrough, underline, palette or custom HEX colors, highlight, fonts, and font size. Document defaults and paragraph or character styles are reflected in the text and the controls. |
-| [Paragraphs](/docs/features/text-and-paragraphs#paragraphs) | Apply paragraph styles, alignment, indentation, line spacing, line breaks, and page breaks. Keep with next holds a paragraph on the same page as the block after it. |
+| [Paragraphs](/docs/features/text-and-paragraphs#paragraphs) | Apply paragraph styles, alignment, indentation, line spacing, line breaks, and page breaks. Keep with next is reflected within the page layout's limits. |
 | [Tabs](/docs/features/text-and-paragraphs#tabs) | Insert, paste, format, navigate, select, and align document tabs. Tab leaders and bar tabs are kept in the file but not drawn. |
 | [Lists](/docs/features/text-and-paragraphs#lists) | Create and edit bullet and numbered lists, including nested levels, drawn as the document's own list definition asks. A list counting in an unsupported format is shown with decimal numbers. |
 | [Tables](/docs/features/tables) | Insert and remove rows, columns, and tables; merge, split, resize, format, align, and pad cells; table styles and repeating header rows are drawn. A table the editor cannot model is shown as a placeholder. |
@@ -34,9 +34,9 @@ A refused file reports why, under one of the [import codes](/docs/core/errors#im
 
 ## Preservation
 
-Nothing outside the editing surface is discarded: untouched parts go back out unchanged, and
-content the editor has no model for stands as a placeholder.
-Import or export fails with a stable error code rather than returning a damaged document.
+Untouched parts and blocks go back out unchanged, and content the editor has no model for stands
+as a placeholder. The area guides describe known preservation limits.
+Import and export report detected failures with stable error codes.
 [Preserved content](/docs/features/preserved-content) covers what is kept, and
 [what a document loses](/docs/core#what-a-document-loses) how to list it.
 

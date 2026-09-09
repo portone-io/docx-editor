@@ -8,15 +8,16 @@ description: Page boundaries, section breaks, and headers and footers.
 Page boundaries are approximate and may differ from Word or from print.
 Keep with next is reflected in them; keep lines together and widow control are kept in the file
 but not drawn.
+Keep with next is ignored when the blocks cannot fit on one page and does not join a multi-row
+table to the block after it.
 
 ## Sections
 
 Every section is read with its paper and margins, its headers and footers, and its starting page
 number.
 A section break starts a new page unless it is marked continuous.
-The paragraph carrying a section break cannot be joined into another paragraph, and a selection
-running across the last paragraph of a section cannot be deleted; move the selection clear of it
-to edit the text around it.
+An edit that removes a paragraph carrying a section break is refused without a message.
+Section breaks have no visible marker.
 
 ## Headers and footers
 
@@ -31,7 +32,7 @@ its own height but drawn at that width.
 
 An even-page or odd-page section start is kept in the file but drawn as an ordinary new page.
 
-A page number begins at the start its section declares, but the count does not restart at a
-section boundary.
+Page numbering in later sections can be wrong after a restart. Even and odd header selection can
+then disagree with the displayed number.
 
 Every section's own first page is drawn as a first page for the choice of header and footer.

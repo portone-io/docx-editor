@@ -6,9 +6,9 @@ Use `pnpm check` for the default local gate. Run the specialized checks when a c
 
 | Command | Scope |
 | --- | --- |
-| `pnpm check` | Lint, typecheck, unit and integration tests, site release and release command tests, and demo dependency agreement |
+| `pnpm check` | Lint, typecheck, unit and integration tests, fixture sanitizer tests, site release and release command tests, and demo dependency agreement |
 | `pnpm test` | Vitest tests under `src/` |
-| `pnpm typecheck` | TypeScript checks for the package and E2E project |
+| `pnpm typecheck` | TypeScript checks for the package, E2E project, demo, and documentation site |
 | `pnpm lint` | Biome checks |
 | `pnpm test:package` | Published tarball contents, leaf-import size, declaration reports, and the core entry in a Node runtime with no DOM |
 | `pnpm verify:package` | Fresh installation, declarations, entries, bundle, and stylesheet |
@@ -26,6 +26,8 @@ The unit suite requires `xmllint` for OOXML schema validation. `verify:package` 
 ## Unit and integration tests
 
 Place a test beside the source it covers, such as `src/docx/importDocx.test.ts` beside `src/docx/importDocx.ts`. Vitest scans `src/` only.
+
+Vitest uses `isolate: false`, so test files in a worker share module state. Restore temporary overrides, scope retained data to its session, and do not let identifiers or caches depend on test order.
 
 Build a state for an opened document with `editorStateForSession`, because an option bag copied from the session by hand is how a test comes to hold values the editor itself never builds.
 

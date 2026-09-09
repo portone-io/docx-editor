@@ -15,7 +15,7 @@ if (!verdict.ok) console.warn(verdict.reason);
 
 ## What must hold
 
-The comparison covers the whole package:
+The comparison checks the whole package within the [limits below](#how-files-are-compared):
 
 - Every part is byte-identical, except the comments, extended comments, and people parts.
 - The main document part is unchanged outside its body blocks.
@@ -61,11 +61,13 @@ type CommentOnlyVerdict =
 
 The story is compared as this editor would write it, so two spellings of the same markup (attribute
 order, `100%` against `5000`, split runs) are accepted.
-Three things the editor rebuilds are not compared: a table's `w:gridCol` list, a drawing's extent,
-and table properties the model no longer needs.
+The comparison does not cover a table's `w:gridCol` list, a drawing's extent, or table properties
+the model no longer needs.
+It also cannot detect changes inside cells that continue a vertical merge.
 Where integrity must hold to the byte, compare the parts yourself.
 
 Run the verifier on a package at least as new as the editor that wrote the file.
 Unreadable bytes throw `DocxImportError`.
 [Who may edit a comment](/docs/editor-api/comments-and-notes#who-may-edit-a-comment) describes the
-ownership rule the verdict holds to.
+ownership rule the verdict holds to. Use an author name that is not already recorded for another
+identity; a conflict can produce `comment-author-forged`.
