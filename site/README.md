@@ -40,7 +40,7 @@ After npm publishing succeeds, [Update site release](../.github/workflows/site-r
 The workflow then opens a pull request from `production` to `main`, because nothing else moves the pins there and `main` would otherwise keep building an older library.
 `production` is the release commit plus that pin commit, so it is already the head of the pull request, and one left open follows the next release too.
 The workflow opens nothing when `main` already pins the released version.
-A workflow token opens it, so its checks wait for approval exactly as the release pull request's do: **Approve workflows to run**, in the merge box, starts them.
+A workflow token opens it, so its checks wait for **Approve workflows to run** in the merge box, the one approval a release still asks of a person.
 
 If the update fails, run **Update site release** on `main` in GitHub Actions with the already published version. It rebuilds `production` from scratch, so rerunning is always safe. If `production` is right but its deployment failed, retry in Vercel. Neither requires republishing npm.
 

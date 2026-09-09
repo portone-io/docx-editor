@@ -6,7 +6,7 @@ Use `pnpm check` for the default local gate. Run the specialized checks when a c
 
 | Command | Scope |
 | --- | --- |
-| `pnpm check` | Lint, typecheck, unit and integration tests, site release tests, and demo dependency agreement |
+| `pnpm check` | Lint, typecheck, unit and integration tests, site release and release command tests, and demo dependency agreement |
 | `pnpm test` | Vitest tests under `src/` |
 | `pnpm typecheck` | TypeScript checks for the package and E2E project |
 | `pnpm lint` | Biome checks |
@@ -15,6 +15,7 @@ Use `pnpm check` for the default local gate. Run the specialized checks when a c
 | `pnpm test:e2e` | Playwright tests against a locally installed Chrome |
 | `pnpm check:demo-library` | The site and demo pins match their installed packages and do not resolve to the working tree |
 | `pnpm test:site-release` | Offline Node tests for released-demo preparation and the production branch rebuild |
+| `pnpm test:release` | Offline Node tests for the release pull request command |
 
 The unit suite requires `xmllint` for OOXML schema validation. `verify:package` also needs network access to install the packed package and its peer dependencies in a temporary project.
 
