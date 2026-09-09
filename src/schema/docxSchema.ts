@@ -52,6 +52,7 @@ import {
 } from "../styles/inlineStyle";
 import { imageNodeSpec, runMarkSpec } from "./rendering";
 import type { StoryJson } from "./stories";
+import { WRAPPER_ATTRS, WRAPPER_GROUP } from "./wrappers";
 
 /** What a document holding no side story carries, shared so that two such documents compare equal */
 const NO_STORIES: Readonly<Record<string, StoryJson>> = Object.freeze({});
@@ -708,7 +709,7 @@ export const docxSchema = new Schema({
     hardBreak: {
       group: "inline",
       inline: true,
-      marks: "run sdt link",
+      marks: "run wrapper",
       attrs: { brAttrs: { default: null } },
       toDOM(node) {
         return [
@@ -743,7 +744,7 @@ export const docxSchema = new Schema({
       group: "inline",
       inline: true,
       draggable: true,
-      marks: "run sdt link",
+      marks: "run wrapper",
       attrs: {
         /** The image bytes as a data URL */
         src: { default: null },
@@ -778,7 +779,7 @@ export const docxSchema = new Schema({
       inline: true,
       atom: true,
       selectable: false,
-      marks: "sdt link",
+      marks: "wrapper",
       attrs: {
         id: { default: null },
         xml: { default: null },
@@ -810,7 +811,7 @@ export const docxSchema = new Schema({
       inline: true,
       atom: true,
       selectable: false,
-      marks: "sdt link",
+      marks: "wrapper",
       attrs: {
         id: { default: null },
         xml: { default: null },
@@ -842,7 +843,7 @@ export const docxSchema = new Schema({
       inline: true,
       atom: true,
       selectable: false,
-      marks: "run sdt link",
+      marks: "run wrapper",
       attrs: {
         id: { default: null },
         referenceXml: { default: null },
@@ -928,7 +929,7 @@ export const docxSchema = new Schema({
       inline: true,
       atom: true,
       selectable: false,
-      marks: "run sdt link",
+      marks: "run wrapper",
       attrs: {
         kind: { default: "footnote" },
         id: { default: null },
@@ -989,7 +990,7 @@ export const docxSchema = new Schema({
       group: "inline",
       inline: true,
       atom: true,
-      marks: "run sdt link",
+      marks: "run wrapper",
       attrs: {
         xml: { default: null },
         /** The local name of the element, for example `fldChar` */
@@ -1015,7 +1016,7 @@ export const docxSchema = new Schema({
       group: "inline",
       inline: true,
       atom: true,
-      marks: "sdt link",
+      marks: "wrapper",
       attrs: {
         xml: { default: null },
         /** The local name of the element; `r` for a run with no content, kept whole */
@@ -1042,20 +1043,20 @@ export const docxSchema = new Schema({
      *
      * It is declared ahead of the run mark on purpose: the mark declared first is drawn
      * outside on screen, so one control can hold the several runs it wrapped in the file.
+     * It is declared ahead of the other wrappers for the same reason, which is what settles
+     * the nesting of two wrappers written at one and the same depth (`./wrappers`).
      */
     sdt: {
+      group: WRAPPER_GROUP,
       // A character typed against either edge of the control belongs outside it
       inclusive: false,
+      // §17.5.2.17 has a control hold a control, so a second one does not replace the first:
+      // which stands inside which is what `depth` says (`./wrappers`)
+      excludes: "",
       attrs: {
         /** The opening XML of the `<w:sdt>`, the same string a wrapped cell carries */
         sdtPrefix: { default: null },
-        /**
-         * Which control this is, counted through the document as it was opened, and never
-         * written back to the file. Two controls whose XML is identical would otherwise wear
-         * the very same mark and their text would run into one. The first control gets 0, so
-         * a control made during editing needs no number of its own.
-         */
-        sdtKey: { default: 0 },
+        ...WRAPPER_ATTRS,
         /**
          * The two clauses of the control's lock: whether its contents may not be edited, and
          * whether the control itself may not be deleted, not even whole. The `w:lock` inside
@@ -1076,7 +1077,8 @@ export const docxSchema = new Schema({
               ? `${editorClassNames.sdt} ${editorClassNames.sdtLocked}`
               : editorClassNames.sdt,
             "data-sdt-prefix": text(mark.attrs.sdtPrefix),
-            "data-sdt-key": numberText(mark.attrs.sdtKey),
+            "data-key": numberText(mark.attrs.key),
+            "data-depth": numberText(mark.attrs.depth),
             "data-sdt-contents-locked": locked ? "1" : undefined,
             "data-sdt-deletion-locked":
               mark.attrs.deletionLocked === true ? "1" : undefined,
@@ -1093,7 +1095,8 @@ export const docxSchema = new Schema({
             if (prefix === null || prefix === false) return false;
             return {
               sdtPrefix: prefix,
-              sdtKey: parseInt10(dom.getAttribute("data-sdt-key"), 0),
+              key: parseInt10(dom.getAttribute("data-key"), 0),
+              depth: parseInt10(dom.getAttribute("data-depth"), 0),
               contentsLocked:
                 dom.getAttribute("data-sdt-contents-locked") === "1",
               deletionLocked:
@@ -1111,10 +1114,12 @@ export const docxSchema = new Schema({
      * back out inside it (`docx/serializeParagraph`).
      */
     link: {
+      group: WRAPPER_GROUP,
       // A character typed against either edge of a link belongs outside it, and that is also what
       // decides whether a caret counts as standing in one (`editor/commands/linkCommands`)
       inclusive: false,
       attrs: {
+        ...WRAPPER_ATTRS,
         /**
          * The opening XML of the `<w:hyperlink>`, which carries everything about the link we never
          * read: `w:tooltip`, `w:history`, `w:docLocation`, `w:anchor`. null for a link made in the
@@ -1127,13 +1132,6 @@ export const docxSchema = new Schema({
          * travels, and no address is offered for it.
          */
         href: { default: null },
-        /**
-         * Which link this is, counted through the document as it was opened, and never written back
-         * to the file. Two links written exactly alike would otherwise wear the very same mark and
-         * the text they cover would run into one wrapper. The first link gets 0, so a link made
-         * during editing needs no number of its own.
-         */
-        linkKey: { default: 0 },
       },
       toDOM(mark) {
         return [
@@ -1145,7 +1143,8 @@ export const docxSchema = new Schema({
             // by the link panel instead
             "data-href": text(mark.attrs.href),
             "data-link-prefix": text(mark.attrs.linkPrefix),
-            "data-link-key": numberText(mark.attrs.linkKey),
+            "data-key": numberText(mark.attrs.key),
+            "data-depth": numberText(mark.attrs.depth),
           },
           0,
         ];
@@ -1163,7 +1162,8 @@ export const docxSchema = new Schema({
             return {
               linkPrefix: prefix,
               href,
-              linkKey: parseInt10(dom.getAttribute("data-link-key"), 0),
+              key: parseInt10(dom.getAttribute("data-key"), 0),
+              depth: parseInt10(dom.getAttribute("data-depth"), 0),
             };
           },
         },

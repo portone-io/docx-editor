@@ -244,6 +244,9 @@ function runMark(style: InlineStyle): Mark | null {
 export function marksFor(context: InlineContext): Mark[] {
   const marks: Mark[] = [];
   if (context.href !== null) {
+    // Pasted content stands in no wrapper this reader knows of, so the link takes the outermost
+    // depth. Two wrappers written at one depth fall back to the order `schema/docxSchema` declares
+    // them in, which is what settles this one against a control the paste lands inside of
     marks.push(docxSchema.marks.link.create({ href: context.href }));
   }
   const run = runMark(context.style);

@@ -572,7 +572,7 @@ describe("copying out of the editor", () => {
         docxSchema.marks.link.create({
           href: "https://example.com/docs",
           linkPrefix: '<w:hyperlink r:id="RELATIONSHIP">',
-          linkKey: 3,
+          key: 3,
         }),
       ]),
     ]);

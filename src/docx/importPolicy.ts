@@ -25,6 +25,7 @@ import {
   RANGE_MARKERS,
 } from "../ooxml/rangeMarkers";
 import type { PreservedDisplay } from "../schema";
+import { WRAPPER_KINDS } from "./wrappers";
 
 export type { PreservedDisplay };
 
@@ -169,12 +170,22 @@ const PARAGRAPH_CHILDREN: readonly (readonly [
   [["fldSimple", "smartTag", "customXml", "dir", "bdo", "subDoc"], INLINE_CHIP],
 ];
 
+/**
+ * The elements the wrapper registry takes apart (`docx/wrappers`). They stand last in both levels
+ * that take `EG_PContent`, so registering a kind for an element another rule keeps whole - a
+ * tracked-change container, a simple field - takes it over rather than being shadowed by that rule.
+ */
+const WRAPPER_ELEMENTS: readonly string[] = WRAPPER_KINDS.map(
+  (kind) => kind.element
+);
+
 /** `CT_P`: its properties, `EG_PContent`, and the markers and containers that group reaches */
 const PARAGRAPH_LEVEL: ReadonlyMap<string, ElementPolicy> = new Map([
   ...rules([
-    [["pPr", "r", "hyperlink", "sdt"], MODEL],
+    [["pPr", "r"], MODEL],
     [COMMENT_RANGE_MARKERS, MODEL],
     ...PARAGRAPH_CHILDREN,
+    [WRAPPER_ELEMENTS, MODEL],
   ]),
   ...MATH.map((name): [string, ElementPolicy] => [name, INLINE_CHIP]),
 ]);
@@ -182,16 +193,16 @@ const PARAGRAPH_LEVEL: ReadonlyMap<string, ElementPolicy> = new Map([
 /**
  * The same content model read inside a wrapper the paragraph reader unwrapped.
  *
- * A control may hold a link and the marks record that nesting, so a link is unwrapped here too. A
- * control inside a wrapper is a nesting the marks cannot record in that order, and it stays whole
- * as a chip until the wrapper registry (theme 02) gives it a model.
+ * `EG_PContent` is the same list at both levels, and the marks record any nesting of the wrappers
+ * in it (`docx/wrappers`), so a control and a link are unwrapped here exactly as they are directly
+ * inside the paragraph.
  */
 const WRAPPER_LEVEL: ReadonlyMap<string, ElementPolicy> = new Map([
   ...rules([
-    [["r", "hyperlink"], MODEL],
+    [["r"], MODEL],
     [COMMENT_RANGE_MARKERS, MODEL],
-    [["sdt"], INLINE_CHIP],
     ...PARAGRAPH_CHILDREN,
+    [WRAPPER_ELEMENTS, MODEL],
   ]),
   ...MATH.map((name): [string, ElementPolicy] => [name, INLINE_CHIP]),
 ]);

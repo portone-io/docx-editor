@@ -5,8 +5,9 @@
  *
  * A `w:sdt` content control and a `w:hyperlink` standing inside the paragraph are both unwrapped, so
  * the text they hold stays editable, and the wrapper each came in rides along on a mark to go back
- * out around the same text. A control may hold a link; a link holding a control is a nesting the
- * marks cannot record in that order, and that control stays whole as one preserved fragment.
+ * out around the same text. Either may hold the other and a control may hold a control: the nesting
+ * is read as the file wrote it and recorded on the marks (`docx/wrappers`). A link inside a link is
+ * the one arrangement no mark can record, and the inner one stays whole as it always has.
  *
  * Nothing here demotes a paragraph. What the editor has no model for - a field character, a
  * tracked insertion, a symbol, a drawing nobody could read - is kept where it stood, inside its
@@ -31,11 +32,7 @@ import { docxSchema } from "../schema";
 import { commentParaId, importedCommentReplies } from "./comments/model";
 import { type ImportedComments, NO_COMMENTS } from "./comments/reading";
 import { readParagraphFormat, readRunFormat } from "./formatting";
-import {
-  type LinkTargets,
-  NO_LINK_TARGETS,
-  readHyperlinkWrapper,
-} from "./hyperlink";
+import { type LinkTargets, NO_LINK_TARGETS } from "./hyperlink";
 import { policyFor } from "./importPolicy";
 import {
   buildPreservedInline,
@@ -45,8 +42,8 @@ import {
 import type { ImageSources } from "./media";
 import { NO_IMAGES } from "./media";
 import { type ImportedNotes, NO_NOTES, type NoteKind, noteById } from "./notes";
-import { readSdtWrapper } from "./sdt";
 import { NO_THEME_FONTS, type ThemeFonts } from "./theme";
+import { wrapperFits, wrapperKindFor } from "./wrappers";
 
 function runMark(run: Element, themeFonts: ThemeFonts): Mark {
   const rPr = childByLocalName(run, "rPr");
@@ -235,21 +232,6 @@ function buildRunNodes(
   return nodes;
 }
 
-/**
- * Hands out the number that tells one wrapper from the next.
- * Each count runs per parsed document, so reading a file twice hands out the same numbers and the
- * first control, like the first link, always gets 0. Controls and links count apart: a wrapper only
- * has to be told from the others of its own kind.
- */
-const controlCounts = new WeakMap<Document, number>();
-const linkCounts = new WeakMap<Document, number>();
-
-function nextKey(counts: WeakMap<Document, number>, el: Element): number {
-  const key = counts.get(el.ownerDocument) ?? 0;
-  counts.set(el.ownerDocument, key + 1);
-  return key;
-}
-
 function annotationId(el: Element): string | null {
   return (
     Array.from(el.attributes).find((attribute) => attribute.localName === "id")
@@ -296,14 +278,18 @@ export const NO_IMPORT_SOURCES: ImportSources = {
 };
 
 /**
- * Moves one child of a wrapper into inline nodes, or null for one this reader cannot unwrap: a
- * control inside another wrapper, a link where one may not stand, a marker naming no comment.
+ * Moves one child of a paragraph or of a wrapper into inline nodes, or null for one this reader
+ * cannot take apart: a wrapper whose shape it could not put back together, one holding nothing at
+ * all, a marker naming no comment.
+ *
+ * `depth` is the depth a wrapper met here takes, which is one more than the depth of the wrapper
+ * whose content is being read, and `wrappers` are the marks of everything it already stands inside.
  */
-function buildModelledWrapperChild(
+function buildModelledInline(
   child: Element,
   sources: ImportSources,
-  wrappers: readonly Mark[],
-  linkAllowed: boolean
+  depth: number,
+  wrappers: readonly Mark[]
 ): PMNode[] | null {
   if (child.localName === "r") {
     return buildRunNodes(
@@ -316,39 +302,40 @@ function buildModelledWrapperChild(
       wrappers
     );
   }
-  if (child.localName === "hyperlink") {
-    return linkAllowed ? buildHyperlinkNodes(child, sources, wrappers) : null;
+  const kind = wrapperKindFor(child);
+  if (kind) {
+    // A wrapper its own kind cannot hold stays whole where it stood, wearing the wrappers around it
+    if (!wrapperFits(kind, wrappers)) return null;
+    const reading = kind.read(child, depth, sources);
+    if (!reading) return null;
+    return buildContent(reading.content, sources, depth + 1, [
+      ...wrappers,
+      reading.mark,
+    ]);
   }
   const commentMarker = commentRangeNode(child, wrappers);
   return commentMarker === null ? null : [commentMarker];
 }
 
 /**
- * Moves what stands inside a wrapper - a content control or a hyperlink - into inline nodes that
- * stay editable, each wearing the marks that remember the wrappers they came out of.
+ * Moves what stands inside a wrapper into inline nodes that stay editable, each wearing the marks
+ * that remember every wrapper they came out of, outermost first.
  *
- * Anything this reader cannot unwrap stays whole where it stood, so the wrapper and the text
+ * Anything this reader cannot unwrap stays whole where it stood, so the wrappers and the text
  * beside it are still editable. null only for a wrapper holding nothing at all, which leaves the
  * marks nothing to hang on.
  */
-function buildWrappedNodes(
+function buildContent(
   content: Element,
   sources: ImportSources,
-  wrappers: readonly Mark[],
-  // A control may hold a link. The other way round the marks would have to record the link outside
-  // the control, which their order does not allow
-  linkAllowed: boolean
+  depth: number,
+  wrappers: readonly Mark[]
 ): PMNode[] | null {
   const nodes: PMNode[] = [];
   for (const child of elementChildren(content)) {
     const policy = policyFor(child, "wrapper");
     if (policy.tier === "model") {
-      const built = buildModelledWrapperChild(
-        child,
-        sources,
-        wrappers,
-        linkAllowed
-      );
+      const built = buildModelledInline(child, sources, depth, wrappers);
       if (built !== null) {
         nodes.push(...built);
         continue;
@@ -364,79 +351,11 @@ function buildWrappedNodes(
 }
 
 /**
- * Moves what stands inside a `w:hyperlink` into inline nodes wearing the mark that remembers it.
- *
- * The address comes off the relationship the wrapper names; a link that names a bookmark alone, or
- * one whose relationship leads nowhere we follow, keeps its wrapper and no address.
- */
-function buildHyperlinkNodes(
-  el: Element,
-  sources: ImportSources,
-  wrappers: readonly Mark[]
-): PMNode[] | null {
-  const wrapper = readHyperlinkWrapper(el);
-  if (!wrapper) return null;
-
-  const mark = docxSchema.marks.link.create({
-    linkPrefix: wrapper.prefix,
-    href:
-      wrapper.relId === null
-        ? null
-        : (sources.links.get(wrapper.relId) ?? null),
-    linkKey: nextKey(linkCounts, el),
-  });
-  return buildWrappedNodes(el, sources, [...wrappers, mark], false);
-}
-
-/**
- * Moves what stands inside an inline `w:sdt` into inline nodes that stay editable, each wearing
- * the mark that remembers the control they came out of.
- */
-function buildSdtNodes(el: Element, sources: ImportSources): PMNode[] | null {
-  const wrapper = readSdtWrapper(el);
-  if (!wrapper) return null;
-
-  const mark = docxSchema.marks.sdt.create({
-    sdtPrefix: wrapper.prefix,
-    sdtKey: nextKey(controlCounts, el),
-    contentsLocked: wrapper.contentsLocked,
-    deletionLocked: wrapper.deletionLocked,
-  });
-  return buildWrappedNodes(wrapper.content, sources, [mark], true);
-}
-
-/**
- * Moves one child of a paragraph into inline nodes, or null for one this reader cannot take
- * apart: a control or a link it could not put back together, a marker naming no comment.
- */
-function buildModelledParagraphChild(
-  child: Element,
-  sources: ImportSources
-): PMNode[] | null {
-  if (child.localName === "r") {
-    return buildRunNodes(
-      child,
-      sources.images,
-      sources.themeFonts,
-      sources.comments,
-      sources.notes,
-      sources.noteLabel
-    );
-  }
-  if (child.localName === "sdt") return buildSdtNodes(child, sources);
-  if (child.localName === "hyperlink") {
-    return buildHyperlinkNodes(child, sources, []);
-  }
-  const commentMarker = commentRangeNode(child);
-  return commentMarker === null ? null : [commentMarker];
-}
-
-/**
  * Moves a paragraph into an editable node.
  *
- * Every paragraph opens editable. A child the reader has no model for, and a control or a link
- * whose shape it could not put back together, is kept whole where it stood instead of standing
- * the whole paragraph down.
+ * Every paragraph opens editable. A child the reader has no model for, and a wrapper whose shape
+ * it could not put back together, is kept whole where it stood instead of standing the whole
+ * paragraph down.
  */
 export function buildParagraph(
   el: Element,
@@ -452,7 +371,7 @@ export function buildParagraph(
         pPrElement = child;
         continue;
       }
-      const built = buildModelledParagraphChild(child, sources);
+      const built = buildModelledInline(child, sources, 0, []);
       if (built !== null) {
         inline.push(...built);
         continue;

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-/** Checks attr provenance against the schema and the direct reads of the two block writers. */
+/** Checks attr provenance against the schema and the direct reads of the writers. */
 import { readFileSync } from "node:fs";
 import type { MarkType, NodeType } from "prosemirror-model";
 import { describe, expect, it } from "vitest";
@@ -62,8 +62,8 @@ function attrsReadBy(file: string): readonly string[] {
 }
 
 /**
- * What the two block writers were reading when this table was drawn. They stand here so that a
- * writer reaching for a new attr fails this file, where the table it has to be classified in is.
+ * What each writer was reading when this table was drawn. They stand here so that a writer
+ * reaching for a new attr fails this file, where the table it has to be classified in is.
  */
 const SERIALIZE_TABLE_READS: readonly string[] = [
   "colspan",
@@ -86,16 +86,13 @@ const SERIALIZE_PARAGRAPH_READS: readonly string[] = [
   "alt",
   "brAttrs",
   "extent",
-  "href",
   "id",
   "kind",
-  "linkPrefix",
   "pAttrs",
   "pPr",
   "rAttrs",
   "referenceXml",
   "rPr",
-  "sdtPrefix",
   "src",
   "tabAttrs",
   "xml",
@@ -142,6 +139,9 @@ describe("the classification covers the schema", () => {
   });
 });
 
+/** The attrs the wrapper registry writes each kind of inline wrapper back out from */
+const WRAPPERS_READS: readonly string[] = ["href", "linkPrefix", "sdtPrefix"];
+
 describe("the boundary the classification draws", () => {
   it.each([
     ["serializeTable", "../docx/serializeTable.ts", SERIALIZE_TABLE_READS],
@@ -150,6 +150,7 @@ describe("the boundary the classification draws", () => {
       "../docx/serializeParagraph.ts",
       SERIALIZE_PARAGRAPH_READS,
     ],
+    ["wrappers", "../docx/wrappers.ts", WRAPPERS_READS],
   ])("%s reads the attrs this table was drawn against", (_, file, reads) => {
     expect(attrsReadBy(file)).toEqual([...reads].sort());
   });

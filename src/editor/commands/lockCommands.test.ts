@@ -13,6 +13,8 @@ import { buildParagraph } from "../../docx/importParagraph";
 import { serializeParagraph } from "../../docx/serializeParagraph";
 import { serializeTable } from "../../docx/serializeTable";
 import { parseXml, W_NS } from "../../ooxml/xml";
+import { docxSchema } from "../../schema";
+import { wrappersOf } from "../../schema/wrappers";
 import { addRowAfter } from "../../table";
 import { createEditorState, editorStateForSession } from "../createEditor";
 import { insertTable } from "../insertTable";
@@ -479,6 +481,116 @@ describe("a lock made in the editor", () => {
       sdtMarkOf(locked.doc.child(0).child(0))
     );
     expect(documentHasLocked(reopened)).toBe(true);
+  });
+});
+
+/**
+ * A control and a link nest either way round (`schema/wrappers`), so where a new lock goes is a
+ * question the depth answers: inside every wrapper the whole stretch already stands in, and
+ * outside a wrapper it only partly stands in.
+ */
+describe("a lock made inside a hyperlink", () => {
+  const link = (inner: string) =>
+    `<w:hyperlink w:anchor="x">${inner}</w:hyperlink>`;
+
+  it("stands inside the link where the whole stretch does", () => {
+    const state = opened(`<w:p>${link(run("read the terms"))}</w:p>`);
+    const next = ran(state, lockSelection, 10, 15);
+    const xml = serializeParagraph(next.doc.child(0));
+
+    expect(next.doc.child(0).textContent).toBe("read the terms");
+    expect(sdtMarkOf(next.doc.child(0).child(1)).attrs.depth).toBe(1);
+    // The link is still the one it was, with the control written inside it
+    expect(xml.match(/<w:hyperlink/g)).toHaveLength(1);
+    expect(xml).toContain(`${run("read the ")}<w:sdt`);
+    expect(xml).toContain(`</w:sdtContent></w:sdt></w:hyperlink>`);
+  });
+
+  it("wraps the link where only part of the stretch stands in it", () => {
+    const state = opened(`<w:p>${run("see ")}${link(run("our terms"))}</w:p>`);
+    const next = ran(state, lockSelection, 1, 8);
+    const xml = serializeParagraph(next.doc.child(0));
+
+    expect(sdtMarkOf(next.doc.child(0).child(0)).attrs.depth).toBe(0);
+    expect(xml.match(/<w:sdt[ >]/g)).toHaveLength(1);
+    expect(xml).toContain(`<w:sdtContent>${run("see ")}<w:hyperlink`);
+  });
+});
+
+describe("a lock and the wrappers it meets", () => {
+  const anchor = (inner: string) =>
+    `<w:hyperlink w:anchor="x">${inner}</w:hyperlink>`;
+  const open7 = '<w:sdtPr><w:id w:val="7"/></w:sdtPr>';
+  const openControl = (inner: string, id = 7) =>
+    `<w:sdt><w:sdtPr><w:id w:val="${id}"/></w:sdtPr>` +
+    `<w:sdtContent>${inner}</w:sdtContent></w:sdt>`;
+
+  /**
+   * Taking a control over widens the stretch to the whole of it, which may reach out of a link the
+   * control stood inside. Written at the depth it had, the part that left the link would be a
+   * second `w:sdt` carrying the same `w:id`.
+   */
+  it("a lock widened out of a link writes one control", () => {
+    const state = opened(
+      `<w:p>${anchor(`<w:sdt>${open7}<w:sdtContent>${run("our")}</w:sdtContent></w:sdt>`)}${run(" terms")}</w:p>`
+    );
+    const next = ran(state, lockSelection, 1, 10);
+    const xml = serializeParagraph(next.doc.child(0));
+
+    expect(next.doc.child(0).textContent).toBe("our terms");
+    expect(xml.match(/<w:sdt[ >]/g)).toHaveLength(1);
+    expect(xml.match(/<w:id w:val="7"\/>/g)).toHaveLength(1);
+    expect(xml).toContain(
+      `<w:sdtContent><w:hyperlink w:anchor="x">${run("our")}</w:hyperlink>${run(" terms")}</w:sdtContent>`
+    );
+  });
+
+  const NESTED_OPEN = `<w:p>${openControl(openControl(run("abcdef"), 8))}</w:p>`;
+
+  /**
+   * Shutting both would be two edits over the same text, and the first one's lock would refuse the
+   * second: the button would offer a lock and then leave the document as it was.
+   */
+  it("locks the outermost of two controls the file nested", () => {
+    const state = opened(NESTED_OPEN);
+    const at = selected(state, 3, 5);
+    // What the button reads and what pressing it does have to be the one answer
+    expect(selectionLock(at)).toBe("lockable");
+    expect(lockSelection(at, () => undefined)).toBe(true);
+
+    const next = ranHere(at, lockSelection);
+    expect(next).not.toBe(at);
+    // The outer control shuts; the inner one it holds is left as it was
+    expect(
+      wrappersOf(next.doc.child(0).child(0), docxSchema.marks.sdt).map(
+        (mark) => mark.attrs.contentsLocked
+      )
+    ).toEqual([true, false]);
+    const xml = serializeParagraph(next.doc.child(0));
+    expect(xml.match(/<w:sdt[ >]/g)).toHaveLength(2);
+    expect(xml).toContain('<w:id w:val="8"/>');
+  });
+
+  it("lifts the lock off the inner of two locked controls a caret stands in", () => {
+    const state = opened(
+      `<w:p>${control(control(run("abcdef"), lockPr("sdtContentLocked")))}</w:p>`
+    );
+    const next = ran(state, unlockSelection, 3, 5);
+    const xml = serializeParagraph(next.doc.child(0));
+
+    // The outer control keeps its lock: the selection never reached the whole of it
+    expect(xml.match(/<w:lock w:val="sdtContentLocked"\/>/g)).toHaveLength(1);
+    expect(xml.match(/<w:sdt[ >]/g)).toHaveLength(2);
+  });
+
+  it("lifts both where the selection covers the outer control whole", () => {
+    const state = opened(
+      `<w:p>${control(control(run("abcdef"), lockPr("sdtContentLocked")))}</w:p>`
+    );
+    const whole = state.doc.child(0).content.size + 1;
+    const next = ran(state, unlockSelection, 1, whole);
+
+    expect(serializeParagraph(next.doc.child(0))).not.toContain("<w:lock");
   });
 });
 

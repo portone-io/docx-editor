@@ -521,8 +521,9 @@ describe("taking a link off", () => {
 });
 
 /**
- * A lock over part of a link is the one way a single link comes to run into locked text: a link
- * arriving with a control inside it is preserved whole rather than read (`spec/notes/hyperlinks.md`).
+ * A lock over part of a link leaves that link running into locked text: a control the file wrote
+ * inside a link holds the whole of what it wraps, but one made here over part of a link does not
+ * (`editor/commands/lockCommands`).
  * Half a link cannot be taken off or retargeted without recreating the split this all came from, so
  * a link a lock holds any part of is left alone entirely.
  */
@@ -553,6 +554,53 @@ describe("a link a lock holds part of", () => {
   it("leaves the plain text beside it linkable", () => {
     const { state } = halfLocked();
     expect(canSetLink(over(state, "see "))).toBe(true);
+  });
+});
+
+/**
+ * A control and a link nest either way round, so a link laid across the edge of a control is
+ * written at one depth inside it and another outside: two `w:hyperlink` elements around one
+ * address. To the reader it is one link, and everything asked here reads it as one.
+ */
+describe("a link that runs out of a content control", () => {
+  const CONTROL =
+    '<w:sdt><w:sdtPr><w:id w:val="7"/></w:sdtPr><w:sdtContent>' +
+    `${run("our ")}</w:sdtContent></w:sdt>`;
+  const BODY = `<w:p>${CONTROL}${run("terms")}</w:p>`;
+
+  function linkedAcross(): Opened {
+    const { state, session } = linked(BODY);
+    const { from } = rangeOf(state.doc, "our ");
+    const { to } = rangeOf(state.doc, "terms");
+    return {
+      state: runCommand(select(state, from, to), setLink(TERMS)),
+      session,
+    };
+  }
+
+  it("the card opens over the whole of it", () => {
+    const { state } = linkedAcross();
+    const { from } = rangeOf(state.doc, "our ");
+    const { to } = rangeOf(state.doc, "terms");
+
+    expect(activeLinkSpan(inside(state, "terms"))).toEqual({
+      from,
+      to,
+      href: TERMS,
+    });
+    expect(activeLinkSpan(select(state, from, to))?.to).toBe(to);
+  });
+
+  it("is taken off whole", () => {
+    const { state } = linkedAcross();
+    const off = runCommand(inside(state, "our "), removeLink);
+    expect(anyLinkMark(off)).toBe(false);
+  });
+
+  it("goes out as the two wrappers the nesting needs, on one relationship", () => {
+    const { state, session } = linkedAcross();
+    expect(linkTags(state, session)).toHaveLength(2);
+    expect(relationships(state, session)).toHaveLength(1);
   });
 });
 

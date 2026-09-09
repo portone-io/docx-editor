@@ -3,6 +3,7 @@ import type { Attrs, Mark, Node as PMNode } from "prosemirror-model";
 import { describe, expect, it } from "vitest";
 import { exportErrorCode } from "../__testing__/docx";
 import { docxSchema } from "../schema";
+import { wrappersOf } from "../schema/wrappers";
 import { withUniqueIdentities } from "./identities";
 import { copiedControlPrefix } from "./sdt";
 
@@ -13,8 +14,8 @@ const PREFIX = `<w:sdt>${BOUND_PR}`;
 /** What a copy of a bound control opens as: an id of its own and no binding left */
 const COPY = /^<w:sdt><w:sdtPr><w:id w:val="\d+"\/><\/w:sdtPr>$/;
 
-function control(sdtKey: number, sdtPrefix = PREFIX): Mark {
-  return docxSchema.marks.sdt.create({ sdtPrefix, sdtKey });
+function control(key: number, sdtPrefix = PREFIX): Mark {
+  return docxSchema.marks.sdt.create({ sdtPrefix, key });
 }
 
 const runMark = docxSchema.marks.run.create({ rPr: null });
@@ -45,9 +46,10 @@ function table(...cells: PMNode[]): PMNode {
 function prefixesOf(node: PMNode): string[] {
   const found: string[] = [];
   node.descendants((child) => {
-    const mark = child.marks.find((entry) => entry.type.name === "sdt");
-    const prefix: unknown = mark?.attrs.sdtPrefix;
-    if (typeof prefix === "string") found.push(prefix);
+    for (const mark of wrappersOf(child, docxSchema.marks.sdt)) {
+      const prefix: unknown = mark.attrs.sdtPrefix;
+      if (typeof prefix === "string") found.push(prefix);
+    }
     return true;
   });
   return found;
@@ -268,6 +270,36 @@ describe("the control rule", () => {
     it("the several runs of one control are that one control, not copies of it", () => {
       const original = doc(
         paragraph(text("2026", control(3)), text("AD", control(3)))
+      );
+      expect(withUniqueIdentities(original)).toBe(original);
+    });
+  });
+
+  describe("a control standing inside another", () => {
+    const nested = (key: number, depth: number) =>
+      docxSchema.marks.sdt.create({ sdtPrefix: PREFIX, key, depth });
+
+    /** Each of the two is a control in its own right, so each is claimed on its own terms */
+    it("renames the outer and the inner apart when the pair stands twice", () => {
+      const stack = (outerKey: number, innerKey: number) =>
+        docxSchema.text("x", [
+          nested(outerKey, 0),
+          nested(innerKey, 1),
+          runMark,
+        ]);
+      const original = doc(paragraph(stack(0, 1)), paragraph(stack(0, 1)));
+      const next = withUniqueIdentities(original);
+
+      expect(prefixesOf(next.child(0))).toEqual([PREFIX, PREFIX]);
+      const copies = prefixesOf(next.child(1));
+      expect(copies).toHaveLength(2);
+      for (const copy of copies) expect(copy).toMatch(COPY);
+      expect(copies[0]).not.toBe(copies[1]);
+    });
+
+    it("leaves a pair standing once exactly as it came", () => {
+      const original = doc(
+        paragraph(docxSchema.text("x", [nested(0, 0), nested(1, 1), runMark]))
       );
       expect(withUniqueIdentities(original)).toBe(original);
     });

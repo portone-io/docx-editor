@@ -7,6 +7,7 @@ import type { Mark, Node as PMNode } from "prosemirror-model";
 import type { Command, EditorState } from "prosemirror-state";
 import { docxSchema } from "../../schema";
 import { openStretches } from "../../schema/guards";
+import { innermostDepth, wrapperMarks, wrapperOf } from "../../schema/wrappers";
 
 const linkType = docxSchema.marks.link;
 
@@ -39,12 +40,41 @@ function linkMarkOf(marks: readonly Mark[]): Mark | null {
   return marks.find((mark) => mark.type === linkType) ?? null;
 }
 
-/** One piece of inline content a link can go on, and the link it already wears */
-interface LinkPiece {
+/** The link this inline node stands inside. A link never holds a link, so there is at most one */
+function linkOf(node: PMNode): Mark | null {
+  return wrapperOf(node, linkType);
+}
+
+/**
+ * Whether these two marks stand for the one link.
+ *
+ * A link laid across the edge of a content control is written at one depth inside it and another
+ * outside (`schema/wrappers`), which is what has the file hold two `w:hyperlink` elements around
+ * the one address. To the reader it is one link, so everything asked about a link here reads the
+ * two as one: the card opens over the whole of it, and taking it off takes all of it off.
+ */
+function sameLink(a: Mark, b: Mark): boolean {
+  return atDepth(a, 0).eq(atDepth(b, 0));
+}
+
+function atDepth(mark: Mark, depth: number): Mark {
+  return mark.attrs.depth === depth
+    ? mark
+    : mark.type.create({ ...mark.attrs, depth });
+}
+
+interface Stretch {
   from: number;
   to: number;
-  link: Mark | null;
 }
+
+/**
+ * One piece of inline content a link can go on: either a link already there, which an edit changes
+ * where it points, or a piece standing in none, which gets one of its own laid inside every wrapper
+ * it already stands in. A piece has one or the other, never both and never neither.
+ */
+type LinkPiece = Stretch &
+  ({ link: Mark } | { link: null; wrappers: readonly Mark[] });
 
 /**
  * Whether a link may go on this inline node.
@@ -73,7 +103,12 @@ function piecesIn(doc: PMNode, from: number, to: number): LinkPiece[] {
     const start = Math.max(pos, from);
     const end = Math.min(pos + node.nodeSize, to);
     if (start < end) {
-      pieces.push({ from: start, to: end, link: linkMarkOf(node.marks) });
+      const link = linkOf(node);
+      pieces.push(
+        link === null
+          ? { from: start, to: end, link, wrappers: wrapperMarks(node) }
+          : { from: start, to: end, link }
+      );
     }
     return false;
   });
@@ -96,12 +131,12 @@ interface LinkSpan {
 function linkSpans(parent: PMNode, start: number): LinkSpan[] {
   const spans: LinkSpan[] = [];
   parent.forEach((child, offset) => {
-    const link = linkMarkOf(child.marks);
+    const link = linkOf(child);
     if (!link) return;
     const from = start + offset;
     const to = from + child.nodeSize;
     const last = spans.at(-1);
-    if (last && last.to === from && last.link.eq(link)) last.to = to;
+    if (last && last.to === from && sameLink(last.link, link)) last.to = to;
     else spans.push({ from, to, link });
   });
   return spans;
@@ -115,7 +150,9 @@ function caretSpan(state: EditorState): LinkSpan | null {
   return (
     linkSpans($from.parent, $from.start()).find(
       (span) =>
-        span.link.eq(link) && span.from <= $from.pos && $from.pos <= span.to
+        sameLink(span.link, link) &&
+        span.from <= $from.pos &&
+        $from.pos <= span.to
     ) ?? null
   );
 }
@@ -195,10 +232,13 @@ function selectionPieces(state: EditorState): LinkPiece[] {
  * A piece already inside a link keeps everything that link carries and only changes where it
  * points, so its tooltip, its history flag and the rest of its opening tag survive the retargeting
  * (`docx/hyperlink` rewrites the one attribute). A piece inside none gets a link of its own, which
- * the export writes an opening tag and a relationship for.
+ * the export writes an opening tag and a relationship for, laid inside every wrapper the piece
+ * already stands in so that a link made inside a content control goes back out inside it.
  */
 function linkMarkFor(piece: LinkPiece, href: string): Mark {
-  return linkType.create({ ...piece.link?.attrs, href });
+  if (piece.link !== null)
+    return linkType.create({ ...piece.link.attrs, href });
+  return linkType.create({ href, depth: innermostDepth(piece.wrappers) + 1 });
 }
 
 /**
