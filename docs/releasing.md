@@ -8,7 +8,8 @@ A release is one command and one merge.
 A pull request that changes the published package carries a changeset, as [CONTRIBUTING.md](../CONTRIBUTING.md#changesets) explains.
 Changesets accumulate on `main` until someone cuts a release:
 
-1. `pnpm release:pr` turns every changeset pending on `main` into a version bump and a CHANGELOG entry on a `chore: release` pull request from `release/next`.
+1. `pnpm release:pr` turns every changeset pending on `main` into a version bump and a CHANGELOG entry on a pull request from `release/next`.
+   Its title names the version merging it publishes, and its description opens with that and carries the CHANGELOG entry.
    You open it, so its checks start at once.
    If more changesets land before it merges, run the command again and the same pull request is rewritten.
 2. Review and merge it.
