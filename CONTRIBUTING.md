@@ -63,6 +63,8 @@ Those are `minor` while the package is below 1.0.
 A declaration added, removed, or rewritten in `etc/*.api.md` after running `pnpm api:update` is what that looks like; a line that only gains or loses an `(undocumented)` marker is not.
 Commit the regenerated report in the same commit as the changeset.
 
+The changesets that have landed become a release the way [Releasing](https://github.com/portone-io/docx-editor/blob/main/docs/releasing.md) describes.
+
 By contributing, you agree that your contribution is licensed under the Apache License 2.0 used by this project.
 
 ## Commit messages

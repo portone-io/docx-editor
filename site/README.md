@@ -19,32 +19,32 @@ The landing page needs the same `demo.docx` the editor is developed against, and
 
 The demo arrives through a client-only dynamic import. The editor builds a ProseMirror view against the DOM, so it cannot render on the server.
 
-`next.config.mjs` lists `@portone/docx-editor-demo` in `transpilePackages`, because that package is a workspace link resolving to TypeScript sources.
-The library it imports is deliberately not listed: the site installs it from npm, and the published package ships built JavaScript.
+`next.config.mjs` lists `@portone/docx-editor-demo` and `@portone/docx-editor` in `transpilePackages`.
+The demo is a workspace link resolving to TypeScript sources, and on `main` so is the library.
+On the `production` branch the library is the published package, whose built JavaScript passes through unchanged.
 
 ## The version the demo runs
 
 | Command or deployment | Site and docs | Editor library |
 | --- | --- | --- |
 | `pnpm dev` / `pnpm build:demo` | Development demo | Current `src/` |
-| `pnpm dev:site` | Current working tree, with hot reload | npm `latest`, resolved at startup |
-| `pnpm build:site` / Vercel preview of `main` | Checked-out site and docs | Exact committed release pin, which a pull request moves to each release |
-| Vercel production, from the `production` branch | Site and docs as of the latest release | That release |
+| `pnpm dev:site` / `pnpm build:site` / Vercel preview of `main` | Checked-out site and docs | The `src/` of the same commit |
+| Vercel production, from the `production` branch | Site and docs as of the latest release | That release, installed from npm |
 
-The site and demo pin the same published library version, including its CSS and version badge. Local site startup needs network access and may update `site/package.json`, `demo/package.json`, and `pnpm-lock.yaml` when a newer release exists. The running server keeps that version until restarted.
+The version badge names the library the demo below it runs: the version in the root `package.json` on `main`, the published release on `production`.
+On `main` that number is the last release, so a preview can run sources newer than its badge says.
+`pnpm check:demo-library` confirms that the site and the demo agree on where the library comes from and that the installation matches.
 
 ### Automatic updates after publishing
 
-After npm publishing succeeds, [Update site release](../.github/workflows/site-release.yml) checks out the release commit, installs that exact version, builds the site, and writes the result to the `production` branch as the release commit plus one commit updating the two manifests and lockfile. Vercel's production deployment must track `production`; `main` deploys as a preview. The live site therefore changes only at a release, and a docs-only fix reaches it with the next one. Failed updates leave the previous release in place.
+After npm publishing succeeds, [Update site release](../.github/workflows/site-release.yml) checks out the release commit, installs the published version into the site and the demo, builds the site, and writes the result to the `production` branch as the release commit plus one commit updating the two manifests and lockfile. Vercel's production deployment must track `production`; `main` deploys as a preview. The live site therefore changes only at a release, and a docs-only fix reaches it with the next one. Failed updates leave the previous release in place.
 
-The workflow then opens a pull request from `production` to `main`, because nothing else moves the pins there and `main` would otherwise keep building an older library.
-`production` is the release commit plus that pin commit, so it is already the head of the pull request, and one left open follows the next release too.
-The workflow opens nothing when `main` already pins the released version.
-A workflow token opens it, so its checks wait for approval exactly as the release pull request's do: **Approve workflows to run**, in the merge box, starts them.
+Nothing moves on `main` after a release: its site keeps running the sources.
 
 If the update fails, run **Update site release** on `main` in GitHub Actions with the already published version. It rebuilds `production` from scratch, so rerunning is always safe. If `production` is right but its deployment failed, retry in Vercel. Neither requires republishing npm.
 
-To check a specific release locally, run `pnpm pin:demo-library 0.3.0` followed by `pnpm build:site`. If installation fails, run `pnpm install` before retrying.
+To build the site against a specific release locally, run `pnpm pin:demo-library 0.3.0` followed by `pnpm build:site`. If installation fails, run `pnpm install` before retrying.
+To return to the sources, run `git checkout -- site/package.json demo/package.json pnpm-lock.yaml && pnpm install`.
 
 ## Markdown for AI agents
 

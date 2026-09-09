@@ -1,12 +1,15 @@
 name: Release
 
+# Merging the release pull request is the publish command. CHANGELOG.md changes
+# only through `pnpm release:pr`, so nothing else starts this workflow, and
+# nothing publishes until that commit's CI run has passed.
 on:
   push:
     branches: [main]
+    paths: [CHANGELOG.md]
   workflow_dispatch:
 
-# Two runs would race to rewrite the release pull request, and on the publish
-# path to claim the same version.
+# Two runs would race to claim the same version.
 concurrency:
   group: release
   cancel-in-progress: false
@@ -14,48 +17,46 @@ concurrency:
 permissions: {}
 
 jobs:
-  # A pending changeset means this run assembles the release pull request. None,
-  # with a version the registry has never seen, means that pull request has been
-  # merged and this run publishes it. Most pushes are neither: `main` sits at a
-  # published version for as long as nobody has proposed a release.
-  mode:
+  publish:
+    # A run started by hand publishes main or nothing.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 30
     permissions:
-      contents: read
+      actions: read # the wait for this commit's CI run
+      contents: write # the tag and the GitHub release
+      id-token: write # OIDC, which is how npm authenticates the publish
     outputs:
-      mode: ${{ steps.mode.outputs.mode }}
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - id: mode
+      # The registry is the record. A version it already holds is a hand-edited
+      # CHANGELOG or a rerun of a finished release, and only the steps that are
+      # safe to repeat run.
+      - id: version
+        name: the version main declares, unless npm already has it
         run: |
-          pending=$(find .changeset -maxdepth 1 -name '*.md' ! -name 'README.md' | wc -l | tr -d ' ')
-          spec="$(node -p 'const p = require("./package.json"); `${p.name}@${p.version}`')"
-          echo "pending changesets: ${pending}; version: ${spec}"
-          if [ "${pending}" -ne 0 ]; then
-            mode=prepare
-          elif npm view "${spec}" version >/dev/null 2>&1; then
-            mode=idle
+          version="$(node -p 'require("./package.json").version')"
+          spec="@portone/docx-editor@${version}"
+          if npm view "${spec}" version >"${RUNNER_TEMP}/view.log" 2>&1; then
+            echo "${spec} is already published"
+            published=true
+          elif grep -q E404 "${RUNNER_TEMP}/view.log"; then
+            published=false
           else
-            mode=publish
+            cat "${RUNNER_TEMP}/view.log"
+            echo "could not ask npm about ${spec}"
+            exit 1
           fi
-          echo "mode: ${mode}"
-          echo "mode=${mode}" >>"${GITHUB_OUTPUT}"
-
-  # Nothing downstream can catch a bad tarball once npm has it, so publishing
-  # waits for this commit's whole CI run, package verification and real-browser
-  # suite included.
-  gate:
-    needs: mode
-    if: needs.mode.outputs.mode == 'publish'
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    permissions:
-      actions: read
-    steps:
+          echo "version=${version}" >>"${GITHUB_OUTPUT}"
+          echo "published=${published}" >>"${GITHUB_OUTPUT}"
+      # Nothing downstream can catch a bad tarball once npm has it, so publishing
+      # waits for this commit's whole CI run, package verification and real-browser
+      # suite included.
       - name: wait for this commit's CI run
+        if: steps.version.outputs.published == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -74,62 +75,37 @@ jobs:
             exit 1
           fi
           gh run watch "${run_id}" --exit-status --interval 15
-
-  release:
-    needs: [mode, gate]
-    # The gate is skipped by design on the release-pull-request path.
-    if: >-
-      !cancelled() && needs.mode.result == 'success'
-      && contains(fromJSON('["publish", "prepare"]'), needs.mode.outputs.mode)
-      && contains(fromJSON('["success", "skipped"]'), needs.gate.result)
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      contents: write # the version commit, its tag, and the GitHub release
-      pull-requests: write # the release pull request
-      id-token: write # OIDC, which is how npm authenticates the publish
-    outputs:
-      published: ${{ steps.changesets.outputs.published }}
-      version: ${{ steps.site-version.outputs.version }}
-    steps:
-      # The action pushes through the token it is given, not through the
-      # checkout credentials. Changesets needs the history to tell released
-      # versions from pending ones.
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-          fetch-depth: 0
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      # Deliberately uncached: a cache entry written by an earlier run is
+      # attacker-reachable input, and this job's output is what gets signed.
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
       - run: pnpm install --frozen-lockfile
-      - id: changesets
-        uses: changesets/action@8488615a623b1b9c987934bb89eae8af6a946ac1 # v2.1.1
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          version-script: pnpm changeset:version
-          publish-script: pnpm changeset publish
-          pr-title: "chore: release"
-          commit-message: "chore: release"
-      - id: site-version
-        if: steps.changesets.outputs.published == 'true'
+      # The tag is made with the GitHub release below, once npm has the version,
+      # so a failed publish leaves no tag behind.
+      - if: steps.version.outputs.published == 'false'
+        run: pnpm changeset publish --no-git-tag
+      - name: tag the commit and open the GitHub release from the CHANGELOG entry
         env:
-          PUBLISHED_PACKAGES: ${{ steps.changesets.outputs.published-packages }}
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          node --input-type=module <<'JS'
-          import { appendFileSync } from 'node:fs';
-          import { publishedVersion } from './scripts/site-release.mjs';
-          appendFileSync(process.env.GITHUB_OUTPUT, `version=${publishedVersion(process.env.PUBLISHED_PACKAGES)}\n`);
-          JS
+          tag="@portone/docx-editor@${VERSION}"
+          if gh release view "${tag}" >/dev/null 2>&1; then
+            echo "${tag} already has a release"
+            exit 0
+          fi
+          node scripts/release.mjs notes "${VERSION}" >"${RUNNER_TEMP}/notes.md"
+          gh release create "${tag}" --target "${SHA}" --title "${tag}" \
+            --notes-file "${RUNNER_TEMP}/notes.md"
 
   site:
-    needs: release
-    if: needs.release.outputs.published == 'true'
+    needs: publish
     permissions:
       contents: write # the verified demo version commit; no npm publishing permission
-      pull-requests: write # the pull request pinning main to the release
     uses: $/.github/workflows/site-release.yml
     with:
-      version: ${{ needs.release.outputs.version }}
+      version: ${{ needs.publish.outputs.version }}

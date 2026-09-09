@@ -11,7 +11,6 @@ const library = "@portone/docx-editor";
 const files = ["site/package.json", "demo/package.json", "pnpm-lock.yaml"];
 const stable = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const branch = "production";
-const base = "main";
 const api = "https://api.github.com";
 
 function versionParts(version) {
@@ -19,14 +18,6 @@ function versionParts(version) {
     throw new Error("The site release needs an exact stable version");
   }
   return version.split(".").map(BigInt);
-}
-
-export function publishedVersion(output) {
-  const matches = JSON.parse(output).filter((pkg) => pkg.name === library);
-  if (matches.length !== 1)
-    throw new Error("Expected one published DOCX editor package");
-  versionParts(matches[0].version);
-  return matches[0].version;
 }
 
 export function assertNotOlder(version, current) {
@@ -116,50 +107,6 @@ function github(request, repository, token) {
 }
 
 /**
- * Proposes the rebuilt production branch on main, which nothing else moves to a release.
- * production is the release commit plus its pin commit, so it is already the head of that
- * pull request, and one left open follows every later release.
- */
-async function proposePin(remote, repository, version) {
-  const pinned = await remote.rest(
-    "GET",
-    `contents/site/package.json?ref=${base}`,
-    undefined,
-    "application/vnd.github.raw+json"
-  );
-  if (
-    pinned.status !== 404 &&
-    JSON.parse(pinned.text).dependencies[library] === version
-  ) {
-    process.stdout.write(`${base} already pins ${version}\n`);
-    return;
-  }
-  const owner = repository.split("/")[0];
-  const open = await remote.rest(
-    "GET",
-    `pulls?head=${owner}:${branch}&base=${base}&state=open`
-  );
-  const [already] = JSON.parse(open.text);
-  const proposal =
-    already ??
-    JSON.parse(
-      (
-        await remote.rest("POST", "pulls", {
-          title: "chore: pin the site demo to the released version",
-          head: branch,
-          base,
-          body: [
-            `The production site already runs ${version}.`,
-            `Merging this moves the same pins on \`${base}\`, so its preview and \`pnpm build:site\` run that release too.`,
-            "A workflow token opened this pull request, so its checks wait for **Approve workflows to run** in the merge box.",
-          ].join("\n\n"),
-        })
-      ).text
-    );
-  process.stdout.write(`${proposal.html_url}\n`);
-}
-
-/**
  * Rebuilds the production branch as the release commit plus the verified pins.
  * A delayed or manually retried release must not downgrade what production serves.
  */
@@ -174,7 +121,8 @@ export async function publish(
   } = {}
 ) {
   versionParts(version);
-  if ((await check(directory)) !== version)
+  const installed = await check(directory);
+  if (installed.source !== "npm" || installed.version !== version)
     throw new Error("The installed demo does not match the release to commit");
   const { stdout: changed } = await execute(
     "git",
@@ -211,25 +159,19 @@ export async function publish(
       sha,
       force: true,
     });
-  if (paths.length) {
-    const additions = await Promise.all(
-      paths.map(async (path) => ({
-        path,
-        contents: (await readFile(join(directory, path))).toString("base64"),
-      }))
-    );
-    const url = await remote.createCommit({
-      branch: { repositoryNameWithOwner: repository, branchName: branch },
-      expectedHeadOid: sha,
-      message: { headline: `chore: update site demo to ${version}` },
-      fileChanges: { additions },
-    });
-    process.stdout.write(`${url}\n`);
-  } else {
-    process.stdout.write(`${branch} now points at the release commit ${sha}\n`);
-  }
-  await proposePin(remote, repository, version);
-  return paths.length > 0;
+  const additions = await Promise.all(
+    paths.map(async (path) => ({
+      path,
+      contents: (await readFile(join(directory, path))).toString("base64"),
+    }))
+  );
+  const url = await remote.createCommit({
+    branch: { repositoryNameWithOwner: repository, branchName: branch },
+    expectedHeadOid: sha,
+    message: { headline: `chore: update site demo to ${version}` },
+    fileChanges: { additions },
+  });
+  process.stdout.write(`${url}\n`);
 }
 
 if (
@@ -240,12 +182,8 @@ if (
   try {
     const version = process.env.SITE_RELEASE_VERSION;
     if (process.argv[2] === "prepare") await prepare(root, version);
-    else if (process.argv[2] === "publish") {
-      if (!(await publish(root, version)))
-        process.stdout.write(
-          "The release commit already pins this version; retry a failed Vercel deployment in Vercel.\n"
-        );
-    } else
+    else if (process.argv[2] === "publish") await publish(root, version);
+    else
       throw new Error("Usage: node scripts/site-release.mjs prepare|publish");
   } catch (error) {
     process.stderr.write(`${error.message}\n${error.cause?.message ?? ""}\n`);

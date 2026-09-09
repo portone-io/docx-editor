@@ -1,41 +1,47 @@
 # Releasing
 
-`@portone/docx-editor` is released from `main` by [the release workflow](../.github/workflows/release.yml).
-Publishing is a merge, not a command.
+`@portone/docx-editor` is published by [the release workflow](../.github/workflows/release.yml) when a release pull request merges.
+A release is one command and one merge.
 
 ## How a change becomes a release
 
 A pull request that changes the published package carries a changeset, as [CONTRIBUTING.md](../CONTRIBUTING.md#changesets) explains.
+Changesets accumulate on `main` until someone cuts a release:
 
-Once one lands on `main`, the workflow opens a `chore: release` pull request holding the version bump and the CHANGELOG entries the pending changesets add up to, and rewrites it as more land.
-Merging that pull request publishes, and everything on `main` ships with it: a fix cannot go out alone while unreleased work sits ahead of it.
+1. `pnpm release:pr` turns every changeset pending on `main` into a version bump and a CHANGELOG entry on a `chore: release` pull request from `release/next`.
+   You open it, so its checks start at once.
+   If more changesets land before it merges, run the command again and the same pull request is rewritten.
+2. Review and merge it.
+   Everything on `main` ships with it: a fix cannot go out alone while unreleased work sits ahead of it.
 
-Its Actions runs wait for approval, since the workflow opened the pull request rather than a person.
-**Approve workflows to run**, in the merge box, starts them; every rewrite re-arms it.
+The command needs a signed-in `gh` and refuses a working tree with uncommitted changes or a `main` with no changeset pending.
+The changelog writer looks each pull request up on GitHub, so the command passes the `gh` token along; set `GITHUB_TOKEN` to use another.
+
+## What the workflow checks before publishing
+
+The merge changes `CHANGELOG.md`, which only `pnpm release:pr` writes, so that change is what starts the workflow and nothing else on `main` does.
+It publishes the version `package.json` declares unless npm already has it.
+Before publishing it waits for that commit's CI run to pass, because nothing downstream can catch a bad tarball once the registry has it.
+Every check a pull request gets guards a release too, the package verification, the real-browser suite, and the workflow audit included.
+
+Only then does it publish, tag the commit, open the GitHub release from the CHANGELOG entry, and rebuild the site.
+
+## Retrying
+
+Rerun the failed run from GitHub Actions, or start **Release** by hand on `main`.
+It publishes only what npm lacks and opens the release only when it is missing, so a rerun after a failure further down publishes nothing twice.
+If CI failed on the commit itself, re-run CI first; the workflow waits on its result.
 
 ## The version the site's demo runs
 
-Changesets preserves the published demo pins during release preparation through `bumpVersionsWithWorkspaceProtocolOnly`. After publishing succeeds, a separate workflow rebuilds the `production` branch, which Vercel serves, from the release commit and the published version.
-It then opens a pull request from `production` to `main`, unless `main` already pins that version, so the `main` preview and local site builds follow the release once it is merged.
-A workflow token opens it too, so its runs wait for the same **Approve workflows to run** as the release pull request's.
+On `main` the site and the demo run the editor from this repository's sources, so nothing there names a release and nothing there moves after one.
+After publishing succeeds, [Update site release](../.github/workflows/site-release.yml) checks out the release commit, installs the published version into the site and the demo, builds the site, and writes the result to the `production` branch, which Vercel serves.
 See [automatic site updates and recovery](../site/README.md#automatic-updates-after-publishing).
-
-## What the workflow decides
-
-Every push to `main` runs the workflow, which first works out which of three things this push is.
-A pending changeset means a release is being proposed, so it writes the release pull request.
-No changeset, and a version the registry has never seen, means that pull request has been merged, so it publishes.
-Anything else is an ordinary commit and the run stops there.
-
-The publish path passes through a gate that waits for the commit's CI run to pass before anything reaches npm, because nothing downstream can catch a bad tarball once the registry has it.
-Every check a pull request gets guards a release too, the package verification, the real-browser suite, and the workflow audit included.
-A gate failure blocks the release, and the version bump stays on `main` until the next push retries it.
-To retry sooner, re-run CI on that commit, then run **Release** by hand in GitHub Actions.
 
 ## Tags and GitHub releases
 
-Publishing tags the commit and opens a GitHub release from the CHANGELOG entry for that version.
-The tag is `@portone/docx-editor@<version>`, the name Changesets builds for a package inside a workspace.
+Publishing tags the commit and opens a GitHub release from the CHANGELOG entry for that version, once npm has it, so a failed publish leaves no tag behind.
+The tag is `@portone/docx-editor@<version>`, the name Changesets builds for a package inside a workspace, and the release carries the same name.
 
 ## npm
 

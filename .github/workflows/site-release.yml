@@ -22,12 +22,13 @@ permissions: {}
 
 jobs:
   update:
+    # Called from the Release workflow on main, or run by hand there to retry a
+    # version that is already published.
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
       contents: write
-      pull-requests: write
     steps:
       # The site is built from the commit that was published, so docs that landed
       # on main afterwards wait for the next release. Only this workflow writes the

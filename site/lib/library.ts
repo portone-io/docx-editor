@@ -1,11 +1,13 @@
 import manifest from "../../package.json";
-import siteManifest from "../package.json";
+import installed from "../node_modules/@portone/docx-editor/package.json";
 
 export const libraryName = manifest.name;
 export const libraryDescription = manifest.description;
-// The badge names the version the demo below it runs, so it reads the pin rather than the
-// version the repository is working towards. `pnpm check:demo-library` holds the two together.
-export const libraryVersion = siteManifest.dependencies["@portone/docx-editor"];
+// The badge names the version the demo below it runs, so it reads the installed library
+// rather than the version the repository is working towards: the sources on main, the
+// published release on the production branch. `pnpm check:demo-library` holds the
+// manifests and the installation together.
+export const libraryVersion = installed.version;
 export const repositoryUrl = "https://github.com/portone-io/docx-editor";
 export const npmUrl = `https://www.npmjs.com/package/${libraryName}`;
 export const siteUrl = manifest.homepage;
