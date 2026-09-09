@@ -95,4 +95,4 @@ Run the same audit locally with `docker run --rm -v "$PWD:/workspace:ro" -w /wor
 Do not weaken or remove a test only to make a change pass.
 When behavior changes intentionally, update the expectation and explain the decision.
 
-Every check above runs on a pull request, and [releasing](./releasing.md) re-runs the package ones before anything reaches npm.
+Every check above runs on a pull request and again on `main`, and [releasing](./releasing.md) waits for that `main` run to pass before anything reaches npm.

@@ -5,9 +5,11 @@ on:
   push:
     branches: [main]
 
+# A pull request only needs its newest commit checked. Every commit on main is
+# checked, since the release workflow waits on that result before publishing.
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
