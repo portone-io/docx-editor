@@ -1,5 +1,47 @@
 # @portone/docx-editor
 
+## 0.5.1
+
+### Patch Changes
+
+- [#125](https://github.com/portone-io/docx-editor/pull/125) [`88ff33a`](https://github.com/portone-io/docx-editor/commit/88ff33abac21cd56d87723af60d95ab597ccff39) Thanks [@Deea222](https://github.com/Deea222)! - Pasting from Word, Google Docs or LibreOffice now keeps tables as tables and Word lists as lists.
+  
+  A table on the clipboard used to arrive as a single paragraph holding the text of every cell run
+  together. It now arrives as a table: one paragraph for each block a cell held, the columns and rows
+  a cell reached across kept, and the same width and lines a table inserted here has.
+  
+  Word writes list items as ordinary paragraphs that name the list they belong to and draw their own
+  bullet or number, so pasting one used to give unnumbered paragraphs each beginning with a stray
+  marker. The items of one Word list now join one list, at the level Word gives them, counted when
+  the marker Word drew counts.
+  
+  A table's caption is kept as the paragraph above it, a table inside a list item is read as a table
+  rather than as the item's own text, and a table too large for the editor to hold is read as one
+  paragraph per row instead of as a single run-on one.
+  
+  A copy wrapped in a single element, which is how Google Docs writes one, no longer has its
+  paragraphs pressed into one.
+
+- [#123](https://github.com/portone-io/docx-editor/pull/123) [`3d6b0a5`](https://github.com/portone-io/docx-editor/commit/3d6b0a58ea9e0a5ca651a5579d5dd0a8b4646ff6) Thanks [@Deea222](https://github.com/Deea222)! - Copied HTML and text now follow one declared outbound shape per node and mark, so what leaves the editor is decided beside the schema rather than filtered out of the page's own drawing afterwards. A copy pasted into another application carries paragraphs, styles, runs, links, images at the size they were drawn, and tables as tables, and none of the document's internals. A comment marker, a bookmark, and the placeholder standing for content the editor could not model now leave nothing behind them, where before they left an element carrying the editor's own name for what stood there.
+  
+  Copied plain text reads as the page does. A table pasted into a spreadsheet keeps one row per row, with everything a cell holds on the one line that cell stands on, and a block the editor only kept no longer opens a blank line where it stood. A kept line break and a kept character, such as a no-break hyphen, travel with the text they stand in, and so does the text a placeholder draws: a field's cached result and the words of a tracked insertion read in a copy as they read on the page.
+
+- [#124](https://github.com/portone-io/docx-editor/pull/124) [`936b2a0`](https://github.com/portone-io/docx-editor/commit/936b2a08d0d26b1a9b77cf39c718bb85b70a834c) Thanks [@Deea222](https://github.com/Deea222)! - Hyperlinks that hold content controls, and nested controls, open as editable text.
+  
+  Only one of the arrangements used to be readable - a control holding a link. A link holding a
+  control, or a control holding a control, brought the inner one in as a small box naming the element
+  it stood for, and the text it held could not be typed in. Any depth and any order of the two is now
+  ordinary text wearing a wrapper each, and goes back out nested as it came. A hyperlink inside a
+  hyperlink is the one arrangement still kept whole, since a link marks the text it covers once.
+  
+  A link made on text inside a control is written inside that control, and a lock put on a stretch
+  that sits wholly inside a link is written inside that link, instead of either wrapper being split
+  around the other. Where a control holds a control, locking shuts the outer one and lifting a lock
+  opens the inner one the selection stands in.
+  
+  Plugins reading the drawn page will find `data-key` and `data-depth` on a control and a link in
+  place of `data-sdt-key` and `data-link-key`.
+
 ## 0.5.0
 
 ### Minor Changes
