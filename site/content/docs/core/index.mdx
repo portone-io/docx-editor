@@ -3,12 +3,13 @@ title: Core API
 description: Programmatic DOCX import and export without mounting an editor.
 ---
 
-`@portone/docx-editor/core` provides programmatic DOCX import and export without mounting an editor.
-It returns a ProseMirror document together with an opaque session that retains the rest of the DOCX package.
+`@portone/docx-editor/core` imports and exports DOCX without mounting an editor.
+`importDocx` returns a ProseMirror document and an opaque session that holds the rest of the
+package.
 
 ## Import and export
 
-Keep the session returned by `importDocx` and pass it back to `exportDocx` with the original or transformed document:
+Keep the session and pass it back to `exportDocx` with the original or transformed document:
 
 ```ts
 import { exportDocx, importDocx } from "@portone/docx-editor/core";
@@ -17,24 +18,17 @@ const { doc, session } = importDocx(source);
 const bytes = exportDocx(doc, session);
 ```
 
-The core functions accept an `ArrayBuffer` or `Uint8Array`.
-The React component also accepts a `Blob` or `File` and reads it before import.
-
-Reading a DOCX means reading the XML inside it, and that needs a parser.
-Browsers have one; [Server environments](/docs/core/server-environments) covers anywhere that is not a browser.
-
-The session belongs to the imported document and must not be constructed or modified by consumers.
-Use `documentNumbering(session)` and `documentPartPath(session)` for the package information exposed by the public API.
-
-`documentNumbering(session)` reads the document's lists as the editor draws them: a list that takes its numbers from a numbering style is followed to the definition holding them, and the character formatting each level puts on its own number is read in.
-`parseNumbering(xml)` reads a numbering part handed over on its own, without the styles that go with it, so a list defined through a numbering style is resolved only as far as that part alone allows.
-Pass `links`, a numbering style id to the list it names, to resolve the rest.
+Both take an `ArrayBuffer` or `Uint8Array`.
+Outside a browser, pass an XML parser; [Server environments](/docs/core/server-environments)
+explains how.
+The session must not be constructed or modified; `documentNumbering(session)` and
+`documentPartPath(session)` read from it.
 
 ## What a document loses
 
-A DOCX holds more than this editor draws.
-Markup it cannot model is carried through the round trip untouched, but some of it is invisible on the page and some of it stands behind a placeholder nobody can edit.
-`notes` says what, one entry per piece:
+Markup the editor cannot model is carried through the round trip, but some of it is invisible on
+the page and some stands behind a placeholder nobody can edit.
+`notes` lists every such piece:
 
 ```ts
 const { doc, session, notes } = importDocx(source);
@@ -44,48 +38,40 @@ for (const note of notes) {
 }
 ```
 
-Each note carries how much of the original survived (`severity`), what kind of content it was (`code`), the package path of the part it came from (`part`), the body block it falls in (`block`), its position in the document (`pos`, which a reader can select), and the original element name (`element`, such as `w:bookmarkStart`).
-
-| `severity` | What it means |
+| Field | What it holds |
 | --- | --- |
-| `hidden` | Carried through whole, with nothing of it on screen. A bookmark marker, for instance. |
-| `placeholder` | Carried through whole behind a placeholder that stands in its place and cannot be edited. |
-| `approximated` | Written back as something near what arrived rather than as what arrived. |
+| `severity` | `hidden` (kept, nothing on screen), `placeholder` (kept behind an uneditable placeholder), or `approximated` (not emitted yet). |
+| `code` | `range-marker` for one end of a bookmark or similar range, `preserved-inline` and `preserved-block` for markup kept where it stood, `preserved-run-content` for a piece of a run, `table-demoted` for a table the editor could not model, `paragraph-demoted` (not emitted for a document being opened). |
+| `element` | The original element name, such as `w:bookmarkStart`. |
+| `part` | The package path of the part it came from. |
+| `block` | The body block it falls in. |
+| `pos` | Its position in the document, which a reader can select. |
 
-`code` names the content: `range-marker` for one end of a bookmark or a similar range, `preserved-inline` and `preserved-block` for markup kept where it stood, `preserved-run-content` for a piece of a run, and `paragraph-demoted` or `table-demoted` for a paragraph or table this editor could not model at all.
+An empty list does not guarantee a lossless round trip; the writer's known losses are not notes.
 
-Notes cover every preserved node: a block, a paragraph child, and a piece of a run such as a field character.
-`paragraph-demoted` is no longer reported for a document being opened, because a paragraph is never stood down: markup inside it is kept where it stood and the paragraph stays editable.
-`approximated` is reserved for future reporting and is not emitted yet.
-An empty list does not guarantee a lossless round trip: the writer's known losses are not included in these notes.
-
-`exportDocxReport` writes the file and returns the notes for the document it wrote, so a server can report its preserved content without opening the file again:
-
-```ts
-import { exportDocxReport } from "@portone/docx-editor/core";
-
-const { bytes, notes } = exportDocxReport(doc, session);
-```
-
-`exportDocx(doc, session)` is those bytes and nothing else, and both take the same options.
-Inside an editor, [`documentFidelity`](/docs/editor-api#export-controls) answers the question about the document as it currently stands.
+`exportDocxReport(doc, session)` writes the file and returns `{ bytes, notes }` for the document it
+wrote; `exportDocx` returns the bytes alone, and both take the same options.
+Inside an editor, [`documentFidelity`](/docs/editor-api#export-controls) returns the same list for
+the document as it stands.
 
 ## Import limits
 
 - A single inflated part is limited to 32 MiB and the package total to 64 MiB.
 - Package paths that escape the archive and XML containing a DTD are rejected.
-- An image over 16 MiB is retained in the package without being rendered by the editor.
+- An image over 16 MiB is kept in the package but not rendered.
 
 ## Utilities
 
-The core entry exports the pieces a programmatic transform works with, and the published TypeScript declarations give their signatures:
-
 - `docxSchema`, the schema the imported document is built on.
-- `parseNumbering` reads a numbering part handed over on its own, while `documentNumbering` and `documentPartPath` answer for a session's package.
-- `toRunFormat`, `toParagraphFormat`, `toCellFormat`, `toRowFormat`, `toTableFormat`, `toTableWidth` and `toImageExtent` read a node's attribute into its typed shape and return `null` for anything else.
-- `emuToPx` and `pxToEmu` convert between the document's own length unit and CSS pixels.
+- `documentNumbering(session, options?)` reads the document's lists as the editor draws them, and
+  `parseNumbering(xml, options?)` reads a numbering part on its own; pass `links` (numbering style
+  id to list) to resolve lists defined through a numbering style.
+- `toRunFormat`, `toParagraphFormat`, `toCellFormat`, `toRowFormat`, `toTableFormat`,
+  `toTableWidth`, and `toImageExtent` read a node's `format` attr into its typed shape, or `null`.
+- `emuToPx` and `pxToEmu` convert between EMU, the document's length unit, and CSS pixels.
 
-[What a plugin may rely on](/docs/editor-api/plugins-and-presets#what-a-plugin-may-rely-on) says which parts of the document model hold across releases and which are this editor's own bookkeeping.
+[What a plugin may rely on](/docs/editor-api/plugins-and-presets#what-a-plugin-may-rely-on) says
+which parts of the document model are stable across releases.
 
 ## Guides
 

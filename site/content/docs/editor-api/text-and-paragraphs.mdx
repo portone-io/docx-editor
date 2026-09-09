@@ -1,10 +1,9 @@
 ---
 title: Text and paragraphs
-description: The commands and queries behind character formatting, fonts, paragraphs, lists, breaks, and history.
+description: Commands and queries for character formatting, fonts, paragraphs, lists, breaks, and history.
 ---
 
-Everything on this page comes from `@portone/docx-editor/commands` and follows the contract
-described in [Commands and queries](/docs/editor-api#commands-and-queries).
+Everything on this page comes from `@portone/docx-editor/commands`.
 
 ## Character formatting
 
@@ -15,14 +14,11 @@ described in [Commands and queries](/docs/editor-api#commands-and-queries).
 | `toggleUnderline` | `isUnderlineActive` | Switching it on writes a single underline; a run already underlined keeps the kind it has. |
 | `toggleStrike` | `isStrikeActive` | Turns strikethrough on or off. |
 | `setTextColor(hex)` | `activeTextColor` | Writes the color as `#RRGGBB`. Null withdraws it. |
-| `setTextBackground(hex)` | `activeTextBackground` | Writes the background as `#RRGGBB`. Null withdraws it, and a `w:highlight` an older document wrote at that spot goes with it. |
+| `setTextBackground(hex)` | `activeTextBackground` | Writes the background as `#RRGGBB`. Null withdraws it, along with any highlight an older document wrote there. |
 
-`RunToggle` names the four toggles as a union, for a control that keeps them in a list.
-
-`canFormatText` is the gate the whole group is drawn from. A selection running over a lock keeps
-its say, because the locked pieces are left out rather than the whole edit refused; only a
-selection the lock leaves nothing of has nothing to format. A caret formats no text of its own, so
-what settles it there is whether the text typed next could go in at all.
+`canFormatText` enables the whole group.
+It returns `false` when a lock covers the whole selection, or when the caret stands where nothing
+can be typed; a selection that only overlaps a lock can still be formatted.
 
 ## Fonts
 
@@ -31,23 +27,18 @@ what settles it there is whether the text typed next could go in at all.
 | `setFontFamily(name)` | `activeFontFamily(state, fontFallbacks?)` | Sets the font by name. Null withdraws the setting and falls back to the document default. |
 | `setFontSize(pt)` | `activeFontSize(state)` | Sets the size in points. Null withdraws the setting and falls back to the document default. |
 
-Both readers answer with a kind rather than a bare value, because a picker has three states to
-draw and not two.
-`kind: "font"` and `kind: "size"` are a value every selected character shares, one a paragraph
-style gives included.
-`kind: "default"` means nobody wrote a value down, and `name` or `pt` is what is actually
-rendered: the document's own default where it has one, and the on-screen fallback where it has
-none.
-`kind: "mixed"` means the selection holds several.
+Both readers answer with a `kind`:
 
-Pass `activeFontFamily` the same `FontFallbacks` the editor was given, so the name it reports for
-an unspecified font is the one on screen. The root entry exports `DEFAULT_FONT_FALLBACKS`.
+- `kind: "font"` or `kind: "size"`: every selected character shares this value.
+- `kind: "default"`: no value is written down, and `name` or `pt` is what is rendered.
+- `kind: "mixed"`: the selection holds several values.
+
+Pass `activeFontFamily` the same `FontFallbacks` the editor was given, so the default it reports is
+the font on screen.
 
 `documentDefaults(state)` returns the document's own `fontFamily`, `fontSizePt`, and `lineSpacing`,
 each null where the document wrote none.
-`documentFontNames(doc, defaults)` returns every font name the document uses. It walks the whole
-document, so call it when the document changes rather than on every render; the built-in font
-picker appends its result after the preset list.
+`documentFontNames(doc, defaults)` returns every font name the document uses.
 
 ## Paragraphs
 
@@ -58,27 +49,21 @@ picker appends its result after the preset list.
 | `setLineSpacing(spacing)` | `activeLineSpacing` | `canSetLineSpacing` |
 | `increaseIndent`, `decreaseIndent` | | `canIncreaseIndent`, `canDecreaseIndent` |
 
-`documentParagraphStyles(state)` returns the styles the document defines as `ParagraphStyleOption`
-records: `id`, the display `name`, `isDefault` for the one a paragraph with no style already wears,
-`primary` for a style meant for a prominent gallery, and `hidden` for one Word keeps out of its
-own. `setParagraphStyle(null)` puts a paragraph back on the default style. Applying a style writes
-nothing but the style reference, the same as Word, so direct formatting already written keeps
-beating it.
+`documentParagraphStyles(state)` returns the document's styles as `ParagraphStyleOption` records:
+`id`, `name`, `isDefault` for the style a paragraph with no style takes, `primary` for a style
+meant for a prominent gallery, and `hidden` for one to keep out of a picker.
+`setParagraphStyle(null)` puts a paragraph back on the default style.
 
-`activeParagraphStyle` answers `{ kind: "shared", styleId }` when the selected paragraphs all point
-at one style, with a null id meaning the default style, `{ kind: "mixed" }` when they point at
-several, and `{ kind: "none" }` when the selection holds no paragraph at all.
-`activeParagraphAlign` answers `{ kind: "shared", align }` or `{ kind: "mixed" }`; a selection
-holding no paragraph is mixed as well. Exactly one alignment is always on, so there is no command
-to clear one.
+`activeParagraphStyle` returns `{ kind: "shared", styleId }`, with a null id for the default style,
+`{ kind: "mixed" }`, or `{ kind: "none" }` when the selection holds no paragraph.
+`activeParagraphAlign` returns `{ kind: "shared", align }` or `{ kind: "mixed" }`.
 
-`LineSpacing` is one of `{ rule: "auto", lines }`, `{ rule: "exact", pt }`, or
-`{ rule: "atLeast", pt }`, and `SINGLE_LINE_SPACING` is the one line a paragraph nobody spaced is
-drawn with. `activeLineSpacing` returns null when the selection mixes several.
+`LineSpacing` is `{ rule: "auto", lines }`, `{ rule: "exact", pt }`, or `{ rule: "atLeast", pt }`,
+and `SINGLE_LINE_SPACING` is the spacing of a paragraph nobody spaced.
+`activeLineSpacing` returns null when the selection mixes several.
 
-The indent commands move an ordinary paragraph's own left indent by half an inch, Word's step. In a
-list paragraph they move the item one level instead, which is what Tab and Shift+Tab do there. A
-selection holding both kinds gets each paragraph treated by its own rule.
+The indent commands move an ordinary paragraph's left indent by half an inch, and move a list
+paragraph one level instead.
 
 ## Lists
 
@@ -89,34 +74,23 @@ selection holding both kinds gets each paragraph treated by its own rule.
 | `increaseListLevel` | `isInList` | Moves a list item one level deeper. |
 | `decreaseListLevel` | `isInList` | Moves a list item one level back up. |
 
-`activeListKind` returns `"numbered"`, `"bullet"`, or null. Paragraphs turned into a list together
-share one numbering id, so they become a single continuous list.
-
-Starting a list records its definition on the document in the same transaction, and export writes
-that definition into numbering.xml. A definition needs a numbering part to go into, whether the
-document arrived with one or export writes it; where the package has no content types part to
-declare a new one, the list commands report that they do not apply rather than allowing an edit
-that export would refuse. [Checking before
-export](/docs/core/errors#checking-before-export) covers that code.
+`activeListKind` returns `"numbered"`, `"bullet"`, or null.
+Paragraphs turned into a list together become one continuous list.
+The list commands report that they do not apply when the open document cannot take a numbering
+definition; [Checking before export](/docs/core/errors#checking-before-export) covers that code.
 
 ## Breaks and tabs
 
 `insertLineBreak` breaks the line without splitting the paragraph, and `insertPageBreak` starts the
-next page. Both are the same breaks the keyboard binds to Shift+Enter and Mod+Enter, and both go in
-in place of whatever is selected, so each reports that it does not apply where a lock, a preserved
-marker, or the mode shuts that spot.
+next page; the keyboard binds them to Shift+Enter and Mod+Enter.
+Each replaces the selection, and reports that it does not apply where a lock, a preserved marker,
+or the mode shuts that spot.
 
-Use `insertTab` to insert the same editable DOCX tab as the built-in Tab binding. It applies inside
-an ordinary paragraph; table cells and list paragraphs keep their navigation and level-changing Tab
-behavior.
+`insertTab` inserts the same editable DOCX tab as the built-in Tab binding, inside an ordinary
+paragraph only.
 
 ## History
 
-`undo` and `redo` are the editor's own rather than prosemirror-history's. They find the history
-this editor keeps, which a consumer's own copy of prosemirror-history would not, and they carry the
-pass a replayed lock needs: a raw history command is refused the moment the history reaches a lock,
-and that refusal puts everything behind it out of reach.
-
-Both are ordinary commands, so calling one without a dispatch is how a button knows whether there
-is anything to take back. Under the `comment` mode they take a comment back but not a body edit,
-from the keyboard as well as from the panel, and under `readOnly` a reader has nothing to undo.
+Import `undo` and `redo` from `@portone/docx-editor/commands`, not from prosemirror-history: only
+the package's own commands can replay an edit that touched locked content.
+Under the `comment` mode they take back a comment but not a body edit.

@@ -7,15 +7,10 @@ Both groups come from `@portone/docx-editor/commands`.
 
 ## Images
 
-Image controls can use `IMAGE_FILE_ACCEPT`, `imageFilesIn`, and `insertImageFiles`. Lower-level
-controls can combine `readImageFile`, `fittedExtent`, and `insertImage`.
-
-`IMAGE_FILE_ACCEPT` is the `accept` string for a file input: the image kinds the editor can both
-draw and write back. `imageFilesIn(carrier)` picks those files out of anything holding a file list,
-so a clipboard event, a drop, or an input goes down the same path. `insertImageFiles(view, files)`
-is the whole journey in one call and is what the built-in button runs: it puts the files in one
-after another, each at the position the one before it left the caret, and skips a file it could not
-read.
+`insertImageFiles(view, files)` takes image files all the way into the document and skips one it
+cannot read.
+`IMAGE_FILE_ACCEPT` is the `accept` string for a file input, and `imageFilesIn(carrier)` picks the
+image files out of a file input, a drop, or a clipboard event.
 
 ```tsx
 import {
@@ -32,41 +27,27 @@ import {
 />
 ```
 
-A control that places the image itself takes the two steps apart. `readImageFile(file, maxWidthPx?)`
-resolves to an `ImageToInsert` - the bytes as a data URL, the `extent` the drawing records, and an
-optional `alt` - or to null for a file that is not a kind the editor can carry or that the browser
-could not decode. `fittedExtent(width, height, maxWidthPx?, maxHeightPx?)` is the rule by which an
-image wider than the body is shrunk to the body width, so a photo straight off a camera does not
-arrive several times wider than the paper; an image that already fits is never grown.
-
-Both take that width from the open document: read it with `documentBodyWidthPx(state)`, the width
-one line of body text occupies on the document's own paper. Left out, it is A4's, which is the
-width every document used to be fitted to.
-
-`insertImage(image)` puts the image where the selection is, in place of whatever was selected, and
-it goes in carrying the formatting of the text around it, as a picture pasted in Word does.
-`canInsertImage(state)` is what enables the control: it answers no where no position could hold an
-inline node, where a control locked against deletion stands, where a preserved bookmark marker or
-note reference is held, and wherever the mode shuts the body.
+To place an image yourself, `readImageFile(file, maxWidthPx?)` resolves to an `ImageToInsert`
+(`src` as a data URL, `extent`, optional `alt`), or to null for a file the editor cannot carry or
+the browser cannot decode.
+`fittedExtent(width, height, maxWidthPx?, maxHeightPx?)` shrinks an image wider than the body to
+the body width and never grows one.
+`documentBodyWidthPx(state)` is that width for the open document; left out, both use A4's.
+`insertImage(image)` puts the image in place of the selection.
+`canInsertImage(state)` returns `false` where no inline node can stand, where a control locked
+against deletion or a preserved marker is held, and wherever the mode shuts the body.
 
 ## Links
 
-Link controls use `canSetLink`, `activeLink`, `activeLinkSpan`, `setLink`, and `removeLink`.
-External links are editable; bookmark links remain preserved.
+External links are editable; bookmark links stay preserved.
 
-`canSetLink` answers whether a link may go on at all and is asked before an address has been typed.
-`activeLink` is the address to show, and `removeLink` reporting false is how a control knows there
-is no link to take away. `activeLinkSpan` is the one link the selection sits inside as the whole
-stretch it covers: `from`, `to`, and its `href`. It is what a card standing beside a link is placed
-and drawn from, and it is null where the selection runs past either edge of a link or covers two of
-them.
+| Command | What it does |
+| --- | --- |
+| `setLink(url)` | Links the selection to the address. |
+| `removeLink` | Removes the link, and reports `false` when there is none. |
+| `canSetLink(state)` | Whether a link may go on at all, asked before an address is typed. |
+| `activeLink(state)` | The address of the link at the selection, or null. |
+| `activeLinkSpan(state)` | The one link the selection is inside, as `{ from, to, href }`, or null when the selection reaches past a link or covers two. |
 
-A link laid across the edge of a content control is written at one depth inside it and another
-outside, so the file holds two elements around the one address. To a reader that is one link, and
-these commands read it as one: a card opens over the whole of it, and removing it removes all of
-it.
-
-An address naming no scheme of its own is written as an `http` address, the way Word and Google
-Docs both settle it: a relationship target with no scheme reads as relative to the package, so a
-bare host would otherwise name a file beside the document rather than a site. An address that
-already means a place - a file beside the document, or a bookmark - is left as it reads.
+An address without a scheme is written as an `http` address; a relative path or a `#bookmark` is
+written as given.

@@ -5,11 +5,8 @@ description: A DOCX editor for React that reads and writes OOXML directly.
 
 `@portone/docx-editor` opens a Word document in the browser, lets a person edit it, and writes
 the file back out as DOCX.
-It reads and writes OOXML directly instead of converting to HTML and back, so text, formatting,
-lists, tables, images, links, and content controls are edited in place while the structures around
-each edit are preserved.
-Anything the editor does not model is written back from its original XML, and a round trip that
-cannot be made safely fails with a stable error code rather than returning a damaged document.
+It edits OOXML in place rather than converting to HTML and back, so what it does not model is
+written back unchanged, and a round trip it cannot make safely fails with a stable error code.
 
 <Cards>
   <Card

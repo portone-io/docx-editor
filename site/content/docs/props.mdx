@@ -4,38 +4,31 @@ description: Every DocxEditor prop, the imperative handle, and which props are r
 ---
 
 `DocxEditor` is the single component the React entry exports.
-This page lists its props and the handle behind its ref; the guides linked from each row carry
-the longer explanation.
 
 ## Props
 
 | Prop | Type | Default | What it does |
 | --- | --- | --- | --- |
-| `document` | `ArrayBuffer \| Uint8Array \| Blob` | required | The document to open. Bytes open immediately; a `Blob` or `File` is read first, and whichever document arrived last is the one opened. |
+| `document` | `ArrayBuffer \| Uint8Array \| Blob` | required | The document to open. Bytes open immediately; a `Blob` or `File` is read first. The document that arrived last is the one opened. |
 | `mode` | `DocxEditorMode` | required | What the editor is for, and whose comments it writes. See [Mode](#mode). |
 | `renderImportError` | `(error: DocxImportError) => ReactNode` | built-in panel | What to render in place of the editor when the document was refused. |
-| `showPageGuides` | `boolean` | `true` | Whether to draw approximate page boundaries over the document's paper. Drawn in every mode. |
-| `zoom` | `DocxEditorZoom` | uncontrolled | The visual scale, when the host owns the selection. |
-| `defaultZoom` | `DocxEditorZoom` | `"fit-width"` | The initial scale when the editor owns the selection. |
+| `showPageGuides` | `boolean` | `true` | Whether to draw approximate page boundaries, in every mode. |
+| `zoom` | `DocxEditorZoom` | uncontrolled | The visual scale, when the host owns it. |
+| `defaultZoom` | `DocxEditorZoom` | `"fit-width"` | The initial scale when the editor owns it. |
 | `onZoomChange` | `(zoom: DocxEditorZoom) => void` | - | Receives toolbar requests. A controlled host must update `zoom` for one to take effect. |
 | `fontFallbacks` | `FontFallbacks` | `DEFAULT_FONT_FALLBACKS` | The fonts drawn in place of names missing from the reader's machine. See [Styling](/docs/styling#font-fallbacks). |
 | `presets` | `DocxEditorPresets` | package defaults | The lists the built-in pickers offer. See [Presets](/docs/editor-api/plugins-and-presets#presets). |
-| `plugins` | `readonly Plugin[]` | - | ProseMirror plugins placed ahead of the built-in ones, so a host keymap sees an event first. |
-| `contextMenus` | `boolean` | `true` | Whether the right click opens the editor's own menus. `false` leaves the right button to the browser, which is what a host drawing menus of its own wants. |
-| `className` | `string` | - | Added to the editor's outer frame alongside its own class. |
-| `style` | `CSSProperties` | - | Applied to that same frame. |
-| `onReady` | `(view: EditorView) => void` | - | Called with the view once the editor has mounted a document. |
-| `onChange` | `() => void` | - | Called on every editor state change, which includes cursor and selection moves. |
+| `plugins` | `readonly Plugin[]` | - | ProseMirror plugins placed ahead of the built-in ones. |
+| `contextMenus` | `boolean` | `true` | Whether the right click opens the editor's own menus; `false` leaves it to the browser. |
+| `className` | `string` | - | Added to the editor's outer frame. |
+| `style` | `CSSProperties` | - | Applied to that frame. |
+| `onReady` | `(view: EditorView) => void` | - | Called with the view once a document is mounted. |
+| `onChange` | `() => void` | - | Called on every state change, cursor and selection moves included. |
 
 `DocxEditorProps`, `DocxEditorMode`, `DocxEditorZoom`, `DocxEditorPresets`, `CommentAuthor`,
-`EditableComments`, and `DocxSource` are all exported from the root entry, so a wrapper component
-can name them without restating their shapes.
+`EditableComments`, and `DocxSource` are exported from the root entry.
 
 ## Mode
-
-`mode` is a union of three kinds: a reader's surface, a commenter's, and an editor's.
-Whether the right button opens the editor's own menus is the `contextMenus` prop rather than part
-of a kind, because the plugins behind it are read when the editor mounts.
 
 ```ts
 type DocxEditorMode =
@@ -62,28 +55,22 @@ interface CommentAuthor {
 type EditableComments = "own" | "all";
 ```
 
-[Modes](/docs/features/modes) describes what each kind lets a reader do, and [Modes and locks](/docs/editor-api/modes-and-locks) how a control of your own reads it.
+[Modes](/docs/features/modes) describes what each kind lets a reader do, and
+[Modes and locks](/docs/editor-api/modes-and-locks) how a control of your own reads it.
 
-`author` is the identity the built-in comment and reply composers write.
-`id` is an opaque string the host application chooses, such as its own user id, and is recorded in
-the document beside the display name; `name` is what the comment shows; `initials` is the short
-form Word uses where a name does not fit, and is optional.
+`author` is the identity the built-in composers write: `id` is an opaque string of your choosing,
+such as your user id, recorded in the document beside `name`; `initials` is optional.
+Give each `id` a distinct `name`: a name shared by two ids, or already used by a Word user or an
+unattributed comment in the file, resolves to no identity, and its comments become everyone's to
+edit.
 
-Within one file a display name stands for one identity, so give each `id` a distinct `name`; a
-name two ids share, one a Word user recorded first, or one an existing unattributed comment uses,
-resolves to no identity and its comments become everyone's to edit. This includes comments
-preserved outside the editable story.
+`editableComments` is whose comments the panel offers to edit or delete: `"own"` (the default) is
+a comment carrying this `id` or no identity, `"all"` is every comment.
+`toolbar` defaults to `true`; `locking` defaults to `false` and adds the controls for locking part
+of a document.
 
-`editableComments` is whose comments the panel offers to edit or delete.
-`"own"`, the default, is a comment carrying this `id` or no recorded identity at all; `"all"` is
-every comment.
-
-`toolbar` defaults to `true`.
-`locking` defaults to `false` and adds the controls for settling part of a document.
-See [Locked content](/docs/editor-api/modes-and-locks#locked-content) for the commands behind it.
-
-The kind, `author`, and `editableComments` may change on an open document: the editor switches
-in place and keeps the view, its history, and the host's plugins.
+The kind, `author`, and `editableComments` may change on an open document; the editor switches in
+place and keeps the view, its history, and the plugins.
 
 ## The handle
 
@@ -95,25 +82,17 @@ interface DocxEditorHandle {
 }
 ```
 
-The ref holds `null` until a document has been opened, and holds `null` again for a document that
-was refused, so a control that exports should read it at click time rather than caching it.
-`exportBytes` writes the state currently on screen and throws `DocxExportError` when it cannot do
-so safely; `exportProblems` reports every reason it would, ahead of the write, under the same
-codes ([Checking before export](/docs/core/errors#checking-before-export) lists them).
+The ref holds `null` until a document has been opened, and again for a refused document, so read
+it at click time.
+`exportBytes` throws `DocxExportError` when it cannot write safely; `exportProblems` reports every
+reason it would, under the same codes
+([Checking before export](/docs/core/errors#checking-before-export)).
 [Getting started](/docs/getting-started#export-the-edited-document) covers `downloadDocx`, which
-wraps the handle for the ordinary browser download.
+wraps the handle for a browser download.
 
 ## Props read once
 
-Most props take effect on the render that changes them, `mode` included.
-Four values are read when the editor mounts, because they go into the ProseMirror state and the
-view built around it:
-
-- `plugins`
-- `fontFallbacks`
-- `defaultZoom`
-- `contextMenus`
-
-Building any of them inline on every render is therefore harmless.
-To change one, change the component's `key` and let it remount, which is also how the component
-asks for a document to be swapped.
+`plugins`, `fontFallbacks`, `defaultZoom`, and `contextMenus` are read when the editor mounts;
+later changes are ignored, so building them inline is harmless.
+To change one, or to swap the document, change the component's `key` and let it remount.
+Every other prop, `mode` included, takes effect on the render that changes it.

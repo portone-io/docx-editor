@@ -5,44 +5,33 @@ description: Page boundaries, section breaks, and headers and footers.
 
 ## Page boundaries
 
-Visual page boundaries are approximate and may differ from Word or from printed output.
-
-Keep with next is reflected in the boundaries the editor draws.
-Keep lines together and widow control are kept in the file but are not.
+Page boundaries are approximate and may differ from Word or from print.
+Keep with next is reflected in them; keep lines together and widow control are kept in the file
+but not drawn.
 
 ## Sections
 
-Every section a document is written in is read: its paper and margins, the header and footer
-stories it selects, and the page number it starts at.
-
-A section break starts a new page unless it is marked continuous, in which case the section after
-it carries on down the same page.
-
-The paragraph carrying a section break keeps it.
-That paragraph cannot be joined away, and pressing Enter in it keeps the break on the last
-paragraph of the section rather than putting it on both halves.
-
-A selection running across the last paragraph of a section cannot be deleted, even when the
-section break is not what you meant to remove.
-Move the selection clear of that paragraph's boundary to edit the text around it.
+Every section is read with its paper and margins, its headers and footers, and its starting page
+number.
+A section break starts a new page unless it is marked continuous.
+The paragraph carrying a section break cannot be joined into another paragraph, and a selection
+running across the last paragraph of a section cannot be deleted; move the selection clear of it
+to edit the text around it.
 
 ## Headers and footers
 
 Each section's plain-text first, even, and default headers and footers are previewed on the page,
 including decimal `PAGE` and `NUMPAGES` fields.
-A header or footer is shown the way the document body is, though editing one is not offered yet.
+Editing a header or footer is not offered yet.
 
 ## Limitations
 
-Every page is drawn at the width of the first section's paper.
-A page is as tall as the paper of the section its own text sits in, so a landscape section is
-paginated on landscape pages but still drawn at the first section's width.
+Every page is drawn at the width of the first section's paper; a landscape section is paginated on
+its own height but drawn at that width.
 
-An even-page or odd-page section start is kept and goes back out untouched, but it is drawn as an
-ordinary new page rather than skipping to a page of that side.
+An even-page or odd-page section start is kept in the file but drawn as an ordinary new page.
 
-A page number begins at the start its own section declares, but the count does not restart at a
-section boundary: a later section's number carries on from the page's place in the whole document.
+A page number begins at the start its section declares, but the count does not restart at a
+section boundary.
 
-Which header and footer a page shows - first, even, or default - is chosen from the page's place in
-its own section, so every section's own first page is drawn as a first page.
+Every section's own first page is drawn as a first page for the choice of header and footer.

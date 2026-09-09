@@ -3,12 +3,10 @@ title: Server environments
 description: Hand in an XML parser, or install a DOMParser global, anywhere that is not a browser.
 ---
 
-Reading a DOCX means reading the XML inside it, and that needs a parser.
-Browsers have one.
+Reading a DOCX needs an XML parser.
+Browsers have one; anywhere else, provide one.
 
 ## Passing a parser
-
-Anywhere else, pass one in:
 
 ```ts
 import { JSDOM } from "jsdom";
@@ -19,24 +17,27 @@ const { DOMParser } = new JSDOM().window;
 const { doc, session } = importDocx(source, { xmlParser: new DOMParser() });
 ```
 
-`importDocx`, `exportDocx`, `exportProblems`, and `onlyCommentsChangedBy` all take `xmlParser`, and the parser one of them is given reads every part it touches, including both of the files `onlyCommentsChangedBy` opens for itself.
-`documentNumbering` and `parseNumbering` read XML of their own rather than through one of those calls, so they take the option as a second argument.
-The option asks for `parseFromString(source, "application/xml")`, and what it hands back has to be a real DOM document rather than an object shaped like one: the readers walk it with the standard DOM API, `documentElement`, `children`, `childNodes`, `attributes`, `getAttribute` and `getElementsByTagName` with their namespace-aware forms, `localName`, `nodeName`, `nodeType`, `nodeValue`, `namespaceURI`, `textContent`, `parentElement`, `ownerDocument` and `cloneNode` among them.
-Markup it cannot read has to be reported the way a browser reports it, by throwing or by handing back a document holding a `parsererror` element; either way the read is refused with `malformed-xml`.
+`importDocx`, `exportDocx`, `exportProblems`, and `onlyCommentsChangedBy` take `xmlParser` in their
+options; `documentNumbering` and `parseNumbering` take it as their second argument.
+The parser must implement `parseFromString(source, "application/xml")` and return a real DOM
+document, since the readers use the standard DOM API: `documentElement`, `children`, `childNodes`,
+`attributes`, `getAttribute` and `getElementsByTagName` with their namespace-aware forms,
+`localName`, `nodeName`, `nodeType`, `nodeValue`, `namespaceURI`, `textContent`, `parentElement`,
+`ownerDocument`, and `cloneNode`.
+Unreadable markup must throw or return a document holding a `parsererror` element; either is
+reported as `malformed-xml`.
 
-The package bundles no parser of its own, and jsdom is the only implementation it tests.
-jsdom is the obvious one on a long-running Node server, while on serverless functions it adds noticeable bundle weight and cold-start time and edge runtimes cannot run it at all, so treat those environments as unsupported for now.
+The package bundles no parser, and jsdom is the only implementation it tests.
+Serverless functions and edge runtimes are unsupported for now.
+Configure the parser to disable external entities and external fetching.
 
 ## A DOMParser global
 
-Installing a `DOMParser` global instead works, and every call then leaves the option out:
+Installing a `DOMParser` global works too, and every call then leaves the option out:
 
 ```ts
 globalThis.DOMParser = new JSDOM().window.DOMParser;
 ```
 
-Use a parser configuration that disables external entities and external fetching.
-
-A call with neither is refused with `DocxImportError` and the code `no-xml-parser`, so a runtime missing its parser reads as that rather than as a damaged file.
-
-Nothing else about the browser is needed: no `Node` global, no `document`, no `window`.
+A call with neither is refused with `DocxImportError` and the code `no-xml-parser`.
+Nothing else from the browser is needed: no `Node`, `document`, or `window` global.

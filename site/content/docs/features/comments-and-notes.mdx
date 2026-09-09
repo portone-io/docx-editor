@@ -8,37 +8,29 @@ description: Comment threads, resolving, and footnotes and endnotes.
 ### Threads and authorship
 
 View anchored comment threads, and create, edit, reply to, and delete comments.
-Each comment records its author, so editing and deleting stay with them.
+Each comment records its author, which decides who may edit or delete it.
 
 ### Resolving and reopening
 
-Resolving a thread hides its highlight, and reopening puts the highlight back.
+Resolving a thread hides its highlight; reopening puts it back.
 
 ### Deleting commented text
 
-Deleting commented text never deletes the comment.
-Trimming the text keeps the comment on what remains.
-Deleting all of it lists the comment under All comments as *Original content deleted*.
-Word has no such state, so the saved file holds it as an ordinary comment where the deleted text
-was.
-
-[Clipboard](/docs/features/clipboard#within-the-same-document) covers what cutting does.
+Deleting or cutting commented text never deletes the comment.
+Trimming the text keeps the comment on what remains; deleting all of it lists the comment under
+All comments as *Original content deleted*.
+In the saved file it is an ordinary comment at the place the text was.
 
 ### The comment body
 
-A comment body keeps its formatting through an edit.
-The built-in composer writes plain text and `setCommentBody` writes a formatted body, and whatever
-an edit does not touch goes back out as it came.
+A comment body keeps its formatting through an edit; the built-in composer writes plain text.
 
 ## Footnotes and endnotes
 
-See references and note bodies while you edit the text around them.
-A note body is shown the way the document body is, though editing one is not offered yet.
-
-A reference is preserved rather than edited.
-A selection running across one cannot be replaced, so typing or deleting over it leaves the text
-as it stands, and the picture, line break, and page break controls are unavailable while it is
-held.
+References and note bodies are shown while you edit the text around them; editing a note is not
+offered yet.
+A selection that runs across a reference cannot be replaced, so typing or deleting over it leaves
+the text as it stands.
 
 [Comments and notes](/docs/editor-api/comments-and-notes) in the Editor API lists the commands and
 queries behind these controls.

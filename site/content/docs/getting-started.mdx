@@ -1,9 +1,7 @@
 ---
 title: Getting started
-description: Install the package, mount the editor, and export the edited document, one step at a time.
+description: Install the package, mount the editor, and export the edited document.
 ---
-
-Six steps from an empty React project to a document a person can edit and download.
 
 <Steps>
 
@@ -25,9 +23,8 @@ npm i @portone/docx-editor
 import "@portone/docx-editor/styles.css";
 ```
 
-Once per application is enough, and the import carries the ProseMirror base styles the editor
-needs.
-[Styling](/docs/styling) covers the custom properties that restyle the frame around the paper.
+Once per application; it includes the ProseMirror base styles.
+[Styling](/docs/styling) covers the custom properties that restyle the frame.
 
 </Step>
 
@@ -35,26 +32,18 @@ needs.
 
 ## Get a document to open
 
-`document` takes a `File`, a `Blob`, an `ArrayBuffer`, or a `Uint8Array`, so the file arrives
-however your application already holds it.
-A document fetched from a server needs no more than its response body:
+`document` takes a `File`, a `Blob`, an `ArrayBuffer`, or a `Uint8Array`:
 
 ```ts
 const response = await fetch("/agreement.docx");
 const file = new File([await response.blob()], "agreement.docx");
 ```
 
-Bytes open immediately; a `Blob` or a `File` is read first, so the editor stands empty for that
-moment.
-
 </Step>
 
 <Step>
 
 ## Mount the editor
-
-Render `DocxEditor` with the document and a `mode`, and keep a ref if the surrounding screen will
-export it:
 
 ```tsx
 import { DocxEditor, type DocxEditorHandle } from "@portone/docx-editor";
@@ -73,11 +62,9 @@ export function Editor({ file }: { file: File }) {
 }
 ```
 
-`mode` says what the editor is for - a reader's surface, a commenter's, or an editor's - and
-`author` names the person its comments are written under, taken from your application's signed-in
-user.
-[Props](/docs/props#mode) describes the kinds, and [Modes](/docs/features/modes) what each lets a
-person do.
+`mode` is a reader's, a commenter's, or an editor's surface, and `author` is the signed-in user
+comments are written under; [Props](/docs/props#mode) describes the prop and
+[Modes](/docs/features/modes) what each kind lets a person do.
 The editor fills the height it is given, so put it in a box with one.
 
 </Step>
@@ -86,9 +73,7 @@ The editor fills the height it is given, so put it in a box with one.
 
 ## Export the edited document
 
-`downloadDocx` takes the handle from the ref and saves the current editor state as a file.
-It reports `unavailable` while no document is open yet and `empty` when there is nothing worth
-exporting.
+`downloadDocx` takes the handle from the ref and saves the current state as a file:
 
 ```tsx
 import { downloadDocx } from "@portone/docx-editor";
@@ -105,11 +90,10 @@ const download = () => {
 </button>;
 ```
 
-`downloadDocx` returns `blocked` with the problems when the document cannot be written back
-safely, each under the code a `DocxExportError` would carry, so the surrounding screen can show
-the reason; anything the check did not foresee is still thrown as `DocxExportError`.
-For the bytes without a browser download, call `editorRef.current.exportBytes()`, and for the
-same problems ahead of it, `editorRef.current.exportProblems()`.
+It reports `unavailable` while no document is open, `empty` when there is nothing to export, and
+`blocked` with the problems when the document cannot be written back safely.
+For the bytes without a download, call `editorRef.current.exportBytes()`; for the problems ahead
+of it, `editorRef.current.exportProblems()`.
 
 </Step>
 
@@ -117,16 +101,11 @@ same problems ahead of it, `editorRef.current.exportProblems()`.
 
 ## Check what you see
 
-An opened document shows its own paper: the page size and margins it declares, its fonts, and its
-own styles, with approximate page boundaries drawn over the text and the built-in toolbar above it.
-Exporting and reopening the file in Word is the real check, since the round trip is what the editor
-is for.
-
-If a refusal panel appears in place of the editor, the document was not opened, and the panel names
-the reason.
-Pass `renderImportError` to write that refusal in your own words; without it the built-in panel is
-drawn, so a refused document is never silent.
-[Errors](/docs/core/errors) lists the codes behind those refusals.
+An opened document shows its own paper, fonts, and styles, with page boundaries drawn over the
+text and the toolbar above it.
+If a panel naming a reason appears instead, the document was refused; pass `renderImportError` to
+render the refusal yourself, and [Errors](/docs/core/errors) lists the codes.
+Exporting and reopening the file in Word is the real check.
 
 </Step>
 
@@ -134,9 +113,8 @@ drawn, so a refused document is never silent.
 
 ## Next.js and other prerendering frameworks
 
-The editor builds a ProseMirror view against the DOM, so it cannot render on the server.
-In a framework that prerenders, load it from a client component through a dynamic import with
-server rendering turned off, which is how this site mounts its own demo:
+The editor cannot render on the server, so load it from a client component through a dynamic
+import with server rendering turned off:
 
 ```tsx
 "use client";
@@ -148,14 +126,6 @@ const Editor = dynamic(() => import("./Editor").then((m) => m.Editor), {
 });
 ```
 
-Fetch the document from inside that client component too, in an effect, and wrap the response in a
-`File` as in the third step above.
-The App Router also wants `@portone/docx-editor` in `transpilePackages` when it resolves to
-TypeScript sources rather than to built output, which is the case for a workspace link.
-
-## Next
-
-Read [Features](/docs/features) for what the editor edits and preserves,
-[Props](/docs/props) for the component's full surface,
-[Editor API](/docs/editor-api) to build controls of your own, and
-[Core API](/docs/core) for import and export without an editor.
+Fetch the document inside that client component too.
+The App Router also needs `@portone/docx-editor` in `transpilePackages` when it resolves to
+TypeScript sources, as a workspace link does.

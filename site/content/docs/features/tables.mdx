@@ -7,7 +7,7 @@ description: Editing tables, table styles, and how a long table continues.
 
 Insert and remove rows, columns, and tables.
 Merge, split, and resize columns and rows, and format, vertically align, and pad cells.
-
+A new table is as wide as a line of body text in its section.
 A table inside a table cell is preserved rather than edited.
 
 ## Table styles
@@ -17,22 +17,17 @@ banded rows.
 
 ## Long tables
 
-A table that runs past the bottom of a page continues at a safe row boundary, and its header rows
-repeat on each page it continues onto.
-
-A new table is as wide as one line of body text on the paper of the section it goes into.
+A table that runs past the bottom of a page breaks between rows and continues on the next page,
+repeating its header rows.
 
 ## Limitations
 
-A table is fitted to the body width of its own section, and one wider than the sheet is drawn
-shrunk to fit it while the saved file keeps the width the table was given.
+A table wider than the sheet is drawn shrunk to fit; the saved file keeps its width.
 
 A table is shown as a placeholder when its rows cannot be read, or when a bookmark or similar
-marker sits right after a cell that only continues a vertical merge.
-Other markers between rows or cells are kept and the table stays editable.
-
-Deleting a row or column is unavailable when it would remove a marker carried between rows or
-cells.
+marker sits right after a cell that continues a vertical merge.
+Other markers between rows or cells are kept, and the table stays editable.
+Deleting a row or column is unavailable when it would remove such a marker.
 
 [Tables](/docs/editor-api/tables) in the Editor API lists the commands and queries behind these
 controls.
