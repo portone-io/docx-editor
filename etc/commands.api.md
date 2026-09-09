@@ -183,6 +183,7 @@ export function documentBodyWidthPx(state: EditorState): number;
 
 // @public
 export interface DocumentComment {
+    readonly anchored: boolean;
     // (undocumented)
     readonly author: string | null;
     // (undocumented)

@@ -15,7 +15,7 @@ IME tests drive Chrome's real composition pipeline through CDP `Input.imeSetComp
 | File | Coverage |
 | --- | --- |
 | `composition.spec.ts` | Japanese and Chinese composition, candidate replacement, and plain input |
-| `hangulComposition.spec.ts` | Hangul syllable assembly, batchim movement, deletion, and locked content |
+| `hangulComposition.spec.ts` | Hangul syllable assembly, batchim movement, deletion, locked content, and a composition written over a whole comment |
 | `keys.spec.ts` | Enter during an active composition |
 | `pageLayout.spec.ts` | Stable page measurement during composition, and per-section paper in the page boundaries and the sheet width |
 | `tablePagination.spec.ts` | Long-table row boundaries, repeated headers, and page-gap placement |

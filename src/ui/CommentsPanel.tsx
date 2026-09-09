@@ -56,6 +56,37 @@ const REFUSED_COMMENT =
 const REFUSED_REPLY =
   "This reply could not be added. The comment it answers may have been changed or deleted since.";
 
+/**
+ * What a card says for a comment whose text is gone. The thread is still the document's, and this
+ * is all that is left to say about where it was written (`DocumentComment.anchored`).
+ */
+const DETACHED_LABEL = "Original content deleted";
+
+/**
+ * Whether the rail beside the page carries this comment: the thread is unsettled, and the text it
+ * was written for is still there to draw it next to.
+ */
+export function shownBesideThePage(comment: DocumentComment): boolean {
+  return !comment.resolved && comment.anchored;
+}
+
+/** Who wrote a comment and when, as every card heads itself */
+function CommentIdentity({
+  comment,
+}: {
+  comment: DocumentComment;
+}): ReactElement {
+  const date = shownDate(comment.date);
+  return (
+    <>
+      <span className={editorClassNames.commentAuthor}>
+        {comment.author ?? "Unknown author"}
+      </span>
+      {date && <span className={editorClassNames.commentDate}>{date}</span>}
+    </>
+  );
+}
+
 interface EditTarget {
   commentId: string;
   replyId: string | null;
@@ -115,7 +146,7 @@ export function CommentsPanel({
             if (Number.isNaN(rightTime)) return -1;
             return rightTime - leftTime;
           })
-        : comments.filter((comment) => !comment.resolved),
+        : comments.filter(shownBesideThePage),
     [allCommentsOpen, comments]
   );
 
@@ -219,6 +250,7 @@ export function CommentsPanel({
             <article
               className={editorClassNames.commentPosition}
               data-resolved={comment.resolved ? "true" : undefined}
+              data-detached={comment.anchored ? undefined : "true"}
               data-comment-position={comment.id}
               key={comment.id}
               style={
@@ -229,21 +261,24 @@ export function CommentsPanel({
             >
               <div className={editorClassNames.commentCard}>
                 <div className={editorClassNames.commentHeader}>
-                  <button
-                    type="button"
-                    className={editorClassNames.commentMeta}
-                    onClick={() => run(view, selectComment(comment.id))}
-                    disabled={comment.resolved}
-                  >
-                    <span className={editorClassNames.commentAuthor}>
-                      {comment.author ?? "Unknown author"}
-                    </span>
-                    {shownDate(comment.date) && (
-                      <span className={editorClassNames.commentDate}>
-                        {shownDate(comment.date)}
+                  {comment.anchored ? (
+                    <button
+                      type="button"
+                      className={editorClassNames.commentMeta}
+                      onClick={() => run(view, selectComment(comment.id))}
+                    >
+                      <CommentIdentity comment={comment} />
+                    </button>
+                  ) : (
+                    // Nothing on the page to go to, so the identity is text rather than a button:
+                    // a click here leaves the caret and the scroll where the reader left them
+                    <div className={editorClassNames.commentMeta}>
+                      <CommentIdentity comment={comment} />
+                      <span className={editorClassNames.commentDetached}>
+                        {DETACHED_LABEL}
                       </span>
-                    )}
-                  </button>
+                    </div>
+                  )}
                   {writer !== null && !rootEditing && (
                     <div className={editorClassNames.commentIconActions}>
                       {rootOwned && !comment.resolved && (

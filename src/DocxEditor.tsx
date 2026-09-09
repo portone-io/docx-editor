@@ -51,7 +51,7 @@ import { editingProtection, protectionOf } from "./schema/protectionState";
 import { storyNodeOf } from "./schema/stories";
 import { editorClassNames } from "./styles/classNames";
 import type { FontFallbacks } from "./styles/fontStack";
-import { CommentsPanel } from "./ui/CommentsPanel";
+import { CommentsPanel, shownBesideThePage } from "./ui/CommentsPanel";
 import { LinkCard } from "./ui/LinkCard";
 import { LinkPanel } from "./ui/LinkPanel";
 import { NotesPanel } from "./ui/NotesPanel";
@@ -589,12 +589,12 @@ function DocxEditorSurface(
     live?.state === undefined
       ? []
       : commentProjection.read(live.state).comments;
-  const hasUnresolvedComments = comments.some((comment) => !comment.resolved);
+  const hasRailComments = comments.some(shownBesideThePage);
   // The composer's own state closes it where a comment can no longer go, the mode being switched
   // to read-only included, so nothing here has to shut it in turn
   const composerOpen = live !== null && isCommentComposerOpen(live.state);
   const showComments =
-    live !== null && (commentsOpen || composerOpen || hasUnresolvedComments);
+    live !== null && (commentsOpen || composerOpen || hasRailComments);
   const commentsPanel = live && showComments && (
     <CommentsPanel
       view={live.view}

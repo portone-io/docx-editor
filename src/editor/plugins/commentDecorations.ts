@@ -58,7 +58,8 @@ function commentsIn(doc: PMNode): readonly DocumentComment[] {
     const id = stringAttr(node.attrs.id) ?? "";
     const start = markers.starts.get(id);
     const end = markers.ends.get(id);
-    const hasRange = start !== undefined && end !== undefined && start < end;
+    // A comment left with the reference alone stands for a thread rather than for a stretch
+    const anchored = start !== undefined && end !== undefined && start < end;
     const point = start ?? end ?? pos;
     return {
       id,
@@ -67,9 +68,10 @@ function commentsIn(doc: PMNode): readonly DocumentComment[] {
       initials: stringAttr(node.attrs.initials),
       date: stringAttr(node.attrs.date),
       text: bodyText(doc, id),
-      from: hasRange ? start + 1 : point,
-      to: hasRange ? end : point,
+      from: anchored ? start + 1 : point,
+      to: anchored ? end : point,
       referencePos: pos,
+      anchored,
       resolved: node.attrs.resolved === true,
       replies: repliesAttr(node.attrs.replies).map((reply) => ({
         id: reply.id,
@@ -107,7 +109,9 @@ function deriveComments(doc: PMNode): DocumentComments {
     decorations: DecorationSet.create(
       doc,
       comments
-        .filter((comment) => comment.from < comment.to)
+        // A settled thread stops marking the page, and an unsettled one with no stretch left to
+        // mark has nothing to draw over
+        .filter((comment) => !comment.resolved && comment.from < comment.to)
         .map((comment) =>
           Decoration.inline(comment.from, comment.to, {
             class: editorClassNames.commentRange,

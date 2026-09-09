@@ -126,6 +126,13 @@ protection](#modes-and-protection) explains the rule behind it. Every field of t
 returns is read-only: they are the editor's own, worked out once per edit, so a control that wants
 to change one copies it rather than writing into it.
 
+`documentComments` also reports `anchored`, which is `false` for a comment that no longer marks a
+stretch of the document because its text was deleted. Such a detached comment reports `from` and
+`to` at its reference, and `selectComment` takes the caret there rather than selecting anything; for
+an anchored comment it selects the commented text and scrolls it into view.
+[Features](/docs/features) describes what the built-in panel does with detached and resolved
+comments.
+
 A comment body keeps its formatting. `updateComment` replaces one with plain text; `setCommentBody`
 replaces one with a document of `docxSchema`, so a composer of your own can write a body with a
 bold run, a paragraph style, or a second paragraph:

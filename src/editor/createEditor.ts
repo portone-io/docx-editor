@@ -35,6 +35,7 @@ import { imageFiles } from "./imageFiles";
 import { columnResize } from "./plugins/columnResize";
 import { commentComposer } from "./plugins/commentComposer";
 import { commentDecorations } from "./plugins/commentDecorations";
+import { commentRestoration } from "./plugins/commentRestoration";
 import {
   displayDerivation,
   withDerivedDisplay,
@@ -139,6 +140,9 @@ export function createEditorState(
       // The list beside the page, the lookup the comment commands ask, and these ranges are the
       // one walk this plugin holds (`plugins/commentDecorations`)
       commentDecorations(),
+      // A comment outlives the text it was written for: an edit that sweeps its reference away has
+      // it put back where the deletion left, detached from the page (`plugins/commentRestoration`)
+      commentRestoration(),
       // What the notes under the page are, worked out from the document the same way
       noteProjection.plugin,
       // Adjacent text tabs still need separate DOM ranges for layout and pointer selection.

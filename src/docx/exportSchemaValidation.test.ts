@@ -1315,6 +1315,48 @@ describe("the markup-compatibility preprocessing", () => {
     expect(commentsXml).toContain("Second");
     expectPartsValidate("a formatted comment body", parts);
   });
+
+  /**
+   * A deletion that sweeps a comment's range markers away leaves the reference standing on its own
+   * (`editor/plugins/commentRestoration`). No command writes that shape, so this is where the file
+   * it goes out as is held to the schemas: a `w:commentReference` in a run with no range around it,
+   * and its entry still in the comments part.
+   */
+  it("a comment left behind by the deletion of its text validates", () => {
+    const { doc, session } = importDocx(readFixture("kitchen-sink.docx"));
+    const state = openState(doc, session);
+    const commented = ran(
+      firstTextParagraph(state),
+      addComment({
+        text: "The note whose text was deleted",
+        author: "Schema test",
+        initials: "ST",
+        date: "2026-08-22T00:00:00Z",
+      })
+    );
+    const added = documentComments(commented);
+    const comment = added[added.length - 1];
+    if (comment === undefined) throw new Error("no comment was added");
+    const marked = commented.doc.resolve(comment.referencePos);
+    const detached = commented.apply(
+      commented.tr.delete(marked.start(), marked.end())
+    );
+    const left = documentComments(detached);
+    expect(left.map(({ id, anchored }) => ({ id, anchored }))).toContainEqual({
+      id: comment.id,
+      anchored: false,
+    });
+
+    const written = exportDocx(detached.doc, session);
+    const main = decode(unzipSync(written)[session.mainPartPath]);
+    expect(main).toContain(`<w:commentReference w:id="${comment.id}"/>`);
+    expect(main).not.toContain(`<w:commentRangeStart w:id="${comment.id}"/>`);
+    const parts = wordprocessingParts(written);
+    expect(parts.get("word/comments.xml")).toContain(
+      "The note whose text was deleted"
+    );
+    expectPartsValidate("a detached comment", parts);
+  });
 });
 
 describe("the exported package after an edit battery", () => {

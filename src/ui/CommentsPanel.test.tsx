@@ -3,6 +3,7 @@ import { unzipSync, zipSync } from "fflate";
 import { TextSelection } from "prosemirror-state";
 import { act, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { commentedDocx, commentedRun } from "../__testing__/comments";
 import { decode, makeDocx } from "../__testing__/docx";
 import { renderInto } from "../__testing__/react";
 import {
@@ -17,38 +18,11 @@ declare global {
 }
 
 const encoder = new TextEncoder();
-const REL_BASE =
-  "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 
 function commentDocument(): Uint8Array {
-  const parts = unzipSync(
-    makeDocx(
-      '<w:p><w:commentRangeStart w:id="2"/>' +
-        '<w:r><w:t xml:space="preserve">source</w:t></w:r>' +
-        '<w:commentRangeEnd w:id="2"/>' +
-        '<w:r><w:commentReference w:id="2"/></w:r></w:p>'
-    )
-  );
-  parts["word/_rels/document.xml.rels"] = encoder.encode(
-    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
-      `<Relationship Id="rId2" Target="comments.xml" Type="${REL_BASE}/comments"/>` +
-      "</Relationships>"
-  );
-  parts["word/comments.xml"] = encoder.encode(
-    '<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
-      '<w:comment w:id="2" w:author="Ada"><w:p><w:r>' +
-      '<w:t xml:space="preserve">Original note</w:t>' +
-      "</w:r></w:p></w:comment></w:comments>"
-  );
-  parts["[Content_Types].xml"] = encoder.encode(
-    '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
-      '<Override PartName="/word/document.xml" ' +
-      'ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>' +
-      '<Override PartName="/word/comments.xml" ' +
-      'ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml"/>' +
-      "</Types>"
-  );
-  return zipSync(parts);
+  return commentedDocx(`<w:p>${commentedRun("2", "source")}</w:p>`, [
+    { id: "2", text: "Original note", author: "Ada" },
+  ]);
 }
 
 function commentReadyDocument(): Uint8Array {
@@ -65,34 +39,24 @@ function commentReadyDocument(): Uint8Array {
 }
 
 function datedCommentsDocument(): Uint8Array {
-  const parts = unzipSync(
-    makeDocx(
-      '<w:p><w:commentRangeStart w:id="2"/><w:r><w:t>older</w:t></w:r>' +
-        '<w:commentRangeEnd w:id="2"/><w:r><w:commentReference w:id="2"/></w:r></w:p>' +
-        '<w:p><w:commentRangeStart w:id="3"/><w:r><w:t>newer</w:t></w:r>' +
-        '<w:commentRangeEnd w:id="3"/><w:r><w:commentReference w:id="3"/></w:r></w:p>'
-    )
+  return commentedDocx(
+    `<w:p>${commentedRun("2", "older")}</w:p>` +
+      `<w:p>${commentedRun("3", "newer")}</w:p>`,
+    [
+      {
+        id: "2",
+        text: "Older note",
+        author: "Ada",
+        date: "2026-08-20T10:00:00Z",
+      },
+      {
+        id: "3",
+        text: "Newer note",
+        author: "Grace",
+        date: "2026-08-21T10:00:00Z",
+      },
+    ]
   );
-  parts["word/_rels/document.xml.rels"] = encoder.encode(
-    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
-      `<Relationship Id="rId2" Target="comments.xml" Type="${REL_BASE}/comments"/>` +
-      "</Relationships>"
-  );
-  parts["word/comments.xml"] = encoder.encode(
-    '<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
-      '<w:comment w:id="2" w:author="Ada" w:date="2026-08-20T10:00:00Z"><w:p><w:r><w:t>Older note</w:t></w:r></w:p></w:comment>' +
-      '<w:comment w:id="3" w:author="Grace" w:date="2026-08-21T10:00:00Z"><w:p><w:r><w:t>Newer note</w:t></w:r></w:p></w:comment>' +
-      "</w:comments>"
-  );
-  parts["[Content_Types].xml"] = encoder.encode(
-    '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
-      '<Override PartName="/word/document.xml" ' +
-      'ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>' +
-      '<Override PartName="/word/comments.xml" ' +
-      'ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml"/>' +
-      "</Types>"
-  );
-  return zipSync(parts);
 }
 
 let host: HTMLDivElement;
@@ -269,6 +233,22 @@ describe("the comments panel", () => {
     readOnly.unmount();
   });
 
+  it("selects the text of a resolved comment, which is drawn with no highlight", () => {
+    const { handle, unmount } = mount(commentDocument());
+    click(button("Show comments"));
+    click(button("Resolve"));
+    const meta = host.querySelector(`button.${"docx-editor-comment-meta"}`);
+    if (!(meta instanceof HTMLButtonElement)) {
+      throw new Error("the resolved comment offers nothing to click");
+    }
+
+    click(meta);
+
+    const { from, to } = handle.view.state.selection;
+    expect(handle.view.state.doc.textBetween(from, to)).toBe("source");
+    unmount();
+  });
+
   it("shows imported comments and writes an edited body", () => {
     const { handle, unmount } = mount(commentDocument());
     click(button("Show comments"));
@@ -351,6 +331,91 @@ describe("the comments panel", () => {
     expect(exportedPart(handle, "word/commentsExtended.xml")).toContain(
       'w15:done="0"'
     );
+    unmount();
+  });
+});
+
+describe("a comment whose text was deleted", () => {
+  /** Deletes everything the commented paragraph holds, its markers and reference with it */
+  function detach(handle: DocxEditorHandle): void {
+    act(() => {
+      const { view } = handle;
+      view.dispatch(
+        view.state.tr.delete(1, view.state.doc.child(0).content.size + 1)
+      );
+    });
+  }
+
+  it("leaves the rail beside the page, which then has nothing to show", () => {
+    const { handle, unmount } = mount(commentDocument());
+    expect(
+      host
+        .querySelector('aside[aria-label="Comments"]')
+        ?.getAttribute("data-view")
+    ).toBe("rail");
+
+    detach(handle);
+
+    expect(host.querySelector('aside[aria-label="Comments"]')).toBeNull();
+    unmount();
+  });
+
+  it("is listed under all comments, saying its text is gone", () => {
+    const { handle, unmount } = mount(commentDocument());
+    detach(handle);
+    click(button("Show comments"));
+
+    const panel = host.querySelector('aside[aria-label="Comments"]');
+    expect(panel?.getAttribute("data-view")).toBe("all");
+    expect(panel?.textContent).toContain("Original note");
+    expect(panel?.textContent).toContain("Original content deleted");
+    unmount();
+  });
+
+  it("leaves the selection where it was when its card is clicked", () => {
+    const { handle, unmount } = mount(commentDocument());
+    detach(handle);
+    click(button("Show comments"));
+    const before = handle.view.state.selection;
+    const card = host.querySelector(`.${"docx-editor-comment-card"}`);
+    if (!(card instanceof HTMLElement)) throw new Error("no comment card");
+
+    click(card);
+
+    // There is nowhere on the page to go, so the identity is not a button in the first place
+    expect(
+      host.querySelector(`button.${"docx-editor-comment-meta"}`)
+    ).toBeNull();
+    expect(handle.view.state.selection.eq(before)).toBe(true);
+    unmount();
+  });
+
+  it("stays detached and panel-only through being resolved and reopened", () => {
+    const { handle, unmount } = mount(commentDocument());
+    detach(handle);
+    click(button("Show comments"));
+
+    click(button("Resolve"));
+    click(button("Reopen"));
+
+    const panel = host.querySelector('aside[aria-label="Comments"]');
+    expect(panel?.textContent).toContain("Original content deleted");
+    click(button("Hide comments"));
+    expect(host.querySelector('aside[aria-label="Comments"]')).toBeNull();
+    unmount();
+  });
+
+  it("still selects the text of a comment that kept its anchor", () => {
+    const { handle, unmount } = mount(commentDocument());
+    click(button("Show comments"));
+    const meta = host.querySelector(`button.${"docx-editor-comment-meta"}`);
+    if (!(meta instanceof HTMLButtonElement))
+      throw new Error("no comment meta");
+
+    click(meta);
+
+    const { from, to } = handle.view.state.selection;
+    expect(handle.view.state.doc.textBetween(from, to)).toBe("source");
     unmount();
   });
 });

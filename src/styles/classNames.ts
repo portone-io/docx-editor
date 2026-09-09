@@ -145,6 +145,8 @@ export const editorClassNames = {
   commentMeta: `${PREFIX}-comment-meta`,
   commentAuthor: `${PREFIX}-comment-author`,
   commentDate: `${PREFIX}-comment-date`,
+  /** The note on a card whose comment lost the text it was written for */
+  commentDetached: `${PREFIX}-comment-detached`,
   commentBody: `${PREFIX}-comment-body`,
   commentActions: `${PREFIX}-comment-actions`,
   commentPrimaryAction: `${PREFIX}-comment-primary-action`,

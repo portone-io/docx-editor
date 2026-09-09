@@ -529,15 +529,18 @@ export function removeComment(id: string): Command {
   });
 }
 
-/** Selects the text anchored by a comment, or places the caret at a point comment. */
+/**
+ * Selects the text a comment is anchored to and scrolls it into view. A comment marking no stretch
+ * - one written at a point, or one whose text was deleted - takes the caret to where it stands.
+ */
 export function selectComment(id: string): Command {
   return (state, dispatch) => {
     const comment = commentById(state, id);
     if (!comment) return false;
     dispatch?.(
-      state.tr.setSelection(
-        TextSelection.create(state.doc, comment.from, comment.to)
-      )
+      state.tr
+        .setSelection(TextSelection.create(state.doc, comment.from, comment.to))
+        .scrollIntoView()
     );
     return true;
   };
