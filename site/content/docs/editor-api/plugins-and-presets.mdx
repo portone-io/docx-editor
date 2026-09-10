@@ -24,6 +24,9 @@ Do not build one from the schema with `DOMSerializer.fromSchema(docxSchema)`: it
 comment identities on the clipboard, and the editor no longer recognizes the copy when it is pasted
 back.
 
+A custom `clipboardParser` replaces the editor's clipboard readers. Do not use
+`DOMParser.fromSchema(docxSchema)`: its `parseDOM` rules can read raw XML attrs from pasted HTML.
+
 A plugin that writes raw OOXML into an attr such as a paragraph's `pPr` or a run's `rPr` must write
 exactly the shape that attr is exported as: one element under the attr's name, or the attributes
 of an opening tag.
@@ -36,6 +39,9 @@ The supported plugin surface is the node and mark names of `docxSchema`, `srcId`
 attrs and their `to*Format` readers, and the names and types exported by the four entry points.
 Changes to this surface follow the package's versioning policy.
 `srcId` is an opaque reference within the session that opened the document, not a persistent id.
+
+DOM `data-*` attributes are internal. Read the document model through the supported commands and
+queries instead.
 
 Raw OOXML attrs such as `pPr`, `rPr`, `tcPr`, `xml`, `sdtPrefix`, `linkPrefix`, and `referenceXml`
 are internal and may change in any release.

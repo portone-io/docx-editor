@@ -16,5 +16,11 @@
     "incremental": true,
     "types": ["node"]
   },
-  "include": ["src", "packaging", "vitest.config.ts"]
+  "include": [
+    "src",
+    "packaging",
+    "scripts/bench",
+    "vitest.config.ts",
+    "vitest.bench.config.ts"
+  ]
 }

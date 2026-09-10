@@ -60,9 +60,10 @@ type EditableComments = "own" | "all";
 
 `author` is the identity the built-in composers write: `id` is an opaque string of your choosing,
 such as your user id, recorded in the document beside `name`; `initials` is optional.
-Give each `id` a distinct `name`: a name shared by two ids, or already used by a Word user or an
-unattributed comment in the file, resolves to no identity, and its comments become everyone's to
-edit.
+Give each `id` a distinct `name` within the document. A reused name resolves to no identity, so the
+default `editableComments: "own"` leaves those comments editable by everyone, and a file written
+under a name another identity already holds is refused by
+[server verification](/docs/core/verifying-a-commenters-file) as `comment-author-forged`.
 
 `editableComments` is whose comments the panel offers to edit or delete: `"own"` (the default) is
 a comment carrying this `id` or no identity, `"all"` is every comment.

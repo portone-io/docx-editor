@@ -22,10 +22,18 @@ repeating its header rows.
 
 ## Limitations
 
+Editing any cell of a table rewrites the cells that continue a vertical merge: they lose their own
+contents and take the starting cell's properties, its shading and borders among them.
+An untouched table keeps them.
+
+A style's first-column formatting overrides its header-row formatting where both apply, so the
+top-left cell can look different from Word. A corner-specific format overrides both.
+
 A table wider than the sheet is drawn shrunk to fit; the saved file keeps its width.
 
 A table is shown as a placeholder when its rows cannot be read, or when a bookmark or similar
 marker sits right after a cell that continues a vertical merge.
+Rows wrapped in a content control, custom XML, or tracked change also make the table a placeholder.
 Other markers between rows or cells are kept, and the table stays editable.
 Deleting a row or column is unavailable when it would remove such a marker.
 

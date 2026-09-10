@@ -71,6 +71,7 @@
     "build:demo": "vite build --config demo/vite.config.ts",
     "dev:site": "pnpm --filter @portone/docx-editor-site dev",
     "build:site": "pnpm --filter @portone/docx-editor-site build",
+    "bench": "vitest run --config vitest.bench.config.ts --disableConsoleIntercept",
     "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm test:fixtures && pnpm test:site-release && pnpm test:release && pnpm check:demo-library",
     "typecheck": "tsc --noEmit && tsc --noEmit -p e2e && tsc --noEmit -p demo && pnpm --filter @portone/docx-editor-site typecheck",
     "lint": "pnpm biome check . --diagnostic-level=error",

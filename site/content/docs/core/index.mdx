@@ -28,7 +28,7 @@ The session must not be constructed or modified; `documentNumbering(session)` an
 
 Markup the editor cannot model is carried through the round trip, but some of it is invisible on
 the page and some stands behind a placeholder nobody can edit.
-`notes` lists every such piece:
+`notes` reports preserved nodes in the main body:
 
 ```ts
 const { doc, session, notes } = importDocx(source);
@@ -47,7 +47,9 @@ for (const note of notes) {
 | `block` | The body block it falls in. |
 | `pos` | Its position in the document, which a reader can select. |
 
-An empty list does not guarantee a lossless round trip; the writer's known losses are not notes.
+`importDocx` and `documentFidelity` cover the main body, not side stories; `exportDocxReport` adds
+what the writer had to approximate on the way out.
+An empty list therefore does not guarantee a lossless round trip.
 
 `exportDocxReport(doc, session)` writes the file and returns `{ bytes, notes }` for the document it
 wrote; `exportDocx` returns the bytes alone, and both take the same options.

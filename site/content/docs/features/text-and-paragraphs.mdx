@@ -12,8 +12,8 @@ Document defaults and paragraph or character styles are reflected in the text an
 ## Paragraphs
 
 Apply paragraph styles, alignment, indentation, line spacing, line breaks, and page breaks.
-A paragraph marked keep with next, directly or by its style, stays on the same page as the block
-after it.
+A paragraph marked keep with next, directly or by its style, is kept with the block after it
+where the [page layout allows it](/docs/features/pages-and-sections#page-boundaries).
 
 ## Tabs
 
@@ -23,13 +23,23 @@ the document's automatic interval.
 ## Lists
 
 Create and edit bullet and numbered lists, including nested levels.
-A list is drawn as its own definition asks: number format, restarts, the separator after the
+A list is drawn as its own definition asks for number format, restarts, the separator after the
 number, and the formatting of the number itself, including a definition reached through a
 numbering style.
+A level's own indentation is not always followed; see the limitation below.
 Numbers can be counted in decimal, decimal with a leading zero, upper or lower letters, upper or
 lower Roman numerals, Ganada, Korean digits, or the Chinese counting system.
 
 ## Limitations
+
+Paragraph-style indentation can make nested list levels line up at the same position.
+
+Bold, italic, strikethrough, and small caps do not toggle off when two styles enable the same
+property.
+
+Text marked hidden is shown as ordinary text and is included when copied to another application.
+All caps, double strikethrough, character spacing, and emphasis marks are preserved in the file
+but not drawn.
 
 A list counting in any other format is shown with decimal numbers, and a picture bullet as the
 character written beside it.
