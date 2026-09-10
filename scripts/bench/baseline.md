@@ -1,14 +1,16 @@
 # Scaling baseline
 
-Measured on Apple M4 with 16 GiB RAM, macOS 26.5.1, and Node.js 22.18.0. Times are milliseconds; ratios compare each size with the preceding row.
+Measured on Apple M4 with 16 GiB RAM, macOS 26.5.1, and Node.js 22.18.0. Times are milliseconds; ratios compare each size with the preceding row. Each case discards a warm-up pass before its first timed size.
 
 | Case | Paragraphs | Import | State | Edit | Export |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| plain | 500 | 158.7 | 58.6 | 2.3 | 145.8 |
-| plain | 1,000 | 216.1 (1.36x) | 103.8 (1.77x) | 6.1 (2.69x) | 539.0 (3.70x) |
-| plain | 2,000 | 367.1 (1.70x) | 220.5 (2.12x) | 21.0 (3.43x) | 2,512.7 (4.66x) |
-| plain | 4,000 | 793.9 (2.16x) | 535.6 (2.43x) | 78.0 (3.72x) | 18,306.7 (7.29x) |
-| rich | 500 | 114.2 | 53.4 | 2.0 | 331.5 |
-| rich | 1,000 | 224.0 (1.96x) | 107.2 (2.01x) | 6.8 (3.46x) | 1,205.0 (3.63x) |
-| rich | 2,000 | 462.2 (2.06x) | 238.3 (2.22x) | 25.5 (3.72x) | 6,595.9 (5.47x) |
-| rich | 4,000 | 1,070.0 (2.31x) | 572.4 (2.40x) | 100.1 (3.93x) | 82,056.2 (12.44x) |
+| plain | 500 | 93.4 | 48.5 | 1.5 | 144.5 |
+| plain | 1,000 | 175.1 (1.87x) | 96.4 (1.99x) | 5.0 (3.27x) | 549.5 (3.80x) |
+| plain | 2,000 | 336.1 (1.92x) | 203.5 (2.11x) | 18.9 (3.75x) | 2,303.6 (4.19x) |
+| plain | 4,000 | 765.7 (2.28x) | 525.3 (2.58x) | 76.5 (4.05x) | 13,887.5 (6.03x) |
+| rich | 500 | 124.0 | 50.2 | 2.3 | 303.3 |
+| rich | 1,000 | 232.7 (1.88x) | 128.4 (2.56x) | 7.6 (3.32x) | 1,297.7 (4.28x) |
+| rich | 2,000 | 450.5 (1.94x) | 222.6 (1.73x) | 24.9 (3.30x) | 5,274.7 (4.06x) |
+| rich | 4,000 | 973.7 (2.16x) | 552.2 (2.48x) | 99.2 (3.98x) | 62,668.2 (11.88x) |
+
+The export column is load-sensitive, swinging several times over between a busy and an idle machine, so only ratios measured on an idle machine are comparable with these.

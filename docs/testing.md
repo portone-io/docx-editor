@@ -24,7 +24,7 @@ The unit suite requires `xmllint` for OOXML schema validation. `verify:package` 
 
 `pnpm spec 17.5.2.23` looks up an OOXML specification section. It is a utility, not a test.
 
-`pnpm bench` prints timings and adjacent-size ratios for synthetic documents. It is excluded from `pnpm check`; compare repeated runs on the same machine.
+`pnpm bench` prints timings and adjacent-size ratios for synthetic documents. Each case discards a warm-up pass, and the run is pinned to one worker so two bench files cannot contend for the machine. It is excluded from `pnpm check`; compare repeated runs on the same idle machine, since the export column moves several times over under load. `scripts/bench/baseline.md` records the numbers to compare against.
 
 ## Unit and integration tests
 

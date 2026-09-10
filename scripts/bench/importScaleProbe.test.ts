@@ -52,35 +52,41 @@ const styleChain =
   '<w:style w:type="paragraph" w:styleId="BenchMiddle"><w:name w:val="Bench Middle"/><w:basedOn w:val="BenchBase"/><w:pPr><w:spacing w:after="80"/></w:pPr></w:style>' +
   '<w:style w:type="paragraph" w:styleId="BenchLeaf"><w:name w:val="Bench Leaf"/><w:basedOn w:val="BenchMiddle"/><w:rPr><w:b/></w:rPr></w:style>';
 
+function measure(build: (n: number) => string, n: number): Timings {
+  const bytes = makeStyledNumberedDocx(build(n), styleChain);
+  const t0 = performance.now();
+  const opened = importDocx(bytes);
+  const t1 = performance.now();
+  const state = editorStateForSession(opened);
+  const t2 = performance.now();
+  const pos = Math.floor(state.doc.content.size / 2);
+  const $pos = state.doc.resolve(pos);
+  const sel = TextSelection.near($pos);
+  let s = state.apply(state.tr.setSelection(sel));
+  const t3 = performance.now();
+  for (let k = 0; k < 5; k++) s = s.apply(s.tr.insertText("x"));
+  const t4 = performance.now();
+  exportDocx(s.doc, opened.session);
+  const t5 = performance.now();
+  return {
+    import: t1 - t0,
+    state: t2 - t1,
+    edit: (t4 - t3) / 5,
+    export: t5 - t4,
+  };
+}
+
 describe("document scaling", () => {
   for (const [name, build] of [
     ["plain", plain],
     ["rich", rich],
   ] as const) {
     it(`${name}: import, state, keystroke, export by paragraph count`, () => {
+      // JIT and module warm-up land on whichever size runs first, so one pass is thrown away
+      measure(build, sizes[0]);
       let previous: Timings | undefined;
       for (const n of sizes) {
-        const bytes = makeStyledNumberedDocx(build(n), styleChain);
-        const t0 = performance.now();
-        const opened = importDocx(bytes);
-        const t1 = performance.now();
-        const state = editorStateForSession(opened);
-        const t2 = performance.now();
-        const pos = Math.floor(state.doc.content.size / 2);
-        const $pos = state.doc.resolve(pos);
-        const sel = TextSelection.near($pos);
-        let s = state.apply(state.tr.setSelection(sel));
-        const t3 = performance.now();
-        for (let k = 0; k < 5; k++) s = s.apply(s.tr.insertText("x"));
-        const t4 = performance.now();
-        exportDocx(s.doc, opened.session);
-        const t5 = performance.now();
-        const timings = {
-          import: t1 - t0,
-          state: t2 - t1,
-          edit: (t4 - t3) / 5,
-          export: t5 - t4,
-        };
+        const timings = measure(build, n);
         console.log(`${name} n=${n}`);
         for (const key of ["import", "state", "edit", "export"] as const) {
           console.log(

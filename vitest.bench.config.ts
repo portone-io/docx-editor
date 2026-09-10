@@ -5,6 +5,7 @@ export default defineConfig({
     include: ["scripts/bench/**/*.test.ts"],
     pool: "threads",
     isolate: false,
+    fileParallelism: false,
     testTimeout: 900_000,
   },
 });
