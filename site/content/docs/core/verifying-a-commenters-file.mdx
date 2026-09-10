@@ -61,8 +61,8 @@ type CommentOnlyVerdict =
 
 The story is compared as this editor would write it, so two spellings of the same markup (attribute
 order, `100%` against `5000`, split runs) are accepted.
-The comparison does not cover a table's `w:gridCol` list, a drawing's extent, or table properties
-the model no longer needs.
+The comparison does not cover markup inside `w:tblGrid` beyond the column widths, the size a
+picture's own transform states, or table properties the model no longer needs.
 It also cannot detect changes inside cells that continue a vertical merge.
 Where integrity must hold to the byte, compare the parts yourself.
 

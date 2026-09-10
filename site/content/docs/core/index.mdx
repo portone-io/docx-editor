@@ -47,7 +47,8 @@ for (const note of notes) {
 | `block` | The body block it falls in. |
 | `pos` | Its position in the document, which a reader can select. |
 
-Notes cover the main body, not side stories or known writer losses.
+`importDocx` and `documentFidelity` cover the main body, not side stories; `exportDocxReport` adds
+what the writer had to approximate on the way out.
 An empty list therefore does not guarantee a lossless round trip.
 
 `exportDocxReport(doc, session)` writes the file and returns `{ bytes, notes }` for the document it

@@ -47,6 +47,8 @@ pnpm test:e2e
 pnpm bench
 ```
 
+A pull request that changes performance-sensitive code attaches its `pnpm bench` output to the description.
+
 [Testing](https://github.com/portone-io/docx-editor/blob/main/docs/testing.md) explains the scope and prerequisites of every check.
 CI runs `pnpm test:package` on every pull request in a separate job; it is not part of the local `pnpm check` command.
 
@@ -63,7 +65,7 @@ An attr that page calls internal is not part of it, and neither is anything unde
 
 Choose `patch` unless the change adds to that surface, takes something out of it, or changes what a part of it means.
 Those are `minor` while the package is below 1.0.
-Changes to stable document-model attrs are `minor` even when the declaration reports do not change.
+A diff to `src/schema/attrRoles.ts` is where to check this: a change to a stable document-model attr is `minor` even when the declaration reports do not change.
 A declaration added, removed, or rewritten in `etc/*.api.md` after running `pnpm api:update` is what that looks like; a line that only gains or loses an `(undocumented)` marker is not.
 Commit the regenerated report in the same commit as the changeset.
 

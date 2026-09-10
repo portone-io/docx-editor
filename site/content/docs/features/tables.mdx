@@ -22,7 +22,8 @@ repeating its header rows.
 
 ## Limitations
 
-Editing a table can discard the formatting and contents of cells that continue a vertical merge.
+Editing any cell of a table rewrites the cells that continue a vertical merge: they lose their own
+contents and take the starting cell's properties, its shading and borders among them.
 An untouched table keeps them.
 
 A style's first-column formatting overrides its header-row formatting where both apply, so the
