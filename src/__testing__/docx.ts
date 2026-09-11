@@ -298,13 +298,22 @@ export const NOTE_BODY =
   '<w:r><w:t xml:space="preserve"> and more</w:t></w:r>' +
   '<w:r><w:endnoteReference w:id="3"/></w:r></w:p>';
 
-/** A small package with one regular footnote, one regular endnote, and separator notes. */
-export function makeNotesDocx(body: string = NOTE_BODY): Uint8Array {
+/**
+ * A small package with one regular footnote, one regular endnote, and separator notes, and a
+ * styles.xml holding these styles when some are given.
+ */
+export function makeNotesDocx(
+  body: string = NOTE_BODY,
+  styles: string | null = null
+): Uint8Array {
   const encoder = new TextEncoder();
-  const parts = unzipSync(makeDocx(body));
+  const parts = unzipSync(buildDocx(body, styles));
   parts["word/_rels/document.xml.rels"] = encoder.encode(
     relationships(
-      `<Relationship Id="rId4" Target="footnotes.xml" Type="${REL_BASE}/footnotes"/>` +
+      (styles === null
+        ? ""
+        : `<Relationship Id="rId1" Target="styles.xml" Type="${REL_BASE}/styles"/>`) +
+        `<Relationship Id="rId4" Target="footnotes.xml" Type="${REL_BASE}/footnotes"/>` +
         `<Relationship Id="rId5" Target="endnotes.xml" Type="${REL_BASE}/endnotes"/>`
     )
   );

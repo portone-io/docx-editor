@@ -18,6 +18,8 @@ import {
 import { type NoteKind, type StoryKey, storyKey } from "../../schema/stories";
 import { relatedPartPath } from "../packageParts";
 
+export type { NoteKind } from "../../schema/stories";
+
 /**
  * One entry of a notes part as it arrived. What the note says is a story of its own, held on the
  * document node under `footnote:<id>` or `endnote:<id>` (`docx/story`).

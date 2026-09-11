@@ -125,30 +125,6 @@ describe("footnotes and endnotes", () => {
     ).toContain("Footnote body");
   });
 
-  it("refuses deleting or duplicating a display-only note reference", () => {
-    const state = createEditorState(importDocx(makeNotesDocx()).doc);
-    let position = -1;
-    state.doc.descendants((node, pos) => {
-      if (position < 0 && node.type.name === "noteReference") {
-        position = pos;
-      }
-      return position < 0;
-    });
-    const reference = position < 0 ? null : state.doc.nodeAt(position);
-    if (position < 0 || !reference) {
-      throw new Error("no note reference in the test document");
-    }
-
-    expect(
-      state
-        .apply(state.tr.delete(position, position + reference.nodeSize))
-        .doc.eq(state.doc)
-    ).toBe(true);
-    expect(
-      state.apply(state.tr.insert(position, reference)).doc.eq(state.doc)
-    ).toBe(true);
-  });
-
   it("keeps note parts byte-identical after editing surrounding body text", () => {
     const bytes = makeNotesDocx();
     const before = unzipSync(bytes);

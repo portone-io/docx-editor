@@ -1,6 +1,6 @@
 /**
  * The guards over what a document is opened with and the editor only preserves: the fragments a
- * file falls apart without, the reference standing where a footnote or an endnote is called, and
+ * file falls apart without, the reference standing where a note no edit may touch is called, and
  * the paragraph that ends a section.
  *
  * The first of those is the two ends of a bookmark range, the two ends of a permission or move
@@ -38,6 +38,7 @@ import {
   transactionReaches,
 } from "./editGuard";
 import { visitPreservedFragments } from "./preservedFragments";
+import { EDITABLE_NOTE_KINDS } from "./stories";
 
 /** Everything about one preserved node that has to read the same after a change as before it */
 type Signature = (node: PMNode) => string;
@@ -227,12 +228,22 @@ export const preservedGuard: ChangeGuard = {
   },
 };
 
-function isNoteReference(node: PMNode): boolean {
-  return node.type.name === "noteReference";
+/**
+ * A reference to a note of a kind no edit may add or delete (`./stories`). A reference to one of
+ * the editable kinds may go and may be copied, and `editor/plugins/noteLifecycle` settles the note
+ * it calls.
+ */
+function isProtectedNoteReference(node: PMNode): boolean {
+  return (
+    node.type.name === "noteReference" &&
+    !EDITABLE_NOTE_KINDS.some((kind) => kind === node.attrs.kind)
+  );
 }
 
-export const noteGuard = preservedNodeGuard("note", isNoteReference, (node) =>
-  JSON.stringify(node.attrs)
+export const noteGuard = preservedNodeGuard(
+  "note",
+  isProtectedNoteReference,
+  (node) => JSON.stringify(node.attrs)
 );
 
 /**

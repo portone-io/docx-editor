@@ -47,6 +47,7 @@ import { docxKeymap, historyKeys } from "./plugins/keymap";
 import { linkPanel } from "./plugins/linkPanel";
 import { listInputRules } from "./plugins/listInputRules";
 import { lockedContent } from "./plugins/lockedContent";
+import { noteLifecycle } from "./plugins/noteLifecycle";
 import { noteNumbering } from "./plugins/noteNumbering";
 import { numberingMarkers } from "./plugins/numberingDecorations";
 import { rowResize } from "./plugins/rowResize";
@@ -120,7 +121,7 @@ export function createEditorState(
       editorDocument(document),
       // Refuses every edit no guard in `schema/guards` lets through, whoever asked for it. It is
       // not optional: a document that locked a part of itself stays locked in every consumer, and
-      // the preserved bookmark markers and note references stay where the file put them.
+      // the preserved bookmark markers and endnote references stay where the file put them.
       lockedContent(),
       documentProtection({ protection, author, editableComments }),
       history(),
@@ -150,6 +151,9 @@ export function createEditorState(
       // A comment outlives the text it was written for: an edit that sweeps its reference away has
       // it put back where the deletion left, detached from the page (`plugins/commentRestoration`)
       commentRestoration(),
+      // A footnote goes with the last reference to it, and a copied reference gets a footnote of its
+      // own. It stands ahead of the numbering, which then labels what it settled
+      noteLifecycle(),
       // Numbers the note references again after an edit that moves one or a section break
       noteNumbering(),
       // What the notes under the page are, worked out from the document the same way

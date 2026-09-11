@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { history, undo, undoDepth } from "prosemirror-history";
+import { history, undoDepth } from "prosemirror-history";
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorState, type Plugin } from "prosemirror-state";
 import { describe, expect, it, vi } from "vitest";
@@ -8,6 +8,7 @@ import { rangeOfText, runCommand } from "../../__testing__/editing";
 import { importDocx } from "../../docx/importDocx";
 import { noteLabelsIn } from "../../docx/notes/numbering";
 import { withSectionBreak } from "../../docx/sections";
+import { undo } from "../commands/historyCommands";
 import { editorStateForSession } from "../createEditor";
 import { editorDocument, editorDocumentOf } from "../editorDocument";
 import { noteNumbering } from "./noteNumbering";
@@ -21,16 +22,15 @@ const THREE_FOOTNOTES =
   `<w:p>${footnote("2")}${text("between")}${footnote("3")}</w:p>` +
   `<w:p>${footnote("4")}</w:p>`;
 
+function openedState(body: string): EditorState {
+  return editorStateForSession(importDocx(makeNotesDocx(body)));
+}
+
 /**
- * A state holding the snapshot, the history, and the numbering plugin alone.
- *
- * A full editing state keeps every note reference where the file put it, so deleting one is
- * refused there before the plugin could answer it.
+ * A state holding the snapshot, the history, and the numbering plugin alone, which is what a
+ * numbering plugin handed a labeller of its own is put to the test in.
  */
-function numberedState(
-  body: string,
-  plugin: Plugin = noteNumbering()
-): EditorState {
+function numberedState(body: string, plugin: Plugin): EditorState {
   const { doc, session } = importDocx(makeNotesDocx(body));
   return EditorState.create({
     doc,
@@ -77,7 +77,7 @@ function withoutReference(state: EditorState, id: string): EditorState {
 
 describe("noteNumbering", () => {
   it("relabels every later footnote when a footnote reference is deleted", () => {
-    const state = numberedState(THREE_FOOTNOTES);
+    const state = openedState(THREE_FOOTNOTES);
 
     expect(labels(state.doc)).toEqual(["2:1", "3:2", "4:3"]);
     expect(labels(withoutReference(state, "2").doc)).toEqual(["3:1", "4:2"]);
@@ -86,16 +86,12 @@ describe("noteNumbering", () => {
   it("relabels a reference inside a locked content control", () => {
     const eachSection =
       '<w:sectPr><w:footnotePr><w:numRestart w:val="eachSect"/></w:footnotePr></w:sectPr>';
-    const state = editorStateForSession(
-      importDocx(
-        makeNotesDocx(
-          `<w:p>${footnote("2")}${text("open")}</w:p>` +
-            '<w:p><w:sdt><w:sdtPr><w:lock w:val="contentLocked"/></w:sdtPr><w:sdtContent>' +
-            `${text("locked")}${footnote("3")}` +
-            "</w:sdtContent></w:sdt></w:p>" +
-            eachSection
-        )
-      )
+    const state = openedState(
+      `<w:p>${footnote("2")}${text("open")}</w:p>` +
+        '<w:p><w:sdt><w:sdtPr><w:lock w:val="contentLocked"/></w:sdtPr><w:sdtContent>' +
+        `${text("locked")}${footnote("3")}` +
+        "</w:sdtContent></w:sdt></w:p>" +
+        eachSection
     );
     const locked = rangeOfText(state.doc, "locked");
     const first = state.doc.child(0);
@@ -120,7 +116,7 @@ describe("noteNumbering", () => {
   });
 
   it("takes a relabel back with the edit that caused it in one undo", () => {
-    const deleted = withoutReference(numberedState(THREE_FOOTNOTES), "2");
+    const deleted = withoutReference(openedState(THREE_FOOTNOTES), "2");
 
     expect(undoDepth(deleted)).toBe(1);
 
