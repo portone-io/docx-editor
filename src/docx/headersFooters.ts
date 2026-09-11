@@ -23,6 +23,7 @@ import { decodeUtf8, encodeUtf8, parseXml, R_NS, W_NS } from "../ooxml/xml";
 import { docxSchema } from "../schema";
 import { type StoryKey, storyKey } from "../schema/stories";
 import { NO_EXPORT_REFS } from "./exportRefs";
+import type { FidelityCollector } from "./fidelity";
 import { type FieldSpan, fieldSpans, isFieldCharacter } from "./fields";
 import { withUniqueStoryIdentities } from "./identities";
 import { relatedPartPath } from "./packageParts";
@@ -365,11 +366,16 @@ export const HEADER_FOOTER_KINDS: readonly HeaderFooterKind[] = [
 function writtenPart(
   imported: ImportedStory,
   current: PMNode,
-  session: SessionStore
+  session: SessionStore,
+  notes: FidelityCollector
 ): Uint8Array {
   const written = withUniqueStoryIdentities([current])
     .map((story) =>
-      serializeStory(story, imported, imported, { ...NO_EXPORT_REFS, session })
+      serializeStory(story, imported, imported, {
+        ...NO_EXPORT_REFS,
+        notes,
+        session,
+      })
     )
     .join("");
   const hadBom = decodeUtf8(
@@ -380,7 +386,8 @@ function writtenPart(
 
 function rewrittenParts(
   doc: PMNode,
-  session: SessionStore
+  session: SessionStore,
+  notes: FidelityCollector
 ): ReadonlyMap<string, Uint8Array> | null {
   const edited = HEADER_FOOTER_KINDS.flatMap((kind) =>
     storyChangesOf(doc, session, kind)
@@ -389,7 +396,7 @@ function rewrittenParts(
   return new Map(
     edited.map(({ imported, current }) => [
       imported.partPath,
-      writtenPart(imported, current, session),
+      writtenPart(imported, current, session, notes),
     ])
   );
 }
@@ -402,5 +409,5 @@ function rewrittenParts(
  */
 export const headerFooterPlanner: PartPlanner = {
   name: "headers and footers",
-  plan: (doc, session) => rewrittenParts(doc, session),
+  plan: (doc, session, context) => rewrittenParts(doc, session, context.notes),
 };

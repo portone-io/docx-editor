@@ -4,7 +4,8 @@
  * The body (document.xml) is always rebuilt from preserved and edited blocks. Every other part is
  * written by a planner (`./partPlan`) that answers only when the document gives it something to
  * write: numbering.xml when a list was newly started, the comment parts when comments changed,
- * media parts when an image was inserted. Content types and relationships change only when one
+ * a header, a footer, or the Footnotes part when a story it holds changed, media parts when an
+ * image was inserted. Content types and relationships change only when one
  * of those additions declares itself through the context every planner shares.
  *
  * The body is written before that relationships part, because a link asks for its relationship as
@@ -39,6 +40,7 @@ import { hyperlinkRefs } from "./hyperlink";
 import { withUniqueIdentities } from "./identities";
 import { problemsOf } from "./invariants";
 import { NO_IMAGE_REFS, planImageMedia } from "./media";
+import { footnotesPlanner } from "./notes/writing";
 import { numberingPlanner } from "./numberingPlanner";
 import { CONTENT_TYPES_PATH, contentTypeWriter } from "./packageParts";
 import {
@@ -152,6 +154,7 @@ const PART_PLANNERS: readonly PartPlanner[] = [
   numberingPlanner,
   commentsPlanner,
   headerFooterPlanner,
+  footnotesPlanner,
 ];
 
 /** What a caller may say about a write beyond handing over the document and its session */
@@ -240,6 +243,7 @@ function writeDocx(
   const context: PartPlanContext = {
     relationships: relationshipWriter(readRelationships(store.parts, relsPath)),
     contentTypes: contentTypeWriter(store.parts),
+    notes,
   };
   // The body has to know which relationship a newly inserted image ends up on, so the
   // media is planned before the body is written

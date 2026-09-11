@@ -20,6 +20,7 @@ import { unzipSync, zipSync } from "fflate";
 import type { Node as PMNode } from "prosemirror-model";
 import { Slice } from "prosemirror-model";
 import { type EditorState, TextSelection } from "prosemirror-state";
+import { Transform } from "prosemirror-transform";
 import { afterAll, describe, expect, it } from "vitest";
 import {
   bytesEqual,
@@ -53,6 +54,7 @@ import { createEditorState } from "../editor/createEditor";
 import { NO_NEW_LISTS } from "../numbering/listRegistry";
 import { parseXml, R_NS, W_NS } from "../ooxml/xml";
 import { docxSchema } from "../schema";
+import { storyKey } from "../schema/stories";
 import { setCellPadding } from "../table";
 import { type EditedBlock, withEditedFirst } from "./__testing__/blockEdits";
 import {
@@ -73,6 +75,7 @@ import { importDocx } from "./importDocx";
 import { CONTENT_TYPES_PATH } from "./packageParts";
 import { setSectionChild } from "./sections";
 import type { SessionStore } from "./session";
+import { setStory, storyFromText } from "./story";
 
 const XSD_NS = "http://www.w3.org/2001/XMLSchema";
 const XML_NS = "http://www.w3.org/XML/1998/namespace";
@@ -707,6 +710,57 @@ describe("the exported package against the OOXML schemas", () => {
     expect(parts.has("word/footnotes.xml")).toBe(true);
     expect(parts.has("word/endnotes.xml")).toBe(true);
     expectPartsValidate("footnotes and endnotes", parts);
+  });
+
+  /**
+   * A footnote body is a story, written into `CT_FtnEdn` block by block. The second half adds a
+   * reference and its story to a Word document holding no Footnotes part, so the part the writer
+   * creates, with its separator entries and the declarations it copies from the main part, is held
+   * to the schemas too.
+   */
+  it("validates an export with an edited footnote and a new footnotes part", () => {
+    const notes = importDocx(makeNotesDocx());
+    const body = docxSchema.nodes.doc.create(null, [
+      docxSchema.nodes.paragraph.create(
+        { pPr: '<w:pPr><w:pStyle w:val="FootnoteText"/></w:pPr>' },
+        [
+          docxSchema.text("Bold", [
+            docxSchema.marks.run.create({ rPr: "<w:rPr><w:b/></w:rPr>" }),
+          ]),
+          docxSchema.text(" plain"),
+        ]
+      ),
+      docxSchema.nodes.paragraph.create(null, docxSchema.text("Second")),
+    ]);
+    const edited = setStory(
+      new Transform(notes.doc),
+      storyKey("footnote", "2"),
+      body
+    ).doc;
+    const editedParts = wordprocessingParts(exportDocx(edited, notes.session));
+    expect(editedParts.get("word/footnotes.xml")).toContain("Second");
+    expectPartsValidate("an edited footnote", editedParts);
+
+    const letter = importDocx(readFixture(LETTER_FIXTURE));
+    let end = -1;
+    letter.doc.descendants((node, pos) => {
+      if (end === -1 && node.type.name === "paragraph") {
+        end = pos + node.nodeSize - 1;
+      }
+      return end === -1;
+    });
+    if (end === -1) throw new Error("the fixture holds no paragraph");
+    const added = setStory(
+      new Transform(letter.doc).insert(
+        end,
+        docxSchema.nodes.noteReference.create({ kind: "footnote", id: "1" })
+      ),
+      storyKey("footnote", "1"),
+      storyFromText("A new note")
+    ).doc;
+    const createdParts = wordprocessingParts(exportDocx(added, letter.session));
+    expect(createdParts.get("word/footnotes.xml")).toContain("A new note");
+    expectPartsValidate("a new footnotes part", createdParts);
   });
 
   it("header and footer variants validate with their section references", () => {

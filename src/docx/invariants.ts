@@ -21,6 +21,7 @@ import {
 } from "../ooxml/xml";
 import { visitPreservedFragments } from "../schema/preservedFragments";
 import { unattributedCommentAuthors } from "../schema/protection";
+import { STORY_KINDS, type StoryKind } from "../schema/stories";
 import {
   commentReferencesIn,
   commentsChanged,
@@ -40,6 +41,7 @@ import { HEADER_FOOTER_KINDS } from "./headersFooters";
 import { identityProblems, identityProblemsInStories } from "./identities";
 import { insertedImageSrcs } from "./media";
 import { canDefineNewList, newNumIds, startedLists } from "./newLists";
+import { FOOTNOTES_PART } from "./notes/writing";
 import { CONTENT_TYPES_PATH } from "./packageParts";
 import { lostOriginal } from "./serializePreserved";
 import {
@@ -48,7 +50,13 @@ import {
   type SessionStore,
   sessionOf,
 } from "./session";
-import { storyChangesOf } from "./storyParts";
+import {
+  type StoryEntriesPart,
+  storyChangesOf,
+  storyEntriesOf,
+  storyEntriesProblems,
+  WRITTEN_STORY_KINDS,
+} from "./storyParts";
 
 /** One reason the document cannot be written back, with the code `exportDocx` would throw it under */
 export interface ExportProblem {
@@ -207,29 +215,72 @@ const preservedOriginals: ExportInvariant = {
   },
 };
 
+/** The parts written one entry per story, which `PART_PLANNERS` in `./exportDocx` writes through `storyEntriesPlanner` */
+const STORY_ENTRIES_PARTS: readonly StoryEntriesPart[] = [FOOTNOTES_PART];
+
 /**
  * A name held by one node only is settled by `withUniqueIdentities` just before the body is
- * written, and by `withUniqueStoryIdentities` before a header or footer part an edit changed is
- * written again: a later claimant is rebuilt from its own attrs, and a block preserved as nothing
- * but its original XML has nothing to be rebuilt from, so the pass refuses it. The pass is asked
- * here rather than read again, so the block it names is the one the write would refuse over. A
- * block of a header stands nowhere in the body, so its problem carries no position.
+ * written, and by `withUniqueStoryIdentities` before a header, footer, or footnotes part an edit
+ * changed is written again: a later claimant is rebuilt from its own attrs, and a block preserved
+ * as nothing but its original XML has nothing to be rebuilt from, so the pass refuses it. The pass
+ * is asked here rather than read again, so the block it names is the one the write would refuse
+ * over. A block of a side story stands nowhere in the body, so its problem carries no position.
  */
 const uniqueIdentities: ExportInvariant = {
   name: "uniqueIdentities",
   check(doc, session) {
-    return [
-      ...identityProblems(doc),
+    const parts: readonly (readonly PMNode[])[] = [
       ...HEADER_FOOTER_KINDS.flatMap((kind) =>
         storyChangesOf(doc, session, kind)
-      )
-        .flatMap((change) =>
-          change.change === "edited"
-            ? identityProblemsInStories([change.current])
-            : []
-        )
+      ).flatMap((change) =>
+        change.change === "edited" ? [[change.current]] : []
+      ),
+      ...STORY_ENTRIES_PARTS.map((part) =>
+        storyEntriesOf(doc, session, part.kind)
+      ),
+    ];
+    return [
+      ...identityProblems(doc),
+      ...parts
+        .flatMap((stories) => identityProblemsInStories(stories))
         .map(({ code, message }): ExportProblem => ({ code, message })),
     ];
+  },
+};
+
+/** The kinds a change could be dropped from: one no part writer writes, and one a special entry of the package is */
+function unwrittenKinds(session: SessionStore): readonly StoryKind[] {
+  const special = new Set(
+    Array.from(session.specialNotes, (key) => session.stories.get(key)?.kind)
+  );
+  return STORY_KINDS.filter(
+    (kind) => !WRITTEN_STORY_KINDS.has(kind) || special.has(kind)
+  );
+}
+
+/**
+ * A story changes on the document node whether or not a part writer carries it into the file. A
+ * change nothing writes - to an endnote, or to a separator entry, which goes back out as it
+ * arrived - is refused here rather than dropped from the file without a word.
+ */
+const storiesHaveWriters: ExportInvariant = {
+  name: "storiesHaveWriters",
+  check(doc, session) {
+    return unwrittenKinds(session).flatMap((kind) =>
+      storyChangesOf(doc, session, kind).flatMap((change): ExportProblem[] => {
+        if (change.change === "kept") return [];
+        const key =
+          change.change === "added" ? change.key : change.imported.key;
+        return WRITTEN_STORY_KINDS.has(kind) && !session.specialNotes.has(key)
+          ? []
+          : [
+              {
+                code: "unsupported-content",
+                message: `the ${key} story changed, and no part writer writes it`,
+              },
+            ];
+      })
+    );
   },
 };
 
@@ -352,6 +403,20 @@ const commentPartRoots: ExportInvariant = {
   },
 };
 
+/**
+ * A part written one entry per story is rewritten around its root element, so a part with none
+ * cannot take a changed story, and a part the package lacks is declared in the content types part.
+ * An untouched part is never read, which is how a document whose notes nobody changed exports
+ * whatever its notes parts look like.
+ */
+const notePartRoots: ExportInvariant = {
+  name: "notePartRoots",
+  check: (doc, session) =>
+    STORY_ENTRIES_PARTS.flatMap((part) =>
+      storyEntriesProblems(part, doc, session)
+    ),
+};
+
 /** In the order the problems are reported, which is the order `exportDocx` throws them in */
 const EXPORT_INVARIANTS: readonly ExportInvariant[] = [
   bookmarkPairs,
@@ -359,8 +424,10 @@ const EXPORT_INVARIANTS: readonly ExportInvariant[] = [
   preservedOriginals,
   uniqueIdentities,
   listDefinitions,
+  storiesHaveWriters,
   mediaContentTypes,
   commentPartRoots,
+  notePartRoots,
 ];
 
 /**

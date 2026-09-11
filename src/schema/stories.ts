@@ -30,7 +30,7 @@ export interface StoryJson {
 /** The attr the stories stand on, named here so the schema and the readers cannot spell it apart */
 export const STORIES_ATTR = "stories";
 
-const STORY_KINDS: readonly StoryKind[] = [
+export const STORY_KINDS: readonly StoryKind[] = [
   "comment",
   "footnote",
   "endnote",
