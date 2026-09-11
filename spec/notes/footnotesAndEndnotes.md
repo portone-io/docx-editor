@@ -10,7 +10,15 @@ Observed 2026-08-22 against ECMA-376 5th edition, Part 1, §§11.3.4, 11.3.7, 17
 
 ## Reference order
 
-Visible labels follow first-reference order within the main story rather than note-part order or raw ids, which commonly begin after reserved separator ids. Exact numbering formats, custom marks, and section restart rules are preserved in OOXML but are not reproduced by the screen label. A reference carrying `customMarkFollows` does not draw an automatic inline label.
+Visible labels follow first-reference order within the main story rather than note-part order or raw ids, which commonly begin after reserved separator ids.
+Footnotes and endnotes are counted separately, and a repeated id takes the label of its first reference.
+The screen label follows `w:numFmt`, `w:numStart`, and a `w:numRestart` of `eachSect` from the section's own properties or else the settings; a restart on each page is counted straight through, since the label would then depend on the page layout it takes part in.
+A format the editor has no speller for is drawn in decimal.
+Where neither the section nor the settings names a format, endnotes are labelled in decimal just as footnotes are: Part 1 §17.11.17 and §17.11.18 give decimal for an omitted `w:numFmt`, and the editor keeps decimal for endnotes by product decision.
+A reference carrying `customMarkFollows` draws no automatic inline label and takes no number, which §17.11.14 describes as not incrementing the count.
+A reference naming a separator, continuation-separator, or continuation-notice entry takes no number either.
+
+Observed 2026-09-12 against ECMA-376 5th edition, Part 1, §§17.11.4, 17.11.5, 17.11.11, 17.11.12, 17.11.14, 17.11.17-17.11.20, 17.18.59, 17.18.74.
 
 ## Editing boundary
 
