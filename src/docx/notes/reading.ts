@@ -6,8 +6,8 @@ import {
   elementChildren,
   parseXml,
   R_NS,
-} from "../ooxml/xml";
-import { relatedPartPath } from "./packageParts";
+} from "../../ooxml/xml";
+import { relatedPartPath } from "../packageParts";
 
 export type NoteKind = "footnote" | "endnote";
 

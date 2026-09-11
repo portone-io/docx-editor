@@ -41,7 +41,7 @@ import {
 } from "./importPreserved";
 import type { ImageSources } from "./media";
 import { NO_IMAGES } from "./media";
-import { type ImportedNotes, NO_NOTES, type NoteKind, noteById } from "./notes";
+import { type ImportedNotes, NO_NOTES, type NoteKind, noteById } from "./notes/reading";
 import { NO_THEME_FONTS, type ThemeFonts } from "./theme";
 import { wrapperFits, wrapperKindFor } from "./wrappers";
 

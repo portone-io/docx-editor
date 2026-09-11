@@ -46,7 +46,7 @@ import { readLinkTargets } from "./hyperlink";
 import { type ImportSources, NO_IMPORT_SOURCES } from "./importParagraph";
 import { readImageSources } from "./media";
 import { NUMBERING_REL_TYPE } from "./newLists";
-import { type ImportedNotePart, type NoteKind, readNotes } from "./notes";
+import { type ImportedNotePart, type NoteKind, readNotes } from "./notes/reading";
 import { readPart, relatedPartPath } from "./packageParts";
 import { A4_PORTRAIT } from "./pageGeometry";
 import { readRelationships } from "./relationships";
