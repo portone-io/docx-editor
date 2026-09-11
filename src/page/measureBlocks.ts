@@ -7,14 +7,21 @@
  * The engine's own marks are taken back off as they are read, so a block already pushed and a
  * break already given its space read as they would with neither applied. A measurement that read
  * them in would add to what is already there, and the layout would creep on every pass.
+ * Every demand source (`page/demands`) is asked about every block as well, after its kind, and the
+ * places it reads have the spaces the engine opened inside the block taken back off the same way.
  * Where there is no layout (in tests) everything is 0, so the result is a single page.
  */
 
 import type { Node as PMNode } from "prosemirror-model";
 import type { EditorView } from "prosemirror-view";
 import { editorAttributes } from "../styles/classNames";
-import { blockKindFor, type MeasuredBlock } from "./blockKinds";
-import { blockKindsOf } from "./pageDecorations";
+import {
+  type BreakCandidate,
+  blockKindFor,
+  type MeasuredBlock,
+  type MeasureTarget,
+} from "./blockKinds";
+import { blockKindsOf, demandSourcesOf, pageCutsOf } from "./pageDecorations";
 
 /**
  * The measurements taken in order to draw the page overlay. Positions are relative to
@@ -61,6 +68,28 @@ function drawnBlocks(view: EditorView): DrawnBlock[] {
   return found;
 }
 
+/**
+ * A place read off a block as drawn, taken back to where it stands in the block with no space in
+ * it. A cut opens its space, and the rows it repeats, just above the candidate it was given, so a
+ * place below that candidate is drawn lower by all of it and a place above it not at all.
+ * Reading the cuts here keeps a demand source from having to know what each kind draws.
+ */
+function naturalOffset(
+  candidates: readonly BreakCandidate[],
+  opened: ReadonlyMap<number, number>,
+  drawn: number
+): number {
+  let shift = 0;
+  for (const candidate of candidates) {
+    const space = opened.get(candidate.at);
+    if (space === undefined) continue;
+    const start = candidate.offset + shift;
+    if (drawn < start) break;
+    shift += Math.min(space + candidate.repeatHeight, drawn - start);
+  }
+  return drawn - shift;
+}
+
 export function measureSheet(
   view: EditorView,
   layer: HTMLElement
@@ -75,6 +104,10 @@ export function measureSheet(
   const sheetY = (viewportY: number) => (viewportY - sheetRect.top) / scale;
 
   const kinds = blockKindsOf(view.state);
+  const sources = demandSourcesOf(view.state);
+  const opened = new Map(
+    pageCutsOf(view.state).map((cut) => [cut.at, cut.height])
+  );
   const blocks: MeasuredBlock[] = [];
   let previousBottom = contentTop;
   /** Everything the engine has opened up above the point being read */
@@ -87,7 +120,7 @@ export function measureSheet(
     const above = applied;
     const blockY = (viewportY: number) => sheetY(viewportY) - above;
     const top = blockY(rect.top);
-    const measured = blockKindFor(kinds, node).measure({
+    const target: MeasureTarget = {
       view,
       node,
       pos,
@@ -95,7 +128,8 @@ export function measureSheet(
       sheetY: blockY,
       top,
       scale,
-    });
+    };
+    const measured = blockKindFor(kinds, node).measure(target);
 
     applied += measured.appliedHeight;
     const bottom = sheetY(rect.bottom) - applied;
@@ -108,6 +142,12 @@ export function measureSheet(
       candidates: measured.candidates,
       minFirstPiece: measured.minFirstPiece,
       keepWithNext: measured.keepWithNext ?? false,
+      demands: sources
+        .flatMap((source) => source.demandsIn(target))
+        .map((demand) => ({
+          ...demand,
+          offset: naturalOffset(measured.candidates, opened, demand.offset),
+        })),
     });
     previousBottom = bottom;
   }

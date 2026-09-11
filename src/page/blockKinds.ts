@@ -11,6 +11,7 @@
 
 import type { Node as PMNode } from "prosemirror-model";
 import type { Decoration, EditorView } from "prosemirror-view";
+import type { PageDemand } from "./demands";
 
 /** A place inside a block where the next page may, or must, start */
 export interface BreakCandidate {
@@ -44,6 +45,11 @@ export interface MeasuredBlock {
   minFirstPiece: number;
   /** The document asks for this block to stand on the same page as the start of the block after it */
   keepWithNext: boolean;
+  /**
+   * The places in the block that ask the page they land on for room at its foot, their offsets read
+   * like a candidate's with no space in the block. A block asking for none may leave it out
+   */
+  demands?: readonly PageDemand[];
 }
 
 /** A page cut the layout decided on: the space opened before the continued piece */
@@ -52,7 +58,10 @@ export interface PageCut {
   height: number;
 }
 
-/** One block as it stands on the sheet, handed to the kind about to measure it */
+/**
+ * One block as it stands on the sheet, handed to the kind about to measure it and then to every
+ * demand source (`page/demands`)
+ */
 export interface MeasureTarget {
   view: EditorView;
   node: PMNode;
@@ -89,9 +98,10 @@ export interface KindMeasure {
  * Everything the engine does with one shape of breakable block: how one is measured, and how the
  * cuts the layout gave it are drawn.
  *
- * A shape the engine learns later - a footnote area, a paragraph with a floating object hanging
- * out of it - is one more kind rather than another branch in the measurer, in the decorations
- * and in the plugin state at once.
+ * A shape the engine learns later is one more kind rather than another branch in the measurer, in
+ * the decorations and in the plugin state at once. Room a place inside a block asks of the page it
+ * lands on is not a shape: a block has one kind while such a place can stand inside a block of any
+ * kind, so it is asked of every block by a demand source (`page/demands`) instead.
  */
 export interface BlockKind {
   readonly name: string;
