@@ -25,6 +25,7 @@ import { sameSource } from "../schema/sourceEquality";
 import { type StoryKey, storyKey, storyNodeOf } from "../schema/stories";
 import { NO_EXPORT_REFS } from "./exportRefs";
 import { type FieldSpan, fieldSpans, isFieldCharacter } from "./fields";
+import { withUniqueStoryIdentities } from "./identities";
 import { relatedPartPath } from "./packageParts";
 import type { PartPlanner } from "./partPlan";
 import { readRelationships, relsPathOf, resolveTarget } from "./relationships";
@@ -354,29 +355,56 @@ export function headerFooterText(
  */
 const HEADER_MARKUP: RootDeclarations = { namespaces: { w: NAMESPACES.w } };
 
-/** Every header and footer part whose story the document no longer says as the package said it */
+/** A header or footer story the document no longer says as the package said it */
+export interface RewrittenStory {
+  readonly imported: ImportedStory;
+  readonly current: PMNode;
+}
+
+/** Every header and footer story an edit changed, which is every part this writer writes again */
+export function rewrittenHeadersFooters(
+  doc: PMNode,
+  session: SessionStore
+): readonly RewrittenStory[] {
+  return Array.from(session.stories.values()).flatMap(
+    (imported): RewrittenStory[] => {
+      if (imported.kind !== "header" && imported.kind !== "footer") return [];
+      const current = storyNodeOf(doc, imported.key);
+      return current === null || sameSource(current, imported.doc)
+        ? []
+        : [{ imported, current }];
+    }
+  );
+}
+
+/** A header or footer part holds its one story, so that story alone is the scope of the identity pass */
+function writtenPart(
+  { imported, current }: RewrittenStory,
+  session: SessionStore
+): Uint8Array {
+  const written = withUniqueStoryIdentities([current])
+    .map((story) =>
+      serializeStory(story, imported, imported, { ...NO_EXPORT_REFS, session })
+    )
+    .join("");
+  const hadBom = decodeUtf8(
+    session.parts.get(imported.partPath) ?? new Uint8Array()
+  ).hadBom;
+  return encodeUtf8(ensureRootDeclarations(written, HEADER_MARKUP), hadBom);
+}
+
 function rewrittenParts(
   doc: PMNode,
   session: SessionStore
 ): ReadonlyMap<string, Uint8Array> | null {
-  const parts = new Map<string, Uint8Array>();
-  for (const [key, imported] of session.stories) {
-    if (imported.kind !== "header" && imported.kind !== "footer") continue;
-    const current = storyNodeOf(doc, key);
-    if (current === null || sameSource(current, imported.doc)) continue;
-    const written = serializeStory(current, imported, imported, {
-      ...NO_EXPORT_REFS,
-      session,
-    });
-    const hadBom = decodeUtf8(
-      session.parts.get(imported.partPath) ?? new Uint8Array()
-    ).hadBom;
-    parts.set(
-      imported.partPath,
-      encodeUtf8(ensureRootDeclarations(written, HEADER_MARKUP), hadBom)
-    );
-  }
-  return parts.size === 0 ? null : parts;
+  const rewritten = rewrittenHeadersFooters(doc, session);
+  if (rewritten.length === 0) return null;
+  return new Map(
+    rewritten.map((story) => [
+      story.imported.partPath,
+      writtenPart(story, session),
+    ])
+  );
 }
 
 /**

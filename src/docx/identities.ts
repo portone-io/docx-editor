@@ -14,6 +14,10 @@
  * and throws over a block that cannot yield, and `identityProblems` runs the same walk for
  * `docx/invariants` and lists those blocks instead, so what the query reports and what the write
  * refuses cannot come apart.
+ *
+ * A side story is settled by its part rather than by the document: `w14:paraId` is unique within a
+ * part (Part 1 §11.3), so `withUniqueStoryIdentities` walks the stories one part holds as one run
+ * of blocks, and a name the body or another part holds is not compared.
  */
 
 import { Fragment, type Mark, type Node as PMNode } from "prosemirror-model";
@@ -241,17 +245,8 @@ function rewriteBlock(block: PMNode, pos: number, walk: Walk): PMNode {
   return changed ? visited.copy(Fragment.fromArray(children)) : visited;
 }
 
-/** The blocks in document order, one `written` set per rule, and the document itself where nothing changed */
-function walkBlocks(
-  doc: PMNode,
-  rules: readonly IdentityRule[],
-  refuse: Walk["refuse"]
-): PMNode {
-  const walk: Walk = {
-    rules,
-    written: rules.map(() => new Set<string>()),
-    refuse,
-  };
+/** The blocks in document order, and the document itself where nothing changed */
+function settle(doc: PMNode, walk: Walk): PMNode {
   const blocks: PMNode[] = [];
   let changed = false;
   doc.forEach((block, offset) => {
@@ -262,13 +257,23 @@ function walkBlocks(
   return changed ? doc.copy(Fragment.fromArray(blocks)) : doc;
 }
 
+function unwritten(rules: readonly IdentityRule[]): readonly Set<string>[] {
+  return rules.map(() => new Set<string>());
+}
+
+function refuseExport(problem: IdentityProblem): never {
+  throw new DocxExportError(problem.code, problem.message);
+}
+
 /** The document with every later claimant of a name released, in document order */
 export function withUniqueIdentities(
   doc: PMNode,
   rules: readonly IdentityRule[] = IDENTITY_RULES
 ): PMNode {
-  return walkBlocks(doc, rules, (problem) => {
-    throw new DocxExportError(problem.code, problem.message);
+  return settle(doc, {
+    rules,
+    written: unwritten(rules),
+    refuse: refuseExport,
   });
 }
 
@@ -282,6 +287,52 @@ export function identityProblems(
   rules: readonly IdentityRule[] = IDENTITY_RULES
 ): readonly IdentityProblem[] {
   const problems: IdentityProblem[] = [];
-  walkBlocks(doc, rules, (problem) => problems.push(problem));
+  settle(doc, {
+    rules,
+    written: unwritten(rules),
+    refuse: (problem) => problems.push(problem),
+  });
+  return problems;
+}
+
+/** A block of a side story that cannot yield */
+export interface StoryIdentityProblem extends IdentityProblem {
+  /** The story's place in the list the part was handed over as; `pos` stands inside that story */
+  readonly story: number;
+}
+
+function settleStories(
+  stories: readonly PMNode[],
+  rules: readonly IdentityRule[],
+  refuse: (problem: StoryIdentityProblem) => void
+): readonly PMNode[] {
+  const written = unwritten(rules);
+  return stories.map((story, index) =>
+    settle(story, {
+      rules,
+      written,
+      refuse: (problem) => refuse({ ...problem, story: index }),
+    })
+  );
+}
+
+/**
+ * The stories one part holds, in the order the part writes them, with every later claimant of a
+ * name released. A story holding no such claimant is handed back as the very same node.
+ */
+export function withUniqueStoryIdentities(
+  stories: readonly PMNode[],
+  rules: readonly IdentityRule[] = IDENTITY_RULES
+): readonly PMNode[] {
+  return settleStories(stories, rules, refuseExport);
+}
+
+/** Every block `withUniqueStoryIdentities` would refuse over, in the order the part writes them */
+export function identityProblemsInStories(
+  stories: readonly PMNode[],
+  rules: readonly IdentityRule[] = IDENTITY_RULES
+): readonly StoryIdentityProblem[] {
+  const problems: StoryIdentityProblem[] = [];
+  settleStories(stories, rules, (problem) => problems.push(problem));
   return problems;
 }

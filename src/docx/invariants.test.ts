@@ -7,6 +7,7 @@ import {
   fixtureNames,
   makeDeclaredDocx,
   makeDocx,
+  makeHeadersFootersDocx,
   makeNumberedDocx,
   producerFixtureNames,
   readFixture,
@@ -25,6 +26,12 @@ import {
 } from "../editor/createEditor";
 import type { DocxExportError } from "../ooxml/errors";
 import { docxSchema } from "../schema";
+import {
+  STORIES_ATTR,
+  storiesOf,
+  storyKey,
+  storyNodeOf,
+} from "../schema/stories";
 import { withEditedFirst } from "./__testing__/blockEdits";
 import { commentReferencesIn } from "./comments";
 import { exportDocx } from "./exportDocx";
@@ -471,6 +478,45 @@ describe("comment part roots", () => {
         message: "the comments part has no comments root element",
       },
     ]);
+  });
+});
+
+describe("unique identities in a header", () => {
+  it("a preserved block standing twice in an edited header is an unsupported-content problem with no position", () => {
+    const parts = unzipSync(makeHeadersFootersDocx());
+    parts["word/header1.xml"] = new TextEncoder().encode(
+      `<w:hdr xmlns:w="${W_NS}">${paragraph("Head")}` +
+        '<w:customXml w:uri="urn:placeholder" w:element="kept"/></w:hdr>'
+    );
+    const opened = importDocx(zipSync(parts));
+    const key = storyKey("header", "word/header1.xml");
+    const story = storyNodeOf(opened.doc, key);
+    if (!story) throw new Error("the header was not read");
+    const placeholder = story.child(1);
+    const twice = story.copy(
+      Fragment.from([story.child(0), placeholder, placeholder])
+    );
+    const edited = opened.doc.type.create(
+      {
+        ...opened.doc.attrs,
+        [STORIES_ATTR]: { ...storiesOf(opened.doc), [key]: twice.toJSON() },
+      },
+      opened.doc.content
+    );
+
+    const problems = exportProblems(edited, opened.session);
+    expect(problems).toEqual([
+      {
+        code: "unsupported-content",
+        message: "a preserved block stands in two places (rawBlock)",
+      },
+    ]);
+    expect(() => exportDocx(edited, opened.session)).toThrowError(
+      expect.objectContaining<Partial<DocxExportError>>({
+        code: problems[0]?.code,
+        message: problems[0]?.message,
+      })
+    );
   });
 });
 

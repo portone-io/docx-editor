@@ -38,6 +38,7 @@ Observed 2026-09-07 against ECMA-376 5th edition, Part 1, §17.13.6.1 and §17.1
 
 The export settles source-block identities, paragraph identifiers, and inline content-control copies in one pass over modelled blocks, in document order, and the rule is the one §17.5.2.18 gives for controls: the first node to claim a name keeps it, and every later claimant yields.
 Which node is first is its place in the document at export, not the order the edits happened in, so a copy dragged above its original is the one that keeps the name.
+The same pass runs over each header and footer part an edit rewrote, with the part as its scope: the stories one part holds share one set of identifiers, and a name the body or another part holds is not compared.
 
 How a later claimant yields depends on the name:
 

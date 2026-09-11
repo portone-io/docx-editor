@@ -36,7 +36,8 @@ import {
 import { unrecordedAuthors } from "./comments/people";
 import { currentCommentBodies } from "./comments/writing";
 import type { ExportOptions } from "./exportDocx";
-import { identityProblems } from "./identities";
+import { rewrittenHeadersFooters } from "./headersFooters";
+import { identityProblems, identityProblemsInStories } from "./identities";
 import { insertedImageSrcs } from "./media";
 import { canDefineNewList, newNumIds, startedLists } from "./newLists";
 import { CONTENT_TYPES_PATH } from "./packageParts";
@@ -52,7 +53,7 @@ import {
 export interface ExportProblem {
   readonly code: DocxExportErrorCode;
   readonly message: string;
-  /** Where the problem stands in the document. Absent for a problem of the package or of the session */
+  /** Where the problem stands in the document. Absent for a problem of the package, of the session, or of a side story */
   readonly pos?: number;
 }
 
@@ -207,14 +208,23 @@ const preservedOriginals: ExportInvariant = {
 
 /**
  * A name held by one node only is settled by `withUniqueIdentities` just before the body is
- * written: a later claimant is rebuilt from its own attrs, and a block preserved as nothing but its
- * original XML has nothing to be rebuilt from, so the pass refuses it. The pass is asked here rather
- * than read again, so the block it names is the one the write would refuse over.
+ * written, and by `withUniqueStoryIdentities` before a header or footer part an edit changed is
+ * written again: a later claimant is rebuilt from its own attrs, and a block preserved as nothing
+ * but its original XML has nothing to be rebuilt from, so the pass refuses it. The pass is asked
+ * here rather than read again, so the block it names is the one the write would refuse over. A
+ * block of a header stands nowhere in the body, so its problem carries no position.
  */
 const uniqueIdentities: ExportInvariant = {
   name: "uniqueIdentities",
-  check(doc) {
-    return identityProblems(doc);
+  check(doc, session) {
+    return [
+      ...identityProblems(doc),
+      ...rewrittenHeadersFooters(doc, session).flatMap(({ current }) =>
+        identityProblemsInStories([current]).map(
+          ({ code, message }): ExportProblem => ({ code, message })
+        )
+      ),
+    ];
   },
 };
 
