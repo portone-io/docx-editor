@@ -21,8 +21,7 @@ import {
 import { isOnElement } from "../ooxml/units";
 import { decodeUtf8, encodeUtf8, parseXml, R_NS, W_NS } from "../ooxml/xml";
 import { docxSchema } from "../schema";
-import { sameSource } from "../schema/sourceEquality";
-import { type StoryKey, storyKey, storyNodeOf } from "../schema/stories";
+import { type StoryKey, storyKey } from "../schema/stories";
 import { NO_EXPORT_REFS } from "./exportRefs";
 import { type FieldSpan, fieldSpans, isFieldCharacter } from "./fields";
 import { withUniqueStoryIdentities } from "./identities";
@@ -42,6 +41,7 @@ import {
   type StoryDeps,
   storyLeafText,
 } from "./story";
+import { storyChangesOf } from "./storyParts";
 
 /** One story a section may show, as the document currently says it */
 export interface HeaderFooterContent {
@@ -355,31 +355,16 @@ export function headerFooterText(
  */
 const HEADER_MARKUP: RootDeclarations = { namespaces: { w: NAMESPACES.w } };
 
-/** A header or footer story the document no longer says as the package said it */
-export interface RewrittenStory {
-  readonly imported: ImportedStory;
-  readonly current: PMNode;
-}
-
-/** Every header and footer story an edit changed, which is every part this writer writes again */
-export function rewrittenHeadersFooters(
-  doc: PMNode,
-  session: SessionStore
-): readonly RewrittenStory[] {
-  return Array.from(session.stories.values()).flatMap(
-    (imported): RewrittenStory[] => {
-      if (imported.kind !== "header" && imported.kind !== "footer") return [];
-      const current = storyNodeOf(doc, imported.key);
-      return current === null || sameSource(current, imported.doc)
-        ? []
-        : [{ imported, current }];
-    }
-  );
-}
+/** The two kinds of story a header or footer part holds, one story to a part */
+export const HEADER_FOOTER_KINDS: readonly HeaderFooterKind[] = [
+  "header",
+  "footer",
+];
 
 /** A header or footer part holds its one story, so that story alone is the scope of the identity pass */
 function writtenPart(
-  { imported, current }: RewrittenStory,
+  imported: ImportedStory,
+  current: PMNode,
   session: SessionStore
 ): Uint8Array {
   const written = withUniqueStoryIdentities([current])
@@ -397,12 +382,14 @@ function rewrittenParts(
   doc: PMNode,
   session: SessionStore
 ): ReadonlyMap<string, Uint8Array> | null {
-  const rewritten = rewrittenHeadersFooters(doc, session);
-  if (rewritten.length === 0) return null;
+  const edited = HEADER_FOOTER_KINDS.flatMap((kind) =>
+    storyChangesOf(doc, session, kind)
+  ).flatMap((change) => (change.change === "edited" ? [change] : []));
+  if (edited.length === 0) return null;
   return new Map(
-    rewritten.map((story) => [
-      story.imported.partPath,
-      writtenPart(story, session),
+    edited.map(({ imported, current }) => [
+      imported.partPath,
+      writtenPart(imported, current, session),
     ])
   );
 }

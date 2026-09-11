@@ -36,7 +36,7 @@ import {
 import { unrecordedAuthors } from "./comments/people";
 import { currentCommentBodies } from "./comments/writing";
 import type { ExportOptions } from "./exportDocx";
-import { rewrittenHeadersFooters } from "./headersFooters";
+import { HEADER_FOOTER_KINDS } from "./headersFooters";
 import { identityProblems, identityProblemsInStories } from "./identities";
 import { insertedImageSrcs } from "./media";
 import { canDefineNewList, newNumIds, startedLists } from "./newLists";
@@ -48,6 +48,7 @@ import {
   type SessionStore,
   sessionOf,
 } from "./session";
+import { storyChangesOf } from "./storyParts";
 
 /** One reason the document cannot be written back, with the code `exportDocx` would throw it under */
 export interface ExportProblem {
@@ -219,11 +220,15 @@ const uniqueIdentities: ExportInvariant = {
   check(doc, session) {
     return [
       ...identityProblems(doc),
-      ...rewrittenHeadersFooters(doc, session).flatMap(({ current }) =>
-        identityProblemsInStories([current]).map(
-          ({ code, message }): ExportProblem => ({ code, message })
+      ...HEADER_FOOTER_KINDS.flatMap((kind) =>
+        storyChangesOf(doc, session, kind)
+      )
+        .flatMap((change) =>
+          change.change === "edited"
+            ? identityProblemsInStories([change.current])
+            : []
         )
-      ),
+        .map(({ code, message }): ExportProblem => ({ code, message })),
     ];
   },
 };
