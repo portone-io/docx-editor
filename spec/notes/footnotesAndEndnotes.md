@@ -22,6 +22,14 @@ Observed 2026-09-12 against ECMA-376 5th edition, Part 1, §§17.11.4, 17.11.5, 
 
 ## Editing boundary
 
-Footnotes and endnotes are separate document stories rather than text owned by their main-story reference nodes. Each body is now read as such a story - a document of the editor's own schema, held on the document node under `footnote:<id>` or `endnote:<id>` - and `documentNotes` projects the text of it. What is still missing is the other half: the note parts are repacked unchanged, so nothing writes an edited note body back, and no command or surface offers editing one. Adding that means writing the note parts through the same story writer the Comments part goes through, and integrating a note's placement with document layout.
+Footnotes and endnotes are separate document stories rather than text owned by their main-story reference nodes.
+Each body is read as such a story - a document of the editor's own schema, held on the document node under `footnote:<id>` or `endnote:<id>` - and `documentNotes` projects the text of it.
+The Footnotes part is written through the same story writer as a header part: an untouched entry goes back as its bytes, a removed story drops its entry, and a new story is appended after the part's own entries in id order.
+Separator, continuation-separator, and continuation-notice entries go back as they arrived, and an export that changed one is refused.
+A Footnotes part the package lacked is created with a separator and a continuation-separator entry and no reference from `settings.xml`, which the schema leaves optional and which a Google Docs export also omits.
+The Endnotes part is repacked unchanged, and an export that changed an endnote story is refused.
+No command or surface offers editing a note yet.
+
+Observed 2026-09-12 against ECMA-376 5th edition, Part 1, §17.11, and the Transitional schema's `CT_FtnEdn` and `CT_FtnDocProps`.
 
 A note story is not comparable to a comment story for a protection: a comment protection lets the comment stories change and nothing else, so rewriting a note body is a body change in the editor and a changed part to the server verifier.
