@@ -6,6 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createEditorState } from "../editor/createEditor";
 import { docxSchema } from "../schema";
 import { editorCssVariables } from "../styles/classNames";
+import type { DemandBand } from "./demands";
+import { FOOTNOTE_BAND } from "./demands/footnoteDemands";
 import { A4_PAGE_PIXELS, type SectionPixels } from "./pageLayout";
 import { usePageLayout } from "./usePageLayout";
 
@@ -78,11 +80,29 @@ interface HostProps {
   layer: RefObject<HTMLElement | null>;
   revision: unknown;
   sections?: readonly SectionPixels[];
+  bands?: ReadonlyMap<string, DemandBand>;
 }
 
-function Host({ view: live, layer, revision, sections }: HostProps) {
-  usePageLayout({ view: live, layer, enabled: true, revision, sections });
+function Host({ view: live, layer, revision, sections, bands }: HostProps) {
+  usePageLayout({
+    view: live,
+    layer,
+    enabled: true,
+    revision,
+    sections,
+    bands,
+  });
   return null;
+}
+
+/** The footnote band with one footnote of this height in it */
+function footnoteBand(height: number): ReadonlyMap<string, DemandBand> {
+  return new Map([
+    [
+      FOOTNOTE_BAND,
+      { overhead: 16, heights: new Map([["footnote:1", height]]) },
+    ],
+  ]);
 }
 
 /**
@@ -175,6 +195,33 @@ describe("the page measurement", () => {
     await act(() =>
       vi.waitFor(() => expect(heights()).toEqual([`${20 + 500 + 80}px`]))
     );
+  });
+
+  it("lays the pages out again when a footnote grows", async () => {
+    const live = editor();
+    const layer: RefObject<HTMLElement | null> = { current: host };
+    const taken = measurements(host);
+    const bands = footnoteBand(40);
+    const again = render({
+      view: live,
+      layer,
+      revision: live.state.doc,
+      bands,
+    });
+    await untilTaken(taken, 1);
+
+    // The same heights handed in again ask for nothing
+    again({ view: live, layer, revision: live.state.doc, bands });
+    await frame();
+    expect(taken()).toBe(1);
+
+    again({
+      view: live,
+      layer,
+      revision: live.state.doc,
+      bands: footnoteBand(64),
+    });
+    await untilTaken(taken, 2);
   });
 
   it("is still taken after StrictMode's simulated remount", async () => {

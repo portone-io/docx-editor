@@ -17,7 +17,12 @@ import {
   useState,
 } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { decode, makeDocx, readFixture } from "./__testing__/docx";
+import {
+  decode,
+  makeDocx,
+  makeNotesDocx,
+  readFixture,
+} from "./__testing__/docx";
 import { rangeOfText } from "./__testing__/editing";
 import { AUTHOR, EDITING } from "./__testing__/mode";
 import { renderInto } from "./__testing__/react";
@@ -300,6 +305,29 @@ describe("DocxEditor", () => {
     await settled();
     expect(box.current?.view.state.doc.textContent).toContain("other text");
     expect(opened).toEqual(["source", "other text"]);
+    unmount();
+  });
+
+  it("draws no plain-text notes panel", () => {
+    const unmount = render(
+      <DocxEditor
+        document={makeNotesDocx()}
+        mode={EDITING}
+        renderImportError={() => null}
+      />
+    );
+
+    expect(host.querySelector('[aria-label="Footnote 1"]')?.textContent).toBe(
+      "1"
+    );
+    expect(host.querySelector('section[aria-label="Document notes"]')).toBe(
+      null
+    );
+    // The endnote is its story drawn as a paragraph of the document, its own mark as its label
+    const endnote = host.querySelector(
+      `section[aria-label="Endnotes"] .${editorClassNames.noteRow} p.${editorClassNames.paragraph}`
+    );
+    expect(endnote?.textContent).toBe("1Endnote body");
     unmount();
   });
 

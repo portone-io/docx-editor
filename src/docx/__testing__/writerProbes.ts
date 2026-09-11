@@ -1499,7 +1499,8 @@ export const NOT_A_WRITER: Readonly<Record<string, string>> = {
   documentFidelity: "a query about the document, writing nothing",
   documentFontNames: "the fonts the document names",
   documentHasLocked: "a query about the document",
-  documentNotes: "the notes displayed after the document",
+  documentNotes:
+    "the notes drawn at the foot of their pages and after the last page",
   documentParagraphStyles: "the styles the document defines",
   editingProtection: "a query about what the editor as a whole may receive",
   fittedExtent: "the rule an oversized image is shrunk by",

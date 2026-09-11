@@ -8,6 +8,7 @@
  */
 
 import type { MeasureTarget } from "../blockKinds";
+import { footnoteDemands } from "./footnoteDemands";
 
 /** Room one place in a block asks the page it lands on to keep at the foot */
 export interface PageDemand {
@@ -37,4 +38,6 @@ export interface DemandBand {
 }
 
 /** The sources the editor asks about every block, in the order their demands are listed */
-export const DEFAULT_DEMAND_SOURCES: readonly DemandSource[] = [];
+export const DEFAULT_DEMAND_SOURCES: readonly DemandSource[] = [
+  footnoteDemands,
+];

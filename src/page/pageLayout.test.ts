@@ -805,7 +805,7 @@ describe("the room a page keeps at its foot", () => {
       { y: PAGE, page: 2, forced: false, crossed: false },
     ]);
     expect(result.reserved).toEqual([
-      { page: 1, band: BAND, ids: ["a"], height: 300 },
+      { page: 1, band: BAND, ids: ["a"], top: PAGE - 300, height: 300 },
     ]);
   });
 
@@ -820,7 +820,13 @@ describe("the room a page keeps at its foot", () => {
       { pos: 10, marginTop: PAGE + STEP - 600, push: PAGE + STEP - 600 },
     ]);
     expect(result.reserved).toEqual([
-      { page: 2, band: BAND, ids: ["a"], height: 200 },
+      {
+        page: 2,
+        band: BAND,
+        ids: ["a"],
+        top: 2 * PAGE + STEP - 200,
+        height: 200,
+      },
     ]);
   });
 
@@ -836,7 +842,7 @@ describe("the room a page keeps at its foot", () => {
     // Kept once, the 370 fits under the 600 of text; kept for every place, it would not
     expect(result.pushes).toEqual([]);
     expect(result.reserved).toEqual([
-      { page: 1, band: BAND, ids: ["a"], height: 370 },
+      { page: 1, band: BAND, ids: ["a"], top: PAGE - 370, height: 370 },
     ]);
   });
 
@@ -851,7 +857,7 @@ describe("the room a page keeps at its foot", () => {
       { y: 2 * PAGE - 100, page: 3, forced: false, crossed: true },
     ]);
     expect(result.reserved).toEqual([
-      { page: 1, band: BAND, ids: ["a"], height: 100 },
+      { page: 1, band: BAND, ids: ["a"], top: PAGE - 100, height: 100 },
     ]);
     expect(result.bodyHeight).toBe(3 * PAGE - 100);
   });
@@ -871,8 +877,14 @@ describe("the room a page keeps at its foot", () => {
     // its own place asks for; with no demand the table would continue at the fourth row instead
     expect(result.cuts).toEqual([{ at: 102, height: PAGE + STEP - 600 }]);
     expect(result.reserved).toEqual([
-      { page: 1, band: BAND, ids: ["first row"], height: 50 },
-      { page: 2, band: BAND, ids: ["third row"], height: 150 },
+      { page: 1, band: BAND, ids: ["first row"], top: PAGE - 50, height: 50 },
+      {
+        page: 2,
+        band: BAND,
+        ids: ["third row"],
+        top: 2 * PAGE + STEP - 150,
+        height: 150,
+      },
     ]);
   });
 
@@ -889,7 +901,13 @@ describe("the room a page keeps at its foot", () => {
     // page keeps it ahead of the demand of its own
     expect(result.pushes.map((push) => push.pos)).toEqual([10]);
     expect(result.reserved).toEqual([
-      { page: 2, band: BAND, ids: ["carried", "own"], height: 300 },
+      {
+        page: 2,
+        band: BAND,
+        ids: ["carried", "own"],
+        top: 2 * PAGE + STEP - 300,
+        height: 300,
+      },
     ]);
   });
 
@@ -903,7 +921,13 @@ describe("the room a page keeps at its foot", () => {
     // The first page lets go of the last it took first, and the next page keeps both as they stand
     const once = laidOut(blocks(asking, 300), heights);
     expect(once.reserved).toEqual([
-      { page: 2, band: BAND, ids: ["x", "y"], height: 300 },
+      {
+        page: 2,
+        band: BAND,
+        ids: ["x", "y"],
+        top: 2 * PAGE + STEP - 300,
+        height: 300,
+      },
     ]);
 
     // Under a 900 it cannot move either, the second page lets both go again, and the third keeps
@@ -911,7 +935,13 @@ describe("the room a page keeps at its foot", () => {
     const twice = laidOut(blocks(asking, 900, 50), heights);
     expect(twice.pages).toHaveLength(3);
     expect(twice.reserved).toEqual([
-      { page: 3, band: BAND, ids: ["x", "y"], height: 300 },
+      {
+        page: 3,
+        band: BAND,
+        ids: ["x", "y"],
+        top: 3 * PAGE + 2 * STEP - 300,
+        height: 300,
+      },
     ]);
   });
 
@@ -928,7 +958,13 @@ describe("the room a page keeps at its foot", () => {
     // demand before it
     expect(result.pushes).toEqual([]);
     expect(result.reserved).toEqual([
-      { page: 2, band: BAND, ids: ["x", "y"], height: 240 },
+      {
+        page: 2,
+        band: BAND,
+        ids: ["x", "y"],
+        top: 2 * PAGE + STEP - 240,
+        height: 240,
+      },
     ]);
   });
 
@@ -944,7 +980,13 @@ describe("the room a page keeps at its foot", () => {
     expect(result.cuts).toEqual([{ at: 100, height: PAGE + STEP - 900 }]);
     expect(result.pages).toHaveLength(3);
     expect(result.reserved).toEqual([
-      { page: 3, band: BAND, ids: ["a"], height: 200 },
+      {
+        page: 3,
+        band: BAND,
+        ids: ["a"],
+        top: 3 * PAGE + 2 * STEP - 200,
+        height: 200,
+      },
     ]);
   });
 
@@ -961,7 +1003,13 @@ describe("the room a page keeps at its foot", () => {
       { y: PAGE, page: 2, forced: false, crossed: false },
     ]);
     expect(result.reserved).toEqual([
-      { page: 2, band: BAND, ids: ["a"], height: 500 },
+      {
+        page: 2,
+        band: BAND,
+        ids: ["a"],
+        top: 2 * PAGE + STEP - 500,
+        height: 500,
+      },
     ]);
   });
 
@@ -976,7 +1024,7 @@ describe("the room a page keeps at its foot", () => {
       { y: 2 * PAGE, page: 3, forced: false, crossed: true },
     ]);
     expect(result.reserved).toEqual([
-      { page: 1, band: BAND, ids: ["a"], height: PAGE },
+      { page: 1, band: BAND, ids: ["a"], top: 0, height: PAGE },
     ]);
   });
 
@@ -992,7 +1040,13 @@ describe("the room a page keeps at its foot", () => {
     expect(result.pages).toHaveLength(2);
     expect(result.bodyHeight).toBe(PAGE + STEP + PAGE);
     expect(result.reserved).toEqual([
-      { page: 2, band: BAND, ids: ["a"], height: 200 },
+      {
+        page: 2,
+        band: BAND,
+        ids: ["a"],
+        top: 2 * PAGE + STEP - 200,
+        height: 200,
+      },
     ]);
   });
 
@@ -1003,9 +1057,9 @@ describe("the room a page keeps at its foot", () => {
     );
 
     // No page could keep it whole, so it stays with its place, and that page's body ends with the
-    // text that has to stay there
+    // text that has to stay there, which is where its band starts
     expect(result.reserved).toEqual([
-      { page: 1, band: BAND, ids: ["tall"], height: 1500 },
+      { page: 1, band: BAND, ids: ["tall"], top: 100, height: 1500 },
     ]);
     expect(result.pushes).toEqual([
       { pos: 10, marginTop: PAGE + STEP - 100, push: PAGE + STEP - 100 },
@@ -1028,7 +1082,7 @@ describe("the room a page keeps at its foot", () => {
       2 * PAGE - 100,
     ]);
     expect(result.reserved).toEqual([
-      { page: 1, band: BAND, ids: ["a"], height: 100 },
+      { page: 1, band: BAND, ids: ["a"], top: PAGE - 100, height: 100 },
     ]);
   });
 
@@ -1066,10 +1120,29 @@ describe("the room a page keeps at its foot", () => {
     // The 480 and the 50 it asks for end at 830, above the 840 the first block's room leaves; with
     // the wide band's 30 counted again they would not
     expect(result.pushes.map((push) => push.pos)).toEqual([20]);
+    // A page's bands stand one under the next, in the order it took them
     expect(result.reserved).toEqual([
-      { page: 1, band: "wide", ids: ["w1", "w2"], height: 30 + 100 + 50 },
-      { page: 1, band: "narrow", ids: ["n1"], height: 10 + 20 },
-      { page: 2, band: "wide", ids: ["w3"], height: 30 + 70 },
+      {
+        page: 1,
+        band: "wide",
+        ids: ["w1", "w2"],
+        top: PAGE - 30 - 180,
+        height: 30 + 100 + 50,
+      },
+      {
+        page: 1,
+        band: "narrow",
+        ids: ["n1"],
+        top: PAGE - 30,
+        height: 10 + 20,
+      },
+      {
+        page: 2,
+        band: "wide",
+        ids: ["w3"],
+        top: 2 * PAGE + STEP - 100,
+        height: 30 + 70,
+      },
     ]);
   });
 });

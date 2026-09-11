@@ -216,4 +216,28 @@ describe("the folder layering", () => {
       `these modules read each other:\n${cycle.join(" ->\n")}\nMove what both of them need into a module that imports neither, or make one of the two imports \`import type\`.`
     ).toEqual([]);
   });
+
+  /**
+   * A side story is drawn at the foot of a page, in a rail beside the page, and in a page's
+   * margin, so what draws one cannot know which of them it is drawing for
+   */
+  it("keeps editor/stories free of page, notes, comments, and ui modules", () => {
+    const storiesDir = join(srcDir, "editor", "stories");
+    const stories = files.filter((file) => file.startsWith(storiesDir + sep));
+    const forbidden =
+      /(^|\/)(page|ui|notes|comments)(\/|$)|(note|comment)[^/]*\.tsx?$/i;
+
+    const reached = stories.flatMap((file) =>
+      importsOf(file)
+        .filter(({ target }) =>
+          forbidden.test(relative(srcDir, target).split(sep).join("/"))
+        )
+        .map(
+          ({ specifier }) => `${relative(srcDir, file)} imports "${specifier}"`
+        )
+    );
+
+    expect(stories.length).toBeGreaterThan(0);
+    expect(reached, reached.join("\n")).toEqual([]);
+  });
 });

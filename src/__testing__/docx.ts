@@ -333,6 +333,41 @@ export function makeNotesDocx(body: string = NOTE_BODY): Uint8Array {
   return zipSync(parts);
 }
 
+/** Two paragraphs referring to two footnotes, the second also to an endnote */
+export const FORMATTED_NOTE_BODY =
+  '<w:p><w:r><w:t xml:space="preserve">First reference</w:t></w:r>' +
+  '<w:r><w:footnoteReference w:id="2"/></w:r></w:p>' +
+  '<w:p><w:r><w:t xml:space="preserve">Second reference</w:t></w:r>' +
+  '<w:r><w:footnoteReference w:id="5"/></w:r>' +
+  '<w:r><w:endnoteReference w:id="3"/></w:r></w:p>';
+
+/**
+ * The notes of `FORMATTED_NOTE_BODY`, written with formatting: a footnote with a bold run and a
+ * second paragraph, a plain footnote, and an endnote in italics.
+ */
+export function makeFormattedNotesDocx(): Uint8Array {
+  const encoder = new TextEncoder();
+  const parts = unzipSync(makeNotesDocx(FORMATTED_NOTE_BODY));
+  parts["word/footnotes.xml"] = encoder.encode(
+    `<w:footnotes ${W_NS_DECL}>` +
+      '<w:footnote w:id="-1" w:type="separator"><w:p><w:r><w:separator/></w:r></w:p></w:footnote>' +
+      '<w:footnote w:id="2"><w:p><w:r><w:footnoteRef/></w:r>' +
+      '<w:r><w:t xml:space="preserve">Plain then </w:t></w:r>' +
+      "<w:r><w:rPr><w:b/></w:rPr><w:t>bold words</w:t></w:r></w:p>" +
+      "<w:p><w:r><w:t>Second paragraph</w:t></w:r></w:p></w:footnote>" +
+      '<w:footnote w:id="5"><w:p><w:r><w:footnoteRef/></w:r>' +
+      '<w:r><w:t xml:space="preserve"> Later footnote</w:t></w:r></w:p></w:footnote>' +
+      "</w:footnotes>"
+  );
+  parts["word/endnotes.xml"] = encoder.encode(
+    `<w:endnotes ${W_NS_DECL}>` +
+      '<w:endnote w:id="3"><w:p><w:r><w:endnoteRef/></w:r>' +
+      '<w:r><w:rPr><w:i/></w:rPr><w:t xml:space="preserve"> Italic endnote</w:t></w:r></w:p></w:endnote>' +
+      "</w:endnotes>"
+  );
+  return zipSync(parts);
+}
+
 /** A package with all first-section header/footer variants and page-number fields. */
 export function makeHeadersFootersDocx(): Uint8Array {
   const encoder = new TextEncoder();

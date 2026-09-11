@@ -153,11 +153,18 @@ export const editorClassNames = {
   commentIconActions: `${PREFIX}-comment-icon-actions`,
   commentComposer: `${PREFIX}-comment-composer`,
   commentInput: `${PREFIX}-comment-input`,
-  notesPanel: `${PREFIX}-notes`,
-  notesHeading: `${PREFIX}-notes-heading`,
-  notesList: `${PREFIX}-notes-list`,
-  noteLabel: `${PREFIX}-note-label`,
-  noteBody: `${PREFIX}-note-body`,
+  /** Everything drawn over the paper at the foot of the pages, which only its areas take the mouse in */
+  footnoteAreas: `${PREFIX}-footnote-areas`,
+  /** The footnotes at the foot of one page: a short rule, then each footnote */
+  footnoteArea: `${PREFIX}-footnote-area`,
+  /** The short rule that sets notes apart from the text above them */
+  noteSeparator: `${PREFIX}-note-separator`,
+  /** One note, drawn from its story */
+  noteRow: `${PREFIX}-note-row`,
+  /** A note's own reference mark, drawn as the label its reference carries */
+  noteMark: `${PREFIX}-note-mark`,
+  /** The notes listed after the last page */
+  noteList: `${PREFIX}-note-list`,
   /** The panel drawn in place of the editor when a document was refused and the consumer wrote no panel of its own */
   rejection: `${PREFIX}-rejection`,
   rejectionTitle: `${PREFIX}-rejection-title`,

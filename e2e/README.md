@@ -27,7 +27,7 @@ IME tests drive Chrome's real composition pipeline through CDP `Input.imeSetComp
 | `commentMode.spec.ts` | Commenter commenting, refused typing, and right-click menus by mode |
 | `preservedContent.spec.ts` | Pointer selection and deletion of preserved chips, and protection of complex-field pieces |
 | `clipboard.spec.ts` | Rich HTML formatting, tables pasted from another application, web images, plain-text paste, text fallback, and preservation of selections when clipboard content is empty |
-| `notesAndPages.spec.ts` | Notes alignment, displayed page numbering, and the demo's closing order |
+| `notesAndPages.spec.ts` | Footnote placement and the endnote list, displayed page numbering, and the demo's closing order |
 | `responsiveLayout.spec.ts` | Stable narrow-screen pagination and horizontal scroll, responsive comments, and viewport-contained popovers |
 | `tableEditing.spec.ts` | Table-separator editing, pointer-based row resizing, and stable page-boundary previews |
 | `numbering.spec.ts` | Marker-only character formatting and tab, space, and empty suffix spacing |

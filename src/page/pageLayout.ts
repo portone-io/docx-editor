@@ -218,6 +218,13 @@ export interface PageReservation {
   /** The ids the page keeps, in the order it took them: those carried over from the page before first */
   ids: readonly string[];
   /**
+   * Where the band starts, measured from the top of the body like a split. The bands a page keeps
+   * stand one under the next in the order it took them, from the end of its body above the room.
+   * A page that could not give its bands all the room they ask for gives them what lies under the
+   * text that has to stay on it, so a band starts no higher than that text ends
+   */
+  top: number;
+  /**
    * The band's overhead and the height of each id, which the page's body ends above. A demand
    * taller than an empty page's body is counted whole, though the page has less to give it
    */
@@ -583,15 +590,19 @@ export function pageLayout({
 
   /** Records what the page being closed keeps at its foot */
   const recordRoom = (page: number) => {
+    let top = bodyEnd();
     for (const [name, ids] of room.bands) {
       const band = bands.get(name);
       if (band) {
+        const height = bandHeight(band, ids);
         reserved.push({
           page,
           band: name,
           ids: [...ids],
-          height: round(bandHeight(band, ids)),
+          top: round(top),
+          height: round(height),
         });
+        top += height;
       }
     }
   };

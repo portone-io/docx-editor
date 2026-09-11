@@ -32,7 +32,9 @@ import { sectionIn, sectionsOf } from "./docx/sections";
 import type { SessionStore } from "./docx/session";
 import type { CommentAuthor } from "./editor/commands/commentCommands";
 import { activeLinkSpan } from "./editor/commands/linkCommands";
+import { type NoteRow, noteProjection } from "./editor/commands/noteQueries";
 import { createEditorView, editorStateForSession } from "./editor/createEditor";
+import { documentOf } from "./editor/editorDocument";
 import {
   closeCommentComposer,
   isCommentComposerOpen,
@@ -43,18 +45,23 @@ import { isLinkPanelOpen } from "./editor/plugins/linkPanel";
 import { tableMenuAnchor } from "./editor/plugins/tableContextMenu";
 import { textMenuAnchor } from "./editor/plugins/textContextMenu";
 import { DocxImportError, type DocxImportErrorCode } from "./ooxml/errors";
+import type { DemandBand } from "./page/demands";
+import { FOOTNOTE_BAND } from "./page/demands/footnoteDemands";
 import { PageGuides } from "./page/PageGuides";
 import { A4_PAGE_PIXELS, pagePixels, sectionPixels } from "./page/pageLayout";
 import { type PageFace, usePageLayout } from "./page/usePageLayout";
 import type { EditableComments, EditingProtection } from "./schema/protection";
 import { editingProtection, protectionOf } from "./schema/protectionState";
-import { storyNodeOf } from "./schema/stories";
+import { type StoryKey, storyNodeOf } from "./schema/stories";
 import { editorClassNames } from "./styles/classNames";
-import type { FontFallbacks } from "./styles/fontStack";
+import { DEFAULT_FONT_FALLBACKS, type FontFallbacks } from "./styles/fontStack";
+import { documentDefaultsVariables } from "./styles/inlineStyle";
 import { CommentsPanel, shownBesideThePage } from "./ui/CommentsPanel";
 import { LinkCard } from "./ui/LinkCard";
 import { LinkPanel } from "./ui/LinkPanel";
-import { NotesPanel } from "./ui/NotesPanel";
+import { FootnoteAreas, NOTE_SEPARATOR_HEIGHT } from "./ui/notes/FootnoteAreas";
+import { NoteList } from "./ui/notes/NoteList";
+import { useNoteHeights } from "./ui/notes/noteHeights";
 import type { DocxEditorPresets } from "./ui/presets";
 import { TableMenu } from "./ui/TableMenu";
 import { TextMenu } from "./ui/TextMenu";
@@ -379,6 +386,9 @@ function zoomVariable(
   return { "--docx-editor-zoom": factor };
 }
 
+const NO_FOOTNOTES: ReadonlyMap<StoryKey, NoteRow> = new Map();
+const NO_NOTE_ROWS: readonly NoteRow[] = [];
+
 function DocxEditorSurface(
   {
     document: source,
@@ -540,12 +550,46 @@ function DocxEditorSurface(
     [sections]
   );
 
+  const notes = live === null ? null : noteProjection.read(live.state);
+  const footnotes = notes?.footnotes ?? NO_FOOTNOTES;
+  const hasFootnotes = footnotes.size > 0;
+  const [noteHeights, reportNoteHeight] = useNoteHeights(opened);
+  // A document referring to no footnote is laid out with no band at all, so it takes the same pass
+  // it took before a page kept room for anything
+  const bands = useMemo(
+    () =>
+      hasFootnotes
+        ? new Map<string, DemandBand>([
+            [
+              FOOTNOTE_BAND,
+              { overhead: NOTE_SEPARATOR_HEIGHT, heights: noteHeights },
+            ],
+          ])
+        : undefined,
+    [hasFootnotes, noteHeights]
+  );
+  const snapshot = live === null ? null : documentOf(live.state);
+  const noteFontFallbacks = mountedFontFallbacks ?? DEFAULT_FONT_FALLBACKS;
+  // The sheet sets its text from variables on its own box, which the notes drawn beside it are
+  // not inside of
+  const noteTextStyle = useMemo<CSSProperties>(
+    () =>
+      snapshot === null
+        ? {}
+        : {
+            ...documentDefaultsVariables(snapshot.defaults, noteFontFallbacks),
+            tabSize: `${snapshot.defaultTabStopPt}pt`,
+          },
+    [snapshot, noteFontFallbacks]
+  );
+
   const overlay = usePageLayout({
     view: live?.view ?? null,
     layer: layerRef,
     enabled: showPageGuides,
     revision: live?.state.doc,
     sections: sectionPapers,
+    bands,
   });
 
   const headersFootersFor = useMemo(() => {
@@ -656,8 +700,27 @@ function DocxEditorSurface(
                 headersFootersFor={headersFootersFor}
               />
             )}
-            {live && opened?.status === "opened" && (
-              <NotesPanel state={live.state} pageWidth={page.pageWidth} />
+            {overlay && hasFootnotes && (
+              <FootnoteAreas
+                overlay={overlay}
+                footnotes={footnotes}
+                heights={noteHeights}
+                onHeight={reportNoteHeight}
+                fontFallbacks={noteFontFallbacks}
+                textStyle={noteTextStyle}
+                zoom={effectiveZoom}
+              />
+            )}
+            {notes && (
+              <NoteList
+                footnotes={
+                  showPageGuides ? NO_NOTE_ROWS : [...footnotes.values()]
+                }
+                endnotes={notes.endnotes}
+                page={page}
+                fontFallbacks={noteFontFallbacks}
+                textStyle={noteTextStyle}
+              />
             )}
           </div>
           {!commentsOpen && commentsPanel}
