@@ -28,7 +28,10 @@ The Footnotes part is written through the same story writer as a header part: an
 Separator, continuation-separator, and continuation-notice entries go back as they arrived, and an export that changed one is refused.
 A Footnotes part the package lacked is created with a separator and a continuation-separator entry and no reference from `settings.xml`, which the schema leaves optional and which a Google Docs export also omits.
 The Endnotes part is repacked unchanged, and an export that changed an endnote story is refused.
-No command or surface offers editing a note yet.
+A footnote the editor inserts takes the id one above every entry the Footnotes part holds, separators and entries no reference names included, and above every id a reference names.
+An edit that deletes the last reference to a footnote deletes its story, which is how an entry leaves the part; an entry no reference named when the document opened is never deleted this way.
+An edit that copies a footnote reference gives the copy such an id and a copy of the story with its paragraph ids removed, so the part holds no identifier twice.
+Endnote references stay where the file put them, and no surface offers editing a note yet.
 
 Observed 2026-09-12 against ECMA-376 5th edition, Part 1, §17.11, and the Transitional schema's `CT_FtnEdn` and `CT_FtnDocProps`.
 
