@@ -51,7 +51,7 @@ function deriveNotes(doc: PMNode): NoteProjection {
     if (text !== "") {
       tooltips.push(Decoration.node(pos, pos + node.nodeSize, { title: text }));
     }
-    const key = `${kind}:${id}`;
+    const key = storyKey(kind, id);
     if (seen.has(key)) return true;
     seen.add(key);
     notes.push({

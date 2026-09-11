@@ -56,6 +56,9 @@ function repeated(symbols: string, count: number): string {
 
 const LATIN = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
+/** The four marks the Chicago format counts in, U+002A, U+2020, U+2021 and U+00A7 (§17.18.59) */
+const CHICAGO = "*†‡§";
+
 /** 가 나 다 ... 파 하, the fourteen the Korean Ganada format counts in */
 const GANADA = "가나다라마바사아자차카타파하";
 
@@ -105,7 +108,8 @@ export type NumberFormat =
   | "upperRoman"
   | "ganada"
   | "koreanDigital"
-  | "chineseCounting";
+  | "chineseCounting"
+  | "chicago";
 
 /**
  * The speller of each format.
@@ -146,6 +150,10 @@ const NUMBER_SPELLERS: Record<NumberFormat, NumberSpeller> = {
     countsPerChar: POSITIONAL,
   },
   chineseCounting: { spell: chineseCounting, countsPerChar: POSITIONAL },
+  chicago: {
+    spell: (count) => repeated(CHICAGO, count),
+    countsPerChar: CHICAGO.length,
+  },
 };
 
 export function isNumberFormat(value: string | null): value is NumberFormat {

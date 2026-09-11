@@ -77,15 +77,14 @@ describe("judging two nodes by what they would be written as", () => {
   });
 
   it("reads a note reference renumbered around an edit as the same reference", () => {
-    const note = (label: string, text: string) =>
+    const note = (label: string) =>
       docxSchema.nodes.noteReference.create({
         kind: "footnote",
         id: "2",
         label,
-        text,
       });
-    const a = note("1", "the body");
-    const b = note("4", "another body");
+    const a = note("1");
+    const b = note("4");
 
     expect(sameSource(a, b)).toBe(true);
     expect(a.eq(b)).toBe(false);

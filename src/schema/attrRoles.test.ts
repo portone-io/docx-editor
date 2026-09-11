@@ -67,4 +67,11 @@ describe("reading a role", () => {
     ]);
     expect(displayAttrsOf(docxSchema.nodes.rawInline)).toEqual([]);
   });
+
+  it("keeps a note reference's label a derived display value", () => {
+    expect(NODE_ATTR_ROLES.noteReference?.label).toEqual({
+      role: "display",
+      class: "derived",
+    });
+  });
 });

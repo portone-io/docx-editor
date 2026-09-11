@@ -46,7 +46,14 @@ import { readLinkTargets } from "./hyperlink";
 import { type ImportSources, NO_IMPORT_SOURCES } from "./importParagraph";
 import { readImageSources } from "./media";
 import { NUMBERING_REL_TYPE } from "./newLists";
-import { type ImportedNotePart, type NoteKind, readNotes } from "./notes/reading";
+import { withNoteLabels } from "./notes/numbering";
+import {
+  type ImportedNotePart,
+  type NoteKind,
+  readNoteNumbering,
+  readNotes,
+  specialNotesOf,
+} from "./notes/reading";
 import { readPart, relatedPartPath } from "./packageParts";
 import { A4_PORTRAIT } from "./pageGeometry";
 import { readRelationships } from "./relationships";
@@ -324,25 +331,13 @@ function readDocx(input: DocxBytes): {
   );
   const comments = readComments(parts, mainPartPath);
   const notes = readNotes(parts, mainPartPath);
-  const noteLabels = {
-    footnote: new Map<string, string>(),
-    endnote: new Map<string, string>(),
-  };
-  const noteLabel = (kind: "footnote" | "endnote", id: string): string => {
-    const labels = noteLabels[kind];
-    const existing = labels.get(id);
-    if (existing) return existing;
-    const label = `${labels.size + 1}`;
-    labels.set(id, label);
-    return label;
-  };
+  const noteNumbering = readNoteNumbering(settingsDom);
+  const specialNotes = specialNotesOf(notes);
   const sources: ImportSources = {
     images: readImageSources(parts, mainPartPath),
     themeFonts,
     links: readLinkTargets(parts, mainPartPath),
     comments,
-    notes,
-    noteLabel,
   };
   const sessionId = newSessionId();
   const headerFooters = readHeaderFooterStories(
@@ -386,14 +381,18 @@ function readDocx(input: DocxBytes): {
       )
     );
   }
-  const doc = docxSchema.nodes.doc.create(
-    {
-      sectPr: scan.sectPr,
-      stories: Object.fromEntries(
-        Array.from(stories, ([key, story]) => [key, story.doc.toJSON()])
-      ),
-    },
-    blockNodes
+  const doc = withNoteLabels(
+    docxSchema.nodes.doc.create(
+      {
+        sectPr: scan.sectPr,
+        stories: Object.fromEntries(
+          Array.from(stories, ([key, story]) => [key, story.doc.toJSON()])
+        ),
+      },
+      blockNodes
+    ),
+    noteNumbering,
+    specialNotes
   );
   return {
     doc,
@@ -405,7 +404,7 @@ function readDocx(input: DocxBytes): {
       documentPrefix: scan.prefix,
       documentSuffix: scan.suffix,
       documentHadBom: hadBom,
-      blocks: blockNodes.map((node, i) => ({
+      blocks: doc.children.map((node, i) => ({
         xml: scan.blocks[i]?.xml ?? "",
         node,
       })),
@@ -422,6 +421,8 @@ function readDocx(input: DocxBytes): {
       commentReferenceIds: new Set(commentReferencesIn(doc).keys()),
       headerFooterStories: headerFooters.refs,
       stories,
+      noteNumbering,
+      specialNotes,
     }),
   };
 }

@@ -29,6 +29,7 @@ import {
   R_NS,
   W_NS,
 } from "../ooxml/xml";
+import { type NoteNumberingProps, readNoteProps } from "./notes/reading";
 import {
   A4_PORTRAIT,
   type PageGeometry,
@@ -75,6 +76,10 @@ export interface SectionProperties {
     | "oddPage"
     | "nextColumn"
     | null;
+  /** §17.11.11 `w:footnotePr`; null where the section counts footnotes as the settings do */
+  footnotePr: Partial<NoteNumberingProps> | null;
+  /** §17.11.5 `w:endnotePr`; null where the section counts endnotes as the settings do */
+  endnotePr: Partial<NoteNumberingProps> | null;
 }
 
 /** What a section the document does not spell out lays down: the paper every document used to be drawn on */
@@ -86,6 +91,8 @@ export const DEFAULT_SECTION: SectionProperties = {
   titlePg: false,
   pageNumberStart: null,
   type: null,
+  footnotePr: null,
+  endnotePr: null,
 };
 
 /** Which `w:sectPr` closes a section: the paragraph carrying it, or the body itself */
@@ -193,6 +200,8 @@ export function readSectionProperties(sectPr: Element): SectionProperties {
     titlePg: isOnElement(childByLocalName(sectPr, "titlePg")),
     pageNumberStart: pageNumberStart(sectPr),
     type: sectionType(sectPr),
+    footnotePr: readNoteProps(childByLocalName(sectPr, "footnotePr")),
+    endnotePr: readNoteProps(childByLocalName(sectPr, "endnotePr")),
   };
 }
 
