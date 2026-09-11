@@ -1,6 +1,6 @@
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import { editorAttributes, editorClassNames } from "../src/styles/classNames";
-import { openHarness } from "./support/harness";
+import { openHarness, pressModKey } from "./support/harness";
 
 async function boxOf(locator: Locator) {
   const box = await locator.boundingBox();
@@ -143,6 +143,37 @@ test("draws a footnote at the foot of the page that refers to it, above the foot
   ).toBeLessThanOrEqual(1);
   const rule = await boxOf(area.locator(`.${editorClassNames.noteSeparator}`));
   expect(rule.width).toBeLessThan(areaBox.width / 2);
+});
+
+test("copies a selection inside a footnote area with none of the document's own markup", async ({
+  page,
+  context,
+}) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await openHarness(page, "notes");
+  const area = page
+    .getByRole("region", { name: /^Footnotes on page \d+$/ })
+    .last();
+  await expect(area).toContainText("bold words");
+
+  // The area is not the editor, so the browser writes the copy itself from what is selected
+  await area.evaluate((element) => {
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+  });
+  await pressModKey(page, "c");
+  const html = await page.evaluate(async () => {
+    const items = await navigator.clipboard.read();
+    const item = items.find((entry) => entry.types.includes("text/html"));
+    return item === undefined ? "" : (await item.getType("text/html")).text();
+  });
+
+  expect(html).toContain("bold words");
+  expect(html).not.toContain("<w:");
+  expect(html).not.toMatch(/data-(rpr|rattrs|fmt|ppr|pattrs|src|xml)=/);
 });
 
 test("lists endnotes after the last page with their formatting", async ({

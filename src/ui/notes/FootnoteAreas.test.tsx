@@ -204,4 +204,22 @@ describe("the footnotes at the foot of each page", () => {
     expect(area(1).style.overflowY).toBe("hidden");
     expect(area(2).style.overflowY).toBe("auto");
   });
+
+  it("holds none of the document's own source in a selection made inside a footnote area", () => {
+    draw({ overlay: overlayOf(face(1, [room(["footnote:2"], 900)])) });
+
+    // What a selection's contents are is what the browser writes when it copies one by itself
+    const range = document.createRange();
+    range.selectNodeContents(area(1));
+    const selected = document.createElement("div");
+    selected.append(range.cloneContents());
+
+    expect(selected.textContent).toContain("bold words");
+    expect(selected.innerHTML).not.toContain("<w:");
+    expect(
+      selected.querySelector(
+        "[data-rpr], [data-rattrs], [data-fmt], [data-ppr]"
+      )
+    ).toBeNull();
+  });
 });
