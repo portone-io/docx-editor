@@ -1,4 +1,4 @@
-import { type RefObject, useLayoutEffect } from "react";
+import { useLayoutEffect } from "react";
 
 /**
  * Holds the room the page layer takes in the scroll box.
@@ -7,48 +7,49 @@ import { type RefObject, useLayoutEffect } from "react";
  * nothing in the flow reaches down to where the paper ends and the scroll box would stop short of
  * it. The box the layer stands in is given the height the layer is drawn at, and the scroll box
  * then reaches the paper and keeps its own padding below it.
+ *
+ * The two elements are taken rather than refs to them, so that a surface which drew neither - a
+ * file that was refused, before the reader opens one that is not - is measured the moment they
+ * arrive rather than never again.
  */
 export function usePageRoom(
-  box: RefObject<HTMLElement | null>,
-  layer: RefObject<HTMLElement | null>,
+  box: HTMLElement | null,
+  layer: HTMLElement | null,
   scale: number
 ): void {
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the scale is not read here, since the height is taken off the layer as drawn and that rectangle already carries it. It is watched because a transform moves no box a resize observation would see, so nothing else would ask for the height again when the reader zooms
   useLayoutEffect(() => {
-    const room = box.current;
-    const drawn = layer.current;
-    if (!room || !drawn) return;
-    const frameWindow = room.ownerDocument.defaultView;
+    if (!box || !layer) return;
+    const frameWindow = box.ownerDocument.defaultView;
     let frame = 0;
-    /** `height` is the layer's own, which the scale has still to be applied to */
-    const hold = (height: number) => {
-      const next = `${height * scale}px`;
-      if (room.style.height !== next) room.style.height = next;
+    /** The height the layer is drawn at, which is the room the scroll box has to give it */
+    const hold = () => {
+      const next = `${layer.getBoundingClientRect().height}px`;
+      if (box.style.height !== next) box.style.height = next;
+    };
+    // The height is written on the frame after an observation rather than inside it: a write from
+    // inside dirties the layout the browser has just measured, and Chromium reports the observation
+    // that raises as one it could not deliver. The height is read when that frame runs, so several
+    // observations in one frame come to one reading of where the layer now stands
+    const schedule = () => {
+      if (frame !== 0 || !frameWindow) return;
+      frame = frameWindow.requestAnimationFrame(() => {
+        frame = 0;
+        hold();
+      });
     };
 
-    hold(drawn.getBoundingClientRect().height / scale);
-    // The layer's own box follows the text; the scale it is drawn at is watched by this effect,
-    // since a transform moves no box an observer would see.
-    // The height is written on the frame after the observation rather than inside it: a write from
-    // inside dirties the layout the browser has just measured, and it reports the observation that
-    // raises as one it could not deliver
+    hold();
     const observer =
-      typeof ResizeObserver === "undefined" || !frameWindow
+      typeof ResizeObserver === "undefined"
         ? null
-        : new ResizeObserver(([entry]) => {
-            const size = entry?.borderBoxSize?.[0];
-            if (!size || frame !== 0) return;
-            const height = size.blockSize;
-            frame = frameWindow.requestAnimationFrame(() => {
-              frame = 0;
-              hold(height);
-            });
-          });
-    observer?.observe(drawn);
+        : new ResizeObserver(schedule);
+    observer?.observe(layer);
 
     return () => {
       observer?.disconnect();
       if (frame !== 0) frameWindow?.cancelAnimationFrame(frame);
-      room.style.removeProperty("height");
+      box.style.removeProperty("height");
     };
   }, [box, layer, scale]);
 }

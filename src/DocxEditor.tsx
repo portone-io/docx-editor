@@ -17,6 +17,7 @@ import {
   forwardRef,
   type ReactElement,
   type ReactNode,
+  useCallback,
   useEffect,
   useImperativeHandle,
   useLayoutEffect,
@@ -451,7 +452,6 @@ function DocxEditorSurface(
   const mountedContextMenus = useRef(contextMenus ?? true).current;
   const mountedFontFallbacks = useRef(fontFallbacks).current;
   const layerRef = useRef<HTMLDivElement | null>(null);
-  const boxRef = useRef<HTMLDivElement | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const mountRef = useRef<HTMLDivElement | null>(null);
   const keptState = useRef<{ of: OpenedDocument; state: EditorState } | null>(
@@ -459,6 +459,14 @@ function DocxEditorSurface(
   );
   const viewRef = useRef<EditorView | null>(null);
   const [live, setLive] = useState<LiveEditor | null>(null);
+  const [pageBox, setPageBox] = useState<HTMLDivElement | null>(null);
+  const [pageLayer, setPageLayer] = useState<HTMLDivElement | null>(null);
+  // The pagination measures the layer through a ref, while the room it takes is watched off the
+  // element as it arrives, so the one callback hands it to both
+  const holdPageLayer = useCallback((node: HTMLDivElement | null) => {
+    layerRef.current = node;
+    setPageLayer(node);
+  }, []);
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [uncontrolledZoom, setUncontrolledZoom] = useState<DocxEditorZoom>(() =>
     normalizeZoom(defaultZoom)
@@ -474,7 +482,7 @@ function DocxEditorSurface(
       : A4_PAGE_PIXELS;
   const fitWidth = useFitWidthZoom(rootRef, page.pageWidth);
   const effectiveZoom = selectedZoom === "fit-width" ? fitWidth : selectedZoom;
-  usePageRoom(boxRef, layerRef, effectiveZoom);
+  usePageRoom(pageBox, pageLayer, effectiveZoom);
   const changeZoom = (next: DocxEditorZoom) => {
     const normalized = normalizeZoom(next);
     if (zoom === undefined) setUncontrolledZoom(normalized);
@@ -706,9 +714,9 @@ function DocxEditorSurface(
         )}
         <div ref={rootRef} className={editorClassNames.root}>
           {/* The scaled layer stands outside the flow, so this box holds the room it takes */}
-          <div ref={boxRef} className={editorClassNames.pageBox}>
+          <div ref={setPageBox} className={editorClassNames.pageBox}>
             {/* The paper and the page marks overlaid on it share one positioning origin */}
-            <div ref={layerRef} className={editorClassNames.pageLayer}>
+            <div ref={holdPageLayer} className={editorClassNames.pageLayer}>
               <div ref={mountRef} />
               {overlay && (
                 <PageGuides
