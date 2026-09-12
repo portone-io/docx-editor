@@ -369,7 +369,7 @@ function writtenPart(
   session: SessionStore,
   notes: FidelityCollector
 ): Uint8Array {
-  const written = withUniqueStoryIdentities([current])
+  const written = withUniqueStoryIdentities([{ story: current, frozen: false }])
     .map((story) =>
       serializeStory(story, imported, imported, {
         ...NO_EXPORT_REFS,

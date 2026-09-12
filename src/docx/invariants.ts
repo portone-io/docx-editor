@@ -38,7 +38,11 @@ import { unrecordedAuthors } from "./comments/people";
 import { currentCommentBodies } from "./comments/writing";
 import type { ExportOptions } from "./exportDocx";
 import { HEADER_FOOTER_KINDS } from "./headersFooters";
-import { identityProblems, identityProblemsInStories } from "./identities";
+import {
+  identityProblems,
+  identityProblemsInStories,
+  type StoryToSettle,
+} from "./identities";
 import { insertedImageSrcs } from "./media";
 import { canDefineNewList, newNumIds, startedLists } from "./newLists";
 import { FOOTNOTES_PART } from "./notes/writing";
@@ -229,20 +233,20 @@ const STORY_ENTRIES_PARTS: readonly StoryEntriesPart[] = [FOOTNOTES_PART];
 const uniqueIdentities: ExportInvariant = {
   name: "uniqueIdentities",
   check(doc, session) {
-    const parts: readonly (readonly PMNode[])[] = [
+    const parts: readonly (readonly StoryToSettle[])[] = [
       ...HEADER_FOOTER_KINDS.flatMap((kind) =>
         storyChangesOf(doc, session, kind)
       ).flatMap((change) =>
-        change.change === "edited" ? [[change.current]] : []
+        change.change === "edited"
+          ? [[{ story: change.current, frozen: false }]]
+          : []
       ),
-      ...STORY_ENTRIES_PARTS.map((part) =>
-        storyEntriesOf(doc, session, part.kind)
-      ),
+      ...STORY_ENTRIES_PARTS.map((part) => storyEntriesOf(part, doc, session)),
     ];
     return [
       ...identityProblems(doc),
       ...parts
-        .flatMap((stories) => identityProblemsInStories(stories))
+        .flatMap((entries) => identityProblemsInStories(entries))
         .map(({ code, message }): ExportProblem => ({ code, message })),
     ];
   },

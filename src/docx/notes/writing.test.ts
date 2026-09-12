@@ -276,6 +276,38 @@ describe("writing the footnotes part", () => {
     expect(written.match(/w14:paraId="10000002"/g)).toHaveLength(1);
   });
 
+  it("keeps a separator entry's paragraph id and releases it from the footnote that was edited", () => {
+    const separator =
+      '<w:footnote w:type="separator" w:id="-1"><w:p w14:paraId="10000001">' +
+      "<w:r><w:separator/></w:r></w:p></w:footnote>";
+    const bytes = footnotesDocx(
+      [FIRST, separator],
+      `<w:p><w:r><w:t>One</w:t></w:r>${reference("1")}</w:p>`
+    );
+    const opened = importDocx(bytes);
+    const first = storyNodeOf(opened.doc, storyKey("footnote", "1"));
+    if (first === null) throw new Error("the note was not read");
+    const edited = withStories(opened.doc, [
+      [
+        storyKey("footnote", "1"),
+        first.copy(
+          first.content.append(
+            Fragment.from(
+              docxSchema.nodes.paragraph.create(null, runText("Appended"))
+            )
+          )
+        ),
+      ],
+    ]);
+
+    const written = writtenPart(
+      exportDocx(edited, opened.session),
+      "word/footnotes.xml"
+    );
+    expect(written).toContain(separator);
+    expect(written.match(/w14:paraId="10000001"/g)).toHaveLength(1);
+  });
+
   it("reads an edited footnote back as the story that was written", () => {
     const bytes = footnotesDocx([SEPARATOR, FIRST, SECOND], BODY);
     const opened = importDocx(bytes);

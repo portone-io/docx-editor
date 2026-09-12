@@ -320,11 +320,17 @@ describe("the control rule", () => {
   });
 });
 
+/** The stories of one part, none of them written as the bytes it arrived as */
+const rewritable = (...stories: readonly PMNode[]) =>
+  stories.map((story) => ({ story, frozen: false }));
+
 describe("the stories of one part", () => {
   it("releases a paragraph id that an earlier story of the same part already wrote", () => {
     const first = doc(opened({ srcId: "d1-abc:footnote:1:0" }));
     const second = doc(opened({ srcId: "d1-abc:footnote:2:0" }));
-    const [kept, released] = withUniqueStoryIdentities([first, second]);
+    const [kept, released] = withUniqueStoryIdentities(
+      rewritable(first, second)
+    );
 
     expect(kept).toBe(first);
     expect(released.child(0).attrs).toMatchObject({
@@ -339,8 +345,8 @@ describe("the stories of one part", () => {
     const footer = doc(opened({ srcId: "d1-abc:footer:word/footer1.xml:0" }));
 
     expect(withUniqueIdentities(body)).toBe(body);
-    expect(withUniqueStoryIdentities([header])[0]).toBe(header);
-    expect(withUniqueStoryIdentities([footer])[0]).toBe(footer);
+    expect(withUniqueStoryIdentities(rewritable(header))[0]).toBe(header);
+    expect(withUniqueStoryIdentities(rewritable(footer))[0]).toBe(footer);
   });
 
   it("refuses a preserved block standing twice in one story", () => {
@@ -352,7 +358,7 @@ describe("the stories of one part", () => {
         guarded: false,
       });
     const twice = doc(preserved(), preserved());
-    const stories = [doc(paragraph()), twice];
+    const stories = rewritable(doc(paragraph()), twice);
 
     expect(exportErrorCode(() => withUniqueStoryIdentities(stories))).toBe(
       "unsupported-content"
@@ -367,13 +373,28 @@ describe("the stories of one part", () => {
     ]);
   });
 
+  it("leaves a frozen story every name it holds and releases the one an earlier story claims", () => {
+    const edited = doc(opened({ srcId: "d1-abc:footnote:1:0" }));
+    const frozen = doc(opened({ srcId: "d1-abc:footnote:1:0" }));
+    const settled = withUniqueStoryIdentities([
+      { story: edited, frozen: false },
+      { story: frozen, frozen: true },
+    ]);
+
+    expect(settled[1]).toBe(frozen);
+    expect(settled[0].child(0).attrs).toMatchObject({
+      srcId: null,
+      pAttrs: null,
+    });
+  });
+
   it("hands back an untouched story node for node", () => {
     const first = doc(opened({}, text("2026", control(3))));
     const second = doc(
       opened({ srcId: "d1-abc:body:5", pAttrs: 'w14:paraId="00000042"' }),
       table(cell(paragraph(text("-08-04", control(4)))))
     );
-    const settled = withUniqueStoryIdentities([first, second]);
+    const settled = withUniqueStoryIdentities(rewritable(first, second));
 
     expect(settled).toHaveLength(2);
     expect(settled[0]).toBe(first);

@@ -17,7 +17,9 @@
  *
  * A side story is settled by its part rather than by the document: `w14:paraId` is unique within a
  * part (Part 1 §11.3), so `withUniqueStoryIdentities` walks the stories one part holds as one run
- * of blocks, and a name the body or another part holds is not compared.
+ * of blocks, and a name the body or another part holds is not compared. A story the part writes as
+ * the bytes it arrived as keeps every name it holds, since no later claimant of one could give it
+ * up in bytes nothing rewrites.
  */
 
 import { Fragment, type Mark, type Node as PMNode } from "prosemirror-model";
@@ -301,18 +303,38 @@ export interface StoryIdentityProblem extends IdentityProblem {
   readonly story: number;
 }
 
+/** One story as its part hands it over to the pass */
+export interface StoryToSettle {
+  readonly story: PMNode;
+  /**
+   * Whether the part writes this story as the bytes it arrived as. A frozen story cannot give a
+   * name up, since nothing rewrites what it goes out as, so it claims its names ahead of every
+   * story that can.
+   */
+  readonly frozen: boolean;
+}
+
+const CLAIMS_ONLY = (): void => {};
+
 function settleStories(
-  stories: readonly PMNode[],
+  entries: readonly StoryToSettle[],
   rules: readonly IdentityRule[],
   refuse: (problem: StoryIdentityProblem) => void
 ): readonly PMNode[] {
   const written = unwritten(rules);
-  return stories.map((story, index) =>
-    settle(story, {
-      rules,
-      written,
-      refuse: (problem) => refuse({ ...problem, story: index }),
-    })
+  for (const { story, frozen } of entries) {
+    // Nothing is written from this pass over a frozen story; it runs to claim the names, and a
+    // block of one that cannot yield is no refusal, because its bytes go back out untouched
+    if (frozen) settle(story, { rules, written, refuse: CLAIMS_ONLY });
+  }
+  return entries.map(({ story, frozen }, index) =>
+    frozen
+      ? story
+      : settle(story, {
+          rules,
+          written,
+          refuse: (problem) => refuse({ ...problem, story: index }),
+        })
   );
 }
 
@@ -321,18 +343,18 @@ function settleStories(
  * name released. A story holding no such claimant is handed back as the very same node.
  */
 export function withUniqueStoryIdentities(
-  stories: readonly PMNode[],
+  entries: readonly StoryToSettle[],
   rules: readonly IdentityRule[] = IDENTITY_RULES
 ): readonly PMNode[] {
-  return settleStories(stories, rules, refuseExport);
+  return settleStories(entries, rules, refuseExport);
 }
 
 /** Every block `withUniqueStoryIdentities` would refuse over, in the order the part writes them */
 export function identityProblemsInStories(
-  stories: readonly PMNode[],
+  entries: readonly StoryToSettle[],
   rules: readonly IdentityRule[] = IDENTITY_RULES
 ): readonly StoryIdentityProblem[] {
   const problems: StoryIdentityProblem[] = [];
-  settleStories(stories, rules, (problem) => problems.push(problem));
+  settleStories(entries, rules, (problem) => problems.push(problem));
   return problems;
 }

@@ -12,7 +12,9 @@ import type { Node as PMNode } from "prosemirror-model";
 import { elementXml } from "../../ooxml/element";
 import { wName } from "../../ooxml/names";
 import { R_NS } from "../../ooxml/xml";
+import type { StoryKey } from "../../schema/stories";
 import type { PartPlanner } from "../partPlan";
+import type { SessionStore } from "../session";
 import { type StoryEntriesPart, storyEntriesPlanner } from "../storyParts";
 import type { NoteKind } from "./reading";
 
@@ -78,6 +80,22 @@ function separatorsXml(kind: NoteKind, taken: ReadonlySet<string>): string {
   ).join("");
 }
 
+/**
+ * The entries of this kind the part lays the page out with rather than numbers - a separator, a
+ * continuation notice - which go back out as they arrived whatever the document says of them.
+ *
+ * The session holds the two kinds' special entries in one set, so each part takes its own out of
+ * it: a footnote and an endnote can stand under the same id.
+ */
+function frozenNotes(
+  session: SessionStore,
+  kind: NoteKind
+): ReadonlySet<StoryKey> {
+  return new Set(
+    Array.from(session.specialNotes).filter((key) => key.startsWith(`${kind}:`))
+  );
+}
+
 /** The ids the references of one kind name, an orphan's included */
 function referenceIds(doc: PMNode, kind: NoteKind): ReadonlySet<string> {
   const ids = new Set<string>();
@@ -104,6 +122,7 @@ export const FOOTNOTES_PART: StoryEntriesPart = {
   root: "footnotes",
   entry: "footnote",
   referencedIds: (doc) => referenceIds(doc, "footnote"),
+  frozenEntries: (session) => frozenNotes(session, "footnote"),
   prelude: (taken) => separatorsXml("footnote", taken),
 };
 

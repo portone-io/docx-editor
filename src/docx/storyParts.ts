@@ -34,7 +34,7 @@ import {
   storyNodeOf,
 } from "../schema/stories";
 import { type ExportRefs, NO_EXPORT_REFS } from "./exportRefs";
-import { withUniqueStoryIdentities } from "./identities";
+import { type StoryToSettle, withUniqueStoryIdentities } from "./identities";
 import {
   availablePartPath,
   CONTENT_TYPES_PATH,
@@ -137,29 +137,28 @@ export interface StoryEntriesPart {
   readonly entry: string;
   /** The ids the document's references to this part name, which a part this planner creates keeps clear of */
   referencedIds(doc: PMNode): ReadonlySet<string>;
+  /**
+   * The stories this part writes as the bytes they arrived as, whatever the document now says of
+   * them, and none for a part that writes every story it holds. `docx/invariants` refuses a change
+   * to one before anything is written.
+   */
+  frozenEntries(session: SessionStore): ReadonlySet<StoryKey>;
   /** The entries a part this planner creates opens with, before any story */
   prelude(taken: ReadonlySet<string>): string;
 }
 
 /** One story as its part is written with it, beside what an edit did to it */
-interface WrittenStory {
+interface WrittenStory extends StoryToSettle {
   readonly change: StoryChange;
-  readonly story: PMNode;
 }
 
-/**
- * The story an entry goes out as, and null for one the part leaves out.
- *
- * A special entry - a separator, a continuation notice - lays the page out rather than saying
- * anything, so it goes back out as it arrived whatever the document now says of it, and
- * `docx/invariants` refuses such a change before anything is written.
- */
+/** The story an entry goes out as, and null for one the part leaves out */
 function writtenStoryOf(
   change: StoryChange,
-  special: ReadonlySet<StoryKey>
+  frozen: ReadonlySet<StoryKey>
 ): PMNode | null {
   if (change.change === "added") return change.current;
-  if (change.change === "kept" || special.has(change.imported.key)) {
+  if (change.change === "kept" || frozen.has(change.imported.key)) {
     return change.imported.doc;
   }
   return change.change === "edited" ? change.current : null;
@@ -167,27 +166,34 @@ function writtenStoryOf(
 
 function writtenStories(
   changes: readonly StoryChange[],
-  session: SessionStore
+  frozen: ReadonlySet<StoryKey>
 ): readonly WrittenStory[] {
   return changes.flatMap((change): WrittenStory[] => {
-    const story = writtenStoryOf(change, session.specialNotes);
-    return story === null ? [] : [{ change, story }];
+    const story = writtenStoryOf(change, frozen);
+    if (story === null) return [];
+    return [
+      {
+        change,
+        story,
+        frozen: change.change !== "added" && frozen.has(change.imported.key),
+      },
+    ];
   });
 }
 
 /**
- * The stories a part of this kind is written with, in the order it writes them, and none where no
- * story of the kind changed and the part is not written at all. The identity pass runs over this
- * list as one part, and the export invariants ask the same list.
+ * The stories a part is written with, in the order it writes them, and none where no story of its
+ * kind changed and the part is not written at all. The identity pass runs over this list as one
+ * part, and the export invariants ask the same list.
  */
 export function storyEntriesOf(
+  part: StoryEntriesPart,
   doc: PMNode,
-  session: SessionStore,
-  kind: StoryKind
-): readonly PMNode[] {
-  const changes = storyChangesOf(doc, session, kind);
+  session: SessionStore
+): readonly StoryToSettle[] {
+  const changes = storyChangesOf(doc, session, part.kind);
   return changed(changes)
-    ? writtenStories(changes, session).map(({ story }) => story)
+    ? writtenStories(changes, part.frozenEntries(session))
     : [];
 }
 
@@ -245,9 +251,8 @@ function containerOf(part: StoryEntriesPart, id: string): StoryContainer {
 /** One entry as the part writes it: an untouched one as the bytes it arrived as, an edited one block by block */
 function entryXml(
   part: StoryEntriesPart,
-  { change }: WrittenStory,
+  { change, frozen }: WrittenStory,
   settled: PMNode,
-  special: ReadonlySet<StoryKey>,
   refs: ExportRefs
 ): string {
   if (change.change === "added") {
@@ -259,7 +264,7 @@ function entryXml(
     );
   }
   const { imported } = change;
-  return special.has(imported.key) || settled === imported.doc
+  return frozen || settled === imported.doc
     ? imported.xml
     : serializeStory(settled, imported, imported, refs);
 }
@@ -359,17 +364,11 @@ function planEntries(
     notes: context.notes,
     session,
   };
-  const written = writtenStories(changes, session);
-  const settled = withUniqueStoryIdentities(written.map(({ story }) => story));
+  const written = writtenStories(changes, part.frozenEntries(session));
+  const settled = withUniqueStoryIdentities(written);
   const entries = written.map((entry, at) => ({
     change: entry.change,
-    xml: entryXml(
-      part,
-      entry,
-      settled[at] ?? entry.story,
-      session.specialNotes,
-      refs
-    ),
+    xml: entryXml(part, entry, settled[at] ?? entry.story, refs),
   }));
   const appended = entries
     .flatMap(({ change, xml }) => (change.change === "added" ? [xml] : []))
