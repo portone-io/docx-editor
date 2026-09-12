@@ -26,12 +26,12 @@ export const FOOTNOTE_BAND_ORDER = 0;
 /**
  * The kinds of note a page keeps room for at its foot.
  *
- * Endnotes are listed after the last page instead (`ui/notes/NoteList`), so a page keeps nothing
- * for them. Asking which kinds belong here rather than which one does not keeps a reference of a
- * kind this editor does not model yet from claiming a footnote's room: it would reserve the band's
+ * Endnotes stand after the last block of the document rather than beside the text that calls
+ * them, so they are rows the layout lays last (`page/pageLayout`) and no page keeps a band for
+ * them. Asking which kinds belong here rather than which one does not keeps a reference of a kind
+ * this editor does not model yet from claiming a footnote's room: it would reserve the band's
  * overhead on its page and draw a rule over an empty strip, with nothing to say what went wrong.
- * These are not `EDITABLE_NOTE_KINDS`, which is about what an edit may rewrite and grows to hold
- * endnotes.
+ * These are not `EDITABLE_NOTE_KINDS`, which is about what an edit may rewrite and holds both.
  */
 const BAND_NOTE_KINDS: readonly NoteKind[] = ["footnote"];
 
