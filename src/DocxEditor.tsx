@@ -595,6 +595,7 @@ function DocxEditorSurface(
     revision: live?.state.doc,
     sections: sectionPapers,
     bands: notes.bands,
+    trailing: notes.trailing,
     // A page laid out again draws the row the open note stands in wherever it now lands, which
     // would take its composition down with it
     composing: surface.composing,

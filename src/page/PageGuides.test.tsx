@@ -26,6 +26,7 @@ function face(page: number, top: number): PageFace {
     width: 640,
     crossed: false,
     reserved: [],
+    trailing: null,
   };
 }
 

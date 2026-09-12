@@ -35,7 +35,7 @@ function rowTexts(list: HTMLElement): (string | null)[] {
 }
 
 describe("the notes listed after the last page", () => {
-  it("lists endnotes with their formatting and labels after the last page", () => {
+  it("lists nothing under the sheet while the pages are drawn", () => {
     const unmount = renderInto(
       host,
       <DocxEditor
@@ -45,20 +45,37 @@ describe("the notes listed after the last page", () => {
       />
     );
 
+    // Each kind stands where the pages keep room for it: the footnotes at the foot of the page
+    // that calls them, the endnotes after the last paragraph (`./TrailingNotes`)
+    expect(host.querySelector(`.${editorClassNames.noteList}`)).toBeNull();
+    unmount();
+  });
+
+  it("lists endnotes with their formatting and labels with page guides off", () => {
+    const unmount = renderInto(
+      host,
+      <DocxEditor
+        document={makeFormattedNotesDocx()}
+        mode={EDITING}
+        showPageGuides={false}
+        renderImportError={() => null}
+      />
+    );
+
     const sheet = found(`.${editorClassNames.sheet}`);
-    const endnotes = found('section[aria-label="Endnotes"]');
+    const notes = found('section[aria-label="Footnotes and endnotes"]');
     expect(
-      sheet.compareDocumentPosition(endnotes) & Node.DOCUMENT_POSITION_FOLLOWING
+      sheet.compareDocumentPosition(notes) & Node.DOCUMENT_POSITION_FOLLOWING
     ).not.toBe(0);
-    // The footnotes stand at the foot of their pages while the pages are drawn
-    expect(rowTexts(endnotes)).toEqual(["1 Italic endnote"]);
-    expect(
-      endnotes.querySelector(`sup.${editorClassNames.noteMark}`)?.textContent
-    ).toBe("1");
     const italic = [
-      ...endnotes.querySelectorAll<HTMLElement>(`.${editorClassNames.run}`),
+      ...notes.querySelectorAll<HTMLElement>(`.${editorClassNames.run}`),
     ].find((run) => run.textContent === " Italic endnote");
     expect(italic?.style.fontStyle).toBe("italic");
+    expect(
+      [...notes.querySelectorAll(`sup.${editorClassNames.noteMark}`)].map(
+        (mark) => mark.textContent
+      )
+    ).toEqual(["1", "2", "1"]);
     unmount();
   });
 

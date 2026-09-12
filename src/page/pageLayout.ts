@@ -231,6 +231,31 @@ export interface PageReservation {
   height: number;
 }
 
+/**
+ * Rows laid after the last block of the document rather than beside any place in it
+ * (`page/demands`), which is where the endnotes stand.
+ *
+ * They are given whatever the last page has left below its text, and go on down pages of their
+ * own from there. Nothing in the layout knows what they hold: a row is an id and a height, and
+ * what draws them is told back which page each landed on.
+ */
+export interface TrailingRows {
+  /** Height set aside once, above the first row, wherever the rows begin */
+  readonly overhead: number;
+  readonly rows: readonly { readonly id: string; readonly height: number }[];
+}
+
+/** The trailing rows one page holds, top to bottom */
+export interface TrailingPlacement {
+  page: number;
+  /** Where the rows begin on this page, measured from the top of the body like a split */
+  top: number;
+  /** The rows this page holds, in the order they are laid */
+  ids: readonly string[];
+  /** The rows' heights, and the overhead on the page the rows begin on */
+  height: number;
+}
+
 export interface PageLayout {
   /** Only the blocks to be moved down to the next page */
   pushes: BlockPush[];
@@ -249,6 +274,8 @@ export interface PageLayout {
   marginBottom: number;
   /** What each page keeps at its foot, page by page, one entry per band a page holds */
   reserved: readonly PageReservation[];
+  /** Where the rows laid after the last block landed, one entry per page holding any */
+  trailing: readonly TrailingPlacement[];
 }
 
 export interface PageLayoutInput {
@@ -264,6 +291,11 @@ export interface PageLayoutInput {
    * kept nowhere, so with none given the pages are the ones the blocks alone come to
    */
   bands?: ReadonlyMap<string, DemandBand>;
+  /**
+   * The rows laid after the last block, which open pages of their own where the last page has no
+   * room left for them. Left out, the pages end with the blocks
+   */
+  trailing?: TrailingRows;
 }
 
 /** Where one block is laid out: the paper of its section, and whether it opens a page */
@@ -488,16 +520,23 @@ function keptExtents(
  * past the last block a page is opened for them; one taller than an empty page's body could fit
  * nowhere, so it stays where it landed. A block that opens its page is never pushed off it to make
  * room, which would leave a page holding nothing but what was carried onto it.
+ *
+ * The trailing rows are laid last, under the last block on the page it ends on, and go on down
+ * pages of their own where that page has no room left. They stand above whatever that page keeps
+ * at its foot, the way the text does, and a page opened for them belongs to the section the last
+ * block belongs to, so it carries that section's header and footer.
  */
 export function pageLayout({
   blocks,
   sections,
   bands = NO_BANDS,
+  trailing: trailingRows,
 }: PageLayoutInput): PageLayout {
   const pushes: BlockPush[] = [];
   const cuts: PageCut[] = [];
   const splits: PageSplit[] = [];
   const reserved: PageReservation[] = [];
+  const trailing: TrailingPlacement[] = [];
   /** The block being placed, which is the one a page opened along the way starts with */
   let blockPos = blocks[0]?.pos ?? 0;
   const opened: PageOpening[] = [
@@ -518,6 +557,7 @@ export function pageLayout({
       bodyHeight: 0,
       marginBottom: 0,
       reserved,
+      trailing,
     };
   }
 
@@ -795,6 +835,42 @@ export function pageLayout({
   while (carried.length > 0) {
     split(pageStart + paper.bodyHeight, false, false);
   }
+
+  /** The rows on the page being filled, which the next page starts a new entry for */
+  let laidHere: TrailingPlacement | undefined;
+  // The rows start under the last block, and on the page that block ends on: a page opened after
+  // it for a footnote carried over holds none of the text they follow
+  let below = Math.max(cursor, pageStart);
+  for (const [at, row] of (trailingRows?.rows ?? []).entries()) {
+    // The rule above the rows is drawn once, where they begin
+    const above = at === 0 ? (trailingRows?.overhead ?? 0) : 0;
+    // A row no empty page could hold has nowhere else to stand, so it stays where it landed
+    const opens =
+      below + above + row.height > bodyEnd() + TOLERANCE_PX &&
+      below > pageStart + TOLERANCE_PX;
+    if (opens) {
+      laidHere = undefined;
+      split(pageStart + paper.bodyHeight, false, false);
+      below = pageStart;
+    }
+    const top = below + above;
+    if (laidHere === undefined) {
+      // The rule stands inside the room the page gives the rows, so the block begins above it
+      laidHere = {
+        page: splits.length + 1,
+        top: round(below),
+        ids: [row.id],
+        height: round(above + row.height),
+      };
+      trailing.push(laidHere);
+    } else {
+      laidHere.ids = [...laidHere.ids, row.id];
+      laidHere.height = round(laidHere.height + row.height);
+    }
+    below = top + row.height;
+    // The rows stand above whatever the page keeps at its foot, the way the text does
+    settle(below);
+  }
   recordRoom(splits.length + 1);
 
   return {
@@ -806,5 +882,6 @@ export function pageLayout({
     bodyHeight: round(pageStart + paper.bodyHeight),
     marginBottom: paper.marginBottom,
     reserved,
+    trailing,
   };
 }

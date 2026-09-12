@@ -252,7 +252,17 @@ function measureNotes(withNotes: boolean): NoteTimings {
             },
           ],
         ]);
-  const layout = median(() => pageLayout({ blocks, sections, bands }));
+  // The endnotes are laid after the last block rather than kept at the foot of a page
+  const trailing =
+    endnotes.length === 0
+      ? undefined
+      : {
+          overhead: 16,
+          rows: endnotes.map((row) => ({ id: row.key, height: 36 })),
+        };
+  const layout = median(() =>
+    pageLayout({ blocks, sections, bands, trailing })
+  );
 
   // One keystroke in the body against one inside a footnote. A note's goes in as a story change
   // written by the note's own body command, which is the path the view over a note takes

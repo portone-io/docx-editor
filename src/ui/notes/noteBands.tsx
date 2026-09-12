@@ -25,7 +25,7 @@ import {
   FOOTNOTE_BAND,
   FOOTNOTE_BAND_ORDER,
 } from "../../page/demands/footnoteDemands";
-import type { PagePixels } from "../../page/pageLayout";
+import type { PagePixels, TrailingRows } from "../../page/pageLayout";
 import type { PageOverlay } from "../../page/usePageLayout";
 import type { StoryKey } from "../../schema/stories";
 import {
@@ -38,6 +38,7 @@ import { NoteList } from "./NoteList";
 import { useNoteHeights } from "./noteHeights";
 import { NOTE_SEPARATOR_HEIGHT } from "./noteSeparator";
 import type { NoteHeightReport, RowEditing } from "./StoryRow";
+import { TrailingNotes } from "./TrailingNotes";
 
 const NO_ROWS: ReadonlyMap<StoryKey, NoteRow> = new Map();
 const NO_NOTE_ROWS: readonly NoteRow[] = [];
@@ -49,6 +50,11 @@ export interface NoteBands {
    * room at all. A new value lays the pages out again, so it changes only when a height does
    */
   readonly bands: ReadonlyMap<string, DemandBand> | undefined;
+  /**
+   * The endnotes as rows laid after the last block of the document, or undefined where it refers
+   * to none. A new value lays the pages out again, so it changes only when a height does
+   */
+  readonly trailing: TrailingRows | undefined;
   /**
    * Every note the document refers to, by story key, in first-reference order.
    *
@@ -106,6 +112,23 @@ export function useNoteBands({
     [hasFootnotes, heights]
   );
 
+  // The endnotes stand after the last paragraph rather than beside the place that calls them, so
+  // they are rows the layout lays last rather than a band a page keeps at its foot
+  const endnotes = notes?.endnotes ?? NO_NOTE_ROWS;
+  const trailing = useMemo<TrailingRows | undefined>(
+    () =>
+      endnotes.length === 0
+        ? undefined
+        : {
+            overhead: NOTE_SEPARATOR_HEIGHT,
+            rows: endnotes.map((row) => ({
+              id: row.key,
+              height: heights.get(row.key) ?? 0,
+            })),
+          },
+    [endnotes, heights]
+  );
+
   const snapshot = state === null ? null : documentOf(state);
   const noteFontFallbacks = fontFallbacks ?? DEFAULT_FONT_FALLBACKS;
   // The sheet sets its text from variables on its own box, which the notes drawn beside it are
@@ -123,10 +146,11 @@ export function useNoteBands({
 
   return {
     bands,
+    trailing,
     rows: notes?.rows ?? NO_ROWS,
     drawn: {
       footnotes,
-      endnotes: notes?.endnotes ?? NO_NOTE_ROWS,
+      endnotes,
       anyNotes: notes !== null,
       heights,
       onHeight,
@@ -145,22 +169,22 @@ export interface NotesAroundPageProps {
   /** Whether the pages are drawn at all, which is what decides where the footnotes go */
   readonly pageGuides: boolean;
   readonly zoom: number;
-  /** The footnote the caret is in, which is the one row an editing view stands over */
+  /** The note the caret is in, which is the one row an editing view stands over */
   readonly open?: StoryKey | null;
-  /** What mounts that view. Null while no footnote is open */
+  /** What mounts that view. Null while no note is open */
   readonly editing?: RowEditing | null;
-  /** Whether the open footnote stands where nothing may be edited */
+  /** Whether the open note stands where nothing may be edited */
   readonly readOnly?: boolean;
   /** A value that differs every time the main document changes, which the open row syncs on */
   readonly revision?: unknown;
-  /** Called for a press on a footnote no view stands over yet */
+  /** Called for a press on a note no view stands over yet */
   readonly onOpen?: (key: StoryKey, at: { left: number; top: number }) => void;
 }
 
 /**
- * The notes around the paper: each footnote over the room its page keeps, and the notes listed
- * after the last page. With no pages drawn there is no room to stand in, so the footnotes join
- * that list ahead of the endnotes instead.
+ * The notes around the paper: each footnote over the room its page keeps, and the endnotes over
+ * the room kept after the last paragraph. With no pages drawn there is no room to stand in at all,
+ * so both are listed under the sheet instead, where neither is edited in place.
  */
 export function NotesAroundPage({
   notes,
@@ -193,9 +217,25 @@ export function NotesAroundPage({
           onOpen={onOpen}
         />
       )}
-      {anyNotes && (
+      {overlay !== null && endnotes.length > 0 && (
+        <TrailingNotes
+          overlay={overlay}
+          rows={notes.rows}
+          heights={heights}
+          onHeight={onHeight}
+          fontFallbacks={notes.drawn.fontFallbacks}
+          textStyle={notes.drawn.textStyle}
+          zoom={zoom}
+          open={open}
+          editing={editing}
+          readOnly={readOnly}
+          revision={revision}
+          onOpen={onOpen}
+        />
+      )}
+      {anyNotes && !pageGuides && (
         <NoteList
-          footnotes={pageGuides ? NO_NOTE_ROWS : [...footnotes.values()]}
+          footnotes={[...footnotes.values()]}
           endnotes={endnotes}
           page={page}
           fontFallbacks={notes.drawn.fontFallbacks}

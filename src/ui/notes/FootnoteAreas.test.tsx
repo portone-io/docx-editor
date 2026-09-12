@@ -82,6 +82,7 @@ function face(page: number, reserved: readonly ReservedRoom[]): PageFace {
     width: 640,
     crossed: false,
     reserved,
+    trailing: null,
   };
 }
 
