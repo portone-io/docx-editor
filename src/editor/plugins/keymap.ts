@@ -181,7 +181,6 @@ export const docxKeymap: Record<string, Command> = {
   // The link key Word and Google Docs share. It opens the panel over the selection, and with
   // nothing there to link it reports that it did nothing, so the browser keeps its own Cmd+K
   "Mod-k": openLinkPanel,
-  // Each note key puts the caret inside the note it adds (`NOTE_KEYS`)
   [NOTE_KEYS.footnote]: insertFootnote,
   [NOTE_KEYS.endnote]: insertEndnote,
   // Inside a table, moving between cells comes first (Word does the same).

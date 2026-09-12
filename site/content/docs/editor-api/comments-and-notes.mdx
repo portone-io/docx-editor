@@ -98,16 +98,14 @@ A server checks the same rules with
 `documentNotes(state)` returns the footnotes and endnotes the document references, in
 first-reference order, each a read-only `DocumentNote` with `kind` (`"footnote"` or `"endnote"`),
 `id`, `label` (as drawn, in the document's number format), `text`, and `referencePos`.
-`label` is empty for a reference that draws its own mark rather than a number, which is how the
-file asks for a dagger or an asterisk of its own; the mark itself stands in the document beside
-the reference, so such a note is named by its kind alone on the page.
+`label` is empty for a reference whose own mark follows it in the text, such as a dagger the
+document wrote itself.
 
-Each kind of note has its own four commands, so a caller reads what it puts in off the name it
-calls.
+Each kind of note has its own four commands:
 
 | Command | What it does |
 | --- | --- |
-| `insertFootnote` | Puts a footnote reference at the end of the selection, calling a new footnote that holds no text yet, and opens that footnote for editing. |
+| `insertFootnote` | Puts a footnote reference at the end of the selection, calling a new, empty footnote, and opens that footnote for editing. |
 | `canInsertFootnote(state)` | Whether a footnote can go in at the end of the selection. |
 | `openFootnote(id)` | Puts the caret just after the footnote's reference and opens the footnote for editing, which is what clicking its number runs. |
 | `setFootnoteBody(id, body)` | Replaces a footnote's body with a `doc` node of `docxSchema`, as `setCommentBody` does for a comment. |
@@ -123,16 +121,13 @@ The insert and body commands do not apply under the `readOnly` and `comment` mod
 reference stands in locked content.
 A body command also answers `false` for an id no reference in the text names, for a separator
 entry, and for a body that says what the note already says.
-It writes the body you hand it as it stands: the built-in note view keeps the mark a note's number
-is drawn from when an edit inside the note takes it away, while these commands add none, so a body
-that does not open with that mark opens in Word without the note's number.
+It writes the body as handed and adds no reference mark, so a body that does not open with the
+note's own `w:footnoteRef` or `w:endnoteRef` mark opens in Word without the note's number.
 
-`openFootnote` and `openEndnote` answer `false` only for an id no reference in the text names and
-for a separator entry: opening a note is reading it, so it applies under every mode, and the note it
-opens takes no typing where the body is shut.
-They are what the built-in editor runs when a reader clicks a note's number, so a surface of your
-own can put the caret in a note from a control of its own; clicking the number the open note itself
-begins with runs the way back, which puts the caret just after the reference and scrolls there.
+`openFootnote` and `openEndnote` apply under every mode, since opening a note is reading it, and
+answer `false` only for an id no reference in the text names or a separator entry; a note opened
+where the body is shut takes no typing.
 
-A transaction that deletes the last reference to a note deletes the note with it, so one undo brings
-both back; one that copies a reference gives the copy a new id and a copy of the note.
+There is no delete command: a transaction that deletes the last reference to a note deletes the
+note with it, so one undo brings both back, and one that copies a reference gives the copy a new
+id and a copy of the note.

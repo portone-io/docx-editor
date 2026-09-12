@@ -4,6 +4,7 @@ import { TableMap } from "prosemirror-tables";
 import { Decoration, DecorationSet, type EditorView } from "prosemirror-view";
 import { isLockedCell } from "../../schema/locks";
 import { editorClassNames } from "../../styles/classNames";
+import { pageScaleAround } from "../../styles/visualScale";
 import {
   buildResizeRowTransaction,
   resizedRowHeight,
@@ -79,13 +80,6 @@ function edgeUnder(view: EditorView, event: MouseEvent): RowEdgeTarget | null {
   const rowDom = view.nodeDOM(rowPos);
   if (!(rowDom instanceof HTMLTableRowElement)) return null;
   return { ...spot, ...hit, tableDom, rowDom, rowPos };
-}
-
-function visualScale(view: EditorView): number {
-  const layer = view.dom.closest(`.${editorClassNames.pageLayer}`);
-  const raw = layer instanceof HTMLElement ? getComputedStyle(layer).zoom : "";
-  const parsed = Number.parseFloat(raw);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
 }
 
 interface Drag {
@@ -197,7 +191,7 @@ export function rowResize(): Plugin<DecorationSet> {
   function start(view: EditorView, event: MouseEvent): boolean {
     const target = edgeUnder(view, event);
     if (!target) return false;
-    const scale = visualScale(view);
+    const scale = pageScaleAround(view.dom);
     const startHeightPt =
       (target.rowDom.getBoundingClientRect().height / scale) * (72 / 96);
     drag = {

@@ -17,6 +17,7 @@ import {
   forwardRef,
   type ReactElement,
   type ReactNode,
+  useCallback,
   useEffect,
   useImperativeHandle,
   useLayoutEffect,
@@ -75,6 +76,7 @@ import { TableMenu } from "./ui/TableMenu";
 import { TextMenu } from "./ui/TextMenu";
 import { Toolbar } from "./ui/Toolbar";
 import { useFitWidthZoom } from "./ui/useFitWidthZoom";
+import { usePageRoom } from "./ui/usePageRoom";
 import { type DocxEditorZoom, normalizeZoom } from "./ui/zoom";
 
 export interface DocxEditorHandle {
@@ -406,8 +408,9 @@ function ImportRejection({ error }: { error: DocxImportError }): ReactElement {
 }
 
 /**
- * Publishes the zoom factor to CSS so panels outside the zoomed page layer can
- * scale with the paper. `zoom` on the layer does not reach its siblings.
+ * Publishes the zoom factor to CSS. It is what scales the page layer itself
+ * (`styles/editor.css`), and it reaches the panels beside the paper, which stand outside
+ * the layer and scale their own type with it.
  */
 function zoomVariable(
   factor: number
@@ -456,6 +459,14 @@ function DocxEditorSurface(
   );
   const viewRef = useRef<EditorView | null>(null);
   const [live, setLive] = useState<LiveEditor | null>(null);
+  const [pageBox, setPageBox] = useState<HTMLDivElement | null>(null);
+  const [pageLayer, setPageLayer] = useState<HTMLDivElement | null>(null);
+  // The pagination measures the layer through a ref, while the room it takes is watched off the
+  // element as it arrives, so the one callback hands it to both
+  const holdPageLayer = useCallback((node: HTMLDivElement | null) => {
+    layerRef.current = node;
+    setPageLayer(node);
+  }, []);
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [uncontrolledZoom, setUncontrolledZoom] = useState<DocxEditorZoom>(() =>
     normalizeZoom(defaultZoom)
@@ -471,6 +482,7 @@ function DocxEditorSurface(
       : A4_PAGE_PIXELS;
   const fitWidth = useFitWidthZoom(rootRef, page.pageWidth);
   const effectiveZoom = selectedZoom === "fit-width" ? fitWidth : selectedZoom;
+  usePageRoom(pageBox, pageLayer, effectiveZoom);
   const changeZoom = (next: DocxEditorZoom) => {
     const normalized = normalizeZoom(next);
     if (zoom === undefined) setUncontrolledZoom(normalized);
@@ -701,31 +713,30 @@ function DocxEditorSurface(
           </button>
         )}
         <div ref={rootRef} className={editorClassNames.root}>
-          {/* The paper and the page marks overlaid on it share one positioning origin */}
-          <div
-            ref={layerRef}
-            className={editorClassNames.pageLayer}
-            style={{ zoom: effectiveZoom }}
-          >
-            <div ref={mountRef} />
-            {overlay && (
-              <PageGuides
+          {/* The scaled layer stands outside the flow, so this box holds the room it takes */}
+          <div ref={setPageBox} className={editorClassNames.pageBox}>
+            {/* The paper and the page marks overlaid on it share one positioning origin */}
+            <div ref={holdPageLayer} className={editorClassNames.pageLayer}>
+              <div ref={mountRef} />
+              {overlay && (
+                <PageGuides
+                  overlay={overlay}
+                  headersFootersFor={headersFootersFor}
+                />
+              )}
+              <NotesAroundPage
+                notes={notes}
                 overlay={overlay}
-                headersFootersFor={headersFootersFor}
+                page={page}
+                zoom={effectiveZoom}
+                open={surface.open}
+                editing={surface.editing}
+                readOnly={surface.readOnly}
+                revision={live?.state}
+                onOpen={surface.onOpen}
+                onReturn={surface.onReturn}
               />
-            )}
-            <NotesAroundPage
-              notes={notes}
-              overlay={overlay}
-              page={page}
-              zoom={effectiveZoom}
-              open={surface.open}
-              editing={surface.editing}
-              readOnly={surface.readOnly}
-              revision={live?.state}
-              onOpen={surface.onOpen}
-              onReturn={surface.onReturn}
-            />
+            </div>
           </div>
           {!commentsOpen && commentsPanel}
         </div>

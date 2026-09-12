@@ -1,15 +1,13 @@
 /**
  * Getting into a note and asking for one to be opened.
  *
- * A note is drawn away from the text that calls it, so what says which note the reader wants is a
- * press on its number or a command. Neither can mount anything itself - what draws the notes is
- * the surface around the editor - so the request is held in the state and the surface reads it
- * back (`requestedNote`). The nonce is what makes a second request for the note already open
- * reach the surface at all.
+ * A press on a note's number or a command asks for a note, and neither can mount anything itself,
+ * since what draws the notes is the surface around the editor; so the request is held in the state
+ * and the surface reads it back (`requestedNote`). The nonce is what makes a second request for
+ * the note already open reach the surface at all.
  *
  * The request moves the caret to just after the reference as it goes in, which is where Escape
- * hands it back to (`editor/notes/noteSurface`): the note opens from the place it is called from,
- * and leaving it needs nothing remembered.
+ * hands it back to (`editor/notes/noteSurface`), so leaving a note needs nothing remembered.
  */
 
 import type { Node as PMNode } from "prosemirror-model";
@@ -91,11 +89,9 @@ export function requestedNote(state: EditorState): RequestedNote | null {
 }
 
 /**
- * Puts the caret just after the note's reference and asks for the note to be opened.
- *
- * It applies wherever the document refers to a note of this kind by this id, whatever the editor
- * runs under: opening a note is reading it, and what a reader may do to it once it stands open is
- * the story view's own question (`editor/stories`).
+ * Puts the caret just after the note's reference and asks for the note to be opened. It applies
+ * under every mode, since opening a note is reading it; what a reader may do once it stands open
+ * is the story view's question (`editor/stories`).
  */
 export function openNoteCommand(kind: NoteKind, id: string): Command {
   return (state, dispatch) => {

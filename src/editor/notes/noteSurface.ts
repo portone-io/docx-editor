@@ -5,10 +5,9 @@
  * keeps as a preserved chip. Word draws that mark as the number the reference carries, so it is
  * drawn here as that label in superscript, the way the reference in the body is.
  *
- * The rest is what the story view asks a kind of story for (`editor/stories`): the host that
- * writes an edit into the main document through the note's own body command, and the extensions
- * that give a note its key rule, its chip, the number it keeps through an edit, and what a paste
- * into one may carry.
+ * The rest is what the story view asks a kind of story for (`editor/stories`): the host every
+ * edit leaves through, and the extensions that give a note its chip, its key rule, the number it
+ * keeps through an edit, and what a paste into one may carry.
  */
 
 import { keymap } from "prosemirror-keymap";
@@ -70,17 +69,12 @@ export function noteNodeSpecs(labelOf: () => string): StoryNodeSpecs {
 }
 
 /**
- * The same drawing inside an editing view, the note's own number leading back to the reference
- * that calls it.
+ * The same drawing inside an editing view, with a press on the note's own number leading back to
+ * the reference that calls it.
  *
- * A note the caret goes into has to keep the height it was measured at, so the chip is drawn by
- * the very spec the static markup draws it by rather than by the schema's own, which says nothing
- * about a label.
- *
- * The press is answered rather than let through, so the number takes a reader back where Escape
- * does without a caret ever landing on it: the round trip Word offers, and the way back matters
- * most for an endnote, which stands pages away from the text that calls it. What the file carries
- * is untouched - the chip is a preserved fragment, and a listener neither rewrites nor deletes it.
+ * The chip is drawn by the spec the static markup draws it by, so a note the caret goes into keeps
+ * the height it was measured at. The press is answered rather than let through, so no caret ever
+ * lands on the number; the chip is a preserved fragment, and the listener leaves it untouched.
  */
 function noteMarkView(
   labelOf: () => string,
@@ -115,12 +109,11 @@ export const dropUnwritableContent: SliceNormalizer = (slice) =>
   });
 
 /**
- * Takes a note reference out of a paste.
+ * Takes a note reference out of a paste: a note may not hold a note.
  *
- * A note may not hold a note (5.3 of the notes plan). A reference written into a story would call
- * a note the body never calls, which nothing here numbers, counts or settles: the lifecycle, the
- * numbering and the writer all walk the body alone, and a reference copied from beside the note it
- * was pasted into would have that note calling itself. The text it stood in stays, the way the
+ * The lifecycle, the numbering and the writer all walk the body alone, so a reference inside a
+ * story would call a note nothing numbers, counts or settles, and one copied from beside the note
+ * it was pasted into would have that note calling itself. The text it stood in stays, the way the
  * other anchors leave theirs (`editor/clipboard/normalizers`).
  */
 export const dropNoteReferences: SliceNormalizer = (slice, { move }) =>
@@ -131,13 +124,10 @@ export const dropNoteReferences: SliceNormalizer = (slice, { move }) =>
       );
 
 /**
- * What a note takes beyond character and paragraph formatting, which is nothing (5.3 of the notes
- * plan).
- *
- * A link and an image each name a relationship of the part they stand in and the notes part writer
- * writes none; a table, a list and a comment need more of the package than that writer puts
- * together; and a note may not hold a note. What the file itself wrote inside a note is kept and
- * its text stays editable - this is what an edit may add.
+ * A note takes nothing beyond character and paragraph formatting: a link and an image each need a
+ * relationship of their part, which the notes part writer writes none of; a table, a list and a
+ * comment need more of the package than that writer puts together; and a note may not hold a note.
+ * What the file itself wrote inside a note is kept; this is about what an edit may add.
  */
 const NOTE_TAKES = NO_CAPABILITY;
 
@@ -164,8 +154,7 @@ function referenceOf(main: EditorView, key: StoryKey) {
 
 /**
  * Puts the caret back just after the reference that calls this note and takes the body's focus,
- * which is what leaves the note: Escape runs it, and so does a press on the note's own number,
- * whether a view stands over that note or it is only drawn (`ui/notes/StoryRow`).
+ * which is what leaves the note: Escape and a press on the note's own number both run it.
  */
 export function returnToReference(main: EditorView, key: StoryKey): void {
   const found = referenceOf(main, key);
@@ -230,51 +219,26 @@ function markHome(story: PMNode): number | null {
 }
 
 /**
- * Keeps the number a note is drawn by the first thing the note holds.
- *
- * It is one rule with two halves, because a number that is second is as wrong in the file as one
- * that is gone: nothing of the reader's may stand before it, and it goes back where an edit
- * carried it off.
+ * Keeps the number a note is drawn by the first thing the note holds: an edit that carried it off
+ * has it put back, and the caret never stands ahead of it.
  *
  * Word draws a note's number from the mark its entry opens with (`w:footnoteRef`), which arrives
  * as a preserved chip no deletion guard answers for (`docx/importPolicy`), so selecting the whole
- * of a note and deleting it took the number along with the text and the entry went back out
- * without one. Emptying a note stays an ordinary edit - the text goes - while the number, which
- * is the entry's own rather than anything a reader wrote, goes back at the head of the first
- * paragraph that takes it, as the very node it stood in the story as - its preserved XML, its run
- * style and whatever wrapper it opened inside. So an entry nobody touched still goes out as its
- * own bytes, and an emptied one goes out carrying the element Word reads.
+ * of a note and deleting it took the number along with the text. It goes back at the head of the
+ * first paragraph that takes it, as the very node it stood in the story as, so an emptied note
+ * still goes out carrying the element Word reads. It is put back rather than the edit refused
+ * because the guard the chip would need answers for a whole stretch of an edit, and a refusal
+ * would leave the selected text standing too; and it is an appended transaction, as a comment a
+ * body edit swept away is put back (`editor/plugins/commentRestoration`), so the host writes the
+ * edit and the number as one story change and one undo takes both back. Inserting the number
+ * beside the composed text rather than rewriting the node it stands in is what keeps a composition
+ * over it open (`e2e/notesEditing.spec.ts`).
  *
- * Putting it back rather than refusing the edit is what keeps the key honest: the guard the chip
- * would need answers for a whole stretch of an edit, so a refusal would leave the selected text
- * standing too.
- *
- * It is an appended transaction, the way a comment a body edit swept away is put back
- * (`editor/plugins/commentRestoration`), so the story the host writes is the edit and the number
- * together: one story change in the document, and one undo for both.
- *
- * Backspace at the start of a note holding nothing but its number is a rule of its own and stays
- * one (`deleteEmptyNote`): it answers the key before any edit is made, so it takes the note and
- * the reference calling it away rather than leaving a story for this to answer for.
- *
- * A composition asks for no deferral of its own. The number goes in beside the composed text
- * rather than rewriting the node it stands in, which is the difference that lets a comment be put
- * back under an open composition as well (`editor/plugins/commentRestoration`), so a composition
- * that writes over the number keeps it and stays open. `e2e/notesEditing.spec.ts` holds that
- * against a real browser, which is the only place a composition can be measured.
- *
- * The caret is the other half: it is kept out of the one place from which a reader would write
- * ahead of the number, so that every way into a note - a press on the reference, a press on the
- * note itself, the open command, a note just inserted - leaves it where the note's own text
- * begins, and typing, pasting and composing land after the number rather than in front of it.
- * Holding the caret off is what makes this a rule a reader never runs into, rather than a
- * correction that moves what they just wrote; the move below answers only what no caret of theirs
- * could have written - a paste or a plugin writing straight into the story - and leaves what was
- * written where it was written, the number going first.
- *
- * A selection that reaches over the number keeps its range: it is an edit like any other, and what
- * it sweeps away the restoration puts back. That is what keeps a paste over the whole of a note
- * one paragraph, rather than one the number is left alone in.
+ * Holding the caret after the number is what keeps this a rule a reader never runs into: every way
+ * into a note leaves the caret where the note's own text begins, so the move above answers only
+ * what a paste or a plugin wrote straight into the story. A selection reaching over the number is
+ * left alone: it is an edit like any other, and what it sweeps away is put back, which keeps a
+ * paste over the whole of a note one paragraph.
  */
 function ownMarkFirst(): Plugin {
   return new Plugin({
@@ -305,11 +269,8 @@ function ownMarkFirst(): Plugin {
 }
 
 /**
- * Whether the note holds nothing but the number it opens with.
- *
- * What the note holds is judged rather than what it spells, because an image and an empty table
- * spell no text at all: nothing a reader put into a note may go under a key meant to take an
- * empty one back.
+ * Whether the note holds nothing but the number it opens with, judged by content rather than by
+ * text, since an image or an empty table spells no text at all.
  */
 function holdsNothing(story: PMNode): boolean {
   const only = story.childCount === 1 ? story.firstChild : null;
@@ -322,12 +283,8 @@ function holdsNothing(story: PMNode): boolean {
 
 /**
  * Deletes an empty note and the reference that calls it, and hands the caret back to where the
- * reference stood.
- *
- * Only the reference is deleted: the note goes with its last reference of its own accord
- * (`editor/plugins/noteLifecycle`), in the same history event, so one undo brings both back. A
- * note holding text is left alone, which is what keeps written words from disappearing under a
- * key meant to take a mistake back.
+ * reference stood. Only the reference is deleted: the note goes with its last reference
+ * (`editor/plugins/noteLifecycle`), in the same history event, so one undo brings both back.
  */
 function deleteEmptyNote(main: EditorView, key: StoryKey): Command {
   return (state, dispatch) => {
@@ -357,10 +314,8 @@ function deleteEmptyNote(main: EditorView, key: StoryKey): Command {
  * The host a note's editing view writes through, whichever kind of note stands under the key.
  *
  * Every edit leaves as that kind's own body command, so a lock around the reference and the
- * standing the editor runs under judge a note edit where they judge a body edit, and the main
- * document keeps the one history both share. The kind is read off the key rather than bound here,
- * so one host answers for the footnote at the foot of a page and the endnote at the end of the
- * document alike.
+ * editing protection judge a note edit where they judge a body edit, and the main document keeps
+ * the one history both share.
  */
 export function noteHost(
   main: EditorView,
