@@ -20,6 +20,7 @@ import {
 } from "prosemirror-model";
 import { type Command, Plugin, TextSelection } from "prosemirror-state";
 import type { EditorView, NodeViewConstructor } from "prosemirror-view";
+import { NOTE_NUMBER_ELEMENTS } from "../../docx/notes/newNote";
 import { docxSchema } from "../../schema";
 import { editShut, transactionAllowed } from "../../schema/guards";
 import { editsShut } from "../../schema/protectionState";
@@ -43,13 +44,13 @@ import {
   type StoryHost,
 } from "../stories/storyView";
 
-const OWN_REFERENCE_MARKS: readonly unknown[] = ["footnoteRef", "endnoteRef"];
-
 /** Whether this is the mark a note's entry opens with, which Word draws as the note's number */
 function isOwnMark(node: PMNode): boolean {
+  const element: unknown = node.attrs.element;
   return (
     node.type === docxSchema.nodes.rawRunContent &&
-    OWN_REFERENCE_MARKS.includes(node.attrs.element)
+    typeof element === "string" &&
+    NOTE_NUMBER_ELEMENTS.includes(element)
   );
 }
 
