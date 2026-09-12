@@ -187,7 +187,7 @@ describe("measureSheet", () => {
 
   it("normalizes measurements taken from a visually scaled sheet", () => {
     const live = editor(brokenParagraph());
-    live.dom.style.zoom = "0.6";
+    live.dom.style.transform = "scale(0.6)";
     draw(live, SHAPES, 0.6);
 
     expect(measureSheet(live, live.dom).blocks).toEqual(measuredShapes(live));

@@ -431,11 +431,12 @@ describe("DocxEditor", () => {
     const select = host.querySelector<HTMLSelectElement>(
       `.${editorClassNames.zoomSelect}`
     );
-    const layer = host.querySelector<HTMLElement>(
-      `.${editorClassNames.pageLayer}`
-    );
+    const scale = () =>
+      host
+        .querySelector<HTMLElement>(`.${editorClassNames.workspace}`)
+        ?.style.getPropertyValue("--docx-editor-zoom");
     expect(select?.value).toBe("0.75");
-    expect(layer?.style.zoom).toBe("0.75");
+    expect(scale()).toBe("0.75");
 
     act(() => {
       if (!select) throw new Error("zoom control missing");
@@ -444,12 +445,12 @@ describe("DocxEditor", () => {
     });
 
     expect(select?.value).toBe("1.25");
-    expect(layer?.style.zoom).toBe("1.25");
+    expect(scale()).toBe("1.25");
     expect(changed).toEqual([1.25]);
     unmount();
   });
 
-  it("publishes the zoom factor to CSS for the panels beside the paper", () => {
+  it("publishes the zoom factor to CSS, which is what scales the paper", () => {
     const unmount = render(
       <DocxEditor
         document={ONE_PARAGRAPH}
@@ -490,8 +491,8 @@ describe("DocxEditor", () => {
     const select = host.querySelector<HTMLSelectElement>(
       `.${editorClassNames.zoomSelect}`
     );
-    const layer = host.querySelector<HTMLElement>(
-      `.${editorClassNames.pageLayer}`
+    const workspace = host.querySelector<HTMLElement>(
+      `.${editorClassNames.workspace}`
     );
 
     act(() => {
@@ -502,7 +503,7 @@ describe("DocxEditor", () => {
 
     expect(changed).toEqual([0.5]);
     expect(select?.value).toBe("1");
-    expect(layer?.style.zoom).toBe("1");
+    expect(workspace?.style.getPropertyValue("--docx-editor-zoom")).toBe("1");
     unmount();
   });
 

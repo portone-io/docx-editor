@@ -15,6 +15,7 @@
 import type { Node as PMNode } from "prosemirror-model";
 import type { EditorView } from "prosemirror-view";
 import { editorAttributes } from "../styles/classNames";
+import { visualScaleOf } from "../styles/visualScale";
 import {
   type BreakCandidate,
   blockKindFor,
@@ -42,11 +43,6 @@ const NOTHING_OPENED: ReadonlyMap<number, number> = new Map();
 function pixels(value: string): number {
   const parsed = Number.parseFloat(value);
   return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function visualScale(element: HTMLElement): number {
-  const scale = pixels(getComputedStyle(element).zoom);
-  return scale > 0 ? scale : 1;
 }
 
 function appliedPush(element: HTMLElement): number {
@@ -105,7 +101,7 @@ export function measureSheet(
   const sheetRect = sheet.getBoundingClientRect();
   const layerRect = layer.getBoundingClientRect();
   const style = getComputedStyle(sheet);
-  const scale = visualScale(layer);
+  const scale = visualScaleOf(layer);
   const contentTop = pixels(style.paddingTop);
   const contentBottom = pixels(style.paddingBottom);
   const sheetY = (viewportY: number) => (viewportY - sheetRect.top) / scale;

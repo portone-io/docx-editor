@@ -2,6 +2,7 @@ import type { EditorView } from "prosemirror-view";
 import { type RefObject, useLayoutEffect, useRef, useState } from "react";
 import type { DocumentComment } from "../../editor/commands/commentCommands";
 import { editorClassNames } from "../../styles/classNames";
+import { visualScaleOf } from "../../styles/visualScale";
 
 export const COMPOSER_POSITION = "composer";
 const VERTICAL_SCROLLBAR_CLEARANCE = 16;
@@ -118,11 +119,7 @@ export function useCommentRailLayout({
     const reserveCommentWidth = () => {
       if (!pageLayer) return;
       const drawnWidth = rail.getBoundingClientRect().width || rail.offsetWidth;
-      const computedZoom = Number.parseFloat(
-        frameWindow?.getComputedStyle(pageLayer).zoom ?? ""
-      );
-      const scale =
-        Number.isFinite(computedZoom) && computedZoom > 0 ? computedZoom : 1;
+      const scale = visualScaleOf(pageLayer);
       pageLayer.style.paddingRight = `${(drawnWidth + 16 + VERTICAL_SCROLLBAR_CLEARANCE) / scale}px`;
     };
     const placeBesidePaper = () => {
