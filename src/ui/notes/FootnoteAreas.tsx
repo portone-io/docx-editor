@@ -12,7 +12,7 @@ import type { CSSProperties, ReactElement } from "react";
 import type { NoteRow } from "../../editor/commands/noteQueries";
 import { FOOTNOTE_BAND } from "../../page/demands/footnoteDemands";
 import type { PageOverlay } from "../../page/usePageLayout";
-import type { StoryKey } from "../../schema/stories";
+import { noteName, type StoryKey } from "../../schema/stories";
 import { editorClassNames } from "../../styles/classNames";
 import type { FontFallbacks } from "../../styles/fontStack";
 import { NOTE_SEPARATOR_HEIGHT, noteSeparatorWidth } from "./noteSeparator";
@@ -97,7 +97,7 @@ export function FootnoteAreas({
                     noteKey={row.key}
                     story={row.story}
                     label={row.label}
-                    name={`Footnote ${row.label}`}
+                    name={noteName(row.kind, row.label)}
                     fontFallbacks={fontFallbacks}
                     // A note nobody has measured yet takes its room unseen, unless it is the one
                     // the caret is going into: an unseen row takes no caret

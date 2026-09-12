@@ -2,7 +2,7 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { makeFormattedNotesDocx } from "../../__testing__/docx";
+import { makeFormattedNotesDocx, makeNotesDocx } from "../../__testing__/docx";
 import { importDocx } from "../../docx/importDocx";
 import { noteProjection } from "../../editor/commands/noteQueries";
 import {
@@ -49,6 +49,19 @@ afterEach(() => {
 /** Footnote 2 carries a bold run and a second paragraph and is labelled 1; footnote 5 is labelled 2 */
 function openedFootnotes() {
   const state = createEditorState(importDocx(makeFormattedNotesDocx()).doc);
+  return noteProjection.read(state).footnotes;
+}
+
+/** A reference drawing a mark of its own, which the editor draws no number for */
+const CUSTOM_MARK_BODY =
+  '<w:p><w:r><w:t xml:space="preserve">Marked</w:t></w:r>' +
+  '<w:r><w:footnoteReference w:customMarkFollows="1" w:id="2"/></w:r>' +
+  "<w:r><w:t>*</w:t></w:r></w:p>";
+
+function customMarkFootnotes() {
+  const state = createEditorState(
+    importDocx(makeNotesDocx(CUSTOM_MARK_BODY)).doc
+  );
   return noteProjection.read(state).footnotes;
 }
 
@@ -146,6 +159,18 @@ describe("the footnotes at the foot of each page", () => {
     ].map((mark) => mark.textContent);
     expect(marks).toEqual(["1", "2"]);
     expect(area(1).textContent).not.toContain("footnoteRef");
+  });
+
+  it("names a footnote drawing a mark of its own by its kind alone", () => {
+    draw({
+      footnotes: customMarkFootnotes(),
+      overlay: overlayOf(face(1, [room(["footnote:2"], 900)])),
+    });
+
+    // The reference draws no number, so there is none to name the row by
+    expect(
+      rowsOf(area(1)).map((row) => row.getAttribute("aria-label"))
+    ).toEqual(["Footnote"]);
   });
 
   it("keeps a footnote's bold run and second paragraph", () => {
