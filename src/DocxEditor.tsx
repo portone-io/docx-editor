@@ -34,13 +34,13 @@ import type { SessionStore } from "./docx/session";
 import type { CommentAuthor } from "./editor/commands/commentCommands";
 import { openFootnote } from "./editor/commands/footnoteCommands";
 import { activeLinkSpan } from "./editor/commands/linkCommands";
-import { noteProjection } from "./editor/commands/noteQueries";
 import { createEditorView, editorStateForSession } from "./editor/createEditor";
 import { sectionGeometryAt } from "./editor/documentStyles";
 import { documentOf, storyDocument } from "./editor/editorDocument";
 import {
   footnoteExtensions,
   footnoteHost,
+  footnoteIdOf,
 } from "./editor/notes/footnoteSurface";
 import {
   closeCommentComposer,
@@ -59,7 +59,7 @@ import { A4_PAGE_PIXELS, pagePixels, sectionPixels } from "./page/pageLayout";
 import { type PageFace, usePageLayout } from "./page/usePageLayout";
 import type { EditableComments, EditingProtection } from "./schema/protection";
 import { editingProtection, protectionOf } from "./schema/protectionState";
-import { type StoryKey, storyKey, storyNodeOf } from "./schema/stories";
+import { type StoryKey, storyNodeOf } from "./schema/stories";
 import { editorClassNames } from "./styles/classNames";
 import type { FontFallbacks } from "./styles/fontStack";
 import { CommentsPanel, shownBesideThePage } from "./ui/CommentsPanel";
@@ -391,9 +391,6 @@ function zoomVariable(
   return { "--docx-editor-zoom": factor };
 }
 
-/** What a footnote's story key opens with, which the id a command takes stands after */
-const FOOTNOTE_PREFIX = storyKey("footnote", "");
-
 function DocxEditorSurface(
   {
     document: source,
@@ -588,7 +585,8 @@ function DocxEditorSurface(
   // A footnote whose reference an edit swept away has no row to stand in any more
   const open = openNote !== null && footnotes.has(openNote) ? openNote : null;
   const openRow = open === null ? undefined : footnotes.get(open);
-  const openId = open === null ? null : open.slice(FOOTNOTE_PREFIX.length);
+  const openId = open === null ? null : footnoteIdOf(open);
+  const openAt = openRow?.referencePos;
 
   const activate = useCallback((_key: StoryKey, view: EditorView | null) => {
     setNoteLive(view === null ? null : { view, state: view.state });
@@ -621,18 +619,13 @@ function DocxEditorSurface(
   );
   // The paper a note wraps at is the paper of the section its reference stands in, which a story
   // holds no section of its own to say (`editor/documentStyles`)
-  const noteSnapshot = useMemo(() => {
-    if (live === null || snapshot === null || openId === null) return null;
-    const reference = noteProjection
-      .read(live.state)
-      .notes.find((note) => note.kind === "footnote" && note.id === openId);
-    return storyDocument(
-      snapshot,
-      reference === undefined
-        ? snapshot.geometry
-        : sectionGeometryAt(live.state, reference.referencePos)
-    );
-  }, [live?.view, snapshot, openId]);
+  const noteSnapshot = useMemo(
+    () =>
+      live === null || snapshot === null || openAt === undefined
+        ? null
+        : storyDocument(snapshot, sectionGeometryAt(live.state, openAt)),
+    [live?.view, snapshot, openAt]
+  );
   const editing = useMemo<RowEditing | null>(
     () =>
       noteHost === null || noteExtensions === null || noteSnapshot === null
@@ -784,12 +777,10 @@ function DocxEditorSurface(
               readOnly={noteShut}
               revision={live?.state}
               onOpen={(key, at) => {
-                if (!live) return;
+                const id = footnoteIdOf(key);
+                if (!live || id === null) return;
                 noteCaret.current = { key, caret: { kind: "point", ...at } };
-                runOn(
-                  live.view,
-                  openFootnote(key.slice(FOOTNOTE_PREFIX.length))
-                );
+                runOn(live.view, openFootnote(id));
               }}
             />
           </div>

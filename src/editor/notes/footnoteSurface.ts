@@ -9,9 +9,14 @@
  */
 
 import type { EditorView } from "prosemirror-view";
-import { storyKey } from "../../schema/stories";
+import { type StoryKey, storyKey } from "../../schema/stories";
 import type { StoryExtensions, StoryHost } from "../stories/storyView";
-import { noteExtensions, noteHost } from "./noteSurface";
+import { noteExtensions, noteHost, noteIdIn } from "./noteSurface";
+
+/** The id this story key names, and null for a key naming anything but a footnote */
+export function footnoteIdOf(key: StoryKey): string | null {
+  return noteIdIn("footnote", key);
+}
 
 /** Writes a footnote's edits into the main document and hands the caret back to its reference */
 export function footnoteHost(

@@ -95,7 +95,7 @@ const NOTE_NORMALIZERS: readonly SliceNormalizer[] = [
 ];
 
 /** The id this key names for a note of this kind, and null for a key naming another kind */
-function idIn(kind: NoteKind, key: StoryKey): string | null {
+export function noteIdIn(kind: NoteKind, key: StoryKey): string | null {
   const prefix = storyKey(kind, "");
   return key.startsWith(prefix) ? key.slice(prefix.length) : null;
 }
@@ -135,7 +135,7 @@ function deleteEmptyNote(
   key: StoryKey
 ): Command {
   return (state, dispatch) => {
-    const id = idIn(kind, key);
+    const id = noteIdIn(kind, key);
     if (id === null || !state.selection.empty) return false;
     if (!holdsNoText(state.doc)) return false;
     const $at = state.selection.$from;
@@ -171,14 +171,14 @@ export function noteHost(
   activate: StoryHost["activate"]
 ): StoryHost {
   const referenceOf = (key: StoryKey) => {
-    const id = idIn(kind, key);
+    const id = noteIdIn(kind, key);
     return id === null ? null : noteReferenceAt(main.state.doc, kind, id);
   };
 
   return {
     state: () => main.state,
     write(key, story) {
-      const id = idIn(kind, key);
+      const id = noteIdIn(kind, key);
       return id !== null && runOn(main, noteBodyCommand(kind, id, story));
     },
     undo: () => runOn(main, undo),
