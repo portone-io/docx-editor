@@ -641,6 +641,23 @@ describe("the footnotes part", () => {
     ]);
   });
 
+  it("refuses a footnote story added under an id no w:id could be written from", () => {
+    const opened = importDocx(makeNotesDocx());
+    const edited = withStory(
+      opened.doc,
+      storyKey("footnote", "abc"),
+      storyFromText("A new note")
+    );
+
+    expect(refusedWith(edited, opened)).toEqual([
+      {
+        code: "unsupported-content",
+        message:
+          "the footnote:abc story is named by no whole number, and a w:footnote is identified by one",
+      },
+    ]);
+  });
+
   it("reports a footnotes part with no root once a footnote in it changed", () => {
     const parts = unzipSync(makeNotesDocx());
     parts["word/footnotes.xml"] = new TextEncoder().encode(

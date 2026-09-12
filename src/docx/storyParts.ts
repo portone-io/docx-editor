@@ -16,6 +16,7 @@ import {
   type RootDeclarations,
   splicePart,
 } from "../ooxml/partSplice";
+import { ST_DecimalNumber } from "../ooxml/simpleTypes";
 import { parseAttrs, readTag, rootTagAt } from "../ooxml/tagScan";
 import {
   attributeByLocalName,
@@ -266,6 +267,31 @@ export interface StoryPartProblem {
 }
 
 /**
+ * The stories added under a key naming no whole number.
+ *
+ * An added entry is written under the id its key names, and an entry identifies itself by an
+ * `ST_DecimalNumber` (§17.11.2, §17.11.8), so a key such as `footnote:abc` would write a file no
+ * reader takes. The ids the package arrived with are the part's own and are written back as they
+ * came, whatever they spell.
+ */
+function addedIdProblems(
+  part: StoryEntriesPart,
+  changes: readonly StoryChange[]
+): readonly StoryPartProblem[] {
+  return changes.flatMap((change): StoryPartProblem[] =>
+    change.change === "added" &&
+    ST_DecimalNumber.parse(storyIdOf(change.key, part.kind)) === null
+      ? [
+          {
+            code: "unsupported-content",
+            message: `the ${change.key} story is named by no whole number, and a ${wName(part.entry)} is identified by one`,
+          },
+        ]
+      : []
+  );
+}
+
+/**
  * Why the part cannot take what the document did to its stories, or none when it can. The part the
  * package holds is rewritten around its root element, and a part the package lacks is declared in
  * the content types part, which the export does not write from nothing.
@@ -275,7 +301,10 @@ export function storyEntriesProblems(
   doc: PMNode,
   session: SessionStore
 ): readonly StoryPartProblem[] {
-  if (!changed(storyChangesOf(doc, session, part.kind))) return [];
+  const changes = storyChangesOf(doc, session, part.kind);
+  if (!changed(changes)) return [];
+  const added = addedIdProblems(part, changes);
+  if (added.length > 0) return added;
   const xml = readPart(
     session.parts,
     relatedPartPath(session.parts, session.mainPartPath, part.relType)
