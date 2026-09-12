@@ -88,6 +88,15 @@ export interface KindMeasure {
   /** Height the engine's own marks add inside this block, taken off its measured bottom */
   appliedHeight: number;
   /**
+   * What the engine's marks have opened at each place this block was cut, as the browser drew it,
+   * by the candidate's position. What is drawn there can come out taller than the cut asked for -
+   * a table's spacer row takes half of a collapsed border on each side - and everything else a
+   * kind reports is read off the sheet as drawn, so a place below a cut is taken back to its
+   * natural offset by this rather than by what the layout asked for (`page/measureBlocks`).
+   * A kind that opens nothing leaves it out
+   */
+  opened?: ReadonlyMap<number, number>;
+  /**
    * Whether the document asks for this block to stand on the same page as the start of the block
    * after it. A kind whose blocks never do leaves it out
    */

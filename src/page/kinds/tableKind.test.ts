@@ -104,6 +104,8 @@ describe("tableKind", () => {
       minFirstPiece: 240,
       breakAfter: false,
       appliedHeight: 0,
+      // Nothing was cut here, so no row of the engine's own stands above any boundary
+      opened: new Map(),
     });
   });
 
@@ -119,6 +121,8 @@ describe("tableKind", () => {
       minFirstPiece: 240,
       breakAfter: false,
       appliedHeight: 0,
+      // Nothing was cut here, so no row of the engine's own stands above any boundary
+      opened: new Map(),
     });
   });
 

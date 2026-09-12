@@ -21,7 +21,7 @@ import {
   type MeasuredBlock,
   type MeasureTarget,
 } from "./blockKinds";
-import { blockKindsOf, demandSourcesOf, pageCutsOf } from "./pageDecorations";
+import { blockKindsOf, demandSourcesOf } from "./pageDecorations";
 
 /**
  * The measurements taken in order to draw the page overlay. Positions are relative to
@@ -36,6 +36,8 @@ export interface SheetMeasure {
   contentBottom: number;
   blocks: MeasuredBlock[];
 }
+
+const NOTHING_OPENED: ReadonlyMap<number, number> = new Map();
 
 function pixels(value: string): number {
   const parsed = Number.parseFloat(value);
@@ -70,9 +72,14 @@ function drawnBlocks(view: EditorView): DrawnBlock[] {
 
 /**
  * A place read off a block as drawn, taken back to where it stands in the block with no space in
- * it. A cut opens its space, and the rows it repeats, just above the candidate it was given, so a
+ * it. A cut opens a space, and the rows it repeats, just above the candidate it was given, so a
  * place below that candidate is drawn lower by all of it and a place above it not at all.
- * Reading the cuts here keeps a demand source from having to know what each kind draws.
+ *
+ * How much was opened is the kind's own answer, read off the sheet as drawn (`KindMeasure.opened`)
+ * rather than the height the layout asked the cut for: a table's spacer row takes half of a
+ * collapsed border on each side and comes out about half a pixel taller than it was given, and
+ * over several cuts a place below them would drift into the piece after its own. Asking the kind
+ * keeps a demand source from having to know what any kind draws.
  */
 function naturalOffset(
   candidates: readonly BreakCandidate[],
@@ -85,7 +92,7 @@ function naturalOffset(
     if (space === undefined) continue;
     const start = candidate.offset + shift;
     if (drawn < start) break;
-    shift += Math.min(space + candidate.repeatHeight, drawn - start);
+    shift += Math.min(space, drawn - start);
   }
   return drawn - shift;
 }
@@ -105,9 +112,6 @@ export function measureSheet(
 
   const kinds = blockKindsOf(view.state);
   const sources = demandSourcesOf(view.state);
-  const opened = new Map(
-    pageCutsOf(view.state).map((cut) => [cut.at, cut.height])
-  );
   const blocks: MeasuredBlock[] = [];
   let previousBottom = contentTop;
   /** Everything the engine has opened up above the point being read */
@@ -146,7 +150,11 @@ export function measureSheet(
         .flatMap((source) => source.demandsIn(target))
         .map((demand) => ({
           ...demand,
-          offset: naturalOffset(measured.candidates, opened, demand.offset),
+          offset: naturalOffset(
+            measured.candidates,
+            measured.opened ?? NOTHING_OPENED,
+            demand.offset
+          ),
         })),
     });
     previousBottom = bottom;

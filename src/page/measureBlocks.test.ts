@@ -78,7 +78,12 @@ function rect(element: Element, top: number, height: number): void {
 function draw(
   live: EditorView,
   shapes: readonly BlockShape[],
-  scale = 1
+  scale = 1,
+  /**
+   * What a space comes out taller than it was given, the way a table's spacer row takes half of a
+   * collapsed border on each side
+   */
+  overshoot = 0
 ): void {
   let y = 0;
   live.state.doc.forEach((_node, offset, index) => {
@@ -89,9 +94,10 @@ function draw(
       y + shape.gap + number(dom.getAttribute(editorAttributes.pagePush));
     let opened = 0;
     spaceElements(dom).forEach((element, at) => {
-      const height = number(
+      const asked = number(
         element.getAttribute(editorAttributes.pageBreakSpace)
       );
+      const height = asked > 0 ? asked + overshoot : asked;
       rect(
         element,
         (top + (shape.breaks[at] ?? 0) + opened) * scale,
@@ -323,6 +329,41 @@ describe("the demands of a block", () => {
       [`first ${tablePos}`, `second ${tablePos}`],
       [`first ${belowPos}`, `second ${belowPos}`],
     ]);
+  });
+
+  /**
+   * The height a cut asked for and the height the browser drew it at are not the same number: a
+   * table's spacer row takes half of a collapsed border on each side. Everything a kind reports is
+   * read off the sheet as drawn, so a place below the cut has to be taken back by what stands
+   * there rather than by what was asked for, or it drifts below the piece it belongs to and its
+   * room is kept on the wrong page.
+   */
+  it("reads a place below a cut drawn taller than the cut asked for at its own offset", () => {
+    const places: DemandSource = {
+      name: "below the break",
+      demandsIn: ({ pos, dom, sheetY, top }) =>
+        pos === 0
+          ? [
+              {
+                offset: sheetY(dom.getBoundingClientRect().bottom) - top - 10,
+                id: "below",
+                band: "test",
+              },
+            ]
+          : [],
+    };
+    const live = asking(brokenParagraph(), [places]);
+    draw(live, SHAPES);
+
+    const natural = measureSheet(live, live.dom).blocks[0]?.demands;
+    const applied = layoutOf(measureSheet(live, live.dom).blocks);
+    expect(applied.cuts).toHaveLength(1);
+
+    setPageMarks(live, { pushes: applied.pushes, cuts: applied.cuts });
+    // The browser draws the space three pixels taller than the cut asked for
+    draw(live, SHAPES, 1, 3);
+
+    expect(measureSheet(live, live.dom).blocks[0]?.demands).toEqual(natural);
   });
 
   /**
