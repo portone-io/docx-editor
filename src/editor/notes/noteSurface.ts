@@ -199,6 +199,12 @@ function markHome(story: PMNode): number | null {
  * Backspace at the start of a note holding nothing but its number is a rule of its own and stays
  * one (`deleteEmptyNote`): it answers the key before any edit is made, so it takes the note and
  * the reference calling it away rather than leaving a story for this to answer for.
+ *
+ * A composition asks for no deferral of its own. The number goes in beside the composed text
+ * rather than rewriting the node it stands in, which is the difference that lets a comment be put
+ * back under an open composition as well (`editor/plugins/commentRestoration`), so a composition
+ * that writes over the number keeps it and stays open. `e2e/notesEditing.spec.ts` holds that
+ * against a real browser, which is the only place a composition can be measured.
  */
 function ownMarkRestoration(): Plugin {
   return new Plugin({

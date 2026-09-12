@@ -28,7 +28,7 @@ IME tests drive Chrome's real composition pipeline through CDP `Input.imeSetComp
 | `preservedContent.spec.ts` | Pointer selection and deletion of preserved chips, and protection of complex-field pieces |
 | `clipboard.spec.ts` | Rich HTML formatting, tables pasted from another application, web images, plain-text paste, text fallback, and preservation of selections when clipboard content is empty |
 | `notesAndPages.spec.ts` | Footnote placement and the endnote list, displayed page numbering, and the demo's closing order |
-| `notesEditing.spec.ts` | Typing, formatting and undo inside a footnote, hangul composition across a relayout, the note's own number kept when its text is deleted, Escape returning the caret, and footnote insertion from the right-click menu and from its shortcut |
+| `notesEditing.spec.ts` | Typing, formatting and undo inside a footnote, hangul composition across a relayout and over the note's own number, the number kept when the note's text is deleted, Escape returning the caret, and footnote insertion from the right-click menu and from its shortcut |
 | `responsiveLayout.spec.ts` | Pagination and footnote placement held against the window width, horizontal scroll, responsive comments, and viewport-contained popovers |
 | `tableEditing.spec.ts` | Table-separator editing, pointer-based row resizing, and stable page-boundary previews |
 | `numbering.spec.ts` | Marker-only character formatting and tab, space, and empty suffix spacing |

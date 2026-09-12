@@ -10,6 +10,7 @@
 import { expect, type Page, test } from "@playwright/test";
 import { editorClassNames } from "../src/styles/classNames";
 import {
+  composing,
   docText,
   noteText,
   openHarness,
@@ -105,6 +106,41 @@ test("composes hangul inside a footnote while the page lays out again", async ({
 
   await expect.poll(() => noteText(page, "2")).toContain("안녕");
   await expect(openNote(page)).toContainText("안녕");
+});
+
+/**
+ * A composition that writes over the number a note is drawn by.
+ *
+ * The number goes back into the very paragraph the composition is open in, which is the one edit
+ * that puts a node beside composed text rather than rewriting it - the same difference that lets
+ * a comment be put back under an open composition (`hangulComposition.spec.ts`). Only a real
+ * browser holds a composition, so this is the one place the pairing can be measured.
+ */
+test("composes over the number a note is drawn by, and keeps it", async ({
+  page,
+}) => {
+  await openHarness(page, "notes");
+  await enterFootnote(page, "1");
+  const number = openNote(page).locator(`.${editorClassNames.noteMark}`);
+  await expect(number).toHaveText("1");
+  const cdp = await imeSession(page);
+
+  // Back over every character the note spells, then one step of selection onto the number itself
+  const spelled = await noteText(page, "1");
+  for (let step = 0; step < spelled.length; step += 1) {
+    await page.keyboard.press("ArrowLeft");
+  }
+  await page.keyboard.press("Shift+ArrowLeft");
+  await compose(cdp, ["ㅇ", "아", "안"]);
+  await settle(page);
+  await commitComposition(cdp, "안");
+  await settle(page);
+
+  // What was composed stands where the number was, and the number stands ahead of it
+  await expect.poll(() => noteText(page, "1")).toBe(`안${spelled}`);
+  await expect(number).toHaveText("1");
+  // The composition was let go of rather than left open over a note the restoration moved
+  expect(await composing(page)).toBe(false);
 });
 
 /**
