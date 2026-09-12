@@ -1,4 +1,9 @@
-/** Reads footnote and endnote bodies related from the main document story. */
+/**
+ * Reads the footnotes and endnotes parts the main part relates to: the entry each holds, which of
+ * them lays the page out rather than says anything, and how each kind is numbered.
+ *
+ * What a note says is a story of its own, read by `docx/story` out of the same part text.
+ */
 
 import { isNumberFormat, type NumberFormat } from "../../numbering/spellers";
 import { ST_DecimalNumber } from "../../ooxml/simpleTypes";
