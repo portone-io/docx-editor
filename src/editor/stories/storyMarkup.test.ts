@@ -66,6 +66,36 @@ describe("a story drawn as markup", () => {
     expect(markup.querySelector("br")).toBeNull();
   });
 
+  /**
+   * A list marker and a laid-out tab width are decorations an editor view puts on the text
+   * (`editor/plugins/numberingDecorations`, `editor/plugins/tabLayout`), and no view stands behind
+   * a story. `site/content/docs/features/pages-and-sections.mdx` says so as a limitation; take the
+   * sentence out when this stops being true.
+   */
+  it("draws neither a list marker nor a laid-out tab width, which come from an editor view", () => {
+    const story = doc.create(null, [
+      paragraph.create({ format: { numbering: { numId: 1, ilvl: 0 } } }, [
+        docxSchema.text("an item"),
+      ]),
+      paragraph.create(null, [
+        docxSchema.text("before"),
+        docxSchema.text("\t", [docxSchema.marks.tab.create()]),
+      ]),
+    ]);
+
+    const markup = storyMarkup(story, {
+      fontFallbacks: DEFAULT_FONT_FALLBACKS,
+    });
+    const holder = document.createElement("div");
+    holder.append(markup);
+
+    expect(holder.querySelector("[data-marker]")).toBeNull();
+    expect(holder.querySelector("[data-tab-layout]")).toBeNull();
+    expect(holder.innerHTML).not.toContain("--docx-editor-tab-width");
+    expect(holder.innerHTML).not.toContain("--docx-editor-marker-width");
+    expect(holder.textContent).toContain("an item");
+  });
+
   it("draws none of the document's own source, keeping only the attributes the stylesheet reads", () => {
     const run = docxSchema.marks.run.create({
       rPr: '<w:rPr><w:b/><w:u w:val="single"/></w:rPr>',
