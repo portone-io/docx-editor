@@ -32,7 +32,6 @@ import { sectionIn, sectionsOf } from "./docx/sections";
 import type { SessionStore } from "./docx/session";
 import type { CommentAuthor } from "./editor/commands/commentCommands";
 import { activeLinkSpan } from "./editor/commands/linkCommands";
-import type { NoteRow } from "./editor/commands/noteQueries";
 import { createEditorView, editorStateForSession } from "./editor/createEditor";
 import {
   closeCommentComposer,
@@ -49,7 +48,7 @@ import { A4_PAGE_PIXELS, pagePixels, sectionPixels } from "./page/pageLayout";
 import { type PageFace, usePageLayout } from "./page/usePageLayout";
 import type { EditableComments, EditingProtection } from "./schema/protection";
 import { editingProtection, protectionOf } from "./schema/protectionState";
-import { type StoryKey, storyNodeOf } from "./schema/stories";
+import { storyNodeOf } from "./schema/stories";
 import { editorClassNames } from "./styles/classNames";
 import type { FontFallbacks } from "./styles/fontStack";
 import { CommentsPanel, shownBesideThePage } from "./ui/CommentsPanel";
@@ -379,9 +378,6 @@ function zoomVariable(
 ): CSSProperties & Record<"--docx-editor-zoom", number> {
   return { "--docx-editor-zoom": factor };
 }
-
-const _NO_FOOTNOTES: ReadonlyMap<StoryKey, NoteRow> = new Map();
-const _NO_NOTE_ROWS: readonly NoteRow[] = [];
 
 function DocxEditorSurface(
   {
