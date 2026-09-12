@@ -831,10 +831,15 @@ export function pageLayout({
     breakAfterPrevious = block.breakAfter;
   }
 
+  /** Opens a page for whatever the page being filled could not keep, until nothing is waiting */
+  const drainCarried = () => {
+    while (carried.length > 0) {
+      split(pageStart + paper.bodyHeight, false, false);
+    }
+  };
+
   // What the last page let go of still needs a page to be kept on
-  while (carried.length > 0) {
-    split(pageStart + paper.bodyHeight, false, false);
-  }
+  drainCarried();
 
   /** The rows on the page being filled, which the next page starts a new entry for */
   let laidHere: TrailingPlacement | undefined;
@@ -871,6 +876,9 @@ export function pageLayout({
     // The rows stand above whatever the page keeps at its foot, the way the text does
     settle(below);
   }
+  // A row laid on a page can crowd off what that page was keeping, the way a block can, so what
+  // the rows let go of needs a page of its own just as much
+  drainCarried();
   recordRoom(splits.length + 1);
 
   return {

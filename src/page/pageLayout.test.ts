@@ -1402,6 +1402,33 @@ describe("the rows laid after the last block", () => {
     expect(result.splits).toEqual([]);
   });
 
+  /**
+   * A demand the last page could not keep is carried past the last block onto a page of its own,
+   * and a trailing row laid on that page can crowd it off again. Nothing may be carried with no
+   * page left to keep it: the footnote would be reserved nowhere and drawn nowhere.
+   */
+  it("keeps a demand a trailing row crowds off the page it was carried to", () => {
+    const band: ReadonlyMap<string, DemandBand> = new Map([
+      ["foot", { order: 0, overhead: 0, heights: new Map([["a", 300]]) }],
+    ]);
+    const result = laidOut(
+      blocks({
+        height: 950,
+        demands: [{ offset: 10, id: "a", band: "foot" }],
+      }),
+      rows(800),
+      band
+    );
+
+    // The row took the page the footnote had been carried to, so the footnote is carried once more
+    // rather than kept nowhere
+    expect(result.reserved.map(({ page, ids }) => [page, ids])).toEqual([
+      [3, ["a"]],
+    ]);
+    expect(result.reserved.at(-1)?.height).toBe(300);
+    expect(result.trailing.map(({ page }) => page)).toEqual([2]);
+  });
+
   it("gives a row taller than the page a page of its own and no more", () => {
     const result = laidOut(blocks(100), rows(1500, 100));
 
