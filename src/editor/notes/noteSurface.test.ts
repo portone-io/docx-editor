@@ -259,6 +259,30 @@ describe("what a note takes", () => {
     expect(main.state.selection.from).toBe(at);
   });
 
+  it("keeps a footnote holding an image alone on Backspace at its start", () => {
+    const main = mainView();
+    const story = openNote(main);
+    const image = docxSchema.nodes.image.create({
+      src: TINY_PNG_DATA_URL,
+      extent: { cx: 952500, cy: 952500 },
+    });
+    // The note is left holding its number and the image, which spells no text at all
+    story.view.dispatch(
+      story.view.state.tr.delete(2, story.view.state.doc.content.size - 1)
+    );
+    story.view.dispatch(story.view.state.tr.insert(2, image));
+    expect(storyText(storyOf(main.state.doc, FOOTNOTE))).toBe("");
+    story.view.dispatch(
+      story.view.state.tr.setSelection(
+        TextSelection.create(story.view.state.doc, 1)
+      )
+    );
+
+    expect(pressBackspace(story.view)).toBe(false);
+
+    expect(storyOf(main.state.doc, FOOTNOTE)).not.toBeNull();
+  });
+
   it("does nothing on Backspace at the start of a footnote that holds text", () => {
     const main = mainView();
     const story = openNote(main);

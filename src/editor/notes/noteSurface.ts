@@ -19,7 +19,6 @@ import {
 } from "prosemirror-model";
 import { type Command, TextSelection } from "prosemirror-state";
 import type { EditorView, NodeViewConstructor } from "prosemirror-view";
-import { storyText } from "../../docx/story";
 import { docxSchema } from "../../schema";
 import { editShut, transactionAllowed } from "../../schema/guards";
 import { editsShut } from "../../schema/protectionState";
@@ -121,20 +120,26 @@ function runOn(main: EditorView, command: Command): boolean {
   return command(main.state, (tr) => main.dispatch(tr), main);
 }
 
-/**
- * Whether the note holds nothing but the number it opens with.
- *
- * The number is a preserved chip with no text of its own, so what the story reads as is empty for
- * a note nobody has written in yet and not for one that lost its text to a selection.
- */
-function holdsNoText(story: PMNode): boolean {
-  return storyText(story) === "";
-}
-
 /** How much room the number the note opens with takes, which the caret may stand after */
 function leadingChipSize(story: PMNode): number {
   const first = story.firstChild?.firstChild;
   return first?.type === docxSchema.nodes.rawRunContent ? first.nodeSize : 0;
+}
+
+/**
+ * Whether the note holds nothing but the number it opens with.
+ *
+ * What the note holds is judged rather than what it spells, because an image and an empty table
+ * spell no text at all: nothing a reader put into a note may go under a key meant to take an
+ * empty one back.
+ */
+function holdsNothing(story: PMNode): boolean {
+  const only = story.childCount === 1 ? story.firstChild : null;
+  return (
+    only !== null &&
+    only.type === docxSchema.nodes.paragraph &&
+    only.content.size === leadingChipSize(story)
+  );
 }
 
 /**
@@ -154,7 +159,7 @@ function deleteEmptyNote(
   return (state, dispatch) => {
     const id = noteIdIn(kind, key);
     if (id === null || !state.selection.empty) return false;
-    if (!holdsNoText(state.doc)) return false;
+    if (!holdsNothing(state.doc)) return false;
     const $at = state.selection.$from;
     if ($at.index(0) !== 0 || $at.parentOffset > leadingChipSize(state.doc)) {
       return false;
