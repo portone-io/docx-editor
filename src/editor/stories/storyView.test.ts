@@ -165,6 +165,22 @@ describe("the view one story is edited in", () => {
     );
   });
 
+  it("keeps the state an edit left when the host has nothing to write", () => {
+    const main = mainView();
+    const story = openFootnote(main);
+    const before = story.view.state;
+
+    // The same words over themselves: the story ends up saying what it already said, so the
+    // document writes nothing, which is not the same as turning the edit down
+    story.view.dispatch(story.view.state.tr.insertText("Footnote body", 2, 15));
+
+    // The view stands on what the edit left rather than being wound back onto what it was,
+    // which is what breaks an open composition
+    expect(story.view.state).not.toBe(before);
+    expect(story.view.state.doc).not.toBe(before.doc);
+    expect(storyText(story.view.state.doc)).toBe("Footnote body\nSecond line");
+  });
+
   it("reads a paste against the paper its snapshot names", () => {
     const main = mainView(NOTE_BODY + LETTER_SECT_PR);
     const story = openFootnote(main);

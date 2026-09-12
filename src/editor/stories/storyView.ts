@@ -198,6 +198,10 @@ export function createStoryView({
       const before = view.state;
       show(next.state);
       if (host.write(key, next.state.doc)) return;
+      // A host with nothing to write is not a host turning the edit down: an edit that leaves the
+      // story saying what it already said - the same words pasted over themselves - is written
+      // nowhere, and rewinding it would break the composition it stands in
+      if (sameStory(storyNow(), next.state.doc)) return;
       show(before);
       endComposition(view);
     },
