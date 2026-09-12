@@ -63,12 +63,14 @@ export function storyKey<K extends StoryKind>(
 export type NoteKey = `${NoteKind}:${string}`;
 
 /**
- * The kinds of note an edit may add, delete, copy and rewrite.
+ * The kinds of note an edit may add, delete, copy and rewrite, which is both of them: each part is
+ * written back one entry per note (`docx/notes/writing`).
  *
- * A reference to a note of any other kind stays where the file put it (`./preservedGuards`),
- * since no writer puts that notes part back together.
+ * The value stays here, and stays a list, because what an edit may do to a note is asked in the
+ * guards, the lifecycle, the clipboard and the navigation alike, and a kind of note added to the
+ * format would open all four by joining this list.
  */
-export const EDITABLE_NOTE_KINDS: readonly NoteKind[] = ["footnote"];
+export const EDITABLE_NOTE_KINDS: readonly NoteKind[] = NOTE_KINDS;
 
 /**
  * The key this text spells, or null for one that names no kind of story.

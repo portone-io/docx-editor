@@ -54,24 +54,19 @@ function clickOn(view: EditorView, kind: string): boolean {
 }
 
 describe("getting into a note from its number", () => {
-  it("asks for the footnote whose number was clicked", () => {
+  it.each([
+    ["footnote", "2"],
+    ["endnote", "3"],
+  ] as const)("asks for the %s whose number was clicked", (kind, id) => {
     const view = mainView();
     expect(requestedNote(view.state)).toBeNull();
 
-    expect(clickOn(view, "footnote")).toBe(true);
+    expect(clickOn(view, kind)).toBe(true);
 
-    expect(requestedNote(view.state)?.key).toBe(storyKey("footnote", "2"));
+    expect(requestedNote(view.state)?.key).toBe(storyKey(kind, id));
     // The caret is left where Escape hands it back to, just after the reference
-    const { pos, node } = referenceOf(view.state.doc, "footnote");
+    const { pos, node } = referenceOf(view.state.doc, kind);
     expect(view.state.selection.from).toBe(pos + node.nodeSize);
-  });
-
-  it("asks for nothing when an endnote number is clicked", () => {
-    const view = mainView();
-
-    expect(clickOn(view, "endnote")).toBe(false);
-
-    expect(requestedNote(view.state)).toBeNull();
   });
 
   it("asks again for the note already open, so a second press still reaches the surface", () => {

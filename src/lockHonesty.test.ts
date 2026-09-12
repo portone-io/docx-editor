@@ -396,14 +396,14 @@ const PLACES: readonly Place[] = [
     state: (protection) => acrossNode("rawRunContent", protection),
   },
   {
-    // A footnote reference may be deleted, and its footnote goes with it
+    // A note reference may be deleted, and the note it calls goes with it
     name: "a selection running across a footnote reference",
     guards: ["protection"],
     state: (protection) => acrossNode("noteReference", protection),
   },
   {
     name: "a selection running across an endnote reference",
-    guards: ["protection", "note"],
+    guards: ["protection"],
     state: acrossEndnoteReference,
   },
   {

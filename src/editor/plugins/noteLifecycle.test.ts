@@ -10,6 +10,7 @@ import { exportDocx } from "../../docx/exportDocx";
 import { importDocx } from "../../docx/importDocx";
 import { storyText } from "../../docx/story";
 import {
+  type NoteKind,
   sameStory,
   storiesOf,
   storyKey,
@@ -27,6 +28,7 @@ const text = (value: string) =>
   `<w:r><w:t xml:space="preserve">${value}</w:t></w:r>`;
 const footnote = (id: string) =>
   `<w:r><w:footnoteReference w:id="${id}"/></w:r>`;
+const endnote = (id: string) => `<w:r><w:endnoteReference w:id="${id}"/></w:r>`;
 
 const entry = (id: string, words: string, paraId: string) =>
   `<w:footnote w:id="${id}"><w:p w14:paraId="${paraId}">` +
@@ -66,13 +68,13 @@ interface PlacedReference {
   readonly node: PMNode;
 }
 
-function footnoteReferences(doc: PMNode): PlacedReference[] {
+function noteReferences(doc: PMNode, kind: NoteKind): PlacedReference[] {
   const found: PlacedReference[] = [];
   doc.descendants((node, pos) => {
     const id: unknown = node.attrs.id;
     if (
       node.type.name === "noteReference" &&
-      node.attrs.kind === "footnote" &&
+      node.attrs.kind === kind &&
       typeof id === "string"
     ) {
       found.push({ id, pos, node });
@@ -80,6 +82,10 @@ function footnoteReferences(doc: PMNode): PlacedReference[] {
     return true;
   });
   return found;
+}
+
+function footnoteReferences(doc: PMNode): PlacedReference[] {
+  return noteReferences(doc, "footnote");
 }
 
 function referenceTo(state: EditorState, id: string): PlacedReference {
@@ -135,6 +141,23 @@ describe("noteLifecycle", () => {
     expect(footnoteStory(after, "2")).toBeNull();
     expect(footnoteStory(after, "1")).not.toBeNull();
     expect(storyNodeOf(after.doc, storyKey("endnote", "3"))).not.toBeNull();
+    expect(transactions).toHaveLength(2);
+    expect(undoDepth(after)).toBe(1);
+  });
+
+  it("deletes an endnote's story in the transaction that deletes its last reference", () => {
+    const state = opened(`${BODY}<w:p>${text("Four")}${endnote("3")}</w:p>`);
+    const key = storyKey("endnote", "3");
+    const reference = noteReferences(state.doc, "endnote")[0];
+    if (reference === undefined) throw new Error("no endnote reference");
+    expect(storyNodeOf(state.doc, key)).not.toBeNull();
+
+    const { state: after, transactions } = state.applyTransaction(
+      state.tr.delete(reference.pos, reference.pos + 1)
+    );
+
+    expect(storyNodeOf(after.doc, key)).toBeNull();
+    expect(footnoteStory(after, "2")).not.toBeNull();
     expect(transactions).toHaveLength(2);
     expect(undoDepth(after)).toBe(1);
   });

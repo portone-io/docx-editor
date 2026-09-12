@@ -547,23 +547,6 @@ function refusedWith(doc: PMNode, opened: ReturnType<typeof importDocx>) {
 }
 
 describe("stories no part writer writes", () => {
-  it("refuses an export that changed an endnote story no planner writes", () => {
-    const opened = importDocx(makeNotesDocx());
-    const edited = withStory(
-      opened.doc,
-      storyKey("endnote", "3"),
-      storyFromText("Rewritten")
-    );
-
-    expect(refusedWith(edited, opened)).toEqual([
-      {
-        code: "unsupported-content",
-        message:
-          "the endnote:3 story was edited, and no part writer carries that into the file",
-      },
-    ]);
-  });
-
   it("refuses an export that added a header story, which the header writer leaves out", () => {
     const opened = importDocx(makeHeadersFootersDocx());
     const edited = withStory(

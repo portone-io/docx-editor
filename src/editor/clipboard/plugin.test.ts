@@ -797,12 +797,14 @@ describe("pasting a footnote reference", () => {
     caretAt(view, 1);
     paste(view, copied);
 
-    // The copy stands first, so it is the first footnote, and the endnote reference did not come
+    // The copy stands first, so its notes are the first of each kind and the originals are counted
+    // on from there
     expect(notesOf(view.state)).toEqual([
       ["6", "1", said],
+      ["4", "1", " Italic endnote"],
       ["2", "2", storyOfFootnote(view.state, "2")],
       ["5", "3", said],
-      ["3", "1", " Italic endnote"],
+      ["3", "2", " Italic endnote"],
     ]);
     view.destroy();
   });

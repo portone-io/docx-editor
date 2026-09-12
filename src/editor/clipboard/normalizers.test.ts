@@ -16,7 +16,7 @@ import { toParagraphFormat, toRunFormat } from "../../model/format";
 import { NO_NEW_LISTS } from "../../numbering/listRegistry";
 import { templateList } from "../../numbering/listTemplate";
 import { docxSchema } from "../../schema";
-import { storyKey, storyNodeOf } from "../../schema/stories";
+import { type NoteKind, storyKey, storyNodeOf } from "../../schema/stories";
 import { listRefOf } from "../commands/listCommands";
 import { editorStateForSession } from "../createEditor";
 import type { PastedContent } from "./htmlReader";
@@ -70,11 +70,6 @@ function anchoredParagraph(): PMNode {
     docxSchema.text("anchored"),
     docxSchema.nodes.commentEnd.create({ id: "0" }),
     docxSchema.nodes.commentReference.create({ id: "0" }),
-    docxSchema.nodes.noteReference.create({
-      id: "3",
-      kind: "endnote",
-      label: "1",
-    }),
     docxSchema.nodes.rawInline.create({
       xml: '<w:bookmarkStart w:id="1" w:name="mark"/>',
       element: "bookmarkStart",
@@ -91,22 +86,22 @@ function anchoredParagraph(): PMNode {
   ]);
 }
 
-/** A paragraph whose text calls a footnote, as a copy of one carries it */
-function referring(id: string): PMNode {
+/** A paragraph whose text calls a note, as a copy of one carries it */
+function referring(kind: NoteKind, id: string): PMNode {
   return paragraph({}, [
     docxSchema.text("carried"),
     docxSchema.nodes.noteReference.create({
       id,
-      kind: "footnote",
+      kind,
       label: "1",
-      referenceXml: `<w:footnoteReference w:id="${id}"/>`,
+      referenceXml: `<w:${kind}Reference w:id="${id}"/>`,
     }),
   ]);
 }
 
-function footnoteStory(state: EditorState, id: string): PMNode {
-  const story = storyNodeOf(state.doc, storyKey("footnote", id));
-  if (story === null) throw new Error(`the document holds no footnote ${id}`);
+function noteStory(state: EditorState, kind: NoteKind, id: string): PMNode {
+  const story = storyNodeOf(state.doc, storyKey(kind, id));
+  if (story === null) throw new Error(`the document holds no ${kind} ${id}`);
   return story;
 }
 
@@ -252,7 +247,7 @@ describe("normalizing a pasted slice", () => {
     expect(listRefOf(first as PMNode)).toBeNull();
   });
 
-  it("drops comment markers, bookmarks and endnote references", () => {
+  it("drops comment markers and bookmarks", () => {
     const state = stateOf(makeDocx(SOURCE));
 
     const normalized = normalizePasted(
@@ -294,68 +289,45 @@ describe("normalizing a pasted slice", () => {
     expect(first?.childCount).toBe(1);
   });
 
-  it("gives a pasted footnote reference a new id and a copy of its footnote", () => {
-    const state = stateOf(makeNotesDocx());
-    const story = footnoteStory(state, "2");
+  it.each([
+    ["footnote", "2"],
+    ["endnote", "3"],
+  ] as const)(
+    "gives a pasted %s reference a new id and a copy of its note",
+    (kind, id) => {
+      const state = stateOf(makeNotesDocx());
+      const story = noteStory(state, kind, id);
 
-    const normalized = normalizePasted(
-      {
-        ...pasted(referring("2")),
-        noteStories: new Map([[storyKey("footnote", "2"), story]]),
-      },
-      state,
-      false
-    );
+      const normalized = normalizePasted(
+        {
+          ...pasted(referring(kind, id)),
+          noteStories: new Map([[storyKey(kind, id), story]]),
+        },
+        state,
+        false
+      );
 
-    const reference = blocks(normalized)[0]?.lastChild;
-    const id = idOf(reference);
-    expect(id).not.toBe("2");
-    // The XML it arrived as names the footnote it was copied from
-    expect(reference?.attrs.referenceXml).toBeNull();
-    const written = normalized.newStories?.get(storyKey("footnote", id));
-    expect(storyText(written ?? null)).toBe(storyText(story));
-    // Written as an entry of its own rather than as the bytes of the original a second time
-    expect(story.firstChild?.attrs.srcId).not.toBeNull();
-    expect(written?.firstChild?.attrs.srcId).toBeNull();
-  });
-
-  /**
-   * Which kinds a paste puts a note back for is `EDITABLE_NOTE_KINDS` and nothing a caller hands
-   * in: the reference of every other kind is gone before the note duplication is reached.
-   */
-  it("drops an endnote reference whose story travelled with the copy", () => {
-    const state = stateOf(makeNotesDocx());
-    const story = storyNodeOf(state.doc, storyKey("endnote", "3"));
-    if (story === null) throw new Error("the document holds no endnote 3");
-    const calling = paragraph({}, [
-      docxSchema.text("carried"),
-      docxSchema.nodes.noteReference.create({
-        id: "3",
-        kind: "endnote",
-        label: "1",
-        referenceXml: '<w:endnoteReference w:id="3"/>',
-      }),
-    ]);
-
-    const normalized = normalizePasted(
-      {
-        ...pasted(calling),
-        noteStories: new Map([[storyKey("endnote", "3"), story]]),
-      },
-      state,
-      false
-    );
-
-    const first = blocks(normalized)[0];
-    expect(first?.textContent).toBe("carried");
-    expect(first?.childCount).toBe(1);
-    expect(normalized.newStories?.size ?? 0).toBe(0);
-  });
+      const reference = blocks(normalized)[0]?.lastChild;
+      const pasted_id = idOf(reference);
+      expect(pasted_id).not.toBe(id);
+      // The XML it arrived as names the note it was copied from
+      expect(reference?.attrs.referenceXml).toBeNull();
+      const written = normalized.newStories?.get(storyKey(kind, pasted_id));
+      expect(storyText(written ?? null)).toBe(storyText(story));
+      // Written as an entry of its own rather than as the bytes of the original a second time
+      expect(story.firstChild?.attrs.srcId).not.toBeNull();
+      expect(written?.firstChild?.attrs.srcId).toBeNull();
+    }
+  );
 
   it("drops a footnote reference pasted from another editor", () => {
     const state = stateOf(makeNotesDocx());
 
-    const normalized = normalizePasted(pasted(referring("2")), state, false);
+    const normalized = normalizePasted(
+      pasted(referring("footnote", "2")),
+      state,
+      false
+    );
 
     const first = blocks(normalized)[0];
     expect(first?.textContent).toBe("carried");
@@ -366,7 +338,11 @@ describe("normalizing a pasted slice", () => {
   it("keeps a dragged footnote reference and its id on a move drop", () => {
     const state = stateOf(makeNotesDocx());
 
-    const normalized = normalizePasted(pasted(referring("2")), state, true);
+    const normalized = normalizePasted(
+      pasted(referring("footnote", "2")),
+      state,
+      true
+    );
 
     expect(idOf(blocks(normalized)[0]?.lastChild)).toBe("2");
     expect(normalized.newStories).toBeUndefined();
