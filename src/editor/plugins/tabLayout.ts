@@ -138,7 +138,6 @@ function cloneParagraph(
   clone.style.textAlign = "start";
   clone.style.visibility = "hidden";
   clone.style.pointerEvents = "none";
-  clone.style.zoom = "1";
   clone.setAttribute("aria-hidden", "true");
   if (resetTabs) {
     for (const slot of clone.querySelectorAll<HTMLElement>(
