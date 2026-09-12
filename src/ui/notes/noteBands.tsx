@@ -37,7 +37,7 @@ import { FootnoteAreas } from "./FootnoteAreas";
 import { NoteList } from "./NoteList";
 import { useNoteHeights } from "./noteHeights";
 import { NOTE_SEPARATOR_HEIGHT } from "./noteSeparator";
-import type { NoteHeightReport } from "./StoryRow";
+import type { NoteHeightReport, RowEditing } from "./StoryRow";
 
 const NO_FOOTNOTES: ReadonlyMap<StoryKey, NoteRow> = new Map();
 const NO_NOTE_ROWS: readonly NoteRow[] = [];
@@ -49,13 +49,19 @@ export interface NoteBands {
    * room at all. A new value lays the pages out again, so it changes only when a height does
    */
   readonly bands: ReadonlyMap<string, DemandBand> | undefined;
+  /**
+   * The footnotes the document refers to, by story key, in first-reference order.
+   *
+   * Which one a caret stands in is the mounting component's to hold, so this is the one half of
+   * the notes it reads; everything else about how they are drawn stays in `drawn`.
+   */
+  readonly footnotes: ReadonlyMap<StoryKey, NoteRow>;
   /** Held for `NotesAroundPage`; nothing else reads it */
   readonly drawn: DrawnNotes;
 }
 
 /** What `NotesAroundPage` draws with, kept opaque so a caller cannot take the two halves apart */
 interface DrawnNotes {
-  readonly footnotes: ReadonlyMap<StoryKey, NoteRow>;
   readonly endnotes: readonly NoteRow[];
   readonly anyNotes: boolean;
   readonly heights: ReadonlyMap<StoryKey, number>;
@@ -115,8 +121,8 @@ export function useNoteBands({
 
   return {
     bands,
+    footnotes,
     drawn: {
-      footnotes,
       endnotes: notes?.endnotes ?? NO_NOTE_ROWS,
       anyNotes: notes !== null,
       heights,
@@ -136,6 +142,16 @@ export interface NotesAroundPageProps {
   /** Whether the pages are drawn at all, which is what decides where the footnotes go */
   readonly pageGuides: boolean;
   readonly zoom: number;
+  /** The footnote the caret is in, which is the one row an editing view stands over */
+  readonly open?: StoryKey | null;
+  /** What mounts that view. Null while no footnote is open */
+  readonly editing?: RowEditing | null;
+  /** Whether the open footnote stands where nothing may be edited */
+  readonly readOnly?: boolean;
+  /** A value that differs every time the main document changes, which the open row syncs on */
+  readonly revision?: unknown;
+  /** Called for a press on a footnote no view stands over yet */
+  readonly onOpen?: (key: StoryKey, at: { left: number; top: number }) => void;
 }
 
 /**
@@ -149,8 +165,14 @@ export function NotesAroundPage({
   page,
   pageGuides,
   zoom,
+  open,
+  editing,
+  readOnly,
+  revision,
+  onOpen,
 }: NotesAroundPageProps): ReactElement | null {
-  const { footnotes, endnotes, anyNotes, heights, onHeight } = notes.drawn;
+  const { endnotes, anyNotes, heights, onHeight } = notes.drawn;
+  const { footnotes } = notes;
   return (
     <>
       {overlay !== null && footnotes.size > 0 && (
@@ -162,6 +184,11 @@ export function NotesAroundPage({
           fontFallbacks={notes.drawn.fontFallbacks}
           textStyle={notes.drawn.textStyle}
           zoom={zoom}
+          open={open}
+          editing={editing}
+          readOnly={readOnly}
+          revision={revision}
+          onOpen={onOpen}
         />
       )}
       {anyNotes && (

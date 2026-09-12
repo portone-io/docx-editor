@@ -161,6 +161,10 @@ export const editorClassNames = {
   noteSeparator: `${PREFIX}-note-separator`,
   /** One note, drawn from its story */
   noteRow: `${PREFIX}-note-row`,
+  /** Attached alongside it while the caret is in that note and an editing view stands over it */
+  noteRowOpen: `${PREFIX}-note-row-open`,
+  /** The editing view one side story is edited in (`editor/stories`) */
+  storyBody: `${PREFIX}-story-body`,
   /** A note's own reference mark, drawn as the label its reference carries */
   noteMark: `${PREFIX}-note-mark`,
   /** The notes listed after the last page */

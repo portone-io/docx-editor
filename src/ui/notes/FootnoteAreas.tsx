@@ -16,7 +16,7 @@ import type { StoryKey } from "../../schema/stories";
 import { editorClassNames } from "../../styles/classNames";
 import type { FontFallbacks } from "../../styles/fontStack";
 import { NOTE_SEPARATOR_HEIGHT, noteSeparatorWidth } from "./noteSeparator";
-import { type NoteHeightReport, StoryRow } from "./StoryRow";
+import { type NoteHeightReport, type RowEditing, StoryRow } from "./StoryRow";
 
 export interface FootnoteAreasProps {
   readonly overlay: PageOverlay;
@@ -27,6 +27,16 @@ export interface FootnoteAreasProps {
   /** How the document sets its text, which the sheet's own box does not pass down to these */
   readonly textStyle: CSSProperties;
   readonly zoom: number;
+  /** The footnote the caret is in, which is the one row an editing view stands over */
+  readonly open?: StoryKey | null;
+  /** What mounts that view. Null while no footnote is open */
+  readonly editing?: RowEditing | null;
+  /** Whether the open footnote stands where nothing may be edited */
+  readonly readOnly?: boolean;
+  /** A value that differs every time the main document changes, which the open row syncs on */
+  readonly revision?: unknown;
+  /** Called for a press on a footnote no view stands over yet */
+  readonly onOpen?: (key: StoryKey, at: { left: number; top: number }) => void;
 }
 
 export function FootnoteAreas({
@@ -37,6 +47,11 @@ export function FootnoteAreas({
   fontFallbacks,
   textStyle,
   zoom,
+  open = null,
+  editing = null,
+  readOnly = false,
+  revision,
+  onOpen,
 }: FootnoteAreasProps): ReactElement {
   return (
     <div
@@ -74,20 +89,29 @@ export function FootnoteAreas({
               />
               {room.ids.flatMap((id) => {
                 const row = footnotes.get(id);
-                return row === undefined
-                  ? []
-                  : [
-                      <StoryRow
-                        key={row.key}
-                        noteKey={row.key}
-                        story={row.story}
-                        label={row.label}
-                        fontFallbacks={fontFallbacks}
-                        hidden={!heights.has(row.key)}
-                        onHeight={onHeight}
-                        zoom={zoom}
-                      />,
-                    ];
+                if (row === undefined) return [];
+                const entered = row.key === open;
+                return [
+                  <StoryRow
+                    key={row.key}
+                    noteKey={row.key}
+                    story={row.story}
+                    label={row.label}
+                    name={`Footnote ${row.label}`}
+                    fontFallbacks={fontFallbacks}
+                    hidden={!heights.has(row.key)}
+                    onHeight={onHeight}
+                    zoom={zoom}
+                    editing={entered ? editing : null}
+                    readOnly={readOnly}
+                    revision={entered ? revision : undefined}
+                    onPress={
+                      onOpen === undefined
+                        ? undefined
+                        : (at) => onOpen(row.key, at)
+                    }
+                  />,
+                ];
               })}
             </section>
           ))

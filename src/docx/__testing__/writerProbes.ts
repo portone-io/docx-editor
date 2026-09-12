@@ -1600,6 +1600,8 @@ export const NOT_A_WRITER: Readonly<Record<string, string>> = {
   isItalicActive: "a query about the selection",
   isStrikeActive: "a query about the selection",
   isUnderlineActive: "a query about the selection",
+  openFootnote:
+    "moves the selection to a footnote's reference and asks for the footnote to be opened",
   readImageFile: "reads one file and gives the size it comes in at",
   redo: "puts back a document the probe it replays already wrote",
   selectComment: "moves the selection to a comment's anchor",

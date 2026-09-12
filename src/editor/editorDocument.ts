@@ -26,7 +26,11 @@ import { A4_PORTRAIT, type PageGeometry } from "../docx/pageGeometry";
 import type { SessionStore } from "../docx/session";
 import type { DocumentDefaults } from "../model/format";
 import { NEW_LISTS_ATTR, newListsOf } from "../numbering/listRegistry";
-import { EDITABLE_NOTE_KINDS, type StoryKey } from "../schema/stories";
+import {
+  EDITABLE_NOTE_KINDS,
+  STORIES_ATTR,
+  type StoryKey,
+} from "../schema/stories";
 
 /** The document-level values one editing state is built on */
 export interface EditorDocument {
@@ -45,6 +49,14 @@ export interface EditorDocument {
   readonly canStartNewList: boolean;
   /** The paper the document is written on, which decides the width a new table is fitted to */
   readonly geometry: PageGeometry;
+  /**
+   * Whether these values stand for a side story rather than for the body.
+   *
+   * A story writes down no section of its own, so the paper a block in one is written on is the
+   * paper of the place the story is called from, which is the geometry above rather than anything
+   * the story's own blocks say (`editor/documentStyles`).
+   */
+  readonly sideStory: boolean;
   /** The distance between automatic tab stops when no custom stop applies */
   readonly defaultTabStopPt: number;
   /** Every id already present in the opened Comments part, including unreferenced entries */
@@ -77,6 +89,7 @@ export const NO_DOCUMENT: EditorDocument = {
   paragraphStyles: NO_PARAGRAPH_STYLES,
   canStartNewList: true,
   geometry: A4_PORTRAIT,
+  sideStory: false,
   defaultTabStopPt: DEFAULT_TAB_STOP_PT,
   reservedCommentIds: NO_IDS,
   reservedCommentParaIds: NO_IDS,
@@ -127,6 +140,7 @@ export function editorDocumentOf(
     paragraphStyles: session.paragraphStyles,
     canStartNewList: canDefineNewList(session),
     geometry: session.geometry,
+    sideStory: false,
     defaultTabStopPt: session.defaultTabStopPt,
     reservedCommentIds: new Set(session.comments.byId.keys()),
     reservedCommentParaIds: reservedParaIds(session),
@@ -166,6 +180,26 @@ function derived(current: EditorDocument, doc: PMNode): EditorDocument {
 }
 
 /**
+ * Whether the only thing that moved is what the stories say.
+ *
+ * Nothing the snapshot holds is read out of a story, and typing inside one writes a story on every
+ * keystroke, so a snapshot derived again there would throw away every value cached against its
+ * identity - the sheet's style among them - once per key pressed inside a note. Every other
+ * document-level step derives it again as it always did, one writing back the value that already
+ * stood included.
+ */
+function onlyStoriesMoved(next: PMNode, before: PMNode): boolean {
+  const names = Object.keys(next.attrs);
+  return (
+    next.attrs[STORIES_ATTR] !== before.attrs[STORIES_ATTR] &&
+    names.length === Object.keys(before.attrs).length &&
+    names.every(
+      (name) => name === STORIES_ATTR || next.attrs[name] === before.attrs[name]
+    )
+  );
+}
+
+/**
  * Holds the snapshot for the lifetime of the state.
  *
  * It is derived again only where a document-level edit could have been recorded - the attrs of the
@@ -180,9 +214,25 @@ export function editorDocument(
     state: {
       init: () => document,
       apply: (tr, current, old) =>
-        tr.doc.attrs === old.doc.attrs ? current : derived(current, tr.doc),
+        tr.doc.attrs === old.doc.attrs || onlyStoriesMoved(tr.doc, old.doc)
+          ? current
+          : derived(current, tr.doc),
     },
   });
+}
+
+/**
+ * The snapshot one side story is edited against: the document's own values, with the two a story
+ * answers differently.
+ *
+ * A story has nowhere of its own to write a list definition, and the paper its text wraps at is
+ * the paper of the place it is called from rather than anything the story says.
+ */
+export function storyDocument(
+  document: EditorDocument,
+  geometry: PageGeometry
+): EditorDocument {
+  return { ...document, sideStory: true, canStartNewList: false, geometry };
 }
 
 /** The comment ids the opened document already spent, which a new comment may not take */

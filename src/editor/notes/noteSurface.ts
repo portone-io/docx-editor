@@ -1,15 +1,43 @@
 /**
- * What a footnote or an endnote draws differently from any other story.
+ * What a footnote or an endnote draws and does differently from any other story.
  *
  * A note's story opens with a mark of its own (`w:footnoteRef`, `w:endnoteRef`), which the file
  * keeps as a preserved chip. Word draws that mark as the number the reference carries, so it is
  * drawn here as that label in superscript, the way the reference in the body is.
+ *
+ * The rest is what the story view asks a kind of story for (`editor/stories`): the host that
+ * writes an edit into the main document through the note's own body command, and the extensions
+ * that give a note its key rule, its chip, and what a paste into one may carry.
  */
 
-import type { DOMOutputSpec, Node as PMNode } from "prosemirror-model";
+import { keymap } from "prosemirror-keymap";
+import {
+  type DOMOutputSpec,
+  DOMSerializer,
+  Mark,
+  type Node as PMNode,
+} from "prosemirror-model";
+import { type Command, TextSelection } from "prosemirror-state";
+import type { EditorView, NodeViewConstructor } from "prosemirror-view";
+import { storyText } from "../../docx/story";
 import { docxSchema } from "../../schema";
+import { editShut, transactionAllowed } from "../../schema/guards";
+import { editsShut } from "../../schema/protectionState";
+import { type NoteKind, type StoryKey, storyKey } from "../../schema/stories";
 import { editorClassNames } from "../../styles/classNames";
+import {
+  detachAnchors,
+  dropSourceIdentity,
+  mapSliceNodes,
+  rederiveDisplay,
+  rekeyNumbering,
+  type SliceNormalizer,
+} from "../clipboard/normalizers";
+import { noteBodyCommand } from "../commands/footnoteCommands";
+import { redo, undo } from "../commands/historyCommands";
+import { noteReferenceAt } from "../plugins/noteNavigation";
 import type { StoryNodeSpecs } from "../stories/storyMarkup";
+import type { StoryExtensions, StoryHost } from "../stories/storyView";
 
 const OWN_REFERENCE_MARKS: readonly unknown[] = ["footnoteRef", "endnoteRef"];
 
@@ -17,12 +45,180 @@ function drawnBySchema(node: PMNode): DOMOutputSpec {
   return docxSchema.nodes.rawRunContent.spec.toDOM?.(node) ?? ["span"];
 }
 
+function markSpec(node: PMNode, labelOf: () => string): DOMOutputSpec {
+  return OWN_REFERENCE_MARKS.includes(node.attrs.element)
+    ? ["sup", { class: editorClassNames.noteMark }, labelOf()]
+    : drawnBySchema(node);
+}
+
 /** The node specs a note's story is drawn with, its own reference mark drawn as `labelOf` answers */
 export function noteNodeSpecs(labelOf: () => string): StoryNodeSpecs {
+  return { rawRunContent: (node) => markSpec(node, labelOf) };
+}
+
+/**
+ * The same drawing inside an editing view.
+ *
+ * A note the caret goes into has to keep the height it was measured at, so the chip is drawn by
+ * the very spec the static markup draws it by rather than by the schema's own, which says nothing
+ * about a label.
+ */
+function noteMarkView(labelOf: () => string): NodeViewConstructor {
+  return (node) => {
+    const { dom } = DOMSerializer.renderSpec(document, markSpec(node, labelOf));
+    return { dom };
+  };
+}
+
+/**
+ * Takes out of a paste what the notes part cannot be written with: an image, and a link.
+ *
+ * Either needs a relationship of the part it stands in, and the notes part writer writes none, so
+ * both would go out naming a relationship the file does not hold. A link or an image the file
+ * itself wrote inside a note stays; this is about what a paste would add.
+ */
+export const dropUnwritableContent: SliceNormalizer = (slice) =>
+  mapSliceNodes(slice, (node) => {
+    if (node.type === docxSchema.nodes.image) return null;
+    const marks = node.marks.filter(
+      (mark) => mark.type !== docxSchema.marks.link
+    );
+    return Mark.sameSet(marks, node.marks) ? node : node.mark(marks);
+  });
+
+const NOTE_NORMALIZERS: readonly SliceNormalizer[] = [
+  dropSourceIdentity,
+  detachAnchors,
+  dropUnwritableContent,
+  rekeyNumbering,
+  rederiveDisplay,
+];
+
+/** The id this key names for a note of this kind, and null for a key naming another kind */
+function idIn(kind: NoteKind, key: StoryKey): string | null {
+  const prefix = storyKey(kind, "");
+  return key.startsWith(prefix) ? key.slice(prefix.length) : null;
+}
+
+function runOn(main: EditorView, command: Command): boolean {
+  return command(main.state, (tr) => main.dispatch(tr), main);
+}
+
+/**
+ * Whether the note holds nothing but the number it opens with.
+ *
+ * The number is a preserved chip with no text of its own, so what the story reads as is empty for
+ * a note nobody has written in yet and not for one that lost its text to a selection.
+ */
+function holdsNoText(story: PMNode): boolean {
+  return storyText(story) === "";
+}
+
+/** How much room the number the note opens with takes, which the caret may stand after */
+function leadingChipSize(story: PMNode): number {
+  const first = story.firstChild?.firstChild;
+  return first?.type === docxSchema.nodes.rawRunContent ? first.nodeSize : 0;
+}
+
+/**
+ * Deletes an empty note and the reference that calls it, and hands the caret back to where the
+ * reference stood.
+ *
+ * Only the reference is deleted: the note goes with its last reference of its own accord
+ * (`editor/plugins/noteLifecycle`), in the same history event, so one undo brings both back. A
+ * note holding text is left alone, which is what keeps written words from disappearing under a
+ * key meant to take a mistake back.
+ */
+function deleteEmptyNote(
+  main: EditorView,
+  kind: NoteKind,
+  key: StoryKey
+): Command {
+  return (state, dispatch) => {
+    const id = idIn(kind, key);
+    if (id === null || !state.selection.empty) return false;
+    if (!holdsNoText(state.doc)) return false;
+    const $at = state.selection.$from;
+    if ($at.index(0) !== 0 || $at.parentOffset > leadingChipSize(state.doc)) {
+      return false;
+    }
+    const found = noteReferenceAt(main.state.doc, kind, id);
+    if (found === null) return false;
+    const tr = main.state.tr.delete(found.pos, found.pos + found.node.nodeSize);
+    if (!transactionAllowed(tr, main.state)) return false;
+    if (dispatch) {
+      main.dispatch(
+        tr
+          .setSelection(TextSelection.near(tr.doc.resolve(found.pos)))
+          .scrollIntoView()
+      );
+      main.focus();
+    }
+    return true;
+  };
+}
+
+/**
+ * The host a note's editing view writes through.
+ *
+ * Every edit leaves as the kind's own body command, so a lock around the reference and the
+ * standing the editor runs under judge a note edit where they judge a body edit, and the main
+ * document keeps the one history both share.
+ */
+export function noteHost(
+  main: EditorView,
+  kind: NoteKind,
+  activate: StoryHost["activate"]
+): StoryHost {
+  const referenceOf = (key: StoryKey) => {
+    const id = idIn(kind, key);
+    return id === null ? null : noteReferenceAt(main.state.doc, kind, id);
+  };
+
   return {
-    rawRunContent: (node) =>
-      OWN_REFERENCE_MARKS.includes(node.attrs.element)
-        ? ["sup", { class: editorClassNames.noteMark }, labelOf()]
-        : drawnBySchema(node),
+    state: () => main.state,
+    write(key, story) {
+      const id = idIn(kind, key);
+      return id !== null && runOn(main, noteBodyCommand(kind, id, story));
+    },
+    undo: () => runOn(main, undo),
+    redo: () => runOn(main, redo),
+    leave(key) {
+      const found = referenceOf(key);
+      if (found !== null) {
+        const after = found.pos + found.node.nodeSize;
+        main.dispatch(
+          main.state.tr
+            .setSelection(TextSelection.near(main.state.doc.resolve(after)))
+            .scrollIntoView()
+        );
+      }
+      main.focus();
+    },
+    shut(key) {
+      if (editsShut(main.state)) return true;
+      const found = referenceOf(key);
+      if (found === null) return true;
+      return editShut(main.state, {
+        kind: "replace",
+        from: found.pos,
+        to: found.pos + found.node.nodeSize,
+      });
+    },
+    activate,
+  };
+}
+
+/** What a note adds to the story view: its chip, its key rule, and what a paste may bring in */
+export function noteExtensions(
+  main: EditorView,
+  kind: NoteKind,
+  key: StoryKey,
+  labelOf: () => string
+): StoryExtensions {
+  return {
+    plugins: [keymap({ Backspace: deleteEmptyNote(main, kind, key) })],
+    nodeViews: { rawRunContent: noteMarkView(labelOf) },
+    normalizers: NOTE_NORMALIZERS,
   };
 }

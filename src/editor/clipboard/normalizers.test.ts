@@ -235,6 +235,33 @@ describe("normalizing a pasted slice", () => {
     expect(first?.lastChild?.attrs.xml).toBe("<w:oMathPara/>");
   });
 
+  /**
+   * The mark a note's own body opens with stands for the number that note is called by, so in the
+   * body it would draw a number the text never asked for.
+   */
+  it("drops a note's own reference mark pasted into the body", () => {
+    const state = stateOf(makeDocx(SOURCE));
+    const copied = paragraph({}, [
+      docxSchema.nodes.rawRunContent.create({
+        xml: "<w:footnoteRef/>",
+        element: "footnoteRef",
+        display: "chip",
+      }),
+      docxSchema.text("what the note said"),
+      docxSchema.nodes.rawRunContent.create({
+        xml: "<w:endnoteRef/>",
+        element: "endnoteRef",
+        display: "chip",
+      }),
+    ]);
+
+    const normalized = normalizePasted(pasted(copied), state, false);
+
+    const first = blocks(normalized)[0];
+    expect(first?.textContent).toBe("what the note said");
+    expect(first?.childCount).toBe(1);
+  });
+
   it("drops a permission and a move range the copied text stood in", () => {
     const state = stateOf(makeDocx(SOURCE));
     const ranged = paragraph({}, [

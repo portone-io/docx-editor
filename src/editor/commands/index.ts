@@ -107,13 +107,14 @@ export type {
 } from "./fidelityQueries";
 export { documentFidelity } from "./fidelityQueries";
 /**
- * Putting a footnote in and writing what one says. An edit deleting the last reference to a
- * footnote deletes the footnote, and one copying a reference gives the copy a footnote of its own,
- * so neither needs a command. Endnotes have none.
+ * Putting a footnote in, opening one for editing, and writing what one says. An edit deleting the
+ * last reference to a footnote deletes the footnote, and one copying a reference gives the copy a
+ * footnote of its own, so neither needs a command. Endnotes have none.
  */
 export {
   canInsertFootnote,
   insertFootnote,
+  openFootnote,
   setFootnoteBody,
 } from "./footnoteCommands";
 export type {

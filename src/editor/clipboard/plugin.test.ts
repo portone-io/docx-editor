@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   documentXmlOf,
   makeDocx,
+  makeNotesDocx,
   makeNumberedDocx,
   makeStyledDocx,
   TINY_PNG_DATA_URL,
@@ -18,12 +19,17 @@ import { toRunFormat } from "../../model/format";
 import { emuToPx } from "../../ooxml/image";
 import { styleIdOf } from "../../ooxml/props";
 import { docxSchema } from "../../schema";
+import { storyKey } from "../../schema/stories";
 import { editorClassNames } from "../../styles/classNames";
+import { DEFAULT_FONT_FALLBACKS } from "../../styles/fontStack";
 import {
   createEditorState,
   createEditorView,
   editorStateForSession,
 } from "../createEditor";
+import { documentOf, storyDocument } from "../editorDocument";
+import { footnoteExtensions, footnoteHost } from "../notes/footnoteSurface";
+import { createStoryView } from "../stories/storyView";
 import { defineClipboardEvent } from "./__testing__/clipboardEvent";
 
 const HEADING_STYLES =
@@ -349,6 +355,46 @@ describe("copying out of the editor", () => {
       expect(html).not.toContain(secret);
     }
     view.destroy();
+  });
+
+  /**
+   * The story view is an editor of this package's own, so what leaves it goes through the same
+   * copy serializer the sheet's does: neither the document's own source nor the element name the
+   * note's number is kept as reaches the clipboard.
+   */
+  it("copies text out of a footnote with no data attribute and no reference mark name", () => {
+    const main = createEditorView({
+      mount: document.createElement("div"),
+      state: editorStateForSession(importDocx(makeNotesDocx())),
+      onStateChange: () => {},
+    });
+    const story = createStoryView({
+      mount: document.createElement("div"),
+      host: footnoteHost(main, () => {}),
+      key: storyKey("footnote", "2"),
+      document: storyDocument(
+        documentOf(main.state),
+        documentOf(main.state).geometry
+      ),
+      fontFallbacks: DEFAULT_FONT_FALLBACKS,
+      extensions: footnoteExtensions(main, "2", () => "1"),
+    });
+    story.view.dispatch(
+      story.view.state.tr.setSelection(new AllSelection(story.view.state.doc))
+    );
+
+    const html = copiedHtml(story.view);
+
+    expect(html).toContain("Footnote body");
+    // `data-docx-clip` is the name this copy is kept under here (`./internalChannel`), which says
+    // nothing about the document
+    expect(
+      html.match(/\sdata-(?!style=|pm-slice=|docx-clip=)[\w-]+/g)
+    ).toBeNull();
+    expect(html).not.toContain("<w:");
+    expect(html).not.toContain("footnoteRef");
+    story.destroy();
+    main.destroy();
   });
 
   it("says an image's size in the pixels it was drawn at", () => {

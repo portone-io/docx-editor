@@ -13,6 +13,7 @@ import { splitParagraphAttrs } from "../../docx/cloning";
 import { toParagraphFormat } from "../../model/format";
 import { docxSchema } from "../../schema";
 import { insertLineBreak, insertPageBreak } from "../commands/breakCommands";
+import { insertFootnote } from "../commands/footnoteCommands";
 import {
   toggleBold,
   toggleItalic,
@@ -159,6 +160,8 @@ export const docxKeymap: Record<string, Command> = {
   // The link key Word and Google Docs share. It opens the panel over the selection, and with
   // nothing there to link it reports that it did nothing, so the browser keeps its own Cmd+K
   "Mod-k": openLinkPanel,
+  // Google Docs' footnote key, which puts the caret inside the footnote it adds
+  "Mod-Alt-f": insertFootnote,
   // Inside a table, moving between cells comes first (Word does the same).
   // In a list paragraph outside a table it shifts the level; an ordinary paragraph gets a document tab.
   Tab: chainCommands(

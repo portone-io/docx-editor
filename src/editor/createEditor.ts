@@ -48,6 +48,7 @@ import { linkPanel } from "./plugins/linkPanel";
 import { listInputRules } from "./plugins/listInputRules";
 import { lockedContent } from "./plugins/lockedContent";
 import { noteLifecycle } from "./plugins/noteLifecycle";
+import { noteNavigation } from "./plugins/noteNavigation";
 import { noteNumbering } from "./plugins/noteNumbering";
 import { numberingMarkers } from "./plugins/numberingDecorations";
 import { rowResize } from "./plugins/rowResize";
@@ -158,6 +159,9 @@ export function createEditorState(
       noteNumbering(),
       // What the notes under the page are, worked out from the document the same way
       noteProjection.plugin,
+      // Holds which note a press on a number or a command asked to open, which whatever draws the
+      // notes reads back (`plugins/noteNavigation`)
+      noteNavigation(),
       // Adjacent text tabs still need separate DOM ranges for layout and pointer selection.
       tabDecorations(),
       tabPointer(),

@@ -1,11 +1,17 @@
 // @vitest-environment jsdom
 import type { EditorState } from "prosemirror-state";
 import { describe, expect, it } from "vitest";
-import { LETTER_SECT_PR, makeDocx } from "../../__testing__/docx";
+import {
+  LETTER_SECT_PR,
+  makeDocx,
+  makeNotesDocx,
+  NOTE_BODY,
+} from "../../__testing__/docx";
 import { runCommand, select } from "../../__testing__/editing";
 import { exportDocx } from "../../docx/exportDocx";
 import { importDocx } from "../../docx/importDocx";
 import { serializeParagraph } from "../../docx/serializeParagraph";
+import { storyOf, storyText } from "../../docx/story";
 import {
   isBoldActive,
   isItalicActive,
@@ -13,9 +19,10 @@ import {
   isUnderlineActive,
 } from "../commands/formattingCommands";
 import { documentHasLocked, lockSelection } from "../commands/lockCommands";
-import { createEditorState } from "../createEditor";
+import { createEditorState, editorStateForSession } from "../createEditor";
 import { docxKeymap } from "./keymap";
 import { isLinkPanelOpen } from "./linkPanel";
+import { requestedNote } from "./noteNavigation";
 
 /** A document of a single paragraph containing nothing but text */
 function opened(text: string): EditorState {
@@ -205,6 +212,21 @@ describe("the link key", () => {
   it("leaves a locked stretch alone and says so", () => {
     const locked = runCommand(select(opened("abcd"), 1, 5), lockSelection);
     expect(docxKeymap["Mod-k"](select(locked, 1, 5))).toBe(false);
+  });
+});
+
+describe("Mod-Alt-f", () => {
+  it("inserts a footnote on Mod-Alt-f and asks for it to open", () => {
+    const state = editorStateForSession(importDocx(makeNotesDocx(NOTE_BODY)));
+    const caret = select(state, 1);
+
+    const inserted = runCommand(caret, docxKeymap["Mod-Alt-f"]);
+
+    const asked = requestedNote(inserted);
+    if (asked === null) throw new Error("no footnote was asked to open");
+    // The footnote just put in is the one the caret goes to, holding no text yet
+    expect(storyText(storyOf(inserted.doc, asked.key))).toBe("");
+    expect(storyOf(caret.doc, asked.key)).toBeNull();
   });
 });
 

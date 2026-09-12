@@ -61,6 +61,7 @@ export function NoteList({
           noteKey={row.key}
           story={row.story}
           label={row.label}
+          name={`${row.kind === "endnote" ? "Endnote" : "Footnote"} ${row.label}`}
           fontFallbacks={fontFallbacks}
         />
       ))}

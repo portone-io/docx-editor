@@ -221,6 +221,14 @@ const REFERENCE_ELEMENTS = [
 ];
 
 /**
+ * The mark a note's own body opens with, which stands for the number that note is called by.
+ *
+ * Outside its note it names nothing: the body would draw a number the text never asked for, and
+ * the writer would put a note's own mark into the document story.
+ */
+const NOTE_OWN_MARKS = ["footnoteRef", "endnoteRef"];
+
+/**
  * The elements a preserved fragment holds that anchor one, kept as the XML they arrived as.
  *
  * The ranges are the ones the import keeps as hidden markers (`docx/importPolicy`), read from the
@@ -232,6 +240,7 @@ const ANCHOR_ELEMENTS: ReadonlySet<string> = new Set([
   ...PERMISSION_MARKERS,
   ...COMMENT_RANGE_MARKERS,
   ...REFERENCE_ELEMENTS,
+  ...NOTE_OWN_MARKS,
 ]);
 
 const PRESERVED_INLINE: ReadonlySet<string> = new Set([

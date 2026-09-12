@@ -1,6 +1,11 @@
 // @vitest-environment jsdom
 import { Mark, type Node as PMNode } from "prosemirror-model";
-import type { Command, EditorState, Transaction } from "prosemirror-state";
+import {
+  AllSelection,
+  type Command,
+  type EditorState,
+  type Transaction,
+} from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
 import type { Step } from "prosemirror-transform";
 import { describe, expect, it } from "vitest";
@@ -12,16 +17,24 @@ import {
 } from "./__testing__/docx";
 import { select } from "./__testing__/editing";
 import { importDocx } from "./docx/importDocx";
-import { storyFromText } from "./docx/story";
+import { storyFromText, storyOf } from "./docx/story";
 import * as commands from "./editor/commands/index";
-import { createEditorState } from "./editor/createEditor";
+import { createEditorState, createEditorView } from "./editor/createEditor";
+import { documentOf, storyDocument } from "./editor/editorDocument";
+import {
+  footnoteExtensions,
+  footnoteHost,
+} from "./editor/notes/footnoteSurface";
 import { setProtection } from "./editor/plugins/documentProtection";
+import { createStoryView } from "./editor/stories/storyView";
 import {
   EDIT_GUARDS,
   type EditGuardName,
   type EditIntent,
 } from "./schema/guards";
 import type { EditingProtection } from "./schema/protection";
+import { storyKey } from "./schema/stories";
+import { DEFAULT_FONT_FALLBACKS } from "./styles/fontStack";
 import * as table from "./table";
 
 /**
@@ -476,6 +489,7 @@ const CASES: readonly CommandCase[] = [
   },
   { name: "selectComment", command: commands.selectComment("0") },
   { name: "insertFootnote", command: commands.insertFootnote },
+  { name: "openFootnote", command: commands.openFootnote("2") },
   {
     name: "setFootnoteBody",
     command: commands.setFootnoteBody("2", storyFromText("note")),
@@ -885,6 +899,113 @@ describe("the list of places above", () => {
     ).toEqual([]);
   });
 });
+
+/**
+ * The same question asked of a note being edited.
+ *
+ * A note is edited in a view of its own, whose edits reach the document as `setFootnoteBody`
+ * (`editor/stories`), so the controls above are drawn from a state no guard of the document is
+ * asked about directly. Without this table there would be nothing to catch a live button whose
+ * click the document then swallows.
+ */
+const STORY_FORMATTING: ReadonlySet<string> = new Set([
+  "toggleBold",
+  "toggleItalic",
+  "toggleStrike",
+  "toggleUnderline",
+  "setFontFamily",
+  "setFontSize",
+  "setTextColor",
+  "setTextBackground",
+  "setParagraphAlign",
+  "setParagraphStyle",
+  "setLineSpacing",
+  "decreaseIndent",
+  "increaseIndent",
+  "insertTab",
+  "insertLineBreak",
+]);
+
+/** The footnote reference of `NOTE_BODY`, standing inside a control that takes no edit */
+const LOCKED_REFERENCE_BODY =
+  "<w:p>" +
+  control(`${runXml("Text")}<w:r><w:footnoteReference w:id="2"/></w:r>`) +
+  "</w:p>";
+
+interface StoryPlace {
+  name: string;
+  body: string;
+}
+
+const STORY_PLACES: readonly StoryPlace[] = [
+  { name: "a caret in a footnote", body: NOTE_BODY },
+  {
+    name: "a caret in a footnote whose reference stands in locked content",
+    body: LOCKED_REFERENCE_BODY,
+  },
+];
+
+describe.each(PROTECTIONS)(
+  "every formatting command in a note under %s",
+  (protection) => {
+    describe.each(STORY_PLACES)("with $name", ({ body }) => {
+      it.each(CASES.filter((entry) => STORY_FORMATTING.has(entry.name)))(
+        "$name says what dispatching it does",
+        ({ command }) => {
+          const main = createEditorView({
+            mount: document.createElement("div"),
+            state: createEditorState(importDocx(makeNotesDocx(body)).doc, {
+              protection,
+              author: { id: "me", name: "Me" },
+            }),
+            onStateChange: () => {},
+          });
+          const key = storyKey("footnote", "2");
+          const story = createStoryView({
+            mount: document.createElement("div"),
+            host: footnoteHost(main, () => {}),
+            key,
+            document: storyDocument(
+              documentOf(main.state),
+              documentOf(main.state).geometry
+            ),
+            fontFallbacks: DEFAULT_FONT_FALLBACKS,
+            extensions: footnoteExtensions(main, "2", () => "1"),
+          });
+          // Over the note's text rather than at a caret, so a formatting command has something to
+          // put on and its answer is about the document rather than about stored marks
+          story.view.dispatch(
+            story.view.state.tr.setSelection(
+              new AllSelection(story.view.state.doc)
+            )
+          );
+          const before = storyOf(main.state.doc, key);
+          const said = story.view.state.doc;
+
+          const answered = command(story.view.state, (tr) =>
+            story.view.dispatch(tr)
+          );
+          const reached = storyOf(main.state.doc, key) !== before;
+          const moved = story.view.state.doc !== said;
+          story.destroy();
+          main.destroy();
+
+          if (!answered) {
+            expect(
+              reached,
+              "the command reported that it does not apply, and dispatching it changed the note"
+            ).toBe(false);
+            return;
+          }
+          expect(
+            reached,
+            "the command reported that it applies and moved the note, and the document took none of it"
+          ).toBe(moved);
+        }
+      );
+    });
+  }
+);
 
 describe("the list of commands above", () => {
   it("covers every export of `./commands` and `./table`", () => {
