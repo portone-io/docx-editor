@@ -57,7 +57,7 @@ A folder may import itself and folders with a lower rank only.
 | Rank | Folder | Responsibility |
 | --- | --- | --- |
 | 0 | `model` | Shared format values and validation |
-| 1 | `styles` | Visual styles, presets, and font fallbacks |
+| 1 | `styles` | Visual styles, presets, font fallbacks, and the scale the paper is drawn at |
 | 2 | `ooxml` | XML reading and writing primitives, child order, part splicing, errors, units, and image primitives |
 | 3 | `numbering` | Numbering definitions and list markers |
 | 4 | `schema` | ProseMirror nodes, marks, rendering, locks, and edit guards |
