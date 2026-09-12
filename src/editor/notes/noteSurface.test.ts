@@ -27,7 +27,11 @@ import { insertFootnote } from "../commands/noteCommands";
 import { createEditorView, editorStateForSession } from "../createEditor";
 import { documentOf, storyDocument } from "../editorDocument";
 import { requestedNote } from "../plugins/noteNavigation";
-import { createStoryView, type StoryView } from "../stories/storyView";
+import {
+  createStoryView,
+  type StoryCaret,
+  type StoryView,
+} from "../stories/storyView";
 import { noteExtensions, noteHost } from "./noteSurface";
 
 const FOOTNOTE = storyKey("footnote", "2");
@@ -87,7 +91,8 @@ function openNote(
   main: EditorView,
   id = "2",
   label = "1",
-  kind: NoteKind = "footnote"
+  kind: NoteKind = "footnote",
+  caret: StoryCaret | null = null
 ): StoryView {
   const key = storyKey(kind, id);
   const story = createStoryView({
@@ -100,9 +105,17 @@ function openNote(
     ),
     fontFallbacks: DEFAULT_FONT_FALLBACKS,
     extensions: noteExtensions(main, key, () => label),
+    caret,
   });
   opened.story = story;
   return story;
+}
+
+/** Where the note's own text begins, which is the first place a caret may stand in the story */
+function afterTheNumber(story: StoryView): number {
+  const chip = leadingChip(story.view.state.doc);
+  if (chip === null) throw new Error("the note opens with no number");
+  return 1 + chip.nodeSize;
 }
 
 function pressBackspace(view: EditorView): boolean {
@@ -617,4 +630,43 @@ describe("a composition opening over the whole of a note", () => {
     expect(chipElements(held)).toEqual(["endnoteRef"]);
     expect(storyText(held)).toBe("");
   });
+});
+
+/**
+ * The number Word draws a note by is the first thing its entry holds, and a reader writes after
+ * it. Nothing may stand before it: not the caret a way into the note leaves, and not text an edit
+ * would put there.
+ */
+describe("the place before the number a note opens with", () => {
+  it.each([
+    ["footnote", "2"],
+    ["endnote", "3"],
+  ] as const)(
+    "takes no caret in a %s, however a reader gets in",
+    (kind, id) => {
+      const main = mainView();
+      // The head of the story, which is what a press at the left of the row resolves to
+      const story = openNote(main, id, "1", kind, {
+        kind: "at",
+        anchor: 0,
+        head: 0,
+      });
+
+      expect(story.view.state.selection.from).toBe(afterTheNumber(story));
+
+      // And none a selection set afterwards leaves there either
+      story.view.dispatch(
+        story.view.state.tr.setSelection(
+          TextSelection.create(story.view.state.doc, 1)
+        )
+      );
+      expect(story.view.state.selection.from).toBe(afterTheNumber(story));
+    }
+  );
+
+  /**
+   * A selection that opens before the number is an edit like any other and keeps its range, so
+   * what it sweeps away is put back rather than held off: it is the caret a reader writes from
+   * that is kept out of that place.
+   */
 });

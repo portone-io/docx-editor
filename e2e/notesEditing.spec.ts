@@ -353,3 +353,20 @@ test("inserts an endnote on the endnote key and puts the caret in it", async ({
     page.getByRole("region", { name: /^Endnotes on page \d+$/ }).first()
   ).toContainText("An endnote written where it was added.");
 });
+
+test("writes after the number when a reader types at the head of a note", async ({
+  page,
+}) => {
+  await openHarness(page, "notes");
+  await enterFootnote(page, "1");
+
+  // Home is the shortest way to the head of the note's first line
+  await page.keyboard.press("Home");
+  await page.keyboard.type("Head.");
+
+  await expect
+    .poll(() => noteText(page, "1"))
+    .toBe("Head. A footnote near the top of the document.");
+  // The number is still the first thing the note is drawn with
+  await expect(openNote(page)).toHaveText(/^1/);
+});

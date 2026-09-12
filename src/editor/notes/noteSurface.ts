@@ -185,14 +185,31 @@ function leadingChipSize(story: PMNode): number {
   return first !== null && isOwnMark(first) ? first.nodeSize : 0;
 }
 
+/** The note's own number as the story holds it, and where it stands */
+interface PlacedMark {
+  readonly pos: number;
+  readonly node: PMNode;
+}
+
 /** The note's own number, wherever in the story it stands, and null for a story holding none */
-function ownMarkIn(story: PMNode): PMNode | null {
-  let found: PMNode | null = null;
-  story.descendants((node) => {
-    if (isOwnMark(node)) found = node;
+function ownMarkIn(story: PMNode): PlacedMark | null {
+  let found: PlacedMark | null = null;
+  story.descendants((node, pos) => {
+    if (found === null && isOwnMark(node)) found = { pos, node };
     return found === null;
   });
   return found;
+}
+
+/**
+ * The first place in the story a caret may stand, which is after the number the note is drawn by,
+ * and null while the story holds no number of its own to stand after.
+ */
+function caretFloor(story: PMNode): number | null {
+  const held = ownMarkIn(story);
+  return held === null || held.pos !== markHome(story)
+    ? null
+    : held.pos + held.node.nodeSize;
 }
 
 /**
@@ -240,15 +257,32 @@ function markHome(story: PMNode): number | null {
  * back under an open composition as well (`editor/plugins/commentRestoration`), so a composition
  * that writes over the number keeps it and stays open. `e2e/notesEditing.spec.ts` holds that
  * against a real browser, which is the only place a composition can be measured.
+ *
+ * The caret is the other side of the same rule: it is kept out of the one place from which a
+ * reader would write ahead of the number, so that every way into a note - a press on the
+ * reference, a press on the note itself, the open command, a note just inserted - leaves it where
+ * the note's own text begins, and typing, pasting and composing land after the number rather than
+ * in front of it. A selection that reaches over the number keeps its range: it is an edit like any
+ * other, and what it sweeps away the restoration above puts back.
  */
 function ownMarkRestoration(): Plugin {
   return new Plugin({
     appendTransaction(transactions, oldState, newState) {
-      if (!transactions.some((tr) => tr.docChanged)) return null;
-      const lost = ownMarkIn(oldState.doc);
-      if (lost === null || ownMarkIn(newState.doc) !== null) return null;
-      const at = markHome(newState.doc);
-      return at === null ? null : newState.tr.insert(at, lost);
+      const tr = newState.tr;
+      if (transactions.some((changed) => changed.docChanged)) {
+        const lost = ownMarkIn(oldState.doc);
+        const at = markHome(newState.doc);
+        if (lost !== null && ownMarkIn(newState.doc) === null && at !== null) {
+          tr.insert(at, lost.node);
+        }
+      }
+      const floor = caretFloor(tr.doc);
+      if (floor !== null && tr.selection.empty && tr.selection.from < floor) {
+        tr.setSelection(
+          TextSelection.create(tr.doc, Math.min(floor, tr.doc.content.size))
+        );
+      }
+      return tr.docChanged || tr.selectionSet ? tr : null;
     },
   });
 }
