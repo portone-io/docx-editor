@@ -128,6 +128,35 @@ describe("noteLabelsIn", () => {
     expect(labels(doc)).toEqual(["footnote 1", "footnote 2", "footnote 1"]);
   });
 
+  it("gives a reference repeated after a restart the number of its own section", () => {
+    const doc = opened(
+      sectionEnd("", footnote("2"), footnote("3")) +
+        paragraph(footnote("2"), footnote("4")),
+      '<w:footnotePr><w:numRestart w:val="eachSect"/></w:footnotePr>'
+    );
+
+    expect(labels(doc)).toEqual([
+      "footnote 1",
+      "footnote 2",
+      "footnote 1",
+      "footnote 2",
+    ]);
+  });
+
+  it("gives a reference repeated in a later section its first label where the count runs on", () => {
+    const doc = opened(
+      sectionEnd("", footnote("2"), footnote("3")) +
+        paragraph(footnote("2"), footnote("4"))
+    );
+
+    expect(labels(doc)).toEqual([
+      "footnote 1",
+      "footnote 2",
+      "footnote 1",
+      "footnote 3",
+    ]);
+  });
+
   it("skips a reference whose custom mark follows", () => {
     const doc = opened(
       paragraph(

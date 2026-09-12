@@ -77,10 +77,19 @@ function propsIn(
   };
 }
 
-/** Where the count of one kind of note stands: the next number, and the label each id already took */
+/**
+ * Where the count of one kind of note stands: the next number, and the label each id took since
+ * the count last started.
+ */
 interface Count {
   next: number;
   readonly taken: Map<string, string>;
+}
+
+/** The count back at the number the properties start it from, with nothing yet counted under it */
+function restarted(count: Count, props: NoteNumberingProps): void {
+  count.next = props.start;
+  count.taken.clear();
 }
 
 function labelOf(
@@ -104,11 +113,13 @@ function labelOf(
  * The label each note reference of the body is drawn with, by position.
  *
  * Each kind is counted on its own, in the order its references stand: a repeated id takes the
- * label of its first reference, a reference whose custom mark follows takes neither a label nor a
- * number (§17.11.14), and one calling a separator entry is no note to count. A section's own
- * properties lay over the settings, and a section that restarts each section counts from its start
- * again (§17.11.19, §17.11.20). A restart on each page is counted straight through, since the label
- * would then depend on the pages, which depend in turn on how wide the labels are drawn.
+ * label of its first reference since the count last started, a reference whose custom mark follows
+ * takes neither a label nor a number (§17.11.14), and one calling a separator entry is no note to
+ * count. A section's own properties lay over the settings, and a section that restarts each section
+ * counts from its start again (§17.11.19, §17.11.20), so a note referred to in an earlier section
+ * and again in this one is drawn with this section's own number, as Word draws it. A restart on
+ * each page is counted straight through, since the label would then depend on the pages, which
+ * depend in turn on how wide the labels are drawn.
  *
  * It reads the document and what it is handed and nothing else, so the file an edited document
  * exports opens with the labels the editor drew.
@@ -127,7 +138,7 @@ export function noteLabelsIn(
     const props = propsIn(section, numbering);
     for (const kind of NOTE_KINDS) {
       if (index === 0 || props[kind].restart === "eachSect") {
-        counts[kind].next = props[kind].start;
+        restarted(counts[kind], props[kind]);
       }
     }
     for (const { pos, node } of references) {
