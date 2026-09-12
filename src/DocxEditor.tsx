@@ -31,8 +31,16 @@ import { type ExportProblem, exportProblems } from "./docx/invariants";
 import { sectionIn, sectionsOf } from "./docx/sections";
 import type { SessionStore } from "./docx/session";
 import type { CommentAuthor } from "./editor/commands/commentCommands";
+import { openFootnote } from "./editor/commands/footnoteCommands";
 import { activeLinkSpan } from "./editor/commands/linkCommands";
 import { createEditorView, editorStateForSession } from "./editor/createEditor";
+import { sectionGeometryAt } from "./editor/documentStyles";
+import { storyDocument } from "./editor/editorDocument";
+import {
+  footnoteExtensions,
+  footnoteHost,
+  footnoteIdOf,
+} from "./editor/notes/footnoteSurface";
 import {
   closeCommentComposer,
   isCommentComposerOpen,
@@ -40,6 +48,7 @@ import {
 import { commentProjection } from "./editor/plugins/commentDecorations";
 import { setProtection } from "./editor/plugins/documentProtection";
 import { isLinkPanelOpen } from "./editor/plugins/linkPanel";
+import { requestedNote } from "./editor/plugins/noteNavigation";
 import { tableMenuAnchor } from "./editor/plugins/tableContextMenu";
 import { textMenuAnchor } from "./editor/plugins/textContextMenu";
 import { DocxImportError, type DocxImportErrorCode } from "./ooxml/errors";
@@ -55,6 +64,10 @@ import { CommentsPanel, shownBesideThePage } from "./ui/CommentsPanel";
 import { LinkCard } from "./ui/LinkCard";
 import { LinkPanel } from "./ui/LinkPanel";
 import { NotesAroundPage, useNoteBands } from "./ui/notes/noteBands";
+import {
+  type StorySurfaceBinding,
+  useStorySurface,
+} from "./ui/notes/useStorySurface";
 import type { DocxEditorPresets } from "./ui/presets";
 import { TableMenu } from "./ui/TableMenu";
 import { TextMenu } from "./ui/TextMenu";
@@ -119,6 +132,27 @@ export type DocxEditorMode =
 function runOn(view: EditorView, command: Command): void {
   command(view.state, (transaction) => view.dispatch(transaction));
 }
+
+/**
+ * What the footnote surface hands the view over one footnote, which is the whole of what this
+ * component knows about a kind of story (`editor/notes/footnoteSurface`).
+ */
+const FOOTNOTE_SURFACE: StorySurfaceBinding = {
+  hostOf: footnoteHost,
+  extensionsOf: (main, row) => {
+    const id = footnoteIdOf(row.key);
+    return id === null ? null : footnoteExtensions(main, id, () => row.label);
+  },
+  // The paper a note wraps at is the paper of the section its reference stands in, which a story
+  // holds no section of its own to say (`editor/documentStyles`)
+  documentFor: (main, snapshot, row) =>
+    storyDocument(snapshot, sectionGeometryAt(main, row.referencePos)),
+  requestedIn: requestedNote,
+  openIn: (main, row) => {
+    const id = footnoteIdOf(row.key);
+    if (id !== null) runOn(main, openFootnote(id));
+  },
+};
 
 /** What a mode hands the reader, which is everything the component reads off the kind */
 interface ModeAffordances {
@@ -548,6 +582,15 @@ function DocxEditorSurface(
     fontFallbacks: mountedFontFallbacks,
   });
 
+  // Which footnote the caret is in and what the view over it is built from, in one place
+  // (`ui/notes/useStorySurface`): a second kind of story is another binding rather than more of
+  // this component
+  const surface = useStorySurface({
+    main: live,
+    rows: notes.footnotes,
+    binding: FOOTNOTE_SURFACE,
+  });
+
   const overlay = usePageLayout({
     view: live?.view ?? null,
     layer: layerRef,
@@ -555,6 +598,9 @@ function DocxEditorSurface(
     revision: live?.state.doc,
     sections: sectionPapers,
     bands: notes.bands,
+    // A page laid out again draws the row the open note stands in wherever it now lands, which
+    // would take its composition down with it
+    composing: surface.composing,
   });
 
   const headersFootersFor = useMemo(() => {
@@ -619,10 +665,10 @@ function DocxEditorSurface(
       className={[editorClassNames.frame, className].filter(Boolean).join(" ")}
       style={style}
     >
-      {live && toolbar && (
+      {live && toolbar && surface.active && (
         <Toolbar
-          view={live.view}
-          state={live.state}
+          main={live}
+          active={surface.active}
           fontFallbacks={mountedFontFallbacks}
           presets={presets}
           commentsOpen={commentsOpen}
@@ -671,6 +717,11 @@ function DocxEditorSurface(
               page={page}
               pageGuides={showPageGuides}
               zoom={effectiveZoom}
+              open={surface.open}
+              editing={surface.editing}
+              readOnly={surface.readOnly}
+              revision={live?.state}
+              onOpen={surface.onOpen}
             />
           </div>
           {!commentsOpen && commentsPanel}
@@ -689,19 +740,21 @@ function DocxEditorSurface(
           link={linkAtCursor}
         />
       )}
-      {live && textAnchor && (
+      {live && textAnchor && surface.active && (
         <TextMenu
           view={live.view}
           state={live.state}
           anchor={textAnchor}
+          takes={surface.active.takes}
           allowLocking={locking}
         />
       )}
-      {live && tableAnchor && (
+      {live && tableAnchor && surface.active && (
         <TableMenu
           view={live.view}
           state={live.state}
           anchor={tableAnchor}
+          takes={surface.active.takes}
           allowLocking={locking}
         />
       )}

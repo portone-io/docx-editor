@@ -1,4 +1,4 @@
-/** Table context menu with an optional Unlock action for whole-cell locks. */
+/** Table context menu with footnote insertion and an optional Unlock action for whole-cell locks. */
 
 import type { Command, EditorState } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
@@ -8,6 +8,7 @@ import {
   closeTableMenu,
   type TableMenuAnchor,
 } from "../editor/plugins/tableContextMenu";
+import type { SurfaceCapabilities } from "../editor/stories/storyView";
 import { editorClassNames } from "../styles/classNames";
 import {
   addColumnAfter,
@@ -20,6 +21,7 @@ import {
   mergeCells,
   splitCell,
 } from "../table";
+import { footnoteItem } from "./footnoteItem";
 import { usePanelAtPoint } from "./panelPlacement";
 import { commandRunner } from "./runCommand";
 import { useDismiss } from "./useDismiss";
@@ -70,10 +72,28 @@ const UNLOCK_GROUP: MenuGroup = {
   items: [{ label: "Unlock", command: unlockSelection }],
 };
 
+/**
+ * The note group, which this menu is the only pointer path to for a caret in a cell: a click
+ * landing in one with nothing selected is this menu's rather than the text menu's
+ * (`editor/plugins/textContextMenu`). The shortcut is left off the row, as every row here leaves
+ * its own off.
+ */
+function noteGroup(takes: SurfaceCapabilities): MenuGroup | null {
+  const footnote = footnoteItem(takes);
+  return footnote === null
+    ? null
+    : {
+        name: "note",
+        items: [{ label: footnote.label, command: footnote.command }],
+      };
+}
+
 export interface TableMenuProps {
   view: EditorView;
   state: EditorState;
   anchor: TableMenuAnchor;
+  /** What the surface holding the caret takes, which the entries that put something in ask */
+  takes: SurfaceCapabilities;
   allowLocking?: boolean;
 }
 
@@ -81,6 +101,7 @@ export function TableMenu({
   view,
   state,
   anchor,
+  takes,
   allowLocking = false,
 }: TableMenuProps): ReactElement {
   const box = useRef<HTMLDivElement | null>(null);
@@ -101,7 +122,12 @@ export function TableMenu({
     close();
   };
 
-  const groups = allowLocking ? [...MENU_GROUPS, UNLOCK_GROUP] : MENU_GROUPS;
+  const note = noteGroup(takes);
+  const groups: readonly MenuGroup[] = [
+    ...MENU_GROUPS,
+    ...(note === null ? [] : [note]),
+    ...(allowLocking ? [UNLOCK_GROUP] : []),
+  ];
 
   return (
     <div

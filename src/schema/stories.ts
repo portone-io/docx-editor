@@ -52,9 +52,15 @@ export interface StoryJson {
 /** The attr the stories stand on, named here so the schema and the readers cannot spell it apart */
 export const STORIES_ATTR = "stories";
 
-export function storyKey(kind: StoryKind, id: string): StoryKey {
+export function storyKey<K extends StoryKind>(
+  kind: K,
+  id: string
+): `${K}:${string}` {
   return `${kind}:${id}`;
 }
+
+/** The key of a story that is a note: `footnote:2`, `endnote:3` */
+export type NoteKey = `${NoteKind}:${string}`;
 
 /**
  * The kinds of note an edit may add, delete, copy and rewrite.

@@ -2,10 +2,20 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { makeFormattedNotesDocx } from "../../__testing__/docx";
+import { makeFormattedNotesDocx, makeNotesDocx } from "../../__testing__/docx";
 import { importDocx } from "../../docx/importDocx";
 import { noteProjection } from "../../editor/commands/noteQueries";
-import { createEditorState } from "../../editor/createEditor";
+import {
+  createEditorState,
+  createEditorView,
+  editorStateForSession,
+} from "../../editor/createEditor";
+import { documentOf, storyDocument } from "../../editor/editorDocument";
+import {
+  footnoteExtensions,
+  footnoteHost,
+} from "../../editor/notes/footnoteSurface";
+import type { StoryCaret } from "../../editor/stories/storyView";
 import { FOOTNOTE_BAND } from "../../page/demands/footnoteDemands";
 import type {
   PageFace,
@@ -15,6 +25,7 @@ import type {
 import { editorClassNames } from "../../styles/classNames";
 import { DEFAULT_FONT_FALLBACKS } from "../../styles/fontStack";
 import { FootnoteAreas, type FootnoteAreasProps } from "./FootnoteAreas";
+import type { RowEditing } from "./StoryRow";
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -38,6 +49,19 @@ afterEach(() => {
 /** Footnote 2 carries a bold run and a second paragraph and is labelled 1; footnote 5 is labelled 2 */
 function openedFootnotes() {
   const state = createEditorState(importDocx(makeFormattedNotesDocx()).doc);
+  return noteProjection.read(state).footnotes;
+}
+
+/** A reference drawing a mark of its own, which the editor draws no number for */
+const CUSTOM_MARK_BODY =
+  '<w:p><w:r><w:t xml:space="preserve">Marked</w:t></w:r>' +
+  '<w:r><w:footnoteReference w:customMarkFollows="1" w:id="2"/></w:r>' +
+  "<w:r><w:t>*</w:t></w:r></w:p>";
+
+function customMarkFootnotes() {
+  const state = createEditorState(
+    importDocx(makeNotesDocx(CUSTOM_MARK_BODY)).doc
+  );
   return noteProjection.read(state).footnotes;
 }
 
@@ -137,6 +161,18 @@ describe("the footnotes at the foot of each page", () => {
     expect(area(1).textContent).not.toContain("footnoteRef");
   });
 
+  it("names a footnote drawing a mark of its own by its kind alone", () => {
+    draw({
+      footnotes: customMarkFootnotes(),
+      overlay: overlayOf(face(1, [room(["footnote:2"], 900)])),
+    });
+
+    // The reference draws no number, so there is none to name the row by
+    expect(
+      rowsOf(area(1)).map((row) => row.getAttribute("aria-label"))
+    ).toEqual(["Footnote"]);
+  });
+
   it("keeps a footnote's bold run and second paragraph", () => {
     draw({ overlay: overlayOf(face(1, [room(["footnote:2"], 900)])) });
 
@@ -203,6 +239,51 @@ describe("the footnotes at the foot of each page", () => {
 
     expect(area(1).style.overflowY).toBe("hidden");
     expect(area(2).style.overflowY).toBe("auto");
+  });
+
+  it("mounts one editor view over the entered footnote and none after leaving it", () => {
+    const main = createEditorView({
+      mount: document.createElement("div"),
+      state: editorStateForSession(importDocx(makeFormattedNotesDocx())),
+      onStateChange: () => {},
+    });
+    const held: { current: StoryCaret | null } = { current: null };
+    const editing: RowEditing = {
+      host: footnoteHost(main, () => {}),
+      document: storyDocument(
+        documentOf(main.state),
+        documentOf(main.state).geometry
+      ),
+      extensions: footnoteExtensions(main, "2", () => "1"),
+      caret: {
+        take: () => held.current,
+        keep: (caret) => {
+          held.current = caret;
+        },
+      },
+      onStateChange: () => {},
+    };
+    const overlay = overlayOf(
+      face(1, [room(["footnote:2", "footnote:5"], 900)])
+    );
+
+    draw({ overlay, open: "footnote:2", editing });
+
+    const views = host.querySelectorAll(".ProseMirror");
+    expect(views).toHaveLength(1);
+    expect(rowsOf(area(1))[0]?.contains(views[0] ?? null)).toBe(true);
+    expect(rowsOf(area(1))[0]?.className).toContain(
+      editorClassNames.noteRowOpen
+    );
+    // The note still says what it said, its own number drawn as the label it carries
+    expect(rowsOf(area(1))[0]?.textContent).toContain("1Plain then bold words");
+
+    draw({ overlay });
+
+    expect(host.querySelector(".ProseMirror")).toBeNull();
+    expect(host.querySelector("[contenteditable]")).toBeNull();
+    expect(rowsOf(area(1))[0]?.textContent).toContain("1Plain then bold words");
+    main.destroy();
   });
 
   it("holds none of the document's own source in a selection made inside a footnote area", () => {

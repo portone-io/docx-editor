@@ -13,8 +13,10 @@ import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { DocxEditor, type DocxEditorMode } from "../../src/DocxEditor";
 import type { DocxBytes } from "../../src/docx/importDocx";
+import { storyOf, storyText } from "../../src/docx/story";
 import { lockSelection } from "../../src/editor/commands/lockCommands";
 import { lockedMarkOf } from "../../src/schema/locks";
+import { storyKey } from "../../src/schema/stories";
 import { editorAttributes } from "../../src/styles/classNames";
 import "../../src/styles/editor.css";
 import type {
@@ -271,6 +273,8 @@ function install(view: EditorView): void {
     rightClick: () => rightClick(view),
     tableRows: () => tableRows(view),
     lockedText: () => lockedText(view),
+    noteText: (id) =>
+      storyText(storyOf(view.state.doc, storyKey("footnote", id))),
   };
 
   window.docxHarness = harness;

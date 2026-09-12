@@ -409,6 +409,23 @@ button.docx-editor-comment-body {
   display: flow-root;
 }
 
+/*
+ * The note the caret is in.
+ *
+ * Neither the tint nor the ring around it takes any room, so the row measures the same height
+ * whether it is markup or the editing view, and the page keeps the room it already kept.
+ */
+.docx-editor-note-row-open {
+  border-radius: 2px;
+  background: rgb(49 93 168 / 7%);
+  box-shadow: 0 0 0 3px rgb(49 93 168 / 7%);
+}
+
+/* The view one story is edited in. It sets its text from the box it is drawn in */
+.docx-editor-story-body {
+  outline: none;
+}
+
 .docx-editor-note-mark {
   font-size: 0.72em;
   line-height: 0;

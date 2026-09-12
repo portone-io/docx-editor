@@ -15,11 +15,14 @@ import { ToolbarButton } from "./ToolbarButton";
 export interface InsertImageButtonProps {
   view: EditorView;
   state: EditorState;
+  /** Turned off whatever the state says, which is what a surface taking no image sets */
+  disabled?: boolean;
 }
 
 export function InsertImageButton({
   view,
   state,
+  disabled = false,
 }: InsertImageButtonProps): ReactElement {
   const pickerRef = useRef<HTMLInputElement | null>(null);
 
@@ -28,7 +31,7 @@ export function InsertImageButton({
       <ToolbarButton
         label="Insert image"
         icon={Image}
-        disabled={!view.editable || !canInsertImage(state)}
+        disabled={disabled || !view.editable || !canInsertImage(state)}
         onRun={() => pickerRef.current?.click()}
       />
       <input

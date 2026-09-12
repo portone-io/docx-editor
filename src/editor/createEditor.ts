@@ -37,6 +37,7 @@ import { columnResize } from "./plugins/columnResize";
 import { commentComposer } from "./plugins/commentComposer";
 import { commentDecorations } from "./plugins/commentDecorations";
 import { commentRestoration } from "./plugins/commentRestoration";
+import { compositionSelection } from "./plugins/compositionSelection";
 import {
   displayDerivation,
   withDerivedDisplay,
@@ -48,6 +49,7 @@ import { linkPanel } from "./plugins/linkPanel";
 import { listInputRules } from "./plugins/listInputRules";
 import { lockedContent } from "./plugins/lockedContent";
 import { noteLifecycle } from "./plugins/noteLifecycle";
+import { noteNavigation } from "./plugins/noteNavigation";
 import { noteNumbering } from "./plugins/noteNumbering";
 import { numberingMarkers } from "./plugins/numberingDecorations";
 import { rowResize } from "./plugins/rowResize";
@@ -124,6 +126,10 @@ export function createEditorState(
       // the preserved bookmark markers and endnote references stay where the file put them.
       lockedContent(),
       documentProtection({ protection, author, editableComments }),
+      // Beside the plugins that answer for an edit rather than among the keys and the clipboard
+      // under them. For a DOM event the plugin registered first is asked first, and this one hands
+      // every composition on, so where it stands takes nothing from what stands below it
+      compositionSelection(),
       history(),
       keymap(docxKeymap),
       historyKeys(),
@@ -158,6 +164,9 @@ export function createEditorState(
       noteNumbering(),
       // What the notes under the page are, worked out from the document the same way
       noteProjection.plugin,
+      // Holds which note a press on a number or a command asked to open, which whatever draws the
+      // notes reads back (`plugins/noteNavigation`)
+      noteNavigation(),
       // Adjacent text tabs still need separate DOM ranges for layout and pointer selection.
       tabDecorations(),
       tabPointer(),

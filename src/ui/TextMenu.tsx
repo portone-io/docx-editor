@@ -1,4 +1,4 @@
-/** Custom text context menu with clipboard, comment, and optional locking actions. */
+/** Custom text context menu with clipboard, comment, footnote, and optional locking actions. */
 
 import {
   ClipboardPaste,
@@ -27,18 +27,16 @@ import {
   closeTextMenu,
   type TextMenuAnchor,
 } from "../editor/plugins/textContextMenu";
+import type { SurfaceCapabilities } from "../editor/stories/storyView";
 import { editsShut } from "../schema/protectionState";
 import { editorClassNames } from "../styles/classNames";
+import { footnoteItem } from "./footnoteItem";
 import { usePanelAtPoint } from "./panelPlacement";
 import { commandRunner, type RunCommand } from "./runCommand";
+import { modifierLabels } from "./shortcutLabels";
 import { ICON_SIZE } from "./ToolbarButton";
 import { useDismiss } from "./useDismiss";
 import { useMenuKeyboard } from "./useMenuKeyboard";
-
-const MOD =
-  typeof navigator !== "undefined" && navigator.platform.includes("Mac")
-    ? "⌘"
-    : "Ctrl+";
 
 /**
  * Cut and copy are handed to the browser from inside the click that asked for them, which is the
@@ -137,6 +135,8 @@ export interface TextMenuProps {
   view: EditorView;
   state: EditorState;
   anchor: TextMenuAnchor;
+  /** What the surface holding the caret takes, which the entries that put something in ask */
+  takes: SurfaceCapabilities;
   /** Whether the entries that lock and unlock a stretch of text are offered */
   allowLocking?: boolean;
 }
@@ -145,6 +145,7 @@ export function TextMenu({
   view,
   state,
   anchor,
+  takes,
   allowLocking = false,
 }: TextMenuProps): ReactElement {
   const box = useRef<HTMLDivElement | null>(null);
@@ -160,6 +161,7 @@ export function TextMenu({
 
   const selected = !state.selection.empty;
   const shut = selectionTouchesLocked(state);
+  const { mod } = modifierLabels();
   // A commenter gets what a reader of the text may do with it - copy it, and comment on it - while
   // the entries that change the body wait for a mode that lets the body be changed. The plugin
   // opens this menu over the selected text alone there, so neither entry is drawn dead
@@ -167,7 +169,7 @@ export function TextMenu({
   const copy: MenuItem = {
     label: "Copy",
     icon: Copy,
-    hint: `${MOD}C`,
+    hint: `${mod}C`,
     enabled: selected,
     run: () => clipboardCommand(view, "copy"),
   };
@@ -177,7 +179,7 @@ export function TextMenu({
           {
             label: "Cut",
             icon: Scissors,
-            hint: `${MOD}X`,
+            hint: `${mod}X`,
             enabled: selected && !shut,
             run: () => clipboardCommand(view, "cut"),
           },
@@ -185,7 +187,7 @@ export function TextMenu({
           {
             label: "Paste",
             icon: ClipboardPaste,
-            hint: `${MOD}V`,
+            hint: `${mod}V`,
             enabled: !shut,
             run: () => {
               void pasteFromClipboard(view);
@@ -200,14 +202,25 @@ export function TextMenu({
         ]
       : [copy],
   ];
-  groups.push([
+  const anchored: MenuItem[] = [
     {
       label: "Add comment",
       icon: MessageSquarePlus,
       enabled: canAddComment(state),
       run: () => run(openCommentComposer),
     },
-  ]);
+  ];
+  const footnote = footnoteItem(takes);
+  if (footnote !== null && bodyOpen) {
+    anchored.push({
+      label: footnote.label,
+      icon: footnote.icon,
+      hint: footnote.hint,
+      enabled: footnote.command(state),
+      run: () => run(footnote.command),
+    });
+  }
+  groups.push(anchored);
   if (allowLocking && bodyOpen) {
     groups.push([lockItem(selectionLock(state), run)]);
   }

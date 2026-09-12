@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { makeFormattedNotesDocx } from "../../__testing__/docx";
+import { makeFormattedNotesDocx, makeNotesDocx } from "../../__testing__/docx";
 import { EDITING } from "../../__testing__/mode";
 import { renderInto } from "../../__testing__/react";
 import { DocxEditor } from "../../DocxEditor";
@@ -59,6 +59,32 @@ describe("the notes listed after the last page", () => {
       ...endnotes.querySelectorAll<HTMLElement>(`.${editorClassNames.run}`),
     ].find((run) => run.textContent === " Italic endnote");
     expect(italic?.style.fontStyle).toBe("italic");
+    unmount();
+  });
+
+  it("names a note drawing a mark of its own by its kind alone", () => {
+    const unmount = renderInto(
+      host,
+      <DocxEditor
+        document={makeNotesDocx(
+          '<w:p><w:r><w:t xml:space="preserve">Marked</w:t></w:r>' +
+            '<w:r><w:footnoteReference w:customMarkFollows="1" w:id="2"/></w:r>' +
+            "<w:r><w:t>*</w:t></w:r></w:p>"
+        )}
+        mode={EDITING}
+        showPageGuides={false}
+        renderImportError={() => null}
+      />
+    );
+
+    // The reference draws no number, so the row is named the way the reference itself is
+    expect(
+      [
+        ...found('section[aria-label="Footnotes"]').querySelectorAll(
+          "[role='group']"
+        ),
+      ].map((row) => row.getAttribute("aria-label"))
+    ).toEqual(["Footnote"]);
     unmount();
   });
 
