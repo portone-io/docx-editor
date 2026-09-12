@@ -28,7 +28,7 @@ import {
   withDerivedDisplay,
 } from "../plugins/displayDerivation";
 import { documentProtection } from "../plugins/documentProtection";
-import { docxKeymap } from "../plugins/keymap";
+import { docxKeymap, NOTE_KEYS } from "../plugins/keymap";
 import { lockedContent } from "../plugins/lockedContent";
 import { numberingMarkers } from "../plugins/numberingDecorations";
 import { tabCaret } from "../plugins/tabCaret";
@@ -47,8 +47,8 @@ import type { SurfaceCapabilities, SurfaceCapability } from "./storyView";
  */
 const CAPABILITY_KEYS: Readonly<Record<string, SurfaceCapability>> = {
   "Mod-k": "link",
-  "Mod-Alt-f": "note",
-  "Mod-Alt-d": "note",
+  [NOTE_KEYS.footnote]: "note",
+  [NOTE_KEYS.endnote]: "note",
 };
 
 /** The key no story of any kind is bound: a page break divides a flow a story does not have */

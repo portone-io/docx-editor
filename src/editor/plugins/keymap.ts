@@ -12,6 +12,7 @@ import { canSplit } from "prosemirror-transform";
 import { splitParagraphAttrs } from "../../docx/cloning";
 import { toParagraphFormat } from "../../model/format";
 import { docxSchema } from "../../schema";
+import type { NoteKind } from "../../schema/stories";
 import { insertLineBreak, insertPageBreak } from "../commands/breakCommands";
 import {
   toggleBold,
@@ -144,6 +145,26 @@ export function historyKeys(): Plugin {
   });
 }
 
+/**
+ * Whether the editor is running on a Mac, which decides the Mod key and what the system takes
+ * before a page sees it.
+ */
+function onMac(): boolean {
+  return typeof navigator !== "undefined" && navigator.platform.includes("Mac");
+}
+
+/**
+ * The key each kind of note is put in on.
+ *
+ * They are Word's own, except that Word for Windows' endnote key is the system's on a Mac:
+ * Cmd+Option+D hides the Dock, so the editor is never asked about it, and Word for Mac puts an
+ * endnote on Cmd+Option+E. The footnote key is the same on both, which is Google Docs' as well.
+ */
+export const NOTE_KEYS: Readonly<Record<NoteKind, string>> = {
+  footnote: "Mod-Alt-f",
+  endnote: onMac() ? "Mod-Alt-e" : "Mod-Alt-d",
+};
+
 export const docxKeymap: Record<string, Command> = {
   Enter: chainCommands(leaveEmptyListItem, splitParagraph),
   "Shift-Enter": insertLineBreak,
@@ -160,11 +181,9 @@ export const docxKeymap: Record<string, Command> = {
   // The link key Word and Google Docs share. It opens the panel over the selection, and with
   // nothing there to link it reports that it did nothing, so the browser keeps its own Cmd+K
   "Mod-k": openLinkPanel,
-  // Google Docs' footnote key, which puts the caret inside the footnote it adds
-  "Mod-Alt-f": insertFootnote,
-  // Word's endnote key, and the caret lands in the new endnote the same way. Google Docs has no
-  // endnote of its own to take a key from
-  "Mod-Alt-d": insertEndnote,
+  // Each note key puts the caret inside the note it adds (`NOTE_KEYS`)
+  [NOTE_KEYS.footnote]: insertFootnote,
+  [NOTE_KEYS.endnote]: insertEndnote,
   // Inside a table, moving between cells comes first (Word does the same).
   // In a list paragraph outside a table it shifts the level; an ordinary paragraph gets a document tab.
   Tab: chainCommands(

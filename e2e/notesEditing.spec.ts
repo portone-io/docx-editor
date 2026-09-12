@@ -309,14 +309,17 @@ test("takes the caret back to the reference when an endnote's number is pressed"
   await expect(reference(page, "1", "Endnote")).toBeInViewport();
 });
 
-test("inserts an endnote on Mod+Alt+D and puts the caret in it", async ({
+test("inserts an endnote on the endnote key and puts the caret in it", async ({
   page,
 }) => {
   await openHarness(page, "notes");
   await page.locator(`.${editorClassNames.sheet} p`).first().click();
 
-  const modifier = process.platform === "darwin" ? "Meta" : "Control";
-  await page.keyboard.press(`${modifier}+Alt+d`);
+  // macOS keeps Command+Option+D for the Dock, so the editor binds Word for Mac's key there
+  const onMac = process.platform === "darwin";
+  await page.keyboard.press(
+    `${onMac ? "Meta" : "Control"}+Alt+${onMac ? "e" : "d"}`
+  );
 
   await untilNoteHoldsTheCaret(page);
   await page.keyboard.type("An endnote written where it was added.");

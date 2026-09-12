@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import type { EditorState } from "prosemirror-state";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   LETTER_SECT_PR,
   makeDocx,
@@ -213,6 +213,38 @@ describe("the link key", () => {
     const locked = runCommand(select(opened("abcd"), 1, 5), lockSelection);
     expect(docxKeymap["Mod-k"](select(locked, 1, 5))).toBe(false);
   });
+});
+
+describe("the note keys by platform", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  /** The keymap as a machine of this platform builds it */
+  async function keysOn(platform: string) {
+    vi.stubGlobal("navigator", { ...navigator, platform });
+    vi.resetModules();
+    return await import("./keymap");
+  }
+
+  it.each([
+    ["MacIntel", "Mod-Alt-e", "Mod-Alt-d"],
+    ["Win32", "Mod-Alt-d", "Mod-Alt-e"],
+  ])(
+    "puts the endnote on the key %s leaves to the page",
+    async (platform, bound, taken) => {
+      const { docxKeymap: keys, NOTE_KEYS } = await keysOn(platform);
+
+      expect(NOTE_KEYS.endnote).toBe(bound);
+      expect(Object.keys(keys)).toContain(bound);
+      // Cmd+Option+D hides the Dock on a Mac, so a binding there would never be reached
+      expect(Object.keys(keys)).not.toContain(taken);
+      // The footnote key is free on both
+      expect(NOTE_KEYS.footnote).toBe("Mod-Alt-f");
+      expect(Object.keys(keys)).toContain("Mod-Alt-f");
+    }
+  );
 });
 
 describe("the note keys", () => {
