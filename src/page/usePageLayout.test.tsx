@@ -9,7 +9,7 @@ import { editorCssVariables } from "../styles/classNames";
 import type { DemandBand } from "./demands";
 import { FOOTNOTE_BAND } from "./demands/footnoteDemands";
 import { A4_PAGE_PIXELS, type SectionPixels } from "./pageLayout";
-import { usePageLayout } from "./usePageLayout";
+import { type PageOverlay, usePageLayout } from "./usePageLayout";
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -81,17 +81,29 @@ interface HostProps {
   revision: unknown;
   sections?: readonly SectionPixels[];
   bands?: ReadonlyMap<string, DemandBand>;
+  enabled?: boolean;
+  /** Handed what the hook answered on this render, so a test can read the overlay it gives out */
+  onOverlay?: (overlay: PageOverlay | null) => void;
 }
 
-function Host({ view: live, layer, revision, sections, bands }: HostProps) {
-  usePageLayout({
+function Host({
+  view: live,
+  layer,
+  revision,
+  sections,
+  bands,
+  enabled = true,
+  onOverlay,
+}: HostProps) {
+  const overlay = usePageLayout({
     view: live,
     layer,
-    enabled: true,
+    enabled,
     revision,
     sections,
     bands,
   });
+  onOverlay?.(overlay);
   return null;
 }
 
@@ -222,6 +234,41 @@ describe("the page measurement", () => {
       bands: footnoteBand(64),
     });
     await untilTaken(taken, 2);
+  });
+
+  /**
+   * Turning the pages off and on again is a consumer changing a prop, and the measurement it last
+   * took is about a sheet nobody has looked at since. Handed back on the render that turns them
+   * on, it would draw the guides, and the footnotes over them, at positions worked out before
+   * whatever happened while they were off.
+   */
+  it("gives out no overlay measured before the pages were turned off", async () => {
+    const live = editor();
+    const layer: RefObject<HTMLElement | null> = { current: host };
+    const taken = measurements(host);
+    let last: PageOverlay | null = null;
+    const props: HostProps = {
+      view: live,
+      layer,
+      revision: live.state.doc,
+      onOverlay: (overlay) => {
+        last = overlay;
+      },
+    };
+
+    const rerender = render(props);
+    await untilTaken(taken, 1);
+    expect(last).not.toBeNull();
+
+    rerender({ ...props, enabled: false });
+    await frame();
+    expect(last).toBeNull();
+
+    rerender({ ...props, enabled: true });
+    expect(
+      last,
+      "the overlay from before the pages were turned off"
+    ).toBeNull();
   });
 
   it("is still taken after StrictMode's simulated remount", async () => {

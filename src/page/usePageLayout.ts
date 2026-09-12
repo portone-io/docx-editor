@@ -267,8 +267,12 @@ export function usePageLayout({
     if (enabled) remeasure();
   }, [remeasure, revision, enabled, bands]);
 
+  // Everything the last measurement left behind goes with the pages, the overlay included: held
+  // on, it would be handed out again the moment a consumer turns them back on, and the guides and
+  // the footnotes standing over them would be drawn at positions measured before they went off
   useEffect(() => {
     if (enabled) return;
+    setOverlay(null);
     layer.current?.style.removeProperty(editorCssVariables.sheetHeight);
     if (!view) return;
     setPageMarks(view, { pushes: [], cuts: [] });
