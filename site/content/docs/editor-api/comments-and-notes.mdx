@@ -98,3 +98,6 @@ A server checks the same rules with
 `documentNotes(state)` returns the footnotes and endnotes the document references, in
 first-reference order, each a read-only `DocumentNote` with `kind` (`"footnote"` or `"endnote"`),
 `id`, `label` (as drawn, in the document's number format), `text`, and `referencePos`.
+`label` is empty for a reference that draws its own mark rather than a number, which is how the
+file asks for a dagger or an asterisk of its own; the mark itself stands in the document beside
+the reference, so such a note is named by its kind alone on the page.

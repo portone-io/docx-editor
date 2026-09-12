@@ -1,6 +1,7 @@
 import type { EditorState } from "prosemirror-state";
 import type { ReactElement } from "react";
 import { noteProjection } from "../editor/commands/noteQueries";
+import { noteName } from "../schema/stories";
 import { editorClassNames } from "../styles/classNames";
 
 export function NotesPanel({
@@ -24,7 +25,7 @@ export function NotesPanel({
         {notes.map((note) => (
           <li key={`${note.kind}:${note.id}`}>
             <span className={editorClassNames.noteLabel}>
-              {note.kind === "footnote" ? "Footnote" : "Endnote"} {note.label}
+              {noteName(note.kind, note.label)}
             </span>
             <p className={editorClassNames.noteBody}>{note.text}</p>
           </li>

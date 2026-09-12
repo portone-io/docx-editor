@@ -31,6 +31,17 @@ export type StoryKind = (typeof STORY_KINDS)[number];
 /** `comment:4`, `footnote:2`, `header:word/header1.xml` */
 export type StoryKey = `${StoryKind}:${string}`;
 
+/**
+ * What a reader listening to the page is told a note reference is.
+ *
+ * A reference whose own mark follows it in the document draws no label of the editor's
+ * (§17.11.14), so it is named by its kind alone rather than by a number that is not there.
+ */
+export function noteName(kind: NoteKind, label: string): string {
+  const named = kind === "endnote" ? "Endnote" : "Footnote";
+  return label === "" ? named : `${named} ${label}`;
+}
+
 /** One story as the document node holds it, which is `Node.toJSON` of a document of this schema */
 export interface StoryJson {
   readonly type: string;
