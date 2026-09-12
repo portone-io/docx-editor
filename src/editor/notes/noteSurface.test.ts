@@ -159,6 +159,43 @@ describe("what a note takes", () => {
     ).toBe(false);
   });
 
+  it("drops a footnote reference pasted into a footnote", () => {
+    const main = mainView();
+    const story = openNote(main);
+    const reference = docxSchema.nodes.noteReference.create({
+      kind: "footnote",
+      id: "2",
+      label: "1",
+      referenceXml: '<w:footnoteReference w:id="2"/>',
+    });
+    const called = storyOf(main.state.doc, FOOTNOTE);
+    if (called === null) throw new Error("the document holds no footnote 2");
+
+    const normalized = normalizePasted(
+      {
+        slice: new Slice(
+          Fragment.from(paragraph(docxSchema.text("called"), reference)),
+          0,
+          0
+        ),
+        newLists: new Map(),
+        noteStories: new Map([[FOOTNOTE, called]]),
+      },
+      story.view.state,
+      false,
+      footnoteExtensions(main, "2", () => "1").normalizers
+    );
+
+    const first = normalized.slice.content.firstChild;
+    expect(first?.textContent).toBe("called");
+    expect(
+      first?.children.some(
+        (child) => child.type === docxSchema.nodes.noteReference
+      )
+    ).toBe(false);
+    expect(normalized.newStories?.size ?? 0).toBe(0);
+  });
+
   it("does not start a new list inside a footnote", () => {
     const main = mainView();
     const story = openNote(main);

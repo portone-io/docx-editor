@@ -86,9 +86,26 @@ export const dropUnwritableContent: SliceNormalizer = (slice) =>
     return Mark.sameSet(marks, node.marks) ? node : node.mark(marks);
   });
 
+/**
+ * Takes a note reference out of a paste.
+ *
+ * A note may not hold a note (5.3 of the notes plan). A reference written into a story would call
+ * a note the body never calls, which nothing here numbers, counts or settles: the lifecycle, the
+ * numbering and the writer all walk the body alone, and a reference copied from beside the note it
+ * was pasted into would have that note calling itself. The text it stood in stays, the way the
+ * other anchors leave theirs (`editor/clipboard/normalizers`).
+ */
+export const dropNoteReferences: SliceNormalizer = (slice, { move }) =>
+  move
+    ? slice
+    : mapSliceNodes(slice, (node) =>
+        node.type === docxSchema.nodes.noteReference ? null : node
+      );
+
 const NOTE_NORMALIZERS: readonly SliceNormalizer[] = [
   dropSourceIdentity,
   detachAnchors,
+  dropNoteReferences,
   dropUnwritableContent,
   rekeyNumbering,
   rederiveDisplay,
