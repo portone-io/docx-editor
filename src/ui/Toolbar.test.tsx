@@ -31,7 +31,13 @@ import {
   footnoteExtensions,
   footnoteHost,
 } from "../editor/notes/footnoteSurface";
-import { createStoryView, type StoryView } from "../editor/stories/storyView";
+import {
+  createStoryView,
+  EVERY_CAPABILITY,
+  NO_CAPABILITY,
+  type StoryView,
+  type SurfaceCapabilities,
+} from "../editor/stories/storyView";
 import { storyKey } from "../schema/stories";
 import { editorClassNames } from "../styles/classNames";
 import { DEFAULT_FONT_FALLBACKS } from "../styles/fontStack";
@@ -1320,14 +1326,28 @@ describe("the toolbar over a footnote being edited", () => {
     return story;
   }
 
-  function show(main: EditorView, story: StoryView | null): () => void {
+  function show(
+    main: EditorView,
+    story: StoryView | null,
+    takes: SurfaceCapabilities = NO_CAPABILITY
+  ): () => void {
     return render(
       <Toolbar
         main={{ view: main, state: main.state }}
         active={
           story === null
-            ? { view: main, state: main.state, surface: "body" }
-            : { view: story.view, state: story.view.state, surface: "story" }
+            ? {
+                view: main,
+                state: main.state,
+                surface: "body",
+                takes: EVERY_CAPABILITY,
+              }
+            : {
+                view: story.view,
+                state: story.view.state,
+                surface: "story",
+                takes,
+              }
         }
         zoom={1}
         onZoomChange={() => {}}
@@ -1380,6 +1400,37 @@ describe("the toolbar over a footnote being edited", () => {
     expect(storyOf(main.state.doc, FOOTNOTE)?.textContent).toBe(
       "Footnote bodySecond line"
     );
+
+    unmount();
+    story.destroy();
+    main.destroy();
+  });
+
+  it("leaves those controls on for a story that says it takes what they put in", () => {
+    const main = openMain();
+    const story = openStory(main);
+    story.view.dispatch(
+      story.view.state.tr.setSelection(
+        TextSelection.create(story.view.state.doc, 2, 6)
+      )
+    );
+
+    const unmount = show(main, story, EVERY_CAPABILITY);
+
+    // What a story takes is the story's own to declare, so a kind of story whose part carries a
+    // link or an image is offered them without a line of this component changing
+    for (const label of [
+      "Insert table",
+      "Insert image",
+      "Link",
+      "Show comments",
+      "Insert footnote",
+    ]) {
+      expect(button(label).disabled, label).toBe(false);
+    }
+    // The list buttons stay off for a reason of their own: a story has nowhere to write a list
+    // definition, whatever it takes (`editor/stories/storyState`)
+    expect(button("Numbered list").disabled).toBe(true);
 
     unmount();
     story.destroy();

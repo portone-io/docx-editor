@@ -36,7 +36,11 @@ import { noteBodyCommand } from "../commands/footnoteCommands";
 import { redo, undo } from "../commands/historyCommands";
 import { noteReferenceAt } from "../plugins/noteNavigation";
 import type { StoryNodeSpecs } from "../stories/storyMarkup";
-import type { StoryExtensions, StoryHost } from "../stories/storyView";
+import {
+  NO_CAPABILITY,
+  type StoryExtensions,
+  type StoryHost,
+} from "../stories/storyView";
 
 const OWN_REFERENCE_MARKS: readonly unknown[] = ["footnoteRef", "endnoteRef"];
 
@@ -100,6 +104,17 @@ export const dropNoteReferences: SliceNormalizer = (slice, { move }) =>
     : mapSliceNodes(slice, (node) =>
         node.type === docxSchema.nodes.noteReference ? null : node
       );
+
+/**
+ * What a note takes beyond character and paragraph formatting, which is nothing (5.3 of the notes
+ * plan).
+ *
+ * A link and an image each name a relationship of the part they stand in and the notes part writer
+ * writes none; a table, a list and a comment need more of the package than that writer puts
+ * together; and a note may not hold a note. What the file itself wrote inside a note is kept and
+ * its text stays editable - this is what an edit may add.
+ */
+const NOTE_TAKES = NO_CAPABILITY;
 
 const NOTE_NORMALIZERS: readonly SliceNormalizer[] = [
   dropSourceIdentity,
@@ -242,5 +257,6 @@ export function noteExtensions(
     plugins: [keymap({ Backspace: deleteEmptyNote(main, kind, key) })],
     nodeViews: { rawRunContent: noteMarkView(labelOf) },
     normalizers: NOTE_NORMALIZERS,
+    takes: NOTE_TAKES,
   };
 }

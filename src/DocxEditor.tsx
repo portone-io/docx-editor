@@ -52,7 +52,7 @@ import { isLinkPanelOpen } from "./editor/plugins/linkPanel";
 import { requestedNote } from "./editor/plugins/noteNavigation";
 import { tableMenuAnchor } from "./editor/plugins/tableContextMenu";
 import { textMenuAnchor } from "./editor/plugins/textContextMenu";
-import type { StoryCaret } from "./editor/stories/storyView";
+import { EVERY_CAPABILITY, type StoryCaret } from "./editor/stories/storyView";
 import { DocxImportError, type DocxImportErrorCode } from "./ooxml/errors";
 import { PageGuides } from "./page/PageGuides";
 import { A4_PAGE_PIXELS, pagePixels, sectionPixels } from "./page/pageLayout";
@@ -720,9 +720,13 @@ function DocxEditorSurface(
         <Toolbar
           main={live}
           active={
-            open !== null && noteLive !== null
-              ? { ...noteLive, surface: "story" }
-              : { ...live, surface: "body" }
+            open !== null && noteLive !== null && noteExtensions !== null
+              ? {
+                  ...noteLive,
+                  surface: "story",
+                  takes: noteExtensions.takes,
+                }
+              : { ...live, surface: "body", takes: EVERY_CAPABILITY }
           }
           fontFallbacks={mountedFontFallbacks}
           presets={presets}

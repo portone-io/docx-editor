@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import type { Node as PMNode } from "prosemirror-model";
+import { TextSelection } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -16,7 +17,13 @@ import { undo } from "../commands/historyCommands";
 import { createEditorView, editorStateForSession } from "../createEditor";
 import { documentOf, storyDocument } from "../editorDocument";
 import { footnoteExtensions, footnoteHost } from "../notes/footnoteSurface";
-import { createStoryView, type StoryHost, type StoryView } from "./storyView";
+import {
+  createStoryView,
+  type StoryExtensions,
+  type StoryHost,
+  type StoryView,
+  type SurfaceCapability,
+} from "./storyView";
 
 const FOOTNOTE = storyKey("footnote", "2");
 
@@ -45,7 +52,8 @@ function mainView(body: string = NOTE_BODY): EditorView {
 /** The footnote opened for editing, the way a row does it (`ui/notes/StoryRow`) */
 function openFootnote(
   main: EditorView,
-  host: StoryHost = footnoteHost(main, () => {})
+  host: StoryHost = footnoteHost(main, () => {}),
+  extensions: StoryExtensions = footnoteExtensions(main, "2", () => "1")
 ): StoryView {
   const story = createStoryView({
     mount: document.createElement("div"),
@@ -56,7 +64,7 @@ function openFootnote(
       documentOf(main.state).geometry
     ),
     fontFallbacks: DEFAULT_FONT_FALLBACKS,
-    extensions: footnoteExtensions(main, "2", () => "1"),
+    extensions,
   });
   opened.story = story;
   return story;
@@ -207,6 +215,36 @@ describe("the view one story is edited in", () => {
     story.destroy();
     opened.story = null;
     expect(registered).toEqual([story.view, null]);
+  });
+});
+
+describe("the keys one story is edited with", () => {
+  /** A caret standing over a word, which is what the link panel would open about */
+  function overAWord(story: StoryView): void {
+    story.view.dispatch(
+      story.view.state.tr.setSelection(
+        TextSelection.create(story.view.state.doc, 2, 6)
+      )
+    );
+  }
+
+  it("binds an editor key only where the story takes what the key puts in", () => {
+    const main = mainView();
+    const linking = openFootnote(main, undefined, {
+      ...footnoteExtensions(main, "2", () => "1"),
+      takes: new Set<SurfaceCapability>(["link"]),
+    });
+    overAWord(linking);
+
+    expect(pressed(linking.view, "k")).toBe(true);
+
+    linking.destroy();
+    opened.story = null;
+    const note = openFootnote(main);
+    overAWord(note);
+
+    // A note takes no link, so the key falls through the way the button is drawn dead
+    expect(pressed(note.view, "k")).toBe(false);
   });
 });
 

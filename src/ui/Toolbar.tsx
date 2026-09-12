@@ -69,7 +69,10 @@ import {
 } from "../editor/documentStyles";
 import { canInsertTable } from "../editor/insertTable";
 import { openLinkPanel } from "../editor/plugins/linkPanel";
-import type { ActiveSurface } from "../editor/stories/storyView";
+import type {
+  ActiveSurface,
+  SurfaceCapabilities,
+} from "../editor/stories/storyView";
 import type { ListKind } from "../numbering/listTemplate";
 import { editorClassNames } from "../styles/classNames";
 import type { FontFallbacks } from "../styles/fontStack";
@@ -382,7 +385,11 @@ export interface ToolbarProps {
    * Where the caret is. Everything but undo and redo is asked of it and dispatched to it, so the
    * formatting controls act on the note being edited rather than on the text behind it.
    */
-  active: ToolbarSurface & { surface: ActiveSurface["surface"] };
+  active: ToolbarSurface & {
+    surface: ActiveSurface["surface"];
+    /** What that surface takes, which is what the controls putting one in are drawn from */
+    takes: SurfaceCapabilities;
+  };
   fontFallbacks?: FontFallbacks;
   /** Optional values offered by toolbar pickers. */
   presets?: DocxEditorPresets;
@@ -402,10 +409,7 @@ export function Toolbar({
   zoom,
   onZoomChange,
 }: ToolbarProps): ReactElement {
-  const { view, state } = active;
-  // A story takes character and paragraph formatting and nothing else: what the others put in
-  // needs a part of the package the story's own writer does not write (`site/content/docs`)
-  const inStory = active.surface === "story";
+  const { view, state, takes } = active;
   const run = commandRunner(view);
   // The document's own history is taken back where the caret stands, not where the edit lands
   const runOnMain = commandRunner(main.view, view);
@@ -482,7 +486,7 @@ export function Toolbar({
         run={run}
       />
       <Separator />
-      <ListGroup state={state} run={run} disabled={inStory} />
+      <ListGroup state={state} run={run} disabled={!takes.has("list")} />
       <IndentGroup state={state} run={run} />
       <Separator />
       <CellStyleGroup
@@ -497,32 +501,35 @@ export function Toolbar({
           label="Insert table"
           icon={Table}
           panel="dialog"
-          disabled={inStory || !canInsertTable(state)}
+          disabled={!takes.has("table") || !canInsertTable(state)}
         >
           {({ close, takeFocus }) => (
             <TableSizePicker run={run} close={close} takeFocus={takeFocus} />
           )}
         </Popover>
-        <InsertImageButton view={view} state={state} disabled={inStory} />
+        <InsertImageButton
+          view={view}
+          state={state}
+          disabled={!takes.has("image")}
+        />
         {/* Cmd+K shares this panel, so it anchors to the selection rather than the button. */}
         <ToolbarButton
           label="Link"
           icon={Link}
-          disabled={inStory || !openLinkPanel(state)}
+          disabled={!takes.has("link") || !openLinkPanel(state)}
           onRun={() => run(openLinkPanel)}
         />
-        {/* A footnote of a footnote is not a thing a file can hold, so it goes in from the body */}
         <ToolbarButton
           label="Insert footnote"
           icon={Superscript}
-          disabled={inStory || !canInsertFootnote(state)}
+          disabled={!takes.has("note") || !canInsertFootnote(state)}
           onRun={() => run(insertFootnote)}
         />
         <ToolbarButton
           label={commentsOpen ? "Hide comments" : "Show comments"}
           icon={MessagesSquare}
           pressed={commentsOpen}
-          disabled={inStory || !onToggleComments}
+          disabled={!takes.has("comment") || !onToggleComments}
           onRun={() => onToggleComments?.()}
         />
       </div>

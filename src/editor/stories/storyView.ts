@@ -62,10 +62,41 @@ export interface StoryHost {
   activate(key: StoryKey, view: EditorView | null): void;
 }
 
+/**
+ * What a surface takes beyond character and paragraph formatting.
+ *
+ * Every one of these puts something into the document that the part the surface is written back as
+ * has to carry - a relationship, a definition, a part of its own - so which of them a surface takes
+ * is the surface's own to declare, and a control or a key that puts one in asks here rather than
+ * asking which kind of surface it is.
+ */
+export const SURFACE_CAPABILITIES = [
+  "list",
+  "table",
+  "image",
+  "link",
+  "note",
+  "comment",
+] as const;
+
+export type SurfaceCapability = (typeof SURFACE_CAPABILITIES)[number];
+
+export type SurfaceCapabilities = ReadonlySet<SurfaceCapability>;
+
+/** What the body takes, which is everything: it is written back as the document part itself */
+export const EVERY_CAPABILITY: SurfaceCapabilities = new Set(
+  SURFACE_CAPABILITIES
+);
+
+/** What a surface whose writer carries none of them takes */
+export const NO_CAPABILITY: SurfaceCapabilities = new Set();
+
 export interface StoryExtensions {
   readonly plugins: readonly Plugin[];
   readonly nodeViews: NodeViewMap;
   readonly normalizers: readonly SliceNormalizer[];
+  /** What this kind of story takes, which its keys and the controls over it are drawn from */
+  readonly takes: SurfaceCapabilities;
 }
 
 /**
@@ -169,6 +200,7 @@ export function createStoryView({
       keys,
       plugins: extensions.plugins,
       normalizers: extensions.normalizers,
+      takes: extensions.takes,
     });
 
   const storyNow = (): PMNode | null => storyNodeOf(host.state().doc, key);

@@ -34,23 +34,33 @@ import { tabCaret } from "../plugins/tabCaret";
 import { tabDecorations } from "../plugins/tabDecorations";
 import { tabLayout } from "../plugins/tabLayout";
 import { tabPointer } from "../plugins/tabPointer";
+import type { SurfaceCapabilities, SurfaceCapability } from "./storyView";
 
 /**
- * The editor's keys that mean nothing inside a story: a page break, which only a body starts, the
- * link panel, which floats over the paper and would have nowhere to stand, and a note, which is
- * called from the document story alone.
+ * What each of the editor's keys that puts something in needs the surface to take.
+ *
+ * A story is bound the key only where it takes what the key puts in, which is the very declaration
+ * the toolbar's buttons are drawn from (`./storyView`), so a kind of story that takes links is
+ * offered the panel both ways. The link panel is drawn over the paper, so such a kind has to say
+ * where the panel stands before this key is any use to it.
  */
-const KEYS_OUTSIDE_A_STORY: readonly string[] = [
-  "Mod-Enter",
-  "Mod-k",
-  "Mod-Alt-f",
-];
+const CAPABILITY_KEYS: Readonly<Record<string, SurfaceCapability>> = {
+  "Mod-k": "link",
+  "Mod-Alt-f": "note",
+};
 
-const STORY_KEYMAP: Record<string, Command> = Object.fromEntries(
-  Object.entries(docxKeymap).filter(
-    ([key]) => !KEYS_OUTSIDE_A_STORY.includes(key)
-  )
-);
+/** The key no story of any kind is bound: a page break divides a flow a story does not have */
+const KEYS_NO_STORY_TAKES: readonly string[] = ["Mod-Enter"];
+
+function storyKeymap(takes: SurfaceCapabilities): Record<string, Command> {
+  return Object.fromEntries(
+    Object.entries(docxKeymap).filter(([key]) => {
+      if (KEYS_NO_STORY_TAKES.includes(key)) return false;
+      const needed = CAPABILITY_KEYS[key];
+      return needed === undefined || takes.has(needed);
+    })
+  );
+}
 
 export interface StoryStateOptions {
   /** The story as the main document holds it */
@@ -63,6 +73,8 @@ export interface StoryStateOptions {
   /** What the kind of story adds, which is asked before the editor's own keymaps */
   readonly plugins: readonly Plugin[];
   readonly normalizers: readonly SliceNormalizer[];
+  /** What this kind of story takes, which the editor's own keys are bound from */
+  readonly takes: SurfaceCapabilities;
 }
 
 export function storyEditorState({
@@ -72,6 +84,7 @@ export function storyEditorState({
   keys,
   plugins,
   normalizers,
+  takes,
 }: StoryStateOptions): EditorState {
   return EditorState.create({
     doc: withDerivedDisplay(story, document),
@@ -84,7 +97,7 @@ export function storyEditorState({
       // asked behind it
       ...plugins,
       keymap(keys),
-      keymap(STORY_KEYMAP),
+      keymap(storyKeymap(takes)),
       keymap(baseKeymap),
       dropCursor(),
       docxClipboard({ normalizers }),
