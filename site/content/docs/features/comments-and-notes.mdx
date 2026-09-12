@@ -27,12 +27,18 @@ A comment body keeps its formatting through an edit; the built-in composer write
 
 ## Footnotes and endnotes
 
-References and note bodies are shown while you edit the text around them; editing a note is not
-offered yet.
+A footnote is drawn at the foot of the page that holds its reference, under a separator line and
+above the footer, and endnotes are listed with their formatting after the last page.
+What a note is drawn without is listed under
+[Pages and sections](/docs/features/pages-and-sections#limitations).
+With page guides turned off, footnotes are listed there too, ahead of the endnotes.
 Notes are numbered in the document's own format, starting number, and section restarts; a restart
 on every page is counted straight through.
-A selection that runs across a reference cannot be replaced, so typing or deleting over it leaves
-the text as it stands.
+Deleting a footnote reference deletes its footnote, and undo brings both back.
+A selection that runs across an endnote reference cannot be replaced, so typing or deleting over it
+leaves the text as it stands.
+Editing a note in place is not offered yet; a program can insert a footnote and edit its body through
+commands.
 
 [Comments and notes](/docs/editor-api/comments-and-notes) in the Editor API lists the commands and
 queries behind these controls.

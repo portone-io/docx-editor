@@ -6,6 +6,7 @@ description: Page boundaries, section breaks, and headers and footers.
 ## Page boundaries
 
 Page boundaries are approximate and may differ from Word or from print.
+A page ends above the footnotes its text refers to.
 Keep with next is reflected in them; keep lines together and widow control are kept in the file
 but not drawn.
 Keep with next is ignored when the kept blocks cannot fit on one page, and never joins a table to
@@ -30,6 +31,14 @@ Editing a header or footer is not offered yet.
 
 Every page is drawn at the width of the first section's paper; a landscape section is paginated on
 its own height but drawn at that width.
+
+Footnotes that do not fit at the foot of their page move whole to the foot of the next page, and a
+footnote taller than a page stays on its page and scrolls within the room that page has.
+
+A custom separator a document defines is drawn as the default line.
+
+A list inside a footnote or an endnote is drawn without its markers and hanging indent, and a
+tab inside one at the default width.
 
 An even-page or odd-page section start is kept in the file but drawn as an ordinary new page.
 

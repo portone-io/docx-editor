@@ -1,12 +1,15 @@
 // @vitest-environment jsdom
 import type { Node as PMNode } from "prosemirror-model";
+import { EditorState } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 import { afterEach, describe, expect, it } from "vitest";
 import { createEditorState } from "../editor/createEditor";
 import { docxSchema } from "../schema";
 import { editorAttributes } from "../styles/classNames";
+import type { DemandSource } from "./demands";
+import { DEFAULT_BLOCK_KINDS } from "./kinds";
 import { measureSheet } from "./measureBlocks";
-import { setPageMarks } from "./pageDecorations";
+import { pageDecorations, setPageMarks } from "./pageDecorations";
 import { A4_PAGE_PIXELS, type MeasuredBlock, pageLayout } from "./pageLayout";
 
 const PAGE = 500;
@@ -75,7 +78,12 @@ function rect(element: Element, top: number, height: number): void {
 function draw(
   live: EditorView,
   shapes: readonly BlockShape[],
-  scale = 1
+  scale = 1,
+  /**
+   * What a space comes out taller than it was given, the way a table's spacer row takes half of a
+   * collapsed border on each side
+   */
+  overshoot = 0
 ): void {
   let y = 0;
   live.state.doc.forEach((_node, offset, index) => {
@@ -86,9 +94,10 @@ function draw(
       y + shape.gap + number(dom.getAttribute(editorAttributes.pagePush));
     let opened = 0;
     spaceElements(dom).forEach((element, at) => {
-      const height = number(
+      const asked = number(
         element.getAttribute(editorAttributes.pageBreakSpace)
       );
+      const height = asked > 0 ? asked + overshoot : asked;
       rect(
         element,
         (top + (shape.breaks[at] ?? 0) + opened) * scale,
@@ -145,6 +154,7 @@ function measuredShapes(live: EditorView): MeasuredBlock[] {
       ],
       minFirstPiece: 20,
       keepWithNext: false,
+      demands: [],
     },
     {
       pos: live.state.doc.child(0).nodeSize,
@@ -155,6 +165,7 @@ function measuredShapes(live: EditorView): MeasuredBlock[] {
       candidates: [],
       minFirstPiece: PAGE,
       keepWithNext: false,
+      demands: [],
     },
   ];
 }
@@ -252,5 +263,143 @@ describe("measureSheet", () => {
     expect(
       measureSheet(live, live.dom).blocks.map((block) => block.keepWithNext)
     ).toEqual([true, false]);
+  });
+});
+
+describe("the demands of a block", () => {
+  /** An editor holding the default kinds and these demand sources alone */
+  function asking(doc: PMNode, sources: readonly DemandSource[]): EditorView {
+    const mount = document.createElement("div");
+    layer = mount;
+    document.body.appendChild(mount);
+    view = new EditorView(mount, {
+      state: EditorState.create({
+        doc,
+        plugins: [pageDecorations(DEFAULT_BLOCK_KINDS, sources)],
+      }),
+    });
+    return view;
+  }
+
+  it("asks every registered demand source about every block whatever its kind", () => {
+    const asked: string[] = [];
+    const source = (name: string): DemandSource => ({
+      name,
+      demandsIn: ({ node, pos }) => {
+        asked.push(`${name} ${node.type.name} ${pos}`);
+        return [{ offset: 5, id: `${name} ${pos}`, band: "test" }];
+      },
+    });
+    const table = docxSchema.nodes.table.create({ gridCols: [1000] }, [
+      docxSchema.nodes.tableRow.create({}, [
+        docxSchema.nodes.tableCell.create({}, [
+          docxSchema.nodes.paragraph.create({}, [docxSchema.text("in a cell")]),
+        ]),
+      ]),
+    ]);
+    const live = asking(
+      docxSchema.nodes.doc.create(null, [
+        docxSchema.nodes.paragraph.create({}, [docxSchema.text("above")]),
+        table,
+        docxSchema.nodes.paragraph.create({}, [docxSchema.text("below")]),
+      ]),
+      [source("first"), source("second")]
+    );
+    draw(live, [
+      { gap: 0, height: 20, breaks: [] },
+      { gap: 0, height: 40, breaks: [] },
+      { gap: 0, height: 20, breaks: [] },
+    ]);
+
+    const tablePos = live.state.doc.child(0).nodeSize;
+    const belowPos = tablePos + table.nodeSize;
+    const blocks = measureSheet(live, live.dom).blocks;
+    expect(asked).toEqual([
+      "first paragraph 0",
+      "second paragraph 0",
+      `first table ${tablePos}`,
+      `second table ${tablePos}`,
+      `first paragraph ${belowPos}`,
+      `second paragraph ${belowPos}`,
+    ]);
+    expect(
+      blocks.map((block) => block.demands?.map((demand) => demand.id))
+    ).toEqual([
+      ["first 0", "second 0"],
+      [`first ${tablePos}`, `second ${tablePos}`],
+      [`first ${belowPos}`, `second ${belowPos}`],
+    ]);
+  });
+
+  /**
+   * The height a cut asked for and the height the browser drew it at are not the same number: a
+   * table's spacer row takes half of a collapsed border on each side. Everything a kind reports is
+   * read off the sheet as drawn, so a place below the cut has to be taken back by what stands
+   * there rather than by what was asked for, or it drifts below the piece it belongs to and its
+   * room is kept on the wrong page.
+   */
+  it("reads a place below a cut drawn taller than the cut asked for at its own offset", () => {
+    const places: DemandSource = {
+      name: "below the break",
+      demandsIn: ({ pos, dom, sheetY, top }) =>
+        pos === 0
+          ? [
+              {
+                offset: sheetY(dom.getBoundingClientRect().bottom) - top - 10,
+                id: "below",
+                band: "test",
+              },
+            ]
+          : [],
+    };
+    const live = asking(brokenParagraph(), [places]);
+    draw(live, SHAPES);
+
+    const natural = measureSheet(live, live.dom).blocks[0]?.demands;
+    const applied = layoutOf(measureSheet(live, live.dom).blocks);
+    expect(applied.cuts).toHaveLength(1);
+
+    setPageMarks(live, { pushes: applied.pushes, cuts: applied.cuts });
+    // The browser draws the space three pixels taller than the cut asked for
+    draw(live, SHAPES, 1, 3);
+
+    expect(measureSheet(live, live.dom).blocks[0]?.demands).toEqual(natural);
+  });
+
+  /**
+   * A source reads its places off the sheet as drawn, so a place below a break reads the space the
+   * layout opened there. Read in, that space would move the place onto the next page's count, and
+   * the page would reserve room for it again on the pass its own marks cause.
+   */
+  it("reads a place below a cut where it stands in the block with no space opened", () => {
+    const places: DemandSource = {
+      name: "above and below the break",
+      demandsIn: ({ pos, dom, sheetY, top }) =>
+        pos === 0
+          ? [
+              { offset: 10, id: "above", band: "test" },
+              {
+                offset: sheetY(dom.getBoundingClientRect().bottom) - top - 10,
+                id: "below",
+                band: "test",
+              },
+            ]
+          : [],
+    };
+    const live = asking(brokenParagraph(), [places]);
+    draw(live, SHAPES);
+
+    const first = measureSheet(live, live.dom);
+    expect(first.blocks[0]?.demands).toEqual([
+      { offset: 10, id: "above", band: "test" },
+      { offset: 30, id: "below", band: "test" },
+    ]);
+
+    const applied = layoutOf(first.blocks);
+    expect(applied.cuts).toHaveLength(1);
+    setPageMarks(live, { pushes: applied.pushes, cuts: applied.cuts });
+    draw(live, SHAPES);
+
+    expect(measureSheet(live, live.dom).blocks).toEqual(first.blocks);
   });
 });

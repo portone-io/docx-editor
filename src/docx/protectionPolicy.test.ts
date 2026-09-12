@@ -6,13 +6,17 @@ import {
   TextSelection,
 } from "prosemirror-state";
 import { describe, expect, expectTypeOf, it } from "vitest";
-import { decode, makeDocx } from "../__testing__/docx";
+import { decode, makeDocx, makeNotesDocx } from "../__testing__/docx";
 import { rangeOfText } from "../__testing__/editing";
 import {
   addComment,
   setCommentResolved,
 } from "../editor/commands/commentCommands";
-import { createEditorState } from "../editor/createEditor";
+import { setFootnoteBody } from "../editor/commands/footnoteCommands";
+import {
+  createEditorState,
+  editorStateForSession,
+} from "../editor/createEditor";
 import { decodeUtf8, elementChildren, parseXml } from "../ooxml/xml";
 import type {
   CommentOnlyVerdict,
@@ -29,6 +33,7 @@ import {
   protectionPolicyFor,
 } from "./protectionPolicy";
 import type { NewRelationship, RelationshipWriter } from "./relationships";
+import { storyFromText } from "./story";
 
 const encoder = new TextEncoder();
 const COMMENTS_PART = "word/comments.xml";
@@ -223,5 +228,33 @@ describe("the comments policy and the comment part planners", () => {
         "comment-markup-rejected" | PackageReason
       >
     >();
+  });
+});
+
+describe("a commenter's file under the comments policy", () => {
+  /**
+   * A footnote is written in a part the comments policy does not name, so the verifier holds that
+   * part to its bytes the way the editor holds a footnote edit under the comment mode.
+   */
+  it("refuses a commenter's file whose footnote was edited as a changed part", async () => {
+    const { onlyCommentsChangedBy: verify } = await import(
+      "./commentOnlyChange"
+    );
+    const { exportDocx } = await import("./exportDocx");
+    const original = makeNotesDocx();
+    const opening = importDocx(original);
+    const edited = applied(
+      editorStateForSession(opening),
+      setFootnoteBody("2", storyFromText("A rewritten footnote"))
+    );
+
+    expect(verify(original, original, "me")).toEqual({ ok: true });
+    expect(
+      verify(original, exportDocx(edited.doc, opening.session), "me")
+    ).toEqual({
+      ok: false,
+      reason: "part-changed",
+      part: "word/footnotes.xml",
+    });
   });
 });

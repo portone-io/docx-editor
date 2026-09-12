@@ -47,6 +47,27 @@ function nodeRange(
   return first;
 }
 
+/** The stretch the first reference to a note of this kind covers */
+function referenceRange(
+  doc: PMNode,
+  kind: "footnote" | "endnote"
+): { from: number; to: number } {
+  const found: { from: number; to: number }[] = [];
+  doc.descendants((node, pos) => {
+    if (
+      found.length === 0 &&
+      node.type.name === "noteReference" &&
+      node.attrs.kind === kind
+    ) {
+      found.push({ from: pos, to: pos + node.nodeSize });
+    }
+    return found.length === 0;
+  });
+  const first = found[0];
+  if (first === undefined) throw new Error(`no ${kind} reference`);
+  return first;
+}
+
 /** How many nodes of this type the document holds */
 function countOf(doc: PMNode, typeName: string): number {
   let seen = 0;
@@ -333,15 +354,23 @@ describe("a guard over the markers a document was opened with", () => {
     );
   });
 
-  it("refuses a step that plants a second note reference", () => {
+  it("refuses a step that plants a second endnote reference", () => {
     const state = noted();
-    const { from } = nodeRange(state.doc, "noteReference");
+    const { from } = referenceRange(state.doc, "endnote");
     const reference = state.doc.nodeAt(from);
-    if (reference === null) throw new Error("no note reference");
+    if (reference === null) throw new Error("no endnote reference");
 
     expect(transactionAllowed(state.tr.insert(1, reference), state)).toBe(
       false
     );
+  });
+
+  it("lets a step delete a footnote reference", () => {
+    const state = noted();
+    const { from, to } = referenceRange(state.doc, "footnote");
+
+    expect(transactionAllowed(state.tr.delete(from, to), state)).toBe(true);
+    expect(editShut(state, { kind: "replace", from, to })).toBe(false);
   });
 
   /**
@@ -412,7 +441,7 @@ describe("a guard over the markers a document was opened with", () => {
     expect(editShut(withBookmark, { kind: "mark", ...marker })).toBe(false);
 
     const withNote = noted();
-    const reference = nodeRange(withNote.doc, "noteReference");
+    const reference = referenceRange(withNote.doc, "endnote");
     expect(editShut(withNote, { kind: "replace", ...reference })).toBe(true);
     expect(editShut(withNote, { kind: "insert", at: reference.to })).toBe(
       false

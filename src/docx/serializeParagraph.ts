@@ -15,7 +15,12 @@
  */
 
 import type { Mark, Node as PMNode } from "prosemirror-model";
-import { elementXml, emptyTagXml, openTagXml } from "../ooxml/element";
+import {
+  elementXml,
+  emptyTagXml,
+  openTagXml,
+  type XmlAttr,
+} from "../ooxml/element";
 import { DocxExportError } from "../ooxml/errors";
 import {
   imageDrawingXml,
@@ -129,8 +134,12 @@ function renderInline(node: PMNode, images: ImageRefs): string {
     const id: unknown = node.attrs.id;
     const name =
       node.attrs.kind === "endnote" ? "endnoteReference" : "footnoteReference";
+    const customMark: readonly XmlAttr[] =
+      node.attrs.customMarkFollows === true
+        ? [[wName("customMarkFollows"), "1"]]
+        : [];
     if (typeof id === "string") {
-      return elementXml(wName(name), [[wName("id"), id]]);
+      return elementXml(wName(name), [...customMark, [wName("id"), id]]);
     }
     throw new DocxExportError(
       "lost-original",

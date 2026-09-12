@@ -26,7 +26,7 @@ import { A4_PORTRAIT, type PageGeometry } from "../docx/pageGeometry";
 import type { SessionStore } from "../docx/session";
 import type { DocumentDefaults } from "../model/format";
 import { NEW_LISTS_ATTR, newListsOf } from "../numbering/listRegistry";
-import type { StoryKey } from "../schema/stories";
+import { EDITABLE_NOTE_KINDS, type StoryKey } from "../schema/stories";
 
 /** The document-level values one editing state is built on */
 export interface EditorDocument {
@@ -55,11 +55,16 @@ export interface EditorDocument {
   readonly noteNumbering: NoteNumbering;
   /** The note entries that lay out the page rather than number a note: separators and the continuation notice */
   readonly specialNotes: ReadonlySet<StoryKey>;
+  /**
+   * Every entry of an editable kind the opened notes parts hold, separators and entries no
+   * reference names included, which a new note may not take the id of
+   */
+  readonly reservedNoteKeys: ReadonlySet<StoryKey>;
 }
 
 const NO_IDS: ReadonlySet<string> = new Set();
 
-const NO_SPECIAL_NOTES: ReadonlySet<StoryKey> = new Set();
+const NO_NOTE_KEYS: ReadonlySet<StoryKey> = new Set();
 
 /** A document whose paragraph styles the editor does not know offers none to pick from */
 const NO_PARAGRAPH_STYLES: ParagraphStyleOption[] = [];
@@ -76,7 +81,8 @@ export const NO_DOCUMENT: EditorDocument = {
   reservedCommentIds: NO_IDS,
   reservedCommentParaIds: NO_IDS,
   noteNumbering: DEFAULT_NOTE_NUMBERING,
-  specialNotes: NO_SPECIAL_NOTES,
+  specialNotes: NO_NOTE_KEYS,
+  reservedNoteKeys: NO_NOTE_KEYS,
 };
 
 /**
@@ -126,6 +132,13 @@ export function editorDocumentOf(
     reservedCommentParaIds: reservedParaIds(session),
     noteNumbering: session.noteNumbering,
     specialNotes: session.specialNotes,
+    reservedNoteKeys: new Set(
+      Array.from(session.stories.values()).flatMap((story) =>
+        EDITABLE_NOTE_KINDS.some((kind) => kind === story.kind)
+          ? [story.key]
+          : []
+      )
+    ),
   };
 }
 

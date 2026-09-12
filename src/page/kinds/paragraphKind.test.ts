@@ -96,6 +96,8 @@ describe("paragraphKind", () => {
       minFirstPiece: 20,
       breakAfter: false,
       appliedHeight: 30,
+      // The second break was given no space, so nothing was opened at it
+      opened: new Map([[4, 30]]),
       keepWithNext: false,
     });
   });
@@ -112,6 +114,8 @@ describe("paragraphKind", () => {
       minFirstPiece: 20,
       breakAfter: false,
       appliedHeight: 30,
+      // The second break was given no space, so nothing was opened at it
+      opened: new Map([[4, 30]]),
       keepWithNext: false,
     });
   });
