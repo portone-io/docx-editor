@@ -50,6 +50,7 @@ import {
   type ImageToInsert,
   increaseIndent,
   increaseListLevel,
+  insertEndnote,
   insertFootnote,
   insertImage,
   insertLineBreak,
@@ -68,6 +69,7 @@ import {
   selectionLock,
   setCommentBody,
   setCommentResolved,
+  setEndnoteBody,
   setFontFamily,
   setFontSize,
   setFootnoteBody,
@@ -104,7 +106,7 @@ import {
 } from "../../ooxml/xml";
 import { docxSchema } from "../../schema";
 import { sameSource } from "../../schema/sourceEquality";
-import { storyKey, storyNodeOf } from "../../schema/stories";
+import { type NoteKind, storyKey, storyNodeOf } from "../../schema/stories";
 import {
   addColumnAfter,
   addColumnBefore,
@@ -430,31 +432,33 @@ function replyReading(
   return reply;
 }
 
-/** What the footnote the battery inserts is given to say, which the footnotes part has to carry */
+/** What the note the battery inserts is given to say, which the notes part has to carry */
 const FOOTNOTE_TEXT = "The footnote the battery wrote";
 
-/** The footnote the battery inserted, which takes an id above every one the document had */
-function newestFootnote(state: EditorState): DocumentNote {
+const ENDNOTE_TEXT = "The endnote the battery wrote";
+
+/** The note of this kind the battery inserted, which takes an id above every one the document had */
+function newestNote(state: EditorState, kind: NoteKind): DocumentNote {
   const newest = documentNotes(state)
-    .filter((note) => note.kind === "footnote")
+    .filter((note) => note.kind === kind)
     .reduce<DocumentNote | null>(
       (latest, note) =>
         latest === null || Number(note.id) > Number(latest.id) ? note : latest,
       null
     );
-  if (newest === null) throw new Error("the document refers to no footnote");
+  if (newest === null) throw new Error(`the document refers to no ${kind}`);
   return newest;
 }
 
-/** That footnote's story with italic words after its number, as a composer of one's own writes one */
-function footnoteBody(state: EditorState): PMNode {
+/** That note's story with italic words after its number, as a composer of one's own writes one */
+function noteBody(state: EditorState, kind: NoteKind, text: string): PMNode {
   const story = storyNodeOf(
     state.doc,
-    storyKey("footnote", newestFootnote(state).id)
+    storyKey(kind, newestNote(state, kind).id)
   );
   const paragraph = story?.firstChild;
-  if (!story || !paragraph) throw new Error("the footnote holds no paragraph");
-  const words = docxSchema.text(FOOTNOTE_TEXT, [
+  if (!story || !paragraph) throw new Error(`the ${kind} holds no paragraph`);
+  const words = docxSchema.text(text, [
     docxSchema.marks.run.create({ rPr: "<w:rPr><w:i/></w:rPr>" }),
   ]);
   return story.copy(
@@ -462,15 +466,14 @@ function footnoteBody(state: EditorState): PMNode {
   );
 }
 
-/** The text of the footnotes part the export wrote, under whichever name the package gives it */
-function footnotesPart(exported: ExportedPackage): string {
+/** The text of the notes part of this kind the export wrote, under whichever name the package gives it */
+function notesPart(exported: ExportedPackage, kind: NoteKind): string {
+  const root = new RegExp(`<(?:\\w+:)?${kind}s[\\s>]`);
   const path = Object.keys(exported.parts).find(
-    (name) =>
-      name.endsWith(".xml") &&
-      /<(?:\w+:)?footnotes[\s>]/.test(exported.text(name))
+    (name) => name.endsWith(".xml") && root.test(exported.text(name))
   );
   if (path === undefined) {
-    throw new Error(`${exported.name} wrote no footnotes part`);
+    throw new Error(`${exported.name} wrote no ${kind}s part`);
   }
   return exported.text(path);
 }
@@ -1473,7 +1476,7 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
         const footnotes = (state: EditorState) =>
           documentNotes(state).filter((note) => note.kind === "footnote");
         expect(footnotes(after).length).toBe(footnotes(before).length + 1);
-        expect(newestFootnote(after).text).toBe("");
+        expect(newestNote(after, "footnote").text).toBe("");
       },
       run: (state) => ran(state, insertFootnote),
     },
@@ -1483,20 +1486,60 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
       name: "write a formatted body into that footnote",
       slot: "pictured",
       check: (_before, after) =>
-        expect(newestFootnote(after).text).toBe(FOOTNOTE_TEXT),
+        expect(newestNote(after, "footnote").text).toBe(FOOTNOTE_TEXT),
       run: (state) =>
         ran(
           state,
-          setFootnoteBody(newestFootnote(state).id, footnoteBody(state))
+          setFootnoteBody(
+            newestNote(state, "footnote").id,
+            noteBody(state, "footnote", FOOTNOTE_TEXT)
+          )
         ),
       expect: (exported) => {
-        const part = footnotesPart(exported);
+        const part = notesPart(exported, "footnote");
         expect(part, `${exported.name} footnotes part`).toContain(
           FOOTNOTE_TEXT
         );
         expect(
           part,
           `${exported.name} writes the run formatting a footnote body was given`
+        ).toContain("<w:rPr><w:i/></w:rPr>");
+      },
+    },
+  ],
+  insertEndnote: [
+    {
+      name: "insert an endnote",
+      slot: "pictured",
+      check: (before, after) => {
+        const endnotes = (state: EditorState) =>
+          documentNotes(state).filter((note) => note.kind === "endnote");
+        expect(endnotes(after).length).toBe(endnotes(before).length + 1);
+        expect(newestNote(after, "endnote").text).toBe("");
+      },
+      run: (state) => ran(state, insertEndnote),
+    },
+  ],
+  setEndnoteBody: [
+    {
+      name: "write a formatted body into that endnote",
+      slot: "pictured",
+      check: (_before, after) =>
+        expect(newestNote(after, "endnote").text).toBe(ENDNOTE_TEXT),
+      run: (state) =>
+        ran(
+          state,
+          setEndnoteBody(
+            newestNote(state, "endnote").id,
+            noteBody(state, "endnote", ENDNOTE_TEXT)
+          )
+        ),
+      expect: (exported) => {
+        const part = notesPart(exported, "endnote");
+        expect(part, `${exported.name} endnotes part`).toContain(ENDNOTE_TEXT);
+        expect(
+          part,
+          `${exported.name} writes the run formatting an endnote body was given`
         ).toContain("<w:rPr><w:i/></w:rPr>");
       },
     },
@@ -1568,6 +1611,7 @@ export const NOT_A_WRITER: Readonly<Record<string, string>> = {
   canExport: "the query an export control is drawn from",
   canFormatText: "the query the character formatting controls are drawn from",
   canIncreaseIndent: "the query the increase-indent button is drawn from",
+  canInsertEndnote: "the query an insert-endnote control is drawn from",
   canInsertFootnote: "the query an insert-footnote control is drawn from",
   canInsertImage: "the query the image button is drawn from",
   canInsertTable: "the query the insert-table button is drawn from",
@@ -1600,6 +1644,8 @@ export const NOT_A_WRITER: Readonly<Record<string, string>> = {
   isItalicActive: "a query about the selection",
   isStrikeActive: "a query about the selection",
   isUnderlineActive: "a query about the selection",
+  openEndnote:
+    "moves the selection to an endnote's reference and asks for the endnote to be opened",
   openFootnote:
     "moves the selection to a footnote's reference and asks for the footnote to be opened",
   readImageFile: "reads one file and gives the size it comes in at",

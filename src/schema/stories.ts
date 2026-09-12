@@ -63,6 +63,21 @@ export function storyKey<K extends StoryKind>(
 export type NoteKey = `${NoteKind}:${string}`;
 
 /**
+ * The note this key names, and null for a key naming a story of another kind.
+ *
+ * A note's id never carries a colon - a note is identified by a whole number (§17.11.2, §17.11.8)
+ * - so the kind is everything up to the first one.
+ */
+export function noteKeyOf(
+  key: StoryKey
+): { readonly kind: NoteKind; readonly id: string } | null {
+  const at = key.indexOf(":");
+  const named = key.slice(0, at);
+  const kind = NOTE_KINDS.find((candidate) => candidate === named);
+  return kind === undefined ? null : { kind, id: key.slice(at + 1) };
+}
+
+/**
  * The kinds of note an edit may add, delete, copy and rewrite, which is both of them: each part is
  * written back one entry per note (`docx/notes/writing`).
  *

@@ -11,10 +11,7 @@ import {
   editorStateForSession,
 } from "../../editor/createEditor";
 import { documentOf, storyDocument } from "../../editor/editorDocument";
-import {
-  footnoteExtensions,
-  footnoteHost,
-} from "../../editor/notes/footnoteSurface";
+import { noteExtensions, noteHost } from "../../editor/notes/noteSurface";
 import type { StoryCaret } from "../../editor/stories/storyView";
 import { FOOTNOTE_BAND } from "../../page/demands/footnoteDemands";
 import type {
@@ -22,6 +19,7 @@ import type {
   PageOverlay,
   ReservedRoom,
 } from "../../page/usePageLayout";
+import { storyKey } from "../../schema/stories";
 import { editorClassNames } from "../../styles/classNames";
 import { DEFAULT_FONT_FALLBACKS } from "../../styles/fontStack";
 import { FootnoteAreas, type FootnoteAreasProps } from "./FootnoteAreas";
@@ -249,12 +247,12 @@ describe("the footnotes at the foot of each page", () => {
     });
     const held: { current: StoryCaret | null } = { current: null };
     const editing: RowEditing = {
-      host: footnoteHost(main, () => {}),
+      host: noteHost(main, () => {}),
       document: storyDocument(
         documentOf(main.state),
         documentOf(main.state).geometry
       ),
-      extensions: footnoteExtensions(main, "2", () => "1"),
+      extensions: noteExtensions(main, storyKey("footnote", "2"), () => "1"),
       caret: {
         take: () => held.current,
         keep: (caret) => {

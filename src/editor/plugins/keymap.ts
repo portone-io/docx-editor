@@ -13,7 +13,6 @@ import { splitParagraphAttrs } from "../../docx/cloning";
 import { toParagraphFormat } from "../../model/format";
 import { docxSchema } from "../../schema";
 import { insertLineBreak, insertPageBreak } from "../commands/breakCommands";
-import { insertFootnote } from "../commands/footnoteCommands";
 import {
   toggleBold,
   toggleItalic,
@@ -27,6 +26,7 @@ import {
   increaseListLevel,
   leaveEmptyListItem,
 } from "../commands/listCommands";
+import { insertEndnote, insertFootnote } from "../commands/noteCommands";
 import { insertTab, moveAcrossTab } from "../commands/tabCommands";
 import { openLinkPanel } from "./linkPanel";
 
@@ -162,6 +162,9 @@ export const docxKeymap: Record<string, Command> = {
   "Mod-k": openLinkPanel,
   // Google Docs' footnote key, which puts the caret inside the footnote it adds
   "Mod-Alt-f": insertFootnote,
+  // Word's endnote key, and the caret lands in the new endnote the same way. Google Docs has no
+  // endnote of its own to take a key from
+  "Mod-Alt-d": insertEndnote,
   // Inside a table, moving between cells comes first (Word does the same).
   // In a list paragraph outside a table it shifts the level; an ordinary paragraph gets a document tab.
   Tab: chainCommands(

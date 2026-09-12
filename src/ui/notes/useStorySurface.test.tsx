@@ -6,7 +6,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { makeNotesDocx } from "../../__testing__/docx";
 import { importDocx } from "../../docx/importDocx";
-import { openFootnote } from "../../editor/commands/footnoteCommands";
+import { openFootnote } from "../../editor/commands/noteCommands";
 import { noteProjection } from "../../editor/commands/noteQueries";
 import {
   createEditorView,
@@ -14,11 +14,7 @@ import {
 } from "../../editor/createEditor";
 import { sectionGeometryAt } from "../../editor/documentStyles";
 import { storyDocument } from "../../editor/editorDocument";
-import {
-  footnoteExtensions,
-  footnoteHost,
-  footnoteIdOf,
-} from "../../editor/notes/footnoteSurface";
+import { noteExtensions, noteHost } from "../../editor/notes/noteSurface";
 import { requestedNote } from "../../editor/plugins/noteNavigation";
 import { docxSchema } from "../../schema";
 import { storyKey } from "../../schema/stories";
@@ -36,11 +32,8 @@ const FOOTNOTE = storyKey("footnote", "2");
 
 /** The footnote binding, as the component that mounts the editor declares one */
 const FOOTNOTES: StorySurfaceBinding = {
-  hostOf: footnoteHost,
-  extensionsOf: (main, row) => {
-    const id = footnoteIdOf(row.key);
-    return id === null ? null : footnoteExtensions(main, id, () => row.label);
-  },
+  hostOf: noteHost,
+  extensionsOf: (main, row) => noteExtensions(main, row.key, () => row.label),
   documentFor: (main, snapshot, row) =>
     storyDocument(snapshot, sectionGeometryAt(main, row.referencePos)),
   requestedIn: requestedNote,

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { insertFootnote } from "../editor/commands/footnoteCommands";
+import { insertFootnote } from "../editor/commands/noteCommands";
 import {
   EVERY_CAPABILITY,
   NO_CAPABILITY,

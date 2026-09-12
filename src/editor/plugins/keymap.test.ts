@@ -215,16 +215,20 @@ describe("the link key", () => {
   });
 });
 
-describe("Mod-Alt-f", () => {
-  it("inserts a footnote on Mod-Alt-f and asks for it to open", () => {
+describe("the note keys", () => {
+  it.each([
+    ["Mod-Alt-f", "footnote"],
+    ["Mod-Alt-d", "endnote"],
+  ])("inserts a note on %s and asks for it to open", (pressed, kind) => {
     const state = editorStateForSession(importDocx(makeNotesDocx(NOTE_BODY)));
     const caret = select(state, 1);
 
-    const inserted = runCommand(caret, docxKeymap["Mod-Alt-f"]);
+    const inserted = runCommand(caret, docxKeymap[pressed]);
 
     const asked = requestedNote(inserted);
-    if (asked === null) throw new Error("no footnote was asked to open");
-    // The footnote just put in is the one the caret goes to, holding no text yet
+    if (asked === null) throw new Error("no note was asked to open");
+    expect(asked.key.startsWith(`${kind}:`)).toBe(true);
+    // The note just put in is the one the caret goes to, holding no text yet
     expect(storyText(storyOf(inserted.doc, asked.key))).toBe("");
     expect(storyOf(caret.doc, asked.key)).toBeNull();
   });

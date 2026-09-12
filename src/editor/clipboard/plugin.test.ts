@@ -40,7 +40,7 @@ import {
   editorStateForSession,
 } from "../createEditor";
 import { documentOf, storyDocument } from "../editorDocument";
-import { footnoteExtensions, footnoteHost } from "../notes/footnoteSurface";
+import { noteExtensions, noteHost } from "../notes/noteSurface";
 import { createStoryView } from "../stories/storyView";
 import { defineClipboardEvent } from "./__testing__/clipboardEvent";
 
@@ -382,14 +382,14 @@ describe("copying out of the editor", () => {
     });
     const story = createStoryView({
       mount: document.createElement("div"),
-      host: footnoteHost(main, () => {}),
+      host: noteHost(main, () => {}),
       key: storyKey("footnote", "2"),
       document: storyDocument(
         documentOf(main.state),
         documentOf(main.state).geometry
       ),
       fontFallbacks: DEFAULT_FONT_FALLBACKS,
-      extensions: footnoteExtensions(main, "2", () => "1"),
+      extensions: noteExtensions(main, storyKey("footnote", "2"), () => "1"),
     });
     story.view.dispatch(
       story.view.state.tr.setSelection(new AllSelection(story.view.state.doc))

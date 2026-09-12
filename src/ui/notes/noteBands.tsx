@@ -39,7 +39,7 @@ import { useNoteHeights } from "./noteHeights";
 import { NOTE_SEPARATOR_HEIGHT } from "./noteSeparator";
 import type { NoteHeightReport, RowEditing } from "./StoryRow";
 
-const NO_FOOTNOTES: ReadonlyMap<StoryKey, NoteRow> = new Map();
+const NO_ROWS: ReadonlyMap<StoryKey, NoteRow> = new Map();
 const NO_NOTE_ROWS: readonly NoteRow[] = [];
 
 /** What a document's notes ask of the page layout, and what is needed to draw them */
@@ -50,18 +50,20 @@ export interface NoteBands {
    */
   readonly bands: ReadonlyMap<string, DemandBand> | undefined;
   /**
-   * The footnotes the document refers to, by story key, in first-reference order.
+   * Every note the document refers to, by story key, in first-reference order.
    *
    * Which one a caret stands in is the mounting component's to hold, so this is the one half of
    * the notes it reads; everything else about how they are drawn stays in `drawn`.
    */
-  readonly footnotes: ReadonlyMap<StoryKey, NoteRow>;
+  readonly rows: ReadonlyMap<StoryKey, NoteRow>;
   /** Held for `NotesAroundPage`; nothing else reads it */
   readonly drawn: DrawnNotes;
 }
 
 /** What `NotesAroundPage` draws with, kept opaque so a caller cannot take the two halves apart */
 interface DrawnNotes {
+  /** The footnotes, which are the notes drawn at the foot of the page their reference stands on */
+  readonly footnotes: ReadonlyMap<StoryKey, NoteRow>;
   readonly endnotes: readonly NoteRow[];
   readonly anyNotes: boolean;
   readonly heights: ReadonlyMap<StoryKey, number>;
@@ -84,7 +86,7 @@ export function useNoteBands({
   fontFallbacks,
 }: NoteBandsOptions): NoteBands {
   const notes = state === null ? null : noteProjection.read(state);
-  const footnotes = notes?.footnotes ?? NO_FOOTNOTES;
+  const footnotes = notes?.footnotes ?? NO_ROWS;
   const hasFootnotes = footnotes.size > 0;
   const [heights, onHeight] = useNoteHeights(of);
   const bands = useMemo(
@@ -121,8 +123,9 @@ export function useNoteBands({
 
   return {
     bands,
-    footnotes,
+    rows: notes?.rows ?? NO_ROWS,
     drawn: {
+      footnotes,
       endnotes: notes?.endnotes ?? NO_NOTE_ROWS,
       anyNotes: notes !== null,
       heights,
@@ -171,8 +174,7 @@ export function NotesAroundPage({
   revision,
   onOpen,
 }: NotesAroundPageProps): ReactElement | null {
-  const { endnotes, anyNotes, heights, onHeight } = notes.drawn;
-  const { footnotes } = notes;
+  const { footnotes, endnotes, anyNotes, heights, onHeight } = notes.drawn;
   return (
     <>
       {overlay !== null && footnotes.size > 0 && (

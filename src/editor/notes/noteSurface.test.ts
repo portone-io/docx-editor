@@ -18,16 +18,16 @@ import { storyOf, storyText } from "../../docx/story";
 import { docxSchema } from "../../schema";
 import type { EditingProtection } from "../../schema/protection";
 import { type NoteKind, storyKey } from "../../schema/stories";
+import { editorClassNames } from "../../styles/classNames";
 import { DEFAULT_FONT_FALLBACKS } from "../../styles/fontStack";
 import { normalizePasted } from "../clipboard/normalizers";
-import { insertFootnote } from "../commands/footnoteCommands";
 import { undo } from "../commands/historyCommands";
 import { listRefOf, toggleNumberedList } from "../commands/listCommands";
+import { insertFootnote } from "../commands/noteCommands";
 import { createEditorView, editorStateForSession } from "../createEditor";
 import { documentOf, storyDocument } from "../editorDocument";
 import { requestedNote } from "../plugins/noteNavigation";
 import { createStoryView, type StoryView } from "../stories/storyView";
-import { footnoteExtensions, footnoteHost } from "./footnoteSurface";
 import { noteExtensions, noteHost } from "./noteSurface";
 
 const FOOTNOTE = storyKey("footnote", "2");
@@ -83,17 +83,23 @@ function mainView(
   return openMain(body, protection).main;
 }
 
-function openNote(main: EditorView, id = "2", label = "1"): StoryView {
+function openNote(
+  main: EditorView,
+  id = "2",
+  label = "1",
+  kind: NoteKind = "footnote"
+): StoryView {
+  const key = storyKey(kind, id);
   const story = createStoryView({
     mount: document.createElement("div"),
-    host: footnoteHost(main, () => {}),
-    key: storyKey("footnote", id),
+    host: noteHost(main, () => {}),
+    key,
     document: storyDocument(
       documentOf(main.state),
       documentOf(main.state).geometry
     ),
     fontFallbacks: DEFAULT_FONT_FALLBACKS,
-    extensions: footnoteExtensions(main, id, () => label),
+    extensions: noteExtensions(main, key, () => label),
   });
   opened.story = story;
   return story;
@@ -198,7 +204,7 @@ describe("what a note takes", () => {
       },
       story.view.state,
       false,
-      footnoteExtensions(main, "2", () => "1").normalizers
+      noteExtensions(main, storyKey("footnote", "2"), () => "1").normalizers
     );
 
     const first = normalized.slice.content.firstChild;
@@ -237,7 +243,7 @@ describe("what a note takes", () => {
       },
       story.view.state,
       false,
-      footnoteExtensions(main, "2", () => "1").normalizers
+      noteExtensions(main, storyKey("footnote", "2"), () => "1").normalizers
     );
 
     const first = normalized.slice.content.firstChild;
@@ -270,7 +276,7 @@ describe("what a note takes", () => {
       { slice: new Slice(Fragment.from(listed), 0, 0), newLists: new Map() },
       story.view.state,
       false,
-      footnoteExtensions(main, "2", () => "1").normalizers
+      noteExtensions(main, storyKey("footnote", "2"), () => "1").normalizers
     );
 
     const first = normalized.slice.content.firstChild;
@@ -353,29 +359,35 @@ describe("what a note takes", () => {
   });
 });
 
-/**
- * A view over one note of the kind named, which is the surface every kind of note is edited on:
- * the footnote rows the editor draws today, and the endnote rows the same view will hold.
- */
-function openNoteOfKind(
-  main: EditorView,
-  kind: NoteKind,
-  id: string
-): StoryView {
-  const key = storyKey(kind, id);
-  const story = createStoryView({
-    mount: document.createElement("div"),
-    host: noteHost(main, kind, () => {}),
-    key,
-    document: storyDocument(
-      documentOf(main.state),
-      documentOf(main.state).geometry
-    ),
-    fontFallbacks: DEFAULT_FONT_FALLBACKS,
-    extensions: noteExtensions(main, kind, key, () => "1"),
+/** The note's own number as the editing view drew it, which is the chip its story opens with */
+function ownNumber(story: StoryView): HTMLElement {
+  const drawn = story.view.dom.querySelector(`.${editorClassNames.noteMark}`);
+  if (!(drawn instanceof HTMLElement)) {
+    throw new Error("the note drew no number of its own");
+  }
+  return drawn;
+}
+
+interface PlacedReference {
+  readonly pos: number;
+  readonly node: PMNode;
+}
+
+/** Where the reference to a note of this kind stands in the body, and the node itself */
+function referenceIn(doc: PMNode, kind: NoteKind): PlacedReference {
+  let found: PlacedReference | null = null;
+  doc.descendants((node, pos) => {
+    if (
+      found === null &&
+      node.type === docxSchema.nodes.noteReference &&
+      node.attrs.kind === kind
+    ) {
+      found = { pos, node };
+    }
+    return found === null;
   });
-  opened.story = story;
-  return story;
+  if (found === null) throw new Error(`no ${kind} reference`);
+  return found;
 }
 
 /** The elements of every preserved chip the story holds, in document order */
@@ -541,6 +553,36 @@ describe("the number a note opens with", () => {
     ]);
     expect(storyText(storyOf(reopened.doc, FOOTNOTE))).toBe("");
   });
+
+  it.each([
+    ["footnote", "2"],
+    ["endnote", "3"],
+  ] as const)(
+    "takes the caret back to the reference calling the %s",
+    (kind, id) => {
+      const main = mainView();
+      const story = openNote(main, id, "1", kind);
+      const reference = referenceIn(main.state.doc, kind);
+      // Away from the reference, so the caret has somewhere to be taken back from
+      main.dispatch(
+        main.state.tr.setSelection(TextSelection.create(main.state.doc, 1))
+      );
+
+      const answered = ownNumber(story).dispatchEvent(
+        new MouseEvent("mousedown", { bubbles: true, cancelable: true })
+      );
+
+      expect(main.state.selection.from).toBe(
+        reference.pos + reference.node.nodeSize
+      );
+      // The press is answered rather than let through, so no caret lands on the number
+      expect(answered).toBe(false);
+      // What the file carries is untouched: the number is a preserved chip either way
+      expect(storyText(storyOf(main.state.doc, storyKey(kind, id)))).toBe(
+        kind === "endnote" ? "Endnote body" : "Footnote body\nSecond line"
+      );
+    }
+  );
 });
 
 /**
@@ -553,7 +595,7 @@ describe("the number a note opens with", () => {
 describe("a composition opening over the whole of a note", () => {
   it("empties a footnote and leaves the number it is drawn by", () => {
     const main = mainView();
-    const story = openNoteOfKind(main, "footnote", "2");
+    const story = openNote(main, "2");
     selectWholeStory(story);
 
     openComposition(story.view);
@@ -563,21 +605,16 @@ describe("a composition opening over the whole of a note", () => {
     expect(storyText(held)).toBe("");
   });
 
-  it("leaves an endnote as it stands, since its surface takes no edit at all", () => {
+  it("empties an endnote and leaves the number it is drawn by", () => {
     const main = mainView();
     const endnote = storyKey("endnote", "3");
-    const story = openNoteOfKind(main, "endnote", "3");
+    const story = openNote(main, "3", "1", "endnote");
     selectWholeStory(story);
 
     openComposition(story.view);
 
-    // No writer carries an endnote change, so the reference stands under a guard and the view
-    // over that note is read-only whatever the gesture (`noteHost`). The number it is drawn by
-    // is in no danger until a writer for one arrives
-    expect(story.view.editable).toBe(false);
-    expect(chipElements(storyOf(main.state.doc, endnote))).toEqual([
-      "endnoteRef",
-    ]);
-    expect(storyText(storyOf(main.state.doc, endnote))).toBe("Endnote body");
+    const held = storyOf(main.state.doc, endnote);
+    expect(chipElements(held)).toEqual(["endnoteRef"]);
+    expect(storyText(held)).toBe("");
   });
 });

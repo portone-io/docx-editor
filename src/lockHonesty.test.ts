@@ -21,10 +21,7 @@ import { storyFromText, storyOf } from "./docx/story";
 import * as commands from "./editor/commands/index";
 import { createEditorState, createEditorView } from "./editor/createEditor";
 import { documentOf, storyDocument } from "./editor/editorDocument";
-import {
-  footnoteExtensions,
-  footnoteHost,
-} from "./editor/notes/footnoteSurface";
+import { noteExtensions, noteHost } from "./editor/notes/noteSurface";
 import { setProtection } from "./editor/plugins/documentProtection";
 import { createStoryView } from "./editor/stories/storyView";
 import {
@@ -33,7 +30,7 @@ import {
   type EditIntent,
 } from "./schema/guards";
 import type { EditingProtection } from "./schema/protection";
-import { storyKey } from "./schema/stories";
+import { type StoryKey, storyKey } from "./schema/stories";
 import { DEFAULT_FONT_FALLBACKS } from "./styles/fontStack";
 import * as table from "./table";
 
@@ -494,6 +491,12 @@ const CASES: readonly CommandCase[] = [
     name: "setFootnoteBody",
     command: commands.setFootnoteBody("2", storyFromText("note")),
   },
+  { name: "insertEndnote", command: commands.insertEndnote },
+  { name: "openEndnote", command: commands.openEndnote("3") },
+  {
+    name: "setEndnoteBody",
+    command: commands.setEndnoteBody("3", storyFromText("note")),
+  },
   { name: "decreaseIndent", command: commands.decreaseIndent },
   { name: "increaseIndent", command: commands.increaseIndent },
   { name: "decreaseListLevel", command: commands.decreaseListLevel },
@@ -598,6 +601,7 @@ const NOT_A_COMMAND: Readonly<Record<string, string>> = {
   canExport: "the query an export control is drawn from",
   canFormatText: "the query the character formatting controls are drawn from",
   canIncreaseIndent: "the query the increase-indent button is drawn from",
+  canInsertEndnote: "the query an insert-endnote control is drawn from",
   canInsertFootnote: "the query an insert-footnote control is drawn from",
   canInsertImage: "the query the image button is drawn from",
   canInsertTable: "the query the insert-table button is drawn from",
@@ -935,20 +939,32 @@ const LOCKED_REFERENCE_BODY =
 interface StoryPlace {
   name: string;
   body: string;
+  /** The note the caret stands in, which the notes fixture holds under this key */
+  key: StoryKey;
 }
 
 const STORY_PLACES: readonly StoryPlace[] = [
-  { name: "a caret in a footnote", body: NOTE_BODY },
+  {
+    name: "a caret in a footnote",
+    body: NOTE_BODY,
+    key: storyKey("footnote", "2"),
+  },
   {
     name: "a caret in a footnote whose reference stands in locked content",
     body: LOCKED_REFERENCE_BODY,
+    key: storyKey("footnote", "2"),
+  },
+  {
+    name: "a caret in an endnote",
+    body: NOTE_BODY,
+    key: storyKey("endnote", "3"),
   },
 ];
 
 describe.each(PROTECTIONS)(
   "every formatting command in a note under %s",
   (protection) => {
-    describe.each(STORY_PLACES)("with $name", ({ body }) => {
+    describe.each(STORY_PLACES)("with $name", ({ body, key }) => {
       it.each(CASES.filter((entry) => STORY_FORMATTING.has(entry.name)))(
         "$name says what dispatching it does",
         ({ command }) => {
@@ -960,17 +976,16 @@ describe.each(PROTECTIONS)(
             }),
             onStateChange: () => {},
           });
-          const key = storyKey("footnote", "2");
           const story = createStoryView({
             mount: document.createElement("div"),
-            host: footnoteHost(main, () => {}),
+            host: noteHost(main, () => {}),
             key,
             document: storyDocument(
               documentOf(main.state),
               documentOf(main.state).geometry
             ),
             fontFallbacks: DEFAULT_FONT_FALLBACKS,
-            extensions: footnoteExtensions(main, "2", () => "1"),
+            extensions: noteExtensions(main, key, () => "1"),
           });
           // Over the note's text rather than at a caret, so a formatting command has something to
           // put on and its answer is about the document rather than about stored marks

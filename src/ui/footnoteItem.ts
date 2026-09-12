@@ -17,7 +17,7 @@
 import type { LucideIcon } from "lucide-react";
 import { Superscript } from "lucide-react";
 import type { Command } from "prosemirror-state";
-import { insertFootnote } from "../editor/commands/footnoteCommands";
+import { insertFootnote } from "../editor/commands/noteCommands";
 import type { SurfaceCapabilities } from "../editor/stories/storyView";
 import { modifierLabels } from "./shortcutLabels";
 

@@ -16,8 +16,8 @@ import {
   storyKey,
   storyNodeOf,
 } from "../../schema/stories";
-import { insertFootnote } from "../commands/footnoteCommands";
 import { redo, undo } from "../commands/historyCommands";
+import { insertFootnote } from "../commands/noteCommands";
 import { documentNotes } from "../commands/noteQueries";
 import { editorStateForSession } from "../createEditor";
 

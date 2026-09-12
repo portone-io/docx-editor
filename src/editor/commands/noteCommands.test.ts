@@ -11,14 +11,21 @@ import { importDocx } from "../../docx/importDocx";
 import { storyFromText, storyText } from "../../docx/story";
 import { docxSchema } from "../../schema";
 import type { EditingProtection } from "../../schema/protection";
-import { sameStory, storyKey, storyNodeOf } from "../../schema/stories";
+import {
+  type NoteKind,
+  sameStory,
+  storyKey,
+  storyNodeOf,
+} from "../../schema/stories";
 import { editorStateForSession } from "../createEditor";
+import { undo } from "./historyCommands";
 import {
   canInsertFootnote,
+  insertEndnote,
   insertFootnote,
+  setEndnoteBody,
   setFootnoteBody,
-} from "./footnoteCommands";
-import { undo } from "./historyCommands";
+} from "./noteCommands";
 import { documentNotes } from "./noteQueries";
 
 const W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
@@ -41,16 +48,30 @@ interface Opening {
   readonly body?: string;
   readonly styles?: string | null;
   readonly footnotes?: string;
+  readonly endnotes?: string;
   readonly protection?: EditingProtection;
 }
 
-function bytesOf({ body = NOTE_BODY, styles = null, footnotes }: Opening) {
+function bytesOf({
+  body = NOTE_BODY,
+  styles = null,
+  footnotes,
+  endnotes,
+}: Opening) {
   const bytes = makeNotesDocx(body, styles);
-  if (footnotes === undefined) return bytes;
+  if (footnotes === undefined && endnotes === undefined) return bytes;
   const parts = unzipSync(bytes);
-  parts["word/footnotes.xml"] = new TextEncoder().encode(
-    `<w:footnotes xmlns:w="${W_NS}">${footnotes}</w:footnotes>`
-  );
+  const encoder = new TextEncoder();
+  if (footnotes !== undefined) {
+    parts["word/footnotes.xml"] = encoder.encode(
+      `<w:footnotes xmlns:w="${W_NS}">${footnotes}</w:footnotes>`
+    );
+  }
+  if (endnotes !== undefined) {
+    parts["word/endnotes.xml"] = encoder.encode(
+      `<w:endnotes xmlns:w="${W_NS}">${endnotes}</w:endnotes>`
+    );
+  }
   return zipSync(parts);
 }
 
@@ -60,15 +81,19 @@ function opened(opening: Opening = {}): EditorState {
   });
 }
 
-function footnoteIds(doc: PMNode): string[] {
+function noteIds(doc: PMNode, kind: NoteKind): string[] {
   const ids: string[] = [];
   doc.descendants((node) => {
-    if (node.type.name === "noteReference" && node.attrs.kind === "footnote") {
+    if (node.type.name === "noteReference" && node.attrs.kind === kind) {
       ids.push(String(node.attrs.id));
     }
     return true;
   });
   return ids;
+}
+
+function footnoteIds(doc: PMNode): string[] {
+  return noteIds(doc, "footnote");
 }
 
 function referenceNode(doc: PMNode, id: string): PMNode {
@@ -313,5 +338,65 @@ describe("setFootnoteBody", () => {
       answered: true,
       changed: true,
     });
+  });
+});
+
+describe("insertEndnote", () => {
+  it("inserts an endnote reference at the end of the selection with a new endnote", () => {
+    const state = opened();
+    const { from, to } = rangeOfText(state.doc, "and more");
+    const after = runCommand(select(state, from, to), insertEndnote);
+    const story = storyNodeOf(after.doc, storyKey("endnote", "4"));
+
+    expect(noteIds(after.doc, "endnote")).toEqual(["4", "3"]);
+    expect(after.doc.nodeAt(to)?.attrs.id).toBe("4");
+    expect(after.doc.textBetween(from, to)).toBe("and more");
+    expect(after.selection.from).toBe(from);
+    expect(story?.child(0).firstChild?.attrs.element).toBe("endnoteRef");
+    expect(storyText(story)).toBe("");
+    expect(
+      documentNotes(after).map(({ kind, id, label }) => [kind, id, label])
+    ).toEqual([
+      ["footnote", "2", "1"],
+      ["endnote", "4", "1"],
+      ["endnote", "3", "2"],
+    ]);
+    expect(undoDepth(after)).toBe(1);
+    expect(
+      storyNodeOf(runCommand(after, undo).doc, storyKey("endnote", "4"))
+    ).toBeNull();
+  });
+
+  it("takes an endnote id above every entry the endnotes part holds, separators included", () => {
+    const state = opened({
+      body: `<w:p>${text("Text")}<w:r><w:endnoteReference w:id="2"/></w:r></w:p>`,
+      endnotes:
+        '<w:endnote w:type="separator" w:id="12"><w:p><w:r><w:separator/></w:r></w:p></w:endnote>' +
+        `<w:endnote w:id="2"><w:p>${text("Called")}</w:p></w:endnote>`,
+    });
+    const after = runCommand(select(state, 1), insertEndnote);
+
+    expect(noteIds(after.doc, "endnote")).toEqual(["13", "2"]);
+    // The footnote ids are the endnotes part's own business and are counted apart from it
+    expect(footnoteIds(after.doc)).toEqual([]);
+  });
+
+  it("refuses an endnote body edit under comment mode", () => {
+    const state = opened({ protection: "comments" });
+
+    expect(
+      attempt(state, setEndnoteBody("3", storyFromText("Rewritten")))
+    ).toEqual(REFUSED);
+  });
+
+  it("writes a formatted body into an endnote in one undoable step", () => {
+    const state = opened();
+    const body = formattedBody();
+    const after = runCommand(state, setEndnoteBody("3", body));
+
+    expect(
+      sameStory(storyNodeOf(after.doc, storyKey("endnote", "3")), body)
+    ).toBe(true);
+    expect(undoDepth(after)).toBe(1);
   });
 });

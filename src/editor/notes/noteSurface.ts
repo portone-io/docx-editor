@@ -24,7 +24,7 @@ import { NOTE_NUMBER_ELEMENTS } from "../../docx/notes/newNote";
 import { docxSchema } from "../../schema";
 import { editShut, transactionAllowed } from "../../schema/guards";
 import { editsShut } from "../../schema/protectionState";
-import { type NoteKind, type StoryKey, storyKey } from "../../schema/stories";
+import { noteKeyOf, type StoryKey } from "../../schema/stories";
 import { editorClassNames } from "../../styles/classNames";
 import {
   detachAnchors,
@@ -34,8 +34,8 @@ import {
   rekeyNumbering,
   type SliceNormalizer,
 } from "../clipboard/normalizers";
-import { noteBodyCommand } from "../commands/footnoteCommands";
 import { redo, undo } from "../commands/historyCommands";
+import { noteBodyCommand } from "../commands/noteCommands";
 import { noteReferenceAt } from "../plugins/noteNavigation";
 import type { StoryNodeSpecs } from "../stories/storyMarkup";
 import {
@@ -70,15 +70,30 @@ export function noteNodeSpecs(labelOf: () => string): StoryNodeSpecs {
 }
 
 /**
- * The same drawing inside an editing view.
+ * The same drawing inside an editing view, the note's own number leading back to the reference
+ * that calls it.
  *
  * A note the caret goes into has to keep the height it was measured at, so the chip is drawn by
  * the very spec the static markup draws it by rather than by the schema's own, which says nothing
  * about a label.
+ *
+ * The press is answered rather than let through, so the number takes a reader back where Escape
+ * does without a caret ever landing on it: the round trip Word offers, and the way back matters
+ * most for an endnote, which stands pages away from the text that calls it. What the file carries
+ * is untouched - the chip is a preserved fragment, and a listener neither rewrites nor deletes it.
  */
-function noteMarkView(labelOf: () => string): NodeViewConstructor {
+function noteMarkView(
+  labelOf: () => string,
+  back: () => void
+): NodeViewConstructor {
   return (node) => {
     const { dom } = DOMSerializer.renderSpec(document, markSpec(node, labelOf));
+    if (isOwnMark(node) && dom instanceof HTMLElement) {
+      dom.addEventListener("mousedown", (event) => {
+        event.preventDefault();
+        back();
+      });
+    }
     return { dom };
   };
 }
@@ -135,14 +150,33 @@ const NOTE_NORMALIZERS: readonly SliceNormalizer[] = [
   rederiveDisplay,
 ];
 
-/** The id this key names for a note of this kind, and null for a key naming another kind */
-export function noteIdIn(kind: NoteKind, key: StoryKey): string | null {
-  const prefix = storyKey(kind, "");
-  return key.startsWith(prefix) ? key.slice(prefix.length) : null;
-}
-
 function runOn(main: EditorView, command: Command): boolean {
   return command(main.state, (tr) => main.dispatch(tr), main);
+}
+
+/** Where the reference calling the note this key names stands, and null where the body calls none */
+function referenceOf(main: EditorView, key: StoryKey) {
+  const note = noteKeyOf(key);
+  return note === null
+    ? null
+    : noteReferenceAt(main.state.doc, note.kind, note.id);
+}
+
+/**
+ * Puts the caret back just after the reference that calls this note and takes the body's focus,
+ * which is what leaves the note: Escape runs it, and so does a press on the note's own number.
+ */
+function backToReference(main: EditorView, key: StoryKey): void {
+  const found = referenceOf(main, key);
+  if (found !== null) {
+    const after = found.pos + found.node.nodeSize;
+    main.dispatch(
+      main.state.tr
+        .setSelection(TextSelection.near(main.state.doc.resolve(after)))
+        .scrollIntoView()
+    );
+  }
+  main.focus();
 }
 
 /** How much room the number the note opens with takes, which the caret may stand after */
@@ -244,20 +278,15 @@ function holdsNothing(story: PMNode): boolean {
  * note holding text is left alone, which is what keeps written words from disappearing under a
  * key meant to take a mistake back.
  */
-function deleteEmptyNote(
-  main: EditorView,
-  kind: NoteKind,
-  key: StoryKey
-): Command {
+function deleteEmptyNote(main: EditorView, key: StoryKey): Command {
   return (state, dispatch) => {
-    const id = noteIdIn(kind, key);
-    if (id === null || !state.selection.empty) return false;
+    if (!state.selection.empty) return false;
     if (!holdsNothing(state.doc)) return false;
     const $at = state.selection.$from;
     if ($at.index(0) !== 0 || $at.parentOffset > leadingChipSize(state.doc)) {
       return false;
     }
-    const found = noteReferenceAt(main.state.doc, kind, id);
+    const found = referenceOf(main, key);
     if (found === null) return false;
     const tr = main.state.tr.delete(found.pos, found.pos + found.node.nodeSize);
     if (!transactionAllowed(tr, main.state)) return false;
@@ -274,45 +303,32 @@ function deleteEmptyNote(
 }
 
 /**
- * The host a note's editing view writes through.
+ * The host a note's editing view writes through, whichever kind of note stands under the key.
  *
- * Every edit leaves as the kind's own body command, so a lock around the reference and the
+ * Every edit leaves as that kind's own body command, so a lock around the reference and the
  * standing the editor runs under judge a note edit where they judge a body edit, and the main
- * document keeps the one history both share.
+ * document keeps the one history both share. The kind is read off the key rather than bound here,
+ * so one host answers for the footnote at the foot of a page and the endnote at the end of the
+ * document alike.
  */
 export function noteHost(
   main: EditorView,
-  kind: NoteKind,
   activate: StoryHost["activate"]
 ): StoryHost {
-  const referenceOf = (key: StoryKey) => {
-    const id = noteIdIn(kind, key);
-    return id === null ? null : noteReferenceAt(main.state.doc, kind, id);
-  };
-
   return {
     state: () => main.state,
     write(key, story) {
-      const id = noteIdIn(kind, key);
-      return id !== null && runOn(main, noteBodyCommand(kind, id, story));
+      const note = noteKeyOf(key);
+      return (
+        note !== null && runOn(main, noteBodyCommand(note.kind, note.id, story))
+      );
     },
     undo: () => runOn(main, undo),
     redo: () => runOn(main, redo),
-    leave(key) {
-      const found = referenceOf(key);
-      if (found !== null) {
-        const after = found.pos + found.node.nodeSize;
-        main.dispatch(
-          main.state.tr
-            .setSelection(TextSelection.near(main.state.doc.resolve(after)))
-            .scrollIntoView()
-        );
-      }
-      main.focus();
-    },
+    leave: (key) => backToReference(main, key),
     shut(key) {
       if (editsShut(main.state)) return true;
-      const found = referenceOf(key);
+      const found = referenceOf(main, key);
       if (found === null) return true;
       return editShut(main.state, {
         kind: "replace",
@@ -330,16 +346,17 @@ export function noteHost(
  */
 export function noteExtensions(
   main: EditorView,
-  kind: NoteKind,
   key: StoryKey,
   labelOf: () => string
 ): StoryExtensions {
   return {
     plugins: [
       ownMarkRestoration(),
-      keymap({ Backspace: deleteEmptyNote(main, kind, key) }),
+      keymap({ Backspace: deleteEmptyNote(main, key) }),
     ],
-    nodeViews: { rawRunContent: noteMarkView(labelOf) },
+    nodeViews: {
+      rawRunContent: noteMarkView(labelOf, () => backToReference(main, key)),
+    },
     normalizers: NOTE_NORMALIZERS,
     takes: NOTE_TAKES,
   };

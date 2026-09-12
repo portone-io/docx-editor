@@ -48,6 +48,7 @@ import type { SurfaceCapabilities, SurfaceCapability } from "./storyView";
 const CAPABILITY_KEYS: Readonly<Record<string, SurfaceCapability>> = {
   "Mod-k": "link",
   "Mod-Alt-f": "note",
+  "Mod-Alt-d": "note",
 };
 
 /** The key no story of any kind is bound: a page break divides a flow a story does not have */
