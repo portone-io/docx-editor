@@ -229,7 +229,11 @@ function markHome(story: PMNode): number | null {
 }
 
 /**
- * Puts the number a note opens with back when an edit inside the note carries it off.
+ * Keeps the number a note is drawn by the first thing the note holds.
+ *
+ * It is one rule with two halves, because a number that is second is as wrong in the file as one
+ * that is gone: nothing of the reader's may stand before it, and it goes back where an edit
+ * carried it off.
  *
  * Word draws a note's number from the mark its entry opens with (`w:footnoteRef`), which arrives
  * as a preserved chip no deletion guard answers for (`docx/importPolicy`), so selecting the whole
@@ -258,22 +262,34 @@ function markHome(story: PMNode): number | null {
  * that writes over the number keeps it and stays open. `e2e/notesEditing.spec.ts` holds that
  * against a real browser, which is the only place a composition can be measured.
  *
- * The caret is the other side of the same rule: it is kept out of the one place from which a
- * reader would write ahead of the number, so that every way into a note - a press on the
- * reference, a press on the note itself, the open command, a note just inserted - leaves it where
- * the note's own text begins, and typing, pasting and composing land after the number rather than
- * in front of it. A selection that reaches over the number keeps its range: it is an edit like any
- * other, and what it sweeps away the restoration above puts back.
+ * The caret is the other half: it is kept out of the one place from which a reader would write
+ * ahead of the number, so that every way into a note - a press on the reference, a press on the
+ * note itself, the open command, a note just inserted - leaves it where the note's own text
+ * begins, and typing, pasting and composing land after the number rather than in front of it.
+ * Holding the caret off is what makes this a rule a reader never runs into, rather than a
+ * correction that moves what they just wrote; the move below answers only what no caret of theirs
+ * could have written - a paste or a plugin writing straight into the story - and leaves what was
+ * written where it was written, the number going first.
+ *
+ * A selection that reaches over the number keeps its range: it is an edit like any other, and what
+ * it sweeps away the restoration puts back. That is what keeps a paste over the whole of a note
+ * one paragraph, rather than one the number is left alone in.
  */
-function ownMarkRestoration(): Plugin {
+function ownMarkFirst(): Plugin {
   return new Plugin({
     appendTransaction(transactions, oldState, newState) {
       const tr = newState.tr;
-      if (transactions.some((changed) => changed.docChanged)) {
+      const home = markHome(newState.doc);
+      if (transactions.some((changed) => changed.docChanged) && home !== null) {
+        const held = ownMarkIn(newState.doc);
         const lost = ownMarkIn(oldState.doc);
-        const at = markHome(newState.doc);
-        if (lost !== null && ownMarkIn(newState.doc) === null && at !== null) {
-          tr.insert(at, lost.node);
+        if (held === null) {
+          if (lost !== null) tr.insert(home, lost.node);
+        } else if (held.pos !== home) {
+          tr.delete(held.pos, held.pos + held.node.nodeSize).insert(
+            home,
+            held.node
+          );
         }
       }
       const floor = caretFloor(tr.doc);
@@ -375,8 +391,8 @@ export function noteHost(
 }
 
 /**
- * What a note adds to the story view: its chip, the number it keeps, its key rule, and what a
- * paste may bring in
+ * What a note adds to the story view: its chip, the number it keeps first, its key rule, and what
+ * a paste may bring in
  */
 export function noteExtensions(
   main: EditorView,
@@ -385,7 +401,7 @@ export function noteExtensions(
 ): StoryExtensions {
   return {
     plugins: [
-      ownMarkRestoration(),
+      ownMarkFirst(),
       keymap({ Backspace: deleteEmptyNote(main, key) }),
     ],
     nodeViews: {

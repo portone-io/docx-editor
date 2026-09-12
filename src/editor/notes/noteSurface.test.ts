@@ -669,4 +669,51 @@ describe("the place before the number a note opens with", () => {
    * what it sweeps away is put back rather than held off: it is the caret a reader writes from
    * that is kept out of that place.
    */
+
+  it("leaves the number standing when a selection across it is typed over", () => {
+    const main = mainView();
+    const story = openNote(main);
+    const { doc } = story.view.state;
+
+    story.view.dispatch(
+      story.view.state.tr.setSelection(
+        TextSelection.create(doc, 1, doc.child(0).nodeSize - 1)
+      )
+    );
+    expect(story.view.state.selection.from).toBe(1);
+
+    story.view.dispatch(story.view.state.tr.insertText("Rewritten"));
+
+    expect(chipElements(written(main))).toEqual(["footnoteRef"]);
+    expect(leadingChip(written(main))).not.toBeNull();
+    expect(storyText(written(main))).toBe("Rewritten\nSecond line");
+  });
+
+  it("puts text an edit wrote before the number back after it", () => {
+    const main = mainView();
+    const story = openNote(main);
+
+    // Not a gesture a reader has, since the caret cannot stand there: what a paste or a plugin
+    // could still write
+    story.view.dispatch(story.view.state.tr.insertText("Ahead", 1));
+
+    expect(chipElements(written(main))).toEqual(["footnoteRef"]);
+    expect(leadingChip(written(main))).not.toBeNull();
+    expect(storyText(written(main))).toBe("AheadFootnote body\nSecond line");
+  });
+
+  it("writes the number first into the file after such an edit", () => {
+    const { main, session } = openMain();
+    const story = openNote(main);
+
+    story.view.dispatch(story.view.state.tr.insertText("Ahead", 1));
+
+    const part = decode(
+      unzipSync(exportDocx(main.state.doc, session))["word/footnotes.xml"]
+    );
+    const entry = part.slice(part.indexOf('<w:footnote w:id="2">'));
+    expect(entry.indexOf("<w:footnoteRef/>")).toBeLessThan(
+      entry.indexOf("Ahead")
+    );
+  });
 });
