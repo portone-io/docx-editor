@@ -25,10 +25,10 @@ import {
   setComposition,
 } from "./support/ime";
 
-/** The number a footnote is called by, as the body draws it */
-function reference(page: Page, label: string) {
+/** The number a note is called by, as the body draws it */
+function reference(page: Page, label: string, kind = "Footnote") {
   return page.locator(
-    `.${editorClassNames.sheet} [aria-label="Footnote ${label}"]`
+    `.${editorClassNames.sheet} [aria-label="${kind} ${label}"]`
   );
 }
 
@@ -260,4 +260,73 @@ test("inserts a footnote on Mod+Alt+F and puts the caret in it", async ({
   await expect(
     page.getByRole("region", { name: "Footnotes on page 1" })
   ).toContainText("A note written where it was added.");
+});
+
+test("types inside an endnote at the end of the document", async ({ page }) => {
+  await openHarness(page, "notes");
+
+  // The endnote stands pages below the text that calls it, so the press on its number is also
+  // what scrolls the reader to it
+  const scrolled = await page.evaluate(() => window.scrollY);
+  await reference(page, "1", "Endnote").click();
+  await untilNoteHoldsTheCaret(page);
+  expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(scrolled);
+
+  await page.keyboard.type(" Written in place.");
+
+  await expect
+    .poll(() => noteText(page, "1", "endnote"))
+    .toContain("Written in place.");
+  expect(await docText(page)).not.toContain("Written in place.");
+  // It is drawn after the last paragraph rather than under the sheet
+  const endnotes = page.getByRole("region", {
+    name: /^Endnotes on page \d+$/,
+  });
+  await expect(endnotes).toContainText("Written in place.");
+  const area = await endnotes.boundingBox();
+  const sheet = await page.locator(`.${editorClassNames.sheet}`).boundingBox();
+  if (!area || !sheet) throw new Error("the endnotes were not drawn");
+  expect(area.y + area.height).toBeLessThanOrEqual(sheet.y + sheet.height + 1);
+});
+
+test("takes the caret back to the reference when an endnote's number is pressed", async ({
+  page,
+}) => {
+  await openHarness(page, "notes");
+  await reference(page, "1", "Endnote").click();
+  await untilNoteHoldsTheCaret(page);
+
+  await openNote(page).locator(`sup.${editorClassNames.noteMark}`).click();
+
+  await expect(openNote(page)).toHaveCount(0);
+  // The caret stands just past the reference, pages above where the note is drawn
+  await page.keyboard.type("!");
+  await expect
+    .poll(() => docText(page))
+    .toContain(
+      "Paragraph 141 keeps the text running down the page.\n!\nParagraph 142"
+    );
+  await expect(reference(page, "1", "Endnote")).toBeInViewport();
+});
+
+test("inserts an endnote on Mod+Alt+D and puts the caret in it", async ({
+  page,
+}) => {
+  await openHarness(page, "notes");
+  await page.locator(`.${editorClassNames.sheet} p`).first().click();
+
+  const modifier = process.platform === "darwin" ? "Meta" : "Control";
+  await page.keyboard.press(`${modifier}+Alt+d`);
+
+  await untilNoteHoldsTheCaret(page);
+  await page.keyboard.type("An endnote written where it was added.");
+  await expect
+    .poll(() => noteText(page, "2", "endnote"))
+    .toContain("An endnote written where it was added.");
+  // It is the first endnote of the document now, so the one the file arrived with moves up
+  await expect(reference(page, "1", "Endnote")).toHaveCount(1);
+  await expect(reference(page, "2", "Endnote")).toHaveCount(1);
+  await expect(
+    page.getByRole("region", { name: /^Endnotes on page \d+$/ }).first()
+  ).toContainText("An endnote written where it was added.");
 });

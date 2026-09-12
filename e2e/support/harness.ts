@@ -120,9 +120,16 @@ export function lockedText(page: Page): Promise<string> {
   return page.evaluate(() => window.docxHarness.lockedText());
 }
 
-/** What one footnote of the open document says, as the document holds it */
-export function noteText(page: Page, id: string): Promise<string> {
-  return page.evaluate((noteId) => window.docxHarness.noteText(noteId), id);
+/** What one note of the open document says, as the document holds it */
+export function noteText(
+  page: Page,
+  id: string,
+  kind: "footnote" | "endnote" = "footnote"
+): Promise<string> {
+  return page.evaluate(
+    ([noteKind, noteId]) => window.docxHarness.noteText(noteKind, noteId),
+    [kind, id] as const
+  );
 }
 
 export function blockHeight(page: Page, blockIndex: number): Promise<number> {
