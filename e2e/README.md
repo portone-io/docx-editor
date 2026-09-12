@@ -28,8 +28,8 @@ IME tests drive Chrome's real composition pipeline through CDP `Input.imeSetComp
 | `preservedContent.spec.ts` | Pointer selection and deletion of preserved chips, and protection of complex-field pieces |
 | `clipboard.spec.ts` | Rich HTML formatting, tables pasted from another application, web images, plain-text paste, text fallback, and preservation of selections when clipboard content is empty |
 | `notesAndPages.spec.ts` | Footnote and endnote placement on the paper, displayed page numbering, and the demo's closing order |
-| `notesEditing.spec.ts` | Typing, formatting and undo inside a footnote, typing inside an endnote at the end of the document, hangul composition across a relayout, over the note's own number and over the whole of a note, the number kept when the note's text is deleted, Escape and a press on a note's number returning the caret, and footnote and endnote insertion from the right-click menu and from each one's shortcut |
-| `responsiveLayout.spec.ts` | Pagination and footnote placement held against the window width and against the reader's zoom, the scroll room the scaled paper takes, horizontal scroll, responsive comments, and viewport-contained popovers |
+| `notesEditing.spec.ts` | Typing, formatting, and undo inside a footnote and an endnote, hangul composition across a relayout and over a note's number, the number kept when a note's text is deleted, Escape and a press on the number returning the caret, and note insertion from the right-click menu and the shortcuts |
+| `responsiveLayout.spec.ts` | Pagination and footnote placement held across window widths and zoom levels, the scroll room the scaled paper takes, horizontal scroll, responsive comments, and viewport-contained popovers |
 | `tableEditing.spec.ts` | Table-separator editing, pointer-based row resizing, and stable page-boundary previews |
 | `numbering.spec.ts` | Marker-only character formatting and tab, space, and empty suffix spacing |
 | `tabs.spec.ts` | Tab insertion, formatting, caret and selection geometry, custom alignment, wrapping, links, and RTL layout |
