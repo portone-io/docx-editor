@@ -31,6 +31,7 @@ A display value is worked out again whenever what it depends on moves, through o
 A deriver answers for the node types it names and hands back, for one node, the display attrs that node, its descendants, and their existing run marks should carry; the walk writes one step per node whose attrs would change and reads only the display attrs of what a deriver hands back, so a deriver cannot write a source attr.
 The interface stands in `schema`, below `docx` and `editor`, so that a module of either can write a deriver; `editor/plugins/displayDerivation` registers them (`paragraphDisplay` for paragraph and run style values, `tableDisplay` for the lines of a table's cells) and runs the walk after every edit, over the nodes the edit moved, and over every node when the document snapshot (`editor/editorDocument`) is replaced.
 A state is built over a document whose every display value was worked out against the state's own snapshot, so a document opened without one draws as one that laid nothing down.
+A note reference's label is a display value of an inline node, which the walk does not reach: `editor/plugins/noteNumbering` works the labels out again through `docx/notes/numbering` after a change that moves a reference or a section break, under the same pass and the same history rule, and import labels the opened document through the same function.
 
 The transaction the walk appends carries the display-only pass: `transactionAllowed` in `schema/guards` lets a transaction through every guard when it carries the pass and every step of it, judged off the role table alone, changes display attrs and nothing else.
 The pass is a claim rather than a key: a step that rewrites a source attr, a lock flag included, or puts content anywhere fails it, and the transaction is judged as any edit.
@@ -40,6 +41,8 @@ The re-derivation after an edit goes to the history with that edit; the one afte
 
 Export writes every part beside the body through a list of part planners (`docx/partPlan`).
 A planner answers with the parts it rewrites and declares what a part it adds needs through the one relationships writer and the one content types writer every planner shares, so those two parts are written once from everything asked for; a part's children are put in by `ooxml/partSplice`, which cuts the original text at its root and leaves every other byte as it arrived.
+The list is `docx/partPlanners`, where each planner stands beside the side stories it writes and the changes to one it carries; the writer runs the planners off that list and the export invariants read what is written off the same list, so a change no planner carries is refused rather than dropped.
+Whether a side story changed is judged once, in `docx/storyParts`, for every story writer and the export invariants alike; a part holding one entry per story, such as the Footnotes part, is written by `storyEntriesPlanner`.
 Every rewritten part is parsed before the package is repacked.
 
 A protection level is a policy object in `docx/protectionPolicy`: the package parts it lets a change rewrite, the grammar their entries are written in, and how the document story is compared once its own markup is taken out.
@@ -68,7 +71,7 @@ A folder may import itself and folders with a lower rank only.
 Folders at the same rank cannot import each other, so `page` and `table` share page data through `docx`.
 Subfolders are organizational and inherit the rank of their top-level folder. They split a feature's
 parsing, writing, rendering, or interaction responsibilities without creating another layer.
-For example, `docx/formatting` separates direct-format parsing, the run property table, style layering, and the hierarchy resolver, `page/kinds`
+For example, `docx/formatting` separates direct-format parsing, the run property table, style layering, and the hierarchy resolver, `docx/notes` reads the footnotes and endnotes parts, numbers the references to them, and writes the footnotes part, `page/kinds`
 gives each breakable block shape its own measurer and decorator, `editor/clipboard` holds the clipboard's props and the readers a paste is read with
 in one plugin and leaves what a copy goes out as to `schema/clipboard`, while
 `editor/commands/comments` and `editor/commands/formatting` separate shared models, reads, and edits.

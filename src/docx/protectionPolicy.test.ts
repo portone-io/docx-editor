@@ -19,6 +19,7 @@ import type {
   onlyCommentsChangedBy,
 } from "./commentOnlyChange";
 import { commentsPlanner } from "./comments/writing";
+import { NO_FIDELITY_COLLECTOR } from "./fidelity";
 import { importDocx } from "./importDocx";
 import { CONTENT_TYPES_PATH, contentTypeWriter } from "./packageParts";
 import {
@@ -141,6 +142,7 @@ describe("the comments policy and the comment part planners", () => {
     const planned = commentsPlanner.plan(state.doc, session, {
       relationships: writer,
       contentTypes,
+      notes: NO_FIDELITY_COLLECTOR,
     });
     if (planned === null) throw new Error("the planners wrote nothing");
 

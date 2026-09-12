@@ -7,6 +7,8 @@ import {
   fixtureNames,
   makeDeclaredDocx,
   makeDocx,
+  makeHeadersFootersDocx,
+  makeNotesDocx,
   makeNumberedDocx,
   producerFixtureNames,
   readFixture,
@@ -25,11 +27,19 @@ import {
 } from "../editor/createEditor";
 import type { DocxExportError } from "../ooxml/errors";
 import { docxSchema } from "../schema";
+import {
+  STORIES_ATTR,
+  type StoryKey,
+  storiesOf,
+  storyKey,
+  storyNodeOf,
+} from "../schema/stories";
 import { withEditedFirst } from "./__testing__/blockEdits";
 import { commentReferencesIn } from "./comments";
 import { exportDocx } from "./exportDocx";
 import { importDocx } from "./importDocx";
 import { exportProblems } from "./invariants";
+import { storyFromText } from "./story";
 
 const run = (text: string) =>
   `<w:r><w:t xml:space="preserve">${text}</w:t></w:r>`;
@@ -469,6 +479,227 @@ describe("comment part roots", () => {
       {
         code: "malformed-xml",
         message: "the comments part has no comments root element",
+      },
+    ]);
+  });
+});
+
+describe("unique identities in a header", () => {
+  it("a preserved block standing twice in an edited header is an unsupported-content problem with no position", () => {
+    const parts = unzipSync(makeHeadersFootersDocx());
+    parts["word/header1.xml"] = new TextEncoder().encode(
+      `<w:hdr xmlns:w="${W_NS}">${paragraph("Head")}` +
+        '<w:customXml w:uri="urn:placeholder" w:element="kept"/></w:hdr>'
+    );
+    const opened = importDocx(zipSync(parts));
+    const key = storyKey("header", "word/header1.xml");
+    const story = storyNodeOf(opened.doc, key);
+    if (!story) throw new Error("the header was not read");
+    const placeholder = story.child(1);
+    const twice = story.copy(
+      Fragment.from([story.child(0), placeholder, placeholder])
+    );
+    const edited = opened.doc.type.create(
+      {
+        ...opened.doc.attrs,
+        [STORIES_ATTR]: { ...storiesOf(opened.doc), [key]: twice.toJSON() },
+      },
+      opened.doc.content
+    );
+
+    const problems = exportProblems(edited, opened.session);
+    expect(problems).toEqual([
+      {
+        code: "unsupported-content",
+        message: "a preserved block stands in two places (rawBlock)",
+      },
+    ]);
+    expect(() => exportDocx(edited, opened.session)).toThrowError(
+      expect.objectContaining<Partial<DocxExportError>>({
+        code: problems[0]?.code,
+        message: problems[0]?.message,
+      })
+    );
+  });
+});
+
+/** The document with this story standing under its key, the way an edit writes one */
+function withStory(doc: PMNode, key: StoryKey, story: PMNode): PMNode {
+  return doc.type.create(
+    {
+      ...doc.attrs,
+      [STORIES_ATTR]: { ...storiesOf(doc), [key]: story.toJSON() },
+    },
+    doc.content
+  );
+}
+
+/** The problems the document reports, and that the export throws the first of them */
+function refusedWith(doc: PMNode, opened: ReturnType<typeof importDocx>) {
+  const problems = exportProblems(doc, opened.session);
+  expect(() => exportDocx(doc, opened.session)).toThrowError(
+    expect.objectContaining<Partial<DocxExportError>>({
+      code: problems[0]?.code,
+      message: problems[0]?.message,
+    })
+  );
+  return problems;
+}
+
+describe("stories no part writer writes", () => {
+  it("refuses an export that changed an endnote story no planner writes", () => {
+    const opened = importDocx(makeNotesDocx());
+    const edited = withStory(
+      opened.doc,
+      storyKey("endnote", "3"),
+      storyFromText("Rewritten")
+    );
+
+    expect(refusedWith(edited, opened)).toEqual([
+      {
+        code: "unsupported-content",
+        message:
+          "the endnote:3 story was edited, and no part writer carries that into the file",
+      },
+    ]);
+  });
+
+  it("refuses an export that added a header story, which the header writer leaves out", () => {
+    const opened = importDocx(makeHeadersFootersDocx());
+    const edited = withStory(
+      opened.doc,
+      storyKey("header", "word/header9.xml"),
+      storyFromText("Added")
+    );
+
+    expect(refusedWith(edited, opened)).toEqual([
+      {
+        code: "unsupported-content",
+        message:
+          "the header:word/header9.xml story was added, and no part writer carries that into the file",
+      },
+    ]);
+  });
+
+  it("refuses an export that removed a header story, which the header writer leaves out", () => {
+    const opened = importDocx(makeHeadersFootersDocx());
+    const key = storyKey("header", "word/header1.xml");
+    const kept = Object.fromEntries(
+      Object.entries(storiesOf(opened.doc)).filter(([held]) => held !== key)
+    );
+    const edited = opened.doc.type.create(
+      { ...opened.doc.attrs, [STORIES_ATTR]: kept },
+      opened.doc.content
+    );
+
+    expect(refusedWith(edited, opened)).toEqual([
+      {
+        code: "unsupported-content",
+        message:
+          "the header:word/header1.xml story was removed, and no part writer carries that into the file",
+      },
+    ]);
+  });
+
+  it("refuses an export that changed a separator entry, which goes back out as it arrived", () => {
+    const opened = importDocx(makeNotesDocx());
+    const edited = withStory(
+      opened.doc,
+      storyKey("footnote", "-1"),
+      storyFromText("Not a line")
+    );
+
+    expect(refusedWith(edited, opened)).toEqual([
+      {
+        code: "unsupported-content",
+        message:
+          "the footnote:-1 story was edited, and no part writer carries that into the file",
+      },
+    ]);
+  });
+});
+
+describe("the footnotes part", () => {
+  it("refuses to add a footnotes part to a package with no content types", () => {
+    const opened = importDocx(
+      makeDocx(
+        `<w:p>${run("Text")}<w:r><w:footnoteReference w:id="1"/></w:r></w:p>`
+      )
+    );
+    const edited = withStory(
+      opened.doc,
+      storyKey("footnote", "1"),
+      storyFromText("A new note")
+    );
+
+    expect(refusedWith(edited, opened)).toEqual([
+      {
+        code: "missing-content-types",
+        message:
+          "cannot add a part to a package that has no [Content_Types].xml",
+      },
+    ]);
+  });
+
+  it("refuses a footnote story added under an id no w:id could be written from", () => {
+    const opened = importDocx(makeNotesDocx());
+    const edited = withStory(
+      opened.doc,
+      storyKey("footnote", "abc"),
+      storyFromText("A new note")
+    );
+
+    expect(refusedWith(edited, opened)).toEqual([
+      {
+        code: "unsupported-content",
+        message:
+          "the footnote:abc story is named by no whole number, and a w:footnote is identified by one",
+      },
+    ]);
+  });
+
+  it("reports a footnotes part with no root once a footnote in it changed", () => {
+    const parts = unzipSync(makeNotesDocx());
+    parts["word/footnotes.xml"] = new TextEncoder().encode(
+      `<w:notes xmlns:w="${W_NS}"><w:footnote w:id="2">${paragraph("Body")}</w:footnote></w:notes>`
+    );
+    const opened = importDocx(zipSync(parts));
+
+    expect(exportProblems(opened.doc, opened.session)).toEqual([]);
+    const edited = withStory(
+      opened.doc,
+      storyKey("footnote", "2"),
+      storyFromText("Rewritten")
+    );
+    expect(refusedWith(edited, opened)).toEqual([
+      {
+        code: "malformed-xml",
+        message: "the footnotes part has no footnotes root element",
+      },
+    ]);
+  });
+
+  it("a preserved block standing twice in an edited footnote is an unsupported-content problem with no position", () => {
+    const parts = unzipSync(makeNotesDocx());
+    parts["word/footnotes.xml"] = new TextEncoder().encode(
+      `<w:footnotes xmlns:w="${W_NS}"><w:footnote w:id="2">${paragraph("Note")}` +
+        '<w:customXml w:uri="urn:placeholder" w:element="kept"/></w:footnote></w:footnotes>'
+    );
+    const opened = importDocx(zipSync(parts));
+    const key = storyKey("footnote", "2");
+    const story = storyNodeOf(opened.doc, key);
+    if (!story) throw new Error("the footnote was not read");
+    const placeholder = story.child(1);
+    const edited = withStory(
+      opened.doc,
+      key,
+      story.copy(Fragment.from([story.child(0), placeholder, placeholder]))
+    );
+
+    expect(refusedWith(edited, opened)).toEqual([
+      {
+        code: "unsupported-content",
+        message: "a preserved block stands in two places (rawBlock)",
       },
     ]);
   });

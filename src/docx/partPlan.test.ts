@@ -11,6 +11,7 @@ import {
 import { encodeUtf8 } from "../ooxml/xml";
 import { docxSchema } from "../schema";
 import { exportThroughPlanners } from "./exportDocx";
+import { NO_FIDELITY_COLLECTOR } from "./fidelity";
 import { importDocx } from "./importDocx";
 import { CONTENT_TYPES_PATH, contentTypeWriter } from "./packageParts";
 import {
@@ -35,6 +36,7 @@ function emptyContext(): PartPlanContext {
     contentTypes: contentTypeWriter(
       new Map([[CONTENT_TYPES_PATH, encodeUtf8(types, false)]])
     ),
+    notes: NO_FIDELITY_COLLECTOR,
   };
 }
 

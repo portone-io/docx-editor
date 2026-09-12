@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { unzipSync, zipSync } from "fflate";
-import type { Node as PMNode } from "prosemirror-model";
+import { Fragment, type Node as PMNode } from "prosemirror-model";
 import { describe, expect, it } from "vitest";
 import {
   bytesEqual,
@@ -31,6 +31,7 @@ import { storyFromText } from "./story";
 const encoder = new TextEncoder();
 const W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 const MC_NS = "http://schemas.openxmlformats.org/markup-compatibility/2006";
+const W14_NS = "http://schemas.microsoft.com/office/word/2010/wordml";
 const HEADER_REL =
   "http://schemas.openxmlformats.org/officeDocument/2006/relationships/header";
 
@@ -433,6 +434,36 @@ describe("writing an edited header story back", () => {
     expect(shown(sectionStories(edited, opened.session), "headers", 1, 1)).toBe(
       "Edited first header"
     );
+  });
+
+  it("writes an edited header whose pasted paragraph repeats a paragraph id without the repeat", () => {
+    const parts = unzipSync(makeHeadersFootersDocx());
+    parts["word/header1.xml"] = encoder.encode(
+      `<w:hdr xmlns:w="${W_NS}" xmlns:w14="${W14_NS}">` +
+        '<w:p w14:paraId="1EADBEEF" w14:textId="77777777">' +
+        "<w:r><w:t>Head</w:t></w:r></w:p></w:hdr>"
+    );
+    const opened = importDocx(zipSync(parts));
+    const key = storyKey("header", "word/header1.xml");
+    const story = storyNodeOf(opened.doc, key);
+    const original = story?.firstChild;
+    if (!story || !original) throw new Error("the header has no paragraph");
+    const pasted = original.type.create(original.attrs, [
+      docxSchema.text("Pasted"),
+    ]);
+    const edited = withStory(
+      opened.doc,
+      key,
+      story.copy(Fragment.from([original, pasted]))
+    );
+
+    const written = decode(
+      unzipSync(exportDocx(edited, opened.session))["word/header1.xml"]
+    );
+    expect(written).toContain("Head");
+    expect(written).toContain("Pasted");
+    expect(written.match(/w14:paraId="1EADBEEF"/g)).toHaveLength(1);
+    expect(written.match(/w14:textId=/g)).toHaveLength(1);
   });
 
   it("reads an edited header back as the story it was written as", () => {

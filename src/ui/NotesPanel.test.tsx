@@ -53,4 +53,28 @@ describe("the document notes panel", () => {
     expect(panel?.textContent).toContain("Endnote 1Endnote body");
     unmount();
   });
+
+  it("names a reference whose own mark follows it by its kind alone", () => {
+    let unmount = () => {};
+    act(() => {
+      unmount = renderInto(
+        host,
+        <DocxEditor
+          document={makeNotesDocx(
+            '<w:p><w:r><w:footnoteReference w:id="2" w:customMarkFollows="1"/>' +
+              '<w:t xml:space="preserve">*</w:t></w:r></w:p>'
+          )}
+          mode={EDITING}
+          renderImportError={() => null}
+        />
+      );
+    });
+
+    expect(host.querySelector('[aria-label="Footnote"]')?.textContent).toBe("");
+    expect(host.querySelector('[aria-label="Footnote "]')).toBeNull();
+    expect(
+      host.querySelector('section[aria-label="Document notes"]')?.textContent
+    ).toContain("FootnoteFootnote body");
+    unmount();
+  });
 });

@@ -131,8 +131,9 @@ export const NODE_ATTR_ROLES: AttrTable = {
     id: { role: "source", class: "identity" },
     customMarkFollows: { role: "source", class: "model" },
     referenceXml: { role: "source", class: "preserved" },
-    // Worked out from the notes part as the document was opened, and the writer puts back the
-    // reference alone: a note renumbered around an edit is the same reference it was
+    // Worked out again from the reference order and the numbering properties after every edit that
+    // moves them (`docx/notes/numbering`), and the writer puts back the reference alone: a note
+    // renumbered around an edit is the same reference it was
     label: { role: "display", class: "derived" },
   },
   rawRunContent: {

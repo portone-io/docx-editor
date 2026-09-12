@@ -21,10 +21,16 @@ import {
 import { isOnElement } from "../ooxml/units";
 import { decodeUtf8, encodeUtf8, parseXml, R_NS, W_NS } from "../ooxml/xml";
 import { docxSchema } from "../schema";
-import { sameSource } from "../schema/sourceEquality";
-import { type StoryKey, storyKey, storyNodeOf } from "../schema/stories";
+import {
+  HEADER_FOOTER_KINDS,
+  type HeaderFooterKind,
+  type StoryKey,
+  storyKey,
+} from "../schema/stories";
 import { NO_EXPORT_REFS } from "./exportRefs";
+import type { FidelityCollector } from "./fidelity";
 import { type FieldSpan, fieldSpans, isFieldCharacter } from "./fields";
+import { withUniqueStoryIdentities } from "./identities";
 import { relatedPartPath } from "./packageParts";
 import type { PartPlanner } from "./partPlan";
 import { readRelationships, relsPathOf, resolveTarget } from "./relationships";
@@ -41,6 +47,7 @@ import {
   type StoryDeps,
   storyLeafText,
 } from "./story";
+import { storyChangesOf } from "./storyParts";
 
 /** One story a section may show, as the document currently says it */
 export interface HeaderFooterContent {
@@ -85,9 +92,10 @@ export interface HeaderFooterStories {
   readonly evenAndOdd: boolean;
 }
 
-const PART_ROOT = { header: "hdr", footer: "ftr" } as const;
-
-type HeaderFooterKind = keyof typeof PART_ROOT;
+const PART_ROOT: Readonly<Record<HeaderFooterKind, string>> = {
+  header: "hdr",
+  footer: "ftr",
+};
 
 function settingsEvenAndOdd(
   parts: Map<string, Uint8Array>,
@@ -104,9 +112,11 @@ function settingsEvenAndOdd(
 }
 
 function kindOf(relationshipType: string): HeaderFooterKind | null {
-  if (relationshipType === `${R_NS}/header`) return "header";
-  if (relationshipType === `${R_NS}/footer`) return "footer";
-  return null;
+  return (
+    HEADER_FOOTER_KINDS.find(
+      (kind) => relationshipType === `${R_NS}/${kind}`
+    ) ?? null
+  );
 }
 
 /**
@@ -354,29 +364,43 @@ export function headerFooterText(
  */
 const HEADER_MARKUP: RootDeclarations = { namespaces: { w: NAMESPACES.w } };
 
-/** Every header and footer part whose story the document no longer says as the package said it */
+/** A header or footer part holds its one story, so that story alone is the scope of the identity pass */
+function writtenPart(
+  imported: ImportedStory,
+  current: PMNode,
+  session: SessionStore,
+  notes: FidelityCollector
+): Uint8Array {
+  const written = withUniqueStoryIdentities([{ story: current, frozen: false }])
+    .map((story) =>
+      serializeStory(story, imported, imported, {
+        ...NO_EXPORT_REFS,
+        notes,
+        session,
+      })
+    )
+    .join("");
+  const hadBom = decodeUtf8(
+    session.parts.get(imported.partPath) ?? new Uint8Array()
+  ).hadBom;
+  return encodeUtf8(ensureRootDeclarations(written, HEADER_MARKUP), hadBom);
+}
+
 function rewrittenParts(
   doc: PMNode,
-  session: SessionStore
+  session: SessionStore,
+  notes: FidelityCollector
 ): ReadonlyMap<string, Uint8Array> | null {
-  const parts = new Map<string, Uint8Array>();
-  for (const [key, imported] of session.stories) {
-    if (imported.kind !== "header" && imported.kind !== "footer") continue;
-    const current = storyNodeOf(doc, key);
-    if (current === null || sameSource(current, imported.doc)) continue;
-    const written = serializeStory(current, imported, imported, {
-      ...NO_EXPORT_REFS,
-      session,
-    });
-    const hadBom = decodeUtf8(
-      session.parts.get(imported.partPath) ?? new Uint8Array()
-    ).hadBom;
-    parts.set(
+  const edited = HEADER_FOOTER_KINDS.flatMap((kind) =>
+    storyChangesOf(doc, session, kind)
+  ).flatMap((change) => (change.change === "edited" ? [change] : []));
+  if (edited.length === 0) return null;
+  return new Map(
+    edited.map(({ imported, current }) => [
       imported.partPath,
-      encodeUtf8(ensureRootDeclarations(written, HEADER_MARKUP), hadBom)
-    );
-  }
-  return parts.size === 0 ? null : parts;
+      writtenPart(imported, current, session, notes),
+    ])
+  );
 }
 
 /**
@@ -387,5 +411,5 @@ function rewrittenParts(
  */
 export const headerFooterPlanner: PartPlanner = {
   name: "headers and footers",
-  plan: (doc, session) => rewrittenParts(doc, session),
+  plan: (doc, session, context) => rewrittenParts(doc, session, context.notes),
 };

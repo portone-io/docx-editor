@@ -3,8 +3,8 @@
 import type { Node as PMNode } from "prosemirror-model";
 import type { EditorState } from "prosemirror-state";
 import { Decoration, DecorationSet } from "prosemirror-view";
-import type { NoteKind } from "../../docx/notes";
 import { storyKey, storyOf, storyText } from "../../docx/story";
+import type { NoteKind } from "../../schema/stories";
 import { documentProjection } from "../plugins/documentProjection";
 
 export interface DocumentNote {
@@ -51,7 +51,7 @@ function deriveNotes(doc: PMNode): NoteProjection {
     if (text !== "") {
       tooltips.push(Decoration.node(pos, pos + node.nodeSize, { title: text }));
     }
-    const key = `${kind}:${id}`;
+    const key = storyKey(kind, id);
     if (seen.has(key)) return true;
     seen.add(key);
     notes.push({

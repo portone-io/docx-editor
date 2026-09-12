@@ -51,7 +51,7 @@ import {
   tableStyle,
 } from "../styles/inlineStyle";
 import { imageNodeSpec, runMarkSpec } from "./rendering";
-import type { StoryJson } from "./stories";
+import { noteName, type StoryJson } from "./stories";
 import { WRAPPER_ATTRS, WRAPPER_GROUP } from "./wrappers";
 
 /** What a document holding no side story carries, shared so that two such documents compare equal */
@@ -938,7 +938,6 @@ export const docxSchema = new Schema({
         referenceXml: { default: null },
       },
       toDOM(node) {
-        const kind = node.attrs.kind === "endnote" ? "Endnote" : "Footnote";
         const label = text(node.attrs.label) ?? "?";
         return [
           "sup",
@@ -950,7 +949,10 @@ export const docxSchema = new Schema({
             "data-custom-mark-follows":
               node.attrs.customMarkFollows === true ? "1" : undefined,
             "data-reference-xml": text(node.attrs.referenceXml),
-            "aria-label": `${kind} ${label}`,
+            "aria-label": noteName(
+              node.attrs.kind === "endnote" ? "endnote" : "footnote",
+              label
+            ),
           },
           node.attrs.customMarkFollows === true ? "" : label,
         ];
