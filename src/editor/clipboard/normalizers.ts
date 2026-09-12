@@ -336,27 +336,35 @@ export const detachAnchors: SliceNormalizer = (slice, { move }) =>
  * A reference no remembered note answers for points at nothing here: a copy from another editor or
  * another document numbers its notes against its own file, and markup naming one says nothing
  * about what it said. It goes the way the other anchors do.
+ *
+ * Which kinds of note this answers for is not its own to choose: `EDITABLE_NOTE_KINDS`
+ * (`schema/stories`) is the one value that says so, and the copy and the paste read it three
+ * places over - `ANCHORS` above has already dropped a reference of any other kind, and a copy
+ * remembers the stories of the editable kinds alone (`./internalChannel`, `./htmlReader`).
  */
-export const duplicateNotes =
-  (kinds: readonly NoteKind[] = EDITABLE_NOTE_KINDS): SliceNormalizer =>
-  (slice, { move, noteStories, startNote }) =>
-    move
-      ? slice
-      : mapSliceNodes(slice, (node) => {
-          if (node.type !== docxSchema.nodes.noteReference) return node;
-          const kind = kinds.find((candidate) => candidate === node.attrs.kind);
-          const id: unknown = node.attrs.id;
-          if (kind === undefined || typeof id !== "string") return null;
-          const story = noteStories.get(storyKey(kind, id));
-          if (story === undefined) return null;
-          // The XML the reference arrived as names the note it was copied from, so the pasted one
-          // is written from its attrs instead
-          return withAttrs(node, {
-            ...node.attrs,
-            id: startNote(kind, story),
-            referenceXml: null,
-          });
+export const duplicateNotes: SliceNormalizer = (
+  slice,
+  { move, noteStories, startNote }
+) =>
+  move
+    ? slice
+    : mapSliceNodes(slice, (node) => {
+        if (node.type !== docxSchema.nodes.noteReference) return node;
+        const kind = EDITABLE_NOTE_KINDS.find(
+          (candidate) => candidate === node.attrs.kind
+        );
+        const id: unknown = node.attrs.id;
+        if (kind === undefined || typeof id !== "string") return null;
+        const story = noteStories.get(storyKey(kind, id));
+        if (story === undefined) return null;
+        // The XML the reference arrived as names the note it was copied from, so the pasted one
+        // is written from its attrs instead
+        return withAttrs(node, {
+          ...node.attrs,
+          id: startNote(kind, story),
+          referenceXml: null,
         });
+      });
 
 /**
  * Works out again what the pasted paragraphs are drawn with.
@@ -397,7 +405,7 @@ export const rederiveDisplay: SliceNormalizer = (slice, { state }) => {
 export const DEFAULT_NORMALIZERS: readonly SliceNormalizer[] = [
   dropSourceIdentity,
   detachAnchors,
-  duplicateNotes(),
+  duplicateNotes,
   rekeyNumbering,
   rederiveDisplay,
 ];

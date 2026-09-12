@@ -319,6 +319,39 @@ describe("normalizing a pasted slice", () => {
     expect(written?.firstChild?.attrs.srcId).toBeNull();
   });
 
+  /**
+   * Which kinds a paste puts a note back for is `EDITABLE_NOTE_KINDS` and nothing a caller hands
+   * in: the reference of every other kind is gone before the note duplication is reached.
+   */
+  it("drops an endnote reference whose story travelled with the copy", () => {
+    const state = stateOf(makeNotesDocx());
+    const story = storyNodeOf(state.doc, storyKey("endnote", "3"));
+    if (story === null) throw new Error("the document holds no endnote 3");
+    const calling = paragraph({}, [
+      docxSchema.text("carried"),
+      docxSchema.nodes.noteReference.create({
+        id: "3",
+        kind: "endnote",
+        label: "1",
+        referenceXml: '<w:endnoteReference w:id="3"/>',
+      }),
+    ]);
+
+    const normalized = normalizePasted(
+      {
+        ...pasted(calling),
+        noteStories: new Map([[storyKey("endnote", "3"), story]]),
+      },
+      state,
+      false
+    );
+
+    const first = blocks(normalized)[0];
+    expect(first?.textContent).toBe("carried");
+    expect(first?.childCount).toBe(1);
+    expect(normalized.newStories?.size ?? 0).toBe(0);
+  });
+
   it("drops a footnote reference pasted from another editor", () => {
     const state = stateOf(makeNotesDocx());
 
