@@ -32,7 +32,6 @@ import { sectionIn, sectionsOf } from "./docx/sections";
 import type { SessionStore } from "./docx/session";
 import type { CommentAuthor } from "./editor/commands/commentCommands";
 import { activeLinkSpan } from "./editor/commands/linkCommands";
-import { openEndnote, openFootnote } from "./editor/commands/noteCommands";
 import { createEditorView, editorStateForSession } from "./editor/createEditor";
 import { sectionGeometryAt } from "./editor/documentStyles";
 import { storyDocument } from "./editor/editorDocument";
@@ -44,7 +43,10 @@ import {
 import { commentProjection } from "./editor/plugins/commentDecorations";
 import { setProtection } from "./editor/plugins/documentProtection";
 import { isLinkPanelOpen } from "./editor/plugins/linkPanel";
-import { requestedNote } from "./editor/plugins/noteNavigation";
+import {
+  openNoteCommand,
+  requestedNote,
+} from "./editor/plugins/noteNavigation";
 import { tableMenuAnchor } from "./editor/plugins/tableContextMenu";
 import { textMenuAnchor } from "./editor/plugins/textContextMenu";
 import { DocxImportError, type DocxImportErrorCode } from "./ooxml/errors";
@@ -144,11 +146,9 @@ const NOTE_SURFACE: StorySurfaceBinding = {
   documentFor: (main, snapshot, row) =>
     storyDocument(snapshot, sectionGeometryAt(main, row.referencePos)),
   requestedIn: requestedNote,
-  openIn: (main, row) =>
-    runOn(
-      main,
-      row.kind === "endnote" ? openEndnote(row.id) : openFootnote(row.id)
-    ),
+  // The kind's own public command is what a consumer calls; here the kind is a value the row
+  // carries, so the factory behind the two takes it
+  openIn: (main, row) => runOn(main, openNoteCommand(row.kind, row.id)),
 };
 
 /** What a mode hands the reader, which is everything the component reads off the kind */
