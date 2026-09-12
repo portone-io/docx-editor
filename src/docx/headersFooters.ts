@@ -21,7 +21,12 @@ import {
 import { isOnElement } from "../ooxml/units";
 import { decodeUtf8, encodeUtf8, parseXml, R_NS, W_NS } from "../ooxml/xml";
 import { docxSchema } from "../schema";
-import { type StoryKey, storyKey } from "../schema/stories";
+import {
+  HEADER_FOOTER_KINDS,
+  type HeaderFooterKind,
+  type StoryKey,
+  storyKey,
+} from "../schema/stories";
 import { NO_EXPORT_REFS } from "./exportRefs";
 import type { FidelityCollector } from "./fidelity";
 import { type FieldSpan, fieldSpans, isFieldCharacter } from "./fields";
@@ -87,9 +92,10 @@ export interface HeaderFooterStories {
   readonly evenAndOdd: boolean;
 }
 
-const PART_ROOT = { header: "hdr", footer: "ftr" } as const;
-
-type HeaderFooterKind = keyof typeof PART_ROOT;
+const PART_ROOT: Readonly<Record<HeaderFooterKind, string>> = {
+  header: "hdr",
+  footer: "ftr",
+};
 
 function settingsEvenAndOdd(
   parts: Map<string, Uint8Array>,
@@ -106,9 +112,11 @@ function settingsEvenAndOdd(
 }
 
 function kindOf(relationshipType: string): HeaderFooterKind | null {
-  if (relationshipType === `${R_NS}/header`) return "header";
-  if (relationshipType === `${R_NS}/footer`) return "footer";
-  return null;
+  return (
+    HEADER_FOOTER_KINDS.find(
+      (kind) => relationshipType === `${R_NS}/${kind}`
+    ) ?? null
+  );
 }
 
 /**
@@ -355,12 +363,6 @@ export function headerFooterText(
  * - which every one Word writes does - is left exactly as it stands.
  */
 const HEADER_MARKUP: RootDeclarations = { namespaces: { w: NAMESPACES.w } };
-
-/** The two kinds of story a header or footer part holds, one story to a part */
-export const HEADER_FOOTER_KINDS: readonly HeaderFooterKind[] = [
-  "header",
-  "footer",
-];
 
 /** A header or footer part holds its one story, so that story alone is the scope of the identity pass */
 function writtenPart(

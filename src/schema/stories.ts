@@ -10,12 +10,23 @@
 import type { Node as PMNode } from "prosemirror-model";
 import { sameSource } from "./sourceEquality";
 
-export type StoryKind =
-  | "comment"
-  | "footnote"
-  | "endnote"
-  | "header"
-  | "footer";
+/** Which of the two notes parts a note stands in */
+export const NOTE_KINDS = ["footnote", "endnote"] as const;
+
+export type NoteKind = (typeof NOTE_KINDS)[number];
+
+/** The two kinds of story a header or footer part holds, one story to a part */
+export const HEADER_FOOTER_KINDS = ["header", "footer"] as const;
+
+export type HeaderFooterKind = (typeof HEADER_FOOTER_KINDS)[number];
+
+export const STORY_KINDS = [
+  "comment",
+  ...NOTE_KINDS,
+  ...HEADER_FOOTER_KINDS,
+] as const;
+
+export type StoryKind = (typeof STORY_KINDS)[number];
 
 /** `comment:4`, `footnote:2`, `header:word/header1.xml` */
 export type StoryKey = `${StoryKind}:${string}`;
@@ -29,14 +40,6 @@ export interface StoryJson {
 
 /** The attr the stories stand on, named here so the schema and the readers cannot spell it apart */
 export const STORIES_ATTR = "stories";
-
-export const STORY_KINDS: readonly StoryKind[] = [
-  "comment",
-  "footnote",
-  "endnote",
-  "header",
-  "footer",
-];
 
 export function storyKey(kind: StoryKind, id: string): StoryKey {
   return `${kind}:${id}`;

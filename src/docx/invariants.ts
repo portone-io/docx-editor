@@ -21,6 +21,7 @@ import {
 } from "../ooxml/xml";
 import { visitPreservedFragments } from "../schema/preservedFragments";
 import { unattributedCommentAuthors } from "../schema/protection";
+import { HEADER_FOOTER_KINDS } from "../schema/stories";
 
 import {
   commentReferencesIn,
@@ -37,7 +38,6 @@ import {
 import { unrecordedAuthors } from "./comments/people";
 import { currentCommentBodies } from "./comments/writing";
 import type { ExportOptions } from "./exportDocx";
-import { HEADER_FOOTER_KINDS } from "./headersFooters";
 import {
   identityProblems,
   identityProblemsInStories,

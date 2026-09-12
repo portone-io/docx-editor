@@ -441,7 +441,12 @@ export interface NewComment {
 }
 
 // @public
-type NoteKind = "footnote" | "endnote";
+const NOTE_KINDS: readonly ["footnote", "endnote"];
+
+// Warning: (ae-forgotten-export) The symbol "NOTE_KINDS" needs to be exported by the entry point index.d.ts
+//
+// @public (undocumented)
+type NoteKind = (typeof NOTE_KINDS)[number];
 
 // Warning: (ae-forgotten-export) The symbol "ALIGNS" needs to be exported by the entry point index.d.ts
 //

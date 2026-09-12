@@ -12,11 +12,10 @@ import type { Node as PMNode } from "prosemirror-model";
 import { elementXml } from "../../ooxml/element";
 import { wName } from "../../ooxml/names";
 import { R_NS } from "../../ooxml/xml";
-import type { StoryKey } from "../../schema/stories";
+import type { NoteKind, StoryKey } from "../../schema/stories";
 import type { PartPlanner } from "../partPlan";
 import type { SessionStore } from "../session";
 import { type StoryEntriesPart, storyEntriesPlanner } from "../storyParts";
-import type { NoteKind } from "./reading";
 
 const FOOTNOTES_CONTENT_TYPE =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml";

@@ -6,8 +6,9 @@
  * its planner leaves out, is refused before the export rather than dropped without a word.
  */
 
+import { HEADER_FOOTER_KINDS } from "../schema/stories";
 import { commentsPlanner } from "./comments";
-import { HEADER_FOOTER_KINDS, headerFooterPlanner } from "./headersFooters";
+import { headerFooterPlanner } from "./headersFooters";
 import { FOOTNOTES_PART, footnotesPlanner } from "./notes/writing";
 import { numberingPlanner } from "./numberingPlanner";
 import type { PartPlanner } from "./partPlan";

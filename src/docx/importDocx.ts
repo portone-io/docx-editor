@@ -22,6 +22,7 @@ import {
   type XmlParser,
 } from "../ooxml/xml";
 import { docxSchema } from "../schema";
+import type { NoteKind } from "../schema/stories";
 import {
   commentReferencesIn,
   type ImportedComments,
@@ -49,7 +50,6 @@ import { NUMBERING_REL_TYPE } from "./newLists";
 import { withNoteLabels } from "./notes/numbering";
 import {
   type ImportedNotePart,
-  type NoteKind,
   readNoteNumbering,
   readNotes,
   specialNotesOf,

@@ -10,11 +10,8 @@ import {
   parseXml,
   R_NS,
 } from "../../ooxml/xml";
-import { type StoryKey, storyKey } from "../../schema/stories";
+import { type NoteKind, type StoryKey, storyKey } from "../../schema/stories";
 import { relatedPartPath } from "../packageParts";
-
-/** Which of the two notes parts a note stands in */
-export type NoteKind = "footnote" | "endnote";
 
 /**
  * One entry of a notes part as it arrived. What the note says is a story of its own, held on the

@@ -1,15 +1,17 @@
 import { Fragment, type Node as PMNode } from "prosemirror-model";
 import { spellNumber } from "../../numbering/spellers";
-import { type StoryKey, storyKey } from "../../schema/stories";
+import {
+  NOTE_KINDS,
+  type NoteKind,
+  type StoryKey,
+  storyKey,
+} from "../../schema/stories";
 import { type DocumentSection, sectionsOf } from "../sections";
 import {
-  type NoteKind,
   type NoteNumbering,
   type NoteNumberingProps,
   withNoteProps,
 } from "./reading";
-
-const NOTE_KINDS: readonly NoteKind[] = ["footnote", "endnote"];
 
 /** A spelling longer than this is drawn as the count in decimal, which bounds a crafted `w:numStart` */
 const MAX_LABEL_CHARS = 64;

@@ -27,6 +27,7 @@ import {
   serializeXml,
 } from "../ooxml/xml";
 import { docxSchema } from "../schema";
+import type { NoteKind } from "../schema/stories";
 // The two comment modules are named outright rather than through the folder's barrel: the barrel
 // also carries the writer, which reads a story back out (`./story`), and a story is read here
 import { commentParaId, importedCommentReplies } from "./comments/model";
@@ -41,7 +42,6 @@ import {
 } from "./importPreserved";
 import type { ImageSources } from "./media";
 import { NO_IMAGES } from "./media";
-import type { NoteKind } from "./notes/reading";
 import { NO_THEME_FONTS, type ThemeFonts } from "./theme";
 import { wrapperFits, wrapperKindFor } from "./wrappers";
 

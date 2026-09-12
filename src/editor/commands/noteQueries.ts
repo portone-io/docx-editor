@@ -3,8 +3,8 @@
 import type { Node as PMNode } from "prosemirror-model";
 import type { EditorState } from "prosemirror-state";
 import { Decoration, DecorationSet } from "prosemirror-view";
-import type { NoteKind } from "../../docx/notes/reading";
 import { storyKey, storyOf, storyText } from "../../docx/story";
+import type { NoteKind } from "../../schema/stories";
 import { documentProjection } from "../plugins/documentProjection";
 
 export interface DocumentNote {
