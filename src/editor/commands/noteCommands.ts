@@ -1,10 +1,8 @@
 /**
- * Puts a note into the document and writes what one says.
- *
- * The commands are built for a kind of note and exported once per kind, the way `toggleBold` and
- * `toggleItalic` are rather than one command taking a kind: a caller reads what it puts in off the
- * name it calls. Deleting and copying a reference need no command: the edit that does either
- * settles the note it calls (`editor/plugins/noteLifecycle`).
+ * Puts a note into the document and writes what one says, exported once per kind the way
+ * `toggleBold` and `toggleItalic` are rather than as one command taking a kind. Deleting and
+ * copying a reference need no command: the edit that does either settles the note it calls
+ * (`editor/plugins/noteLifecycle`).
  */
 
 import type { Mark, Node as PMNode } from "prosemirror-model";
@@ -50,8 +48,6 @@ function insertNoteTransaction(
     ...wrappersBefore(state.doc, at),
   ]);
   const key = storyKey(kind, id);
-  // The note just put in is the one the reader is about to write, so whatever draws the notes is
-  // told to open it (`editor/plugins/noteNavigation`)
   return requestNote(
     setStory(
       state.tr.insert(at, reference),
@@ -66,11 +62,6 @@ function insertNoteCommand(kind: NoteKind): Command {
   return guardedCommand((state) => insertNoteTransaction(state, kind));
 }
 
-/**
- * The body written as the story the note is held in, and null for a body nobody would take: one
- * that is not a document, one for a separator or a note the text does not call, and one already
- * saying what the note says.
- */
 function noteBodyTransaction(
   state: EditorState,
   kind: NoteKind,
@@ -83,9 +74,9 @@ function noteBodyTransaction(
   const found = noteReferenceAt(state.doc, kind, id);
   if (found === null) return null;
   if (sameStory(storyOf(state.doc, key), body)) return null;
-  // The reference is written again, attr for attr, so the edit reaches the place the note is
-  // called from: a story stands on the document node, where no lock and no protection over that
-  // text would otherwise see it
+  // The reference is rewritten attr for attr so the guards judge the edit at the place the note is
+  // called from: a story stands on the document node, out of reach of a lock or a protection over
+  // that text
   return setStory(state.tr, key, body).setNodeMarkup(
     found.pos,
     null,
@@ -94,10 +85,7 @@ function noteBodyTransaction(
   );
 }
 
-/**
- * What one note of this kind says, written into the document, which is the one way an editing
- * view's edit reaches it (`editor/notes/noteSurface`).
- */
+/** Writes what one note of this kind says; an editing view's edit reaches the document this way */
 export function noteBodyCommand(
   kind: NoteKind,
   id: string,
@@ -107,25 +95,21 @@ export function noteBodyCommand(
 }
 
 /**
- * Puts a footnote reference at the end of the selection, calling a new footnote that holds no text
- * yet, and leaves the selection standing.
- *
- * The footnote is written in the document's footnote text style and its number in the footnote
- * reference style where the document defines them, and in superscript where it does not.
+ * Puts a footnote reference at the end of the selection, calling a new, empty footnote, and asks
+ * for that footnote to be opened. The footnote is written in the document's footnote styles where
+ * it defines them, and in superscript where it does not.
  */
 export const insertFootnote: Command = insertNoteCommand("footnote");
 
-/** Whether a footnote can go in at the end of the selection, which is `insertFootnote` asked without a dispatch */
+/** Whether a footnote can go in at the end of the selection */
 export function canInsertFootnote(state: EditorState): boolean {
   return insertFootnote(state);
 }
 
 /**
- * Replaces what one footnote says with a body of `docxSchema`, a paragraph style, a bold run and a
- * second paragraph included.
- *
- * It applies where an edit at the footnote's first reference would, and never to a separator, a
- * footnote the text does not refer to, or a body saying what the footnote already says.
+ * Replaces what one footnote says with a `doc` node of `docxSchema`. It applies where an edit at
+ * the footnote's first reference would, and never to a separator, a footnote the text does not
+ * refer to, or a body saying what the footnote already says.
  */
 export function setFootnoteBody(id: string, body: PMNode): Command {
   return noteBodyCommand("footnote", id, body);
@@ -133,50 +117,34 @@ export function setFootnoteBody(id: string, body: PMNode): Command {
 
 /**
  * Puts the caret just after a footnote's reference and opens the footnote for editing, which is
- * what a press on its number runs (`editor/plugins/noteNavigation`).
- *
- * It applies wherever the document refers to that footnote and answers the same under every mode:
- * opening a note is reading it. A footnote opened where the body is shut takes no typing.
+ * what a press on its number runs. It applies under every mode, since opening a note is reading
+ * it; a footnote opened where the body is shut takes no typing.
  */
 export function openFootnote(id: string): Command {
   return openNoteCommand("footnote", id);
 }
 
 /**
- * Puts an endnote reference at the end of the selection, calling a new endnote that holds no text
- * yet, and leaves the selection standing.
- *
- * The endnote is written in the document's endnote text style and its number in the endnote
- * reference style where the document defines them, and in superscript where it does not. Where it
- * is drawn is what differs from a footnote: an endnote stands after the last paragraph of the
- * document rather than at the foot of the page its reference is on.
+ * Puts an endnote reference at the end of the selection, calling a new, empty endnote, and asks
+ * for that endnote to be opened; `insertFootnote` for an endnote, which is drawn after the last
+ * paragraph of the document rather than at the foot of a page.
  */
 export const insertEndnote: Command = insertNoteCommand("endnote");
 
-/** Whether an endnote can go in at the end of the selection, which is `insertEndnote` asked without a dispatch */
+/** Whether an endnote can go in at the end of the selection */
 export function canInsertEndnote(state: EditorState): boolean {
   return insertEndnote(state);
 }
 
-/**
- * Replaces what one endnote says with a body of `docxSchema`, a paragraph style, a bold run and a
- * second paragraph included.
- *
- * It applies where an edit at the endnote's first reference would, and never to a separator, an
- * endnote the text does not refer to, or a body saying what the endnote already says.
- */
+/** Replaces what one endnote says with a `doc` node of `docxSchema`, as `setFootnoteBody` does */
 export function setEndnoteBody(id: string, body: PMNode): Command {
   return noteBodyCommand("endnote", id, body);
 }
 
 /**
- * Puts the caret just after an endnote's reference and opens the endnote for editing, which is
- * what a press on its number runs (`editor/plugins/noteNavigation`).
- *
- * It applies wherever the document refers to that endnote and answers the same under every mode:
- * opening a note is reading it. An endnote opened where the body is shut takes no typing. An
- * endnote stands at the end of the document rather than on the page its reference is on, so this
- * is also what takes a reader to it.
+ * Puts the caret just after an endnote's reference and opens the endnote for editing;
+ * `openFootnote` for an endnote, which stands at the end of the document, so this is also what
+ * takes a reader to it.
  */
 export function openEndnote(id: string): Command {
   return openNoteCommand("endnote", id);
