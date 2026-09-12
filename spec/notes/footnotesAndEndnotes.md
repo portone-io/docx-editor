@@ -32,6 +32,8 @@ A footnote the editor inserts takes the id one above every entry the Footnotes p
 An edit that deletes the last reference to a footnote deletes its story, which is how an entry leaves the part; an entry no reference named when the document opened is never deleted this way.
 An edit that copies a footnote reference gives the copy such an id and a copy of the story with its paragraph ids removed, so the part holds no identifier twice.
 A footnote is edited where it is drawn, in one editor view mounted over that note alone, whose every change reaches the document as one story change, so a lock at the reference and the editing protection judge a note edit where they judge a body edit.
+A note keeps the mark its entry opens with - the `w:footnoteRef` or `w:endnoteRef` its number is drawn from - through every edit inside the note: the mark arrives as a preserved fragment no deletion guard answers for, so an edit that carries it off has it put back at the head of the first paragraph that takes it, as the fragment it arrived as, and a note emptied of its text still writes its number.
+An edit that writes a note body from outside that view, through `setFootnoteBody`, writes the body as given and adds no such mark.
 A note is drawn at the foot of the page its first reference stands on, in room the page layout keeps for it, and a note that no longer fits is carried whole to the next page's room.
 Endnote references stay where the file put them, and no surface offers editing an endnote.
 
