@@ -9,11 +9,14 @@ import { FOOTNOTE_BAND, footnoteDemands } from "./footnoteDemands";
 const { doc, paragraph, table, tableRow, tableCell, noteReference } =
   docxSchema.nodes;
 
-function reference(kind: "footnote" | "endnote", id: string) {
+function reference(kind: string, id: string) {
   return noteReference.create({ kind, id, label: id });
 }
 
-/** A plain paragraph, one referring to two footnotes, one referring to an endnote, and a table */
+/**
+ * A plain paragraph, one referring to two footnotes, one referring to an endnote, one referring
+ * to a note of a kind the editor does not model, and a table
+ */
 function referringDocument() {
   return doc.create(null, [
     paragraph.create(null, [docxSchema.text("plain")]),
@@ -24,6 +27,8 @@ function referringDocument() {
       reference("footnote", "4"),
     ]),
     paragraph.create(null, [docxSchema.text("c"), reference("endnote", "3")]),
+    // A kind this editor does not model, which the file may still carry
+    paragraph.create(null, [docxSchema.text("d"), reference("sidenote", "5")]),
     table.create(null, [
       tableRow.create(null, [
         tableCell.create(null, [
@@ -104,20 +109,29 @@ describe("the room footnote references ask for", () => {
     const live = mounted();
 
     expect(
-      footnoteDemands.demandsIn(blockTarget(live, 3)).map((demand) => demand.id)
+      footnoteDemands.demandsIn(blockTarget(live, 4)).map((demand) => demand.id)
     ).toEqual(["footnote:6"]);
+  });
+
+  it("keeps no room for a reference of a kind this editor does not model", () => {
+    const live = mounted();
+
+    // Claiming it would reserve the band's overhead and draw a rule over a strip holding nothing
+    expect(footnoteDemands.demandsIn(blockTarget(live, 3))).toEqual([]);
   });
 
   it("answers a block holding no footnote reference without reading the page", () => {
     const live = mounted();
     const plain = blockTarget(live, 0);
     const endnote = blockTarget(live, 2);
+    const unmodelled = blockTarget(live, 3);
     const nodeDOM = vi.spyOn(live, "nodeDOM");
     const sheetY = vi.fn((viewportY: number) => viewportY);
     const drawn = vi.spyOn(plain.dom, "getBoundingClientRect");
 
     expect(footnoteDemands.demandsIn({ ...plain, sheetY })).toEqual([]);
     expect(footnoteDemands.demandsIn({ ...endnote, sheetY })).toEqual([]);
+    expect(footnoteDemands.demandsIn({ ...unmodelled, sheetY })).toEqual([]);
     expect(nodeDOM).not.toHaveBeenCalled();
     expect(sheetY).not.toHaveBeenCalled();
     expect(drawn).not.toHaveBeenCalled();

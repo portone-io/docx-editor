@@ -10,7 +10,7 @@
 
 import type { Node as PMNode } from "prosemirror-model";
 import { docxSchema } from "../../schema";
-import { type StoryKey, storyKey } from "../../schema/stories";
+import { type NoteKind, type StoryKey, storyKey } from "../../schema/stories";
 import type { MeasureTarget } from "../blockKinds";
 import type { DemandSource, PageDemand } from "./index";
 
@@ -22,6 +22,18 @@ export const FOOTNOTE_BAND = "footnote";
  * very foot of the body, under anything else the page holds there, so this is the last place
  */
 export const FOOTNOTE_BAND_ORDER = 0;
+
+/**
+ * The kinds of note a page keeps room for at its foot.
+ *
+ * Endnotes are listed after the last page instead (`ui/notes/NoteList`), so a page keeps nothing
+ * for them. Asking which kinds belong here rather than which one does not keeps a reference of a
+ * kind this editor does not model yet from claiming a footnote's room: it would reserve the band's
+ * overhead on its page and draw a rule over an empty strip, with nothing to say what went wrong.
+ * These are not `EDITABLE_NOTE_KINDS`, which is about what an edit may rewrite and grows to hold
+ * endnotes.
+ */
+const BAND_NOTE_KINDS: readonly NoteKind[] = ["footnote"];
 
 /** One footnote reference inside a block: where it stands from the block's content start */
 interface HeldReference {
@@ -41,8 +53,11 @@ function footnoteReferencesIn(block: PMNode): readonly HeldReference[] {
   block.descendants((node, offset) => {
     if (node.type !== docxSchema.nodes.noteReference) return true;
     const id: unknown = node.attrs.id;
-    if (node.attrs.kind !== "endnote" && typeof id === "string") {
-      found.push({ offset, key: storyKey("footnote", id) });
+    const kind = BAND_NOTE_KINDS.find(
+      (candidate) => candidate === node.attrs.kind
+    );
+    if (kind !== undefined && typeof id === "string") {
+      found.push({ offset, key: storyKey(kind, id) });
     }
     return false;
   });
