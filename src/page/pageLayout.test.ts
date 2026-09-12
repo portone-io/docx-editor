@@ -945,6 +945,36 @@ describe("the room a page keeps at its foot", () => {
     ]);
   });
 
+  it("does not carry a demand whose id the page it stands on already keeps", () => {
+    const result = laidOut(
+      blocks(
+        // Opening its page, this one cannot move, so its second demand is let go rather than
+        // pushed with it
+        { height: 800, demands: [demand("a", 100), demand("b", 200)] },
+        { height: 50, demands: [demand("a", 10)] }
+      ),
+      band({ a: 100, b: 600 })
+    );
+
+    // "a" is already kept on the first page, so the second place it stands at asks for nothing
+    // more: carrying it as well would draw one footnote at the foot of both pages
+    expect(result.pushes).toEqual([]);
+    expect(result.reserved).toEqual([
+      { page: 1, band: BAND, ids: ["a"], top: PAGE - 100, height: 100 },
+      {
+        page: 2,
+        band: BAND,
+        ids: ["b"],
+        top: 2 * PAGE + STEP - 600,
+        height: 600,
+      },
+    ]);
+    expect(
+      result.reserved.flatMap((room) => room.ids),
+      "one id is kept on one page"
+    ).toEqual(["a", "b"]);
+  });
+
   it("carries every demand that follows one its page let go", () => {
     const result = laidOut(
       blocks(

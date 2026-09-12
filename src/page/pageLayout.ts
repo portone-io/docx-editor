@@ -669,8 +669,12 @@ export function pageLayout({
       const taken = { demand, order: reached };
       reached += 1;
       // Once a page has let a demand go, what stands after it on that page goes too, so no page
-      // keeps a demand ahead of one standing before it
-      if (carried.length > 0) {
+      // keeps a demand ahead of one standing before it. An id this page already keeps is not
+      // behind anything: it is kept once however many places ask for it, so carrying it as well
+      // would leave it recorded here and kept again on the page it was carried to, and one
+      // footnote would be drawn at the foot of both
+      const alreadyKept = room.bands.get(demand.band)?.has(demand.id) === true;
+      if (carried.length > 0 && !alreadyKept) {
         carried.push(taken);
       } else {
         keep(bands, room, taken);
