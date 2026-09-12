@@ -27,15 +27,16 @@ Each body is read as such a story - a document of the editor's own schema, held 
 The Footnotes part is written through the same story writer as a header part: an untouched entry goes back as its bytes, a removed story drops its entry, and a new story is appended after the part's own entries in id order.
 Separator, continuation-separator, and continuation-notice entries go back as they arrived, and an export that changed one is refused.
 A Footnotes part the package lacked is created with a separator and a continuation-separator entry and no reference from `settings.xml`, which the schema leaves optional and which a Google Docs export also omits.
-The Endnotes part is repacked unchanged, and an export that changed an endnote story is refused.
-A footnote the editor inserts takes the id one above every entry the Footnotes part holds, separators and entries no reference names included, and above every id a reference names.
-An edit that deletes the last reference to a footnote deletes its story, which is how an entry leaves the part; an entry no reference named when the document opened is never deleted this way.
-An edit that copies a footnote reference gives the copy such an id and a copy of the story with its paragraph ids removed, so the part holds no identifier twice.
-A footnote is edited where it is drawn, in one editor view mounted over that note alone, whose every change reaches the document as one story change, so a lock at the reference and the editing protection judge a note edit where they judge a body edit.
+The Endnotes part is written the same way, under the names `w:endnotes`, `w:endnote`, and the Endnotes relationship and content type.
+A note the editor inserts takes the id one above every entry its own part holds, separators and entries no reference names included, and above every id a reference of that kind names; the two parts are counted apart.
+An edit that deletes the last reference to a note deletes its story, which is how an entry leaves the part; an entry no reference named when the document opened is never deleted this way.
+An edit that copies a note reference gives the copy such an id and a copy of the story with its paragraph ids removed, so the part holds no identifier twice.
+A note is edited where it is drawn, in one editor view mounted over that note alone, whose every change reaches the document as one story change, so a lock at the reference and the editing protection judge a note edit where they judge a body edit.
 A note keeps the mark its entry opens with - the `w:footnoteRef` or `w:endnoteRef` its number is drawn from - through every edit inside the note: the mark arrives as a preserved fragment no deletion guard answers for, so an edit that carries it off has it put back at the head of the first paragraph that takes it, as the fragment it arrived as, and a note emptied of its text still writes its number.
-An edit that writes a note body from outside that view, through `setFootnoteBody`, writes the body as given and adds no such mark.
-A note is drawn at the foot of the page its first reference stands on, in room the page layout keeps for it, and a note that no longer fits is carried whole to the next page's room.
-Endnote references stay where the file put them, and no surface offers editing an endnote.
+An edit that writes a note body from outside that view, through `setFootnoteBody` or `setEndnoteBody`, writes the body as given and adds no such mark.
+A footnote is drawn at the foot of the page its first reference stands on, in room the page layout keeps for it, and one that no longer fits is carried whole to the next page's room.
+An endnote is drawn after the last block of the document, under a separator drawn once, onto pages of the last section as the endnotes run over.
+A document whose `w:endnotePr/w:pos` asks for `sectEnd` is drawn at the end of the document all the same; only `docEnd`, the default, is honoured.
 
 Observed 2026-09-12 against ECMA-376 5th edition, Part 1, §17.11, and the Transitional schema's `CT_FtnEdn` and `CT_FtnDocProps`.
 
