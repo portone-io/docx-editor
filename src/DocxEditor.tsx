@@ -740,19 +740,21 @@ function DocxEditorSurface(
           link={linkAtCursor}
         />
       )}
-      {live && textAnchor && (
+      {live && textAnchor && surface.active && (
         <TextMenu
           view={live.view}
           state={live.state}
           anchor={textAnchor}
+          takes={surface.active.takes}
           allowLocking={locking}
         />
       )}
-      {live && tableAnchor && (
+      {live && tableAnchor && surface.active && (
         <TableMenu
           view={live.view}
           state={live.state}
           anchor={tableAnchor}
+          takes={surface.active.takes}
           allowLocking={locking}
         />
       )}

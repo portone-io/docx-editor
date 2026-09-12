@@ -8,7 +8,6 @@ import {
   type LucideIcon,
   MessageSquarePlus,
   Scissors,
-  Superscript,
   Trash2,
 } from "lucide-react";
 import { deleteSelection } from "prosemirror-commands";
@@ -16,10 +15,6 @@ import type { EditorState } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 import { Fragment, type ReactElement, useCallback, useRef } from "react";
 import { canAddComment } from "../editor/commands/commentCommands";
-import {
-  canInsertFootnote,
-  insertFootnote,
-} from "../editor/commands/footnoteCommands";
 import {
   lockSelection,
   type SelectionLock,
@@ -32,8 +27,10 @@ import {
   closeTextMenu,
   type TextMenuAnchor,
 } from "../editor/plugins/textContextMenu";
+import type { SurfaceCapabilities } from "../editor/stories/storyView";
 import { editsShut } from "../schema/protectionState";
 import { editorClassNames } from "../styles/classNames";
+import { footnoteItem } from "./footnoteItem";
 import { usePanelAtPoint } from "./panelPlacement";
 import { commandRunner, type RunCommand } from "./runCommand";
 import { modifierLabels } from "./shortcutLabels";
@@ -138,6 +135,8 @@ export interface TextMenuProps {
   view: EditorView;
   state: EditorState;
   anchor: TextMenuAnchor;
+  /** What the surface holding the caret takes, which the entries that put something in ask */
+  takes: SurfaceCapabilities;
   /** Whether the entries that lock and unlock a stretch of text are offered */
   allowLocking?: boolean;
 }
@@ -146,6 +145,7 @@ export function TextMenu({
   view,
   state,
   anchor,
+  takes,
   allowLocking = false,
 }: TextMenuProps): ReactElement {
   const box = useRef<HTMLDivElement | null>(null);
@@ -161,7 +161,7 @@ export function TextMenu({
 
   const selected = !state.selection.empty;
   const shut = selectionTouchesLocked(state);
-  const { mod, alt } = modifierLabels();
+  const { mod } = modifierLabels();
   // A commenter gets what a reader of the text may do with it - copy it, and comment on it - while
   // the entries that change the body wait for a mode that lets the body be changed. The plugin
   // opens this menu over the selected text alone there, so neither entry is drawn dead
@@ -210,16 +210,14 @@ export function TextMenu({
       run: () => run(openCommentComposer),
     },
   ];
-  // A footnote is body content, so the entry waits for a mode that lets the body be changed, the
-  // way Cut, Paste and Delete do. Whether it can run is then the command's own answer and no rule
-  // of this menu's, which is what leaves it dead around locked content
-  if (bodyOpen) {
+  const footnote = footnoteItem(takes);
+  if (footnote !== null && bodyOpen) {
     anchored.push({
-      label: "Insert footnote",
-      icon: Superscript,
-      hint: `${mod}${alt}F`,
-      enabled: canInsertFootnote(state),
-      run: () => run(insertFootnote),
+      label: footnote.label,
+      icon: footnote.icon,
+      hint: footnote.hint,
+      enabled: footnote.command(state),
+      run: () => run(footnote.command),
     });
   }
   groups.push(anchored);
