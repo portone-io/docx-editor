@@ -243,18 +243,21 @@ describe("the delete table row", () => {
 });
 
 /**
- * A footnote goes into a table cell as readily as into a paragraph - a contract's note on a clause
- * - and a right click in a cell with nothing selected opens this menu rather than the text one,
+ * A note goes into a table cell as readily as into a paragraph - a contract's note on a clause -
+ * and a right click in a cell with nothing selected opens this menu rather than the text one,
  * which leaves this the only pointer path to one there.
  */
-describe("the insert footnote row of the table menu", () => {
-  it("puts a footnote at the caret in the clicked cell", () => {
+describe("the insert note rows of the table menu", () => {
+  it.each([
+    ["Insert footnote", "footnote"],
+    ["Insert endnote", "endnote"],
+  ])("puts a %s at the caret in the clicked cell", (row, kind) => {
     const { handle, unmount } = mount(WITHOUT_LOCKED_CELL);
     rightClickCell("Free");
 
-    expect(labels()).toContain("Insert footnote");
-    expect(blocked("Insert footnote")).toBe(false);
-    act(() => item("Insert footnote").click());
+    expect(labels()).toContain(row);
+    expect(blocked(row)).toBe(false);
+    act(() => item(row).click());
 
     const references: string[] = [];
     handle.view.state.doc.descendants((node) => {
@@ -263,19 +266,22 @@ describe("the insert footnote row of the table menu", () => {
       }
       return true;
     });
-    expect(references).toEqual(["footnote"]);
+    expect(references).toEqual([kind]);
     expect(labels()).toHaveLength(0);
     unmount();
   });
 
-  it("is unclickable over a cell the lock wraps whole", () => {
-    const { unmount } = mount(WITH_LOCKED_WRAPPER);
-    rightClickCell("Locked");
+  it.each(["Insert footnote", "Insert endnote"])(
+    "%s is unclickable over a cell the lock wraps whole",
+    (row) => {
+      const { unmount } = mount(WITH_LOCKED_WRAPPER);
+      rightClickCell("Locked");
 
-    expect(labels()).toContain("Insert footnote");
-    expect(blocked("Insert footnote")).toBe(true);
-    unmount();
-  });
+      expect(labels()).toContain(row);
+      expect(blocked(row)).toBe(true);
+      unmount();
+    }
+  );
 });
 
 describe("the table menu over a cell holding locked text", () => {
@@ -403,7 +409,7 @@ describe("the table menu on a keyboard", () => {
     press("ArrowUp");
     expect(focusedRow()).toBe("Insert row above");
     press("ArrowUp");
-    expect(focusedRow()).toBe("Insert footnote");
+    expect(focusedRow()).toBe("Insert endnote");
     unmount();
   });
 
@@ -412,7 +418,7 @@ describe("the table menu on a keyboard", () => {
     rightClickCell("BottomRight");
 
     press("End");
-    expect(focusedRow()).toBe("Insert footnote");
+    expect(focusedRow()).toBe("Insert endnote");
     press("Home");
     expect(focusedRow()).toBe("Insert row above");
     unmount();

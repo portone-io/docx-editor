@@ -309,6 +309,26 @@ test("takes the caret back to the reference when an endnote's number is pressed"
   await expect(reference(page, "1", "Endnote")).toBeInViewport();
 });
 
+test("inserts an endnote from the right click menu and puts the caret in it", async ({
+  page,
+}) => {
+  await openHarness(page, "notes");
+  await page.locator(`.${editorClassNames.sheet} p`).first().click();
+
+  await rightClick(page);
+  await page.getByRole("menuitem", { name: "Insert endnote" }).click();
+
+  await untilNoteHoldsTheCaret(page);
+  await page.keyboard.type("An endnote written from the menu.");
+  await expect
+    .poll(() => noteText(page, "2", "endnote"))
+    .toContain("An endnote written from the menu.");
+  // It is the first endnote of the document now, and both stand after the last paragraph
+  await expect(
+    page.getByRole("region", { name: /^Endnotes on page \d+$/ }).first()
+  ).toContainText("An endnote written from the menu.");
+});
+
 test("inserts an endnote on the endnote key and puts the caret in it", async ({
   page,
 }) => {

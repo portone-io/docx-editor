@@ -12,6 +12,7 @@ import {
   type DocxEditorMode,
 } from "../DocxEditor";
 import { defineClipboardEvent } from "../editor/clipboard/__testing__/clipboardEvent";
+import { NOTE_KEYS } from "../editor/plugins/keymap";
 import { requestedNote } from "../editor/plugins/noteNavigation";
 import { toRunFormat } from "../model/format";
 import { storyKey } from "../schema/stories";
@@ -178,6 +179,7 @@ describe("the text right click menu", () => {
       "Delete",
       "Add comment",
       "Insert footnoteCtrl+Alt+F",
+      "Insert endnoteCtrl+Alt+D",
     ]);
     unmount();
   });
@@ -203,6 +205,9 @@ describe("the text right click menu", () => {
       "Delete",
       "Add comment",
       "Insert footnote⌘⌥F",
+      // The letter is the binding's own, which was read when the keymap was built rather than
+      // from the platform stubbed here (`editor/plugins/keymap`)
+      `Insert endnote⌘⌥${NOTE_KEYS.endnote.slice(-1).toUpperCase()}`,
     ]);
     unmount();
   });
@@ -371,6 +376,7 @@ describe("the lock entries", () => {
       "Delete",
       "Add comment",
       "Insert footnoteCtrl+Alt+F",
+      "Insert endnoteCtrl+Alt+D",
       "Lock",
     ]);
     expect(host.querySelectorAll("hr")).toHaveLength(2);
@@ -435,37 +441,44 @@ describe("the lock entries", () => {
   });
 });
 
-describe("the insert footnote entry", () => {
-  it("puts a footnote at the caret and asks for the new one to be opened", () => {
-    const { handle, unmount } = mount(PARAGRAPH);
-    select(handle, 3, 3);
-    rightClickText();
-    act(() => item("Insert footnote").click());
+describe("the insert note entries", () => {
+  it.each([
+    ["Insert footnote", "footnote"],
+    ["Insert endnote", "endnote"],
+  ] as const)(
+    "%s puts one at the caret and asks for the new one to be opened",
+    (row, kind) => {
+      const { handle, unmount } = mount(PARAGRAPH);
+      select(handle, 3, 3);
+      rightClickText();
+      act(() => item(row).click());
 
-    const reference = handle.view.state.doc.child(0).child(1);
-    expect(reference.type.name).toBe("noteReference");
-    expect(reference.attrs).toMatchObject({ kind: "footnote", id: "1" });
-    // The caret goes into the new footnote through the request the command carries, which is what
-    // opens the view over it (`editor/plugins/noteNavigation`)
-    expect(requestedNote(handle.view.state)?.key).toBe(
-      storyKey("footnote", "1")
-    );
-    expect(host.querySelector('[role="menu"]')).toBeNull();
-    unmount();
-  });
+      const reference = handle.view.state.doc.child(0).child(1);
+      expect(reference.type.name).toBe("noteReference");
+      expect(reference.attrs).toMatchObject({ kind, id: "1" });
+      // The caret goes into the new note through the request the command carries, which is what
+      // opens the view over it (`editor/plugins/noteNavigation`)
+      expect(requestedNote(handle.view.state)?.key).toBe(storyKey(kind, "1"));
+      expect(host.querySelector('[role="menu"]')).toBeNull();
+      unmount();
+    }
+  );
 
-  it("is unclickable where the caret stands in locked content", () => {
-    const { handle, unmount } = mount(WITH_LOCK);
-    // A caret in the middle of the locked text, then one in the plain text before it
-    select(handle, 7, 7);
-    rightClickText();
-    expect(blocked("Insert footnote")).toBe(true);
+  it.each(["Insert footnote", "Insert endnote"])(
+    "%s is unclickable where the caret stands in locked content",
+    (row) => {
+      const { handle, unmount } = mount(WITH_LOCK);
+      // A caret in the middle of the locked text, then one in the plain text before it
+      select(handle, 7, 7);
+      rightClickText();
+      expect(blocked(row)).toBe(true);
 
-    select(handle, 2, 2);
-    rightClickText();
-    expect(blocked("Insert footnote")).toBe(false);
-    unmount();
-  });
+      select(handle, 2, 2);
+      rightClickText();
+      expect(blocked(row)).toBe(false);
+      unmount();
+    }
+  );
 
   it("is not offered to a commenter, whose mode takes no body edit", () => {
     const { handle, unmount } = mount(PARAGRAPH, {
@@ -475,6 +488,7 @@ describe("the insert footnote entry", () => {
     rightClickText();
 
     expect(labels()).not.toContain("Insert footnoteCtrl+Alt+F");
+    expect(labels()).not.toContain("Insert endnoteCtrl+Alt+D");
     unmount();
   });
 
