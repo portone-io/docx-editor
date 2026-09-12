@@ -17,7 +17,6 @@ import {
   forwardRef,
   type ReactElement,
   type ReactNode,
-  useCallback,
   useEffect,
   useImperativeHandle,
   useLayoutEffect,
@@ -36,7 +35,7 @@ import { openFootnote } from "./editor/commands/footnoteCommands";
 import { activeLinkSpan } from "./editor/commands/linkCommands";
 import { createEditorView, editorStateForSession } from "./editor/createEditor";
 import { sectionGeometryAt } from "./editor/documentStyles";
-import { documentOf, storyDocument } from "./editor/editorDocument";
+import { storyDocument } from "./editor/editorDocument";
 import {
   footnoteExtensions,
   footnoteHost,
@@ -52,21 +51,23 @@ import { isLinkPanelOpen } from "./editor/plugins/linkPanel";
 import { requestedNote } from "./editor/plugins/noteNavigation";
 import { tableMenuAnchor } from "./editor/plugins/tableContextMenu";
 import { textMenuAnchor } from "./editor/plugins/textContextMenu";
-import { EVERY_CAPABILITY, type StoryCaret } from "./editor/stories/storyView";
 import { DocxImportError, type DocxImportErrorCode } from "./ooxml/errors";
 import { PageGuides } from "./page/PageGuides";
 import { A4_PAGE_PIXELS, pagePixels, sectionPixels } from "./page/pageLayout";
 import { type PageFace, usePageLayout } from "./page/usePageLayout";
 import type { EditableComments, EditingProtection } from "./schema/protection";
 import { editingProtection, protectionOf } from "./schema/protectionState";
-import { type StoryKey, storyNodeOf } from "./schema/stories";
+import { storyNodeOf } from "./schema/stories";
 import { editorClassNames } from "./styles/classNames";
 import type { FontFallbacks } from "./styles/fontStack";
 import { CommentsPanel, shownBesideThePage } from "./ui/CommentsPanel";
 import { LinkCard } from "./ui/LinkCard";
 import { LinkPanel } from "./ui/LinkPanel";
 import { NotesAroundPage, useNoteBands } from "./ui/notes/noteBands";
-import type { RowEditing } from "./ui/notes/StoryRow";
+import {
+  type StorySurfaceBinding,
+  useStorySurface,
+} from "./ui/notes/useStorySurface";
 import type { DocxEditorPresets } from "./ui/presets";
 import { TableMenu } from "./ui/TableMenu";
 import { TextMenu } from "./ui/TextMenu";
@@ -131,6 +132,27 @@ export type DocxEditorMode =
 function runOn(view: EditorView, command: Command): void {
   command(view.state, (transaction) => view.dispatch(transaction));
 }
+
+/**
+ * What the footnote surface hands the view over one footnote, which is the whole of what this
+ * component knows about a kind of story (`editor/notes/footnoteSurface`).
+ */
+const FOOTNOTE_SURFACE: StorySurfaceBinding = {
+  hostOf: footnoteHost,
+  extensionsOf: (main, row) => {
+    const id = footnoteIdOf(row.key);
+    return id === null ? null : footnoteExtensions(main, id, () => row.label);
+  },
+  // The paper a note wraps at is the paper of the section its reference stands in, which a story
+  // holds no section of its own to say (`editor/documentStyles`)
+  documentFor: (main, snapshot, row) =>
+    storyDocument(snapshot, sectionGeometryAt(main, row.referencePos)),
+  requestedIn: requestedNote,
+  openIn: (main, row) => {
+    const id = footnoteIdOf(row.key);
+    if (id !== null) runOn(main, openFootnote(id));
+  },
+};
 
 /** What a mode hands the reader, which is everything the component reads off the kind */
 interface ModeAffordances {
@@ -560,87 +582,14 @@ function DocxEditorSurface(
     fontFallbacks: mountedFontFallbacks,
   });
 
-  const footnotes = notes.footnotes;
-  // What a footnote's own view is built over: the styles of the document its reference stands in
-  const snapshot = live === null ? null : documentOf(live.state);
-
-  // Which footnote the caret is in. What asks for one is the document's own state - a press on a
-  // number, `openFootnote`, the footnote just inserted - and the body taking the focus back, which
-  // is what Escape and a press on the paper both end with, is what closes it
-  const [openNote, setOpenNote] = useState<StoryKey | null>(null);
-  const [noteLive, setNoteLive] = useState<LiveEditor | null>(null);
-  const noteCaret = useRef<{ key: StoryKey; caret: StoryCaret } | null>(null);
-  const requested = live === null ? null : requestedNote(live.state);
-  useEffect(() => {
-    if (requested !== null) setOpenNote(requested.key);
-  }, [requested]);
-  useEffect(() => {
-    const sheet = live?.view;
-    if (!sheet) return;
-    const leave = () => setOpenNote(null);
-    sheet.dom.addEventListener("focus", leave);
-    return () => sheet.dom.removeEventListener("focus", leave);
-  }, [live?.view]);
-
-  // A footnote whose reference an edit swept away has no row to stand in any more
-  const open = openNote !== null && footnotes.has(openNote) ? openNote : null;
-  const openRow = open === null ? undefined : footnotes.get(open);
-  const openId = open === null ? null : footnoteIdOf(open);
-  const openAt = openRow?.referencePos;
-
-  const activate = useCallback((_key: StoryKey, view: EditorView | null) => {
-    setNoteLive(view === null ? null : { view, state: view.state });
-  }, []);
-  const onNoteState = useCallback((state: EditorState) => {
-    setNoteLive((current) =>
-      current === null ? current : { view: current.view, state }
-    );
-  }, []);
-  const caretStore = useMemo(
-    () => ({
-      take: () =>
-        noteCaret.current?.key === open ? noteCaret.current.caret : null,
-      keep: (caret: StoryCaret) => {
-        if (open !== null) noteCaret.current = { key: open, caret };
-      },
-    }),
-    [open]
-  );
-  const noteHost = useMemo(
-    () => (live === null ? null : footnoteHost(live.view, activate)),
-    [live?.view, activate]
-  );
-  const noteExtensions = useMemo(
-    () =>
-      live === null || openId === null || openRow === undefined
-        ? null
-        : footnoteExtensions(live.view, openId, () => openRow.label),
-    [live?.view, openId, openRow?.label]
-  );
-  // The paper a note wraps at is the paper of the section its reference stands in, which a story
-  // holds no section of its own to say (`editor/documentStyles`)
-  const noteSnapshot = useMemo(
-    () =>
-      live === null || snapshot === null || openAt === undefined
-        ? null
-        : storyDocument(snapshot, sectionGeometryAt(live.state, openAt)),
-    [live?.view, snapshot, openAt]
-  );
-  const editing = useMemo<RowEditing | null>(
-    () =>
-      noteHost === null || noteExtensions === null || noteSnapshot === null
-        ? null
-        : {
-            host: noteHost,
-            document: noteSnapshot,
-            extensions: noteExtensions,
-            caret: caretStore,
-            onStateChange: onNoteState,
-          },
-    [noteHost, noteExtensions, noteSnapshot, caretStore, onNoteState]
-  );
-  const noteShut =
-    live !== null && open !== null && noteHost !== null && noteHost.shut(open);
+  // Which footnote the caret is in and what the view over it is built from, in one place
+  // (`ui/notes/useStorySurface`): a second kind of story is another binding rather than more of
+  // this component
+  const surface = useStorySurface({
+    main: live,
+    rows: notes.footnotes,
+    binding: FOOTNOTE_SURFACE,
+  });
 
   const overlay = usePageLayout({
     view: live?.view ?? null,
@@ -651,7 +600,7 @@ function DocxEditorSurface(
     bands: notes.bands,
     // A page laid out again draws the row the open note stands in wherever it now lands, which
     // would take its composition down with it
-    composing: () => noteLive?.view.composing === true,
+    composing: surface.composing,
   });
 
   const headersFootersFor = useMemo(() => {
@@ -716,18 +665,10 @@ function DocxEditorSurface(
       className={[editorClassNames.frame, className].filter(Boolean).join(" ")}
       style={style}
     >
-      {live && toolbar && (
+      {live && toolbar && surface.active && (
         <Toolbar
           main={live}
-          active={
-            open !== null && noteLive !== null && noteExtensions !== null
-              ? {
-                  ...noteLive,
-                  surface: "story",
-                  takes: noteExtensions.takes,
-                }
-              : { ...live, surface: "body", takes: EVERY_CAPABILITY }
-          }
+          active={surface.active}
           fontFallbacks={mountedFontFallbacks}
           presets={presets}
           commentsOpen={commentsOpen}
@@ -776,16 +717,11 @@ function DocxEditorSurface(
               page={page}
               pageGuides={showPageGuides}
               zoom={effectiveZoom}
-              open={open}
-              editing={editing}
-              readOnly={noteShut}
+              open={surface.open}
+              editing={surface.editing}
+              readOnly={surface.readOnly}
               revision={live?.state}
-              onOpen={(key, at) => {
-                const id = footnoteIdOf(key);
-                if (!live || id === null) return;
-                noteCaret.current = { key, caret: { kind: "point", ...at } };
-                runOn(live.view, openFootnote(id));
-              }}
+              onOpen={surface.onOpen}
             />
           </div>
           {!commentsOpen && commentsPanel}

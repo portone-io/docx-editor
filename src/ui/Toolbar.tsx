@@ -69,10 +69,7 @@ import {
 } from "../editor/documentStyles";
 import { canInsertTable } from "../editor/insertTable";
 import { openLinkPanel } from "../editor/plugins/linkPanel";
-import type {
-  ActiveSurface,
-  SurfaceCapabilities,
-} from "../editor/stories/storyView";
+import type { ActiveSurface } from "../editor/stories/storyView";
 import type { ListKind } from "../numbering/listTemplate";
 import { editorClassNames } from "../styles/classNames";
 import type { FontFallbacks } from "../styles/fontStack";
@@ -385,11 +382,7 @@ export interface ToolbarProps {
    * Where the caret is. Everything but undo and redo is asked of it and dispatched to it, so the
    * formatting controls act on the note being edited rather than on the text behind it.
    */
-  active: ToolbarSurface & {
-    surface: ActiveSurface["surface"];
-    /** What that surface takes, which is what the controls putting one in are drawn from */
-    takes: SurfaceCapabilities;
-  };
+  active: ActiveSurface;
   fontFallbacks?: FontFallbacks;
   /** Optional values offered by toolbar pickers. */
   presets?: DocxEditorPresets;

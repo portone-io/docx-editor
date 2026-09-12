@@ -1346,6 +1346,7 @@ describe("the toolbar over a footnote being edited", () => {
                 view: story.view,
                 state: story.view.state,
                 surface: "story",
+                key: FOOTNOTE,
                 takes,
               }
         }

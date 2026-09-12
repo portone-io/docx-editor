@@ -33,19 +33,24 @@ import { storyEditorState } from "./storyState";
 
 export type NodeViewMap = Record<string, NodeViewConstructor>;
 
+/** What every surface is read and dispatched through, whichever of the two it is */
+interface SurfaceContents {
+  readonly view: EditorView;
+  /** The state on screen, which a control drawn from the surface re-decides itself from */
+  readonly state: EditorState;
+  readonly takes: SurfaceCapabilities;
+}
+
 /**
- * The surface holding one story, which is either the body or one story with the view over it.
+ * The surface holding the caret, which is either the body or one story with the view over it.
  *
  * Two editing views cannot stand at once, and this is where that rule is written down: a caller
- * holding this value has no way to name a second one.
+ * holding this value has no way to name a second one. What holds it true is the state that decides
+ * which story is open (`ui/notes/useStorySurface`).
  */
 export type ActiveSurface =
-  | { readonly surface: "body" }
-  | {
-      readonly surface: "story";
-      readonly key: StoryKey;
-      readonly view: EditorView;
-    };
+  | ({ readonly surface: "body" } & SurfaceContents)
+  | ({ readonly surface: "story"; readonly key: StoryKey } & SurfaceContents);
 
 export interface StoryHost {
   /** The main state the story is read from and judged against */
