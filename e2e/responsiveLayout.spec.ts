@@ -3,6 +3,7 @@ import { editorClassNames } from "../src/styles/classNames";
 import {
   blocks,
   openHarness,
+  pageScale,
   rightClick,
   selectText,
   settle,
@@ -87,27 +88,22 @@ async function footnotePages(page: Page) {
   return found;
 }
 
-/** The zoom the comment panel reads, beside the scale the paper itself is drawn at. */
+/** The zoom the comment panel reads, and the type it sets at it. */
 async function commentTypography(page: Page) {
   return page.evaluate((classes) => {
     const workspace = document.querySelector(`.${classes.workspace}`);
-    const layer = document.querySelector(`.${classes.pageLayer}`);
     const meta = document.querySelector(`.${classes.commentMeta}`);
     const body = document.querySelector(`.${classes.commentBody}`);
     if (
       !(workspace instanceof HTMLElement) ||
-      !(layer instanceof HTMLElement) ||
       !(meta instanceof HTMLElement) ||
       !(body instanceof HTMLElement)
     ) {
       throw new Error("comment typography sample missing");
     }
     const styles = getComputedStyle(workspace);
-    // The paper is scaled by a transform, whose used value is a matrix
-    const drawn = new DOMMatrixReadOnly(getComputedStyle(layer).transform);
     return {
       zoom: Number.parseFloat(styles.getPropertyValue("--docx-editor-zoom")),
-      pageZoom: drawn.a,
       meta: Number.parseFloat(getComputedStyle(meta).fontSize),
       body: Number.parseFloat(getComputedStyle(body).fontSize),
     };
@@ -115,28 +111,19 @@ async function commentTypography(page: Page) {
 }
 
 /**
- * Where the text stands on the paper, in the paper's own pixels: the scale the layer is drawn at is
- * divided back out, so a reading taken at one zoom is comparable with one taken at another.
- * `textBottom` is where the last block of the document ends, which every measurement above it and
- * every space the pagination opened adds into.
+ * Where the text stands on the paper, in the paper's own pixels: the scale the paper is drawn at
+ * (`pageScale`) is divided back out, so a reading taken at one zoom is comparable with one taken at
+ * another. `textBottom` is where the last block of the document ends, which every measurement above
+ * it and every space the pagination opened adds into.
  */
-async function paperLayout(page: Page) {
+async function paperLayout(page: Page, scale: number) {
   return page.evaluate(
-    ({ classes, boundaries }) => {
-      const workspace = document.querySelector(`.${classes.workspace}`);
+    ({ classes, boundaries, scale }) => {
       const layer = document.querySelector(`.${classes.pageLayer}`);
       const sheet = document.querySelector(`.${classes.sheet}`);
-      if (
-        !(workspace instanceof HTMLElement) ||
-        !(layer instanceof HTMLElement) ||
-        !(sheet instanceof HTMLElement)
-      ) {
+      if (!(layer instanceof HTMLElement) || !(sheet instanceof HTMLElement)) {
         throw new Error("page layer missing");
       }
-      const scale =
-        Number.parseFloat(
-          getComputedStyle(workspace).getPropertyValue("--docx-editor-zoom")
-        ) || 1;
       const sheetTop = sheet.getBoundingClientRect().top;
       const onPaper = (y: number) =>
         Math.round(((y - sheetTop) / scale) * 10) / 10;
@@ -163,7 +150,7 @@ async function paperLayout(page: Page) {
         textBottom,
       };
     },
-    { classes: editorClassNames, boundaries: PAGE_BOUNDARIES }
+    { classes: editorClassNames, boundaries: PAGE_BOUNDARIES, scale }
   );
 }
 
@@ -288,7 +275,7 @@ test("a document's pages break in the same places at every zoom", async ({
   await zoom.selectOption("1");
   await settle(page);
   await settle(page);
-  const baseline = await paperLayout(page);
+  const baseline = await paperLayout(page, await pageScale(page));
   // A one-page document would hold its own answer still, so the comparisons below would pass over a
   // pagination that had stopped running at all
   expect(baseline.pages).toBeGreaterThan(1);
@@ -301,7 +288,7 @@ test("a document's pages break in the same places at every zoom", async ({
     // A page break the text carries parts its page from the next by a space of its own, and how
     // tall that space is says where on the paper the break was read
     expect(await spaces(page)).toBe(opened);
-    expect(await paperLayout(page)).toEqual(baseline);
+    expect(await paperLayout(page, await pageScale(page))).toEqual(baseline);
   }
 
   // The scale a narrow window works out for itself is the one a reader never asked for
@@ -311,7 +298,7 @@ test("a document's pages break in the same places at every zoom", async ({
     await settle(page);
     await settle(page);
     expect(await spaces(page)).toBe(opened);
-    expect(await paperLayout(page)).toEqual(baseline);
+    expect(await paperLayout(page, await pageScale(page))).toEqual(baseline);
   }
 });
 
@@ -438,7 +425,7 @@ test("the demo keeps its comment rail usable in narrow layouts", async ({
       commentsBox.x + 1
     );
     const typography = await commentTypography(page);
-    expect(typography.zoom).toBeCloseTo(typography.pageZoom, 5);
+    expect(await pageScale(page)).toBeCloseTo(typography.zoom, 5);
     expect(typography.meta).toBeCloseTo(
       Math.max(9, size.metaLadder * typography.zoom),
       1
@@ -453,10 +440,7 @@ test("the demo keeps its comment rail usable in narrow layouts", async ({
   await settle(page);
   await settle(page);
   await expect(zoom).toHaveValue("1");
-  await expect(page.locator(`.${editorClassNames.pageLayer}`)).toHaveCSS(
-    "transform",
-    "matrix(1, 0, 0, 1, 0, 0)"
-  );
+  await expect.poll(() => pageScale(page)).toBe(1);
   expect(new Set(await frameSnapshots(page, 12)).size).toBe(1);
   expect(
     await page
@@ -467,10 +451,7 @@ test("the demo keeps its comment rail usable in narrow layouts", async ({
   await zoom.selectOption("fit-width");
   await settle(page);
   await settle(page);
-  await expect(page.locator(`.${editorClassNames.pageLayer}`)).toHaveCSS(
-    "transform",
-    "matrix(0.5, 0, 0, 0.5, 0, 0)"
-  );
+  await expect.poll(() => pageScale(page)).toBe(0.5);
 
   const commentHeader = page
     .locator(`.${editorClassNames.commentHeader}`)
@@ -579,7 +560,7 @@ test("comment typography follows the editor zoom", async ({ page }) => {
     await settle(page);
     const typography = await commentTypography(page);
     expect(typography.zoom).toBeCloseTo(factor, 5);
-    expect(typography.pageZoom).toBeCloseTo(factor, 5);
+    expect(await pageScale(page)).toBeCloseTo(factor, 5);
     // The floor keeps the smaller metas readable while the paper shrinks
     expect(typography.meta).toBeCloseTo(Math.max(9, 12 * factor), 1);
     expect(typography.body).toBeCloseTo(Math.max(10, 14 * factor), 1);

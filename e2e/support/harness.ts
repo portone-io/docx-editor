@@ -74,6 +74,25 @@ export function spaces(page: Page): Promise<string> {
 }
 
 /**
+ * The scale the paper is drawn at: the page layer's own transform and every transform above it,
+ * which is the number a rectangle read off the screen is divided by to reach the paper
+ * (`src/styles/visualScale`).
+ */
+export function pageScale(page: Page): Promise<number> {
+  return page.evaluate((classes) => {
+    const layer = document.querySelector(`.${classes.pageLayer}`);
+    if (!(layer instanceof HTMLElement)) throw new Error("page layer missing");
+    let scale = 1;
+    for (let at: Element | null = layer; at !== null; at = at.parentElement) {
+      const drawn = getComputedStyle(at).transform;
+      // A matrix is what a transform resolves to, and its first number is the horizontal scale
+      if (drawn && drawn !== "none") scale *= new DOMMatrixReadOnly(drawn).a;
+    }
+    return scale;
+  }, editorClassNames);
+}
+
+/**
  * Where each grey band between two pages is drawn, top to bottom, measured on the sheet.
  *
  * The band that opens between one page and the next stands at the end of the page above it, so
