@@ -71,8 +71,8 @@ A folder may import itself and folders with a lower rank only.
 Folders at the same rank cannot import each other, so `page` and `table` share page data through `docx`.
 Subfolders are organizational and inherit the rank of their top-level folder. They split a feature's
 parsing, writing, rendering, or interaction responsibilities without creating another layer.
-For example, `docx/formatting` separates direct-format parsing, the run property table, style layering, and the hierarchy resolver, `docx/notes` reads the footnotes and endnotes parts, numbers the references to them, and writes the footnotes part, `page/kinds`
-gives each breakable block shape its own measurer and decorator, `page/demands` holds what asks a page for room at its foot, `editor/stories` draws and edits a side story without knowing which kind it is, `editor/notes` is what tells it a note's own rules, `ui/notes` holds the footnote band - what a page keeps room for at its foot and what draws it - places footnotes and endnotes around the page, and holds which story the caret is in, `editor/clipboard` holds the clipboard's props and the readers a paste is read with
+For example, `docx/formatting` separates direct-format parsing, the run property table, style layering, and the hierarchy resolver, `docx/notes` reads the footnotes and endnotes parts, numbers the references to them, and writes both parts back, `page/kinds`
+gives each breakable block shape its own measurer and decorator, `page/demands` holds what asks a page for room at its foot, `editor/stories` draws and edits a side story without knowing which kind it is, `editor/notes` is what tells it a note's own rules, `ui/notes` holds the footnote band - what a page keeps room for at its foot and what draws it - draws the footnotes on their pages and the endnotes after the last paragraph, and holds which story the caret is in, `editor/clipboard` holds the clipboard's props and the readers a paste is read with
 in one plugin and leaves what a copy goes out as to `schema/clipboard`, while
 `editor/commands/comments` and `editor/commands/formatting` separate shared models, reads, and edits.
 

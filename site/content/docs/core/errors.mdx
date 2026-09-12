@@ -55,11 +55,11 @@ the problem stands at a place in the document.
 
 | Code | What is reported |
 | --- | --- |
-| `malformed-xml` | A bookmark marker whose partner is gone, or a comment or footnotes part with no root element once a comment or footnote in it has changed. |
+| `malformed-xml` | A bookmark marker whose partner is gone, or a comments, footnotes, or endnotes part with no root element once a comment or note in it has changed. |
 | `invalid-table` | A vertical merge reaching past the last row of its table. |
 | `lost-original` | A preserved block that lost its original XML, or a placeholder pasted in from another open document. |
-| `unsupported-content` | A preserved block copied so that it stands in two places, a paragraph in a list nothing defines, a namespace prefix already bound to another namespace, a header or footer story added or removed, a footnote added under an id that is no whole number, or a changed endnote or footnote separator, which the file cannot carry yet. |
-| `missing-content-types` | A part the writer adds (an image, a numbering part, a comment part, a footnotes part) in a package with no content types part to declare it in. |
+| `unsupported-content` | A preserved block copied so that it stands in two places, a paragraph in a list nothing defines, a namespace prefix already bound to another namespace, a header or footer story added or removed, a note added under an id that is no whole number, or a changed footnote or endnote separator, which the file cannot carry yet. |
+| `missing-content-types` | A part the writer adds (an image, a numbering part, a comment part, a footnotes or endnotes part) in a package with no content types part to declare it in. |
 
 `exportDocx` throws the first entry of the same list.
 An empty list does not guarantee that writing will succeed: a `DocxExportError` the list did not

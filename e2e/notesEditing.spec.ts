@@ -25,10 +25,10 @@ import {
   setComposition,
 } from "./support/ime";
 
-/** The number a footnote is called by, as the body draws it */
-function reference(page: Page, label: string) {
+/** The number a note is called by, as the body draws it */
+function reference(page: Page, label: string, kind = "Footnote") {
   return page.locator(
-    `.${editorClassNames.sheet} [aria-label="Footnote ${label}"]`
+    `.${editorClassNames.sheet} [aria-label="${kind} ${label}"]`
   );
 }
 
@@ -260,4 +260,148 @@ test("inserts a footnote on Mod+Alt+F and puts the caret in it", async ({
   await expect(
     page.getByRole("region", { name: "Footnotes on page 1" })
   ).toContainText("A note written where it was added.");
+});
+
+test("types inside an endnote at the end of the document", async ({ page }) => {
+  await openHarness(page, "notes");
+
+  // The endnote stands pages below the text that calls it, so the press on its number is also
+  // what scrolls the reader to it
+  const scrolled = await page.evaluate(() => window.scrollY);
+  await reference(page, "1", "Endnote").click();
+  await untilNoteHoldsTheCaret(page);
+  expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(scrolled);
+
+  await page.keyboard.type(" Written in place.");
+
+  await expect
+    .poll(() => noteText(page, "1", "endnote"))
+    .toContain("Written in place.");
+  expect(await docText(page)).not.toContain("Written in place.");
+  // It is drawn after the last paragraph rather than under the sheet
+  const endnotes = page.getByRole("region", {
+    name: /^Endnotes on page \d+$/,
+  });
+  await expect(endnotes).toContainText("Written in place.");
+  const area = await endnotes.boundingBox();
+  const sheet = await page.locator(`.${editorClassNames.sheet}`).boundingBox();
+  if (!area || !sheet) throw new Error("the endnotes were not drawn");
+  expect(area.y + area.height).toBeLessThanOrEqual(sheet.y + sheet.height + 1);
+});
+
+test("takes the caret back to the reference when an endnote's number is pressed", async ({
+  page,
+}) => {
+  await openHarness(page, "notes");
+  await reference(page, "1", "Endnote").click();
+  await untilNoteHoldsTheCaret(page);
+
+  await openNote(page).locator(`sup.${editorClassNames.noteMark}`).click();
+
+  await expect(openNote(page)).toHaveCount(0);
+  // The caret stands just past the reference, pages above where the note is drawn
+  await page.keyboard.type("!");
+  await expect
+    .poll(() => docText(page))
+    .toContain(
+      "Paragraph 141 keeps the text running down the page.\n!\nParagraph 142"
+    );
+  await expect(reference(page, "1", "Endnote")).toBeInViewport();
+});
+
+test("inserts an endnote from the right click menu and puts the caret in it", async ({
+  page,
+}) => {
+  await openHarness(page, "notes");
+  await page.locator(`.${editorClassNames.sheet} p`).first().click();
+
+  await rightClick(page);
+  await page.getByRole("menuitem", { name: "Insert endnote" }).click();
+
+  await untilNoteHoldsTheCaret(page);
+  await page.keyboard.type("An endnote written from the menu.");
+  await expect
+    .poll(() => noteText(page, "2", "endnote"))
+    .toContain("An endnote written from the menu.");
+  // It is the first endnote of the document now, and both stand after the last paragraph
+  await expect(
+    page.getByRole("region", { name: /^Endnotes on page \d+$/ }).first()
+  ).toContainText("An endnote written from the menu.");
+});
+
+test("inserts an endnote on the endnote key and puts the caret in it", async ({
+  page,
+}) => {
+  await openHarness(page, "notes");
+  await page.locator(`.${editorClassNames.sheet} p`).first().click();
+
+  // macOS keeps Command+Option+D for the Dock, so the editor binds Word for Mac's key there
+  const onMac = process.platform === "darwin";
+  await page.keyboard.press(
+    `${onMac ? "Meta" : "Control"}+Alt+${onMac ? "e" : "d"}`
+  );
+
+  await untilNoteHoldsTheCaret(page);
+  await page.keyboard.type("An endnote written where it was added.");
+  await expect
+    .poll(() => noteText(page, "2", "endnote"))
+    .toContain("An endnote written where it was added.");
+  // It is the first endnote of the document now, so the one the file arrived with moves up
+  await expect(reference(page, "1", "Endnote")).toHaveCount(1);
+  await expect(reference(page, "2", "Endnote")).toHaveCount(1);
+  await expect(
+    page.getByRole("region", { name: /^Endnotes on page \d+$/ }).first()
+  ).toContainText("An endnote written where it was added.");
+});
+
+test("writes after the number when a reader types at the head of a note", async ({
+  page,
+}) => {
+  await openHarness(page, "notes");
+  await enterFootnote(page, "1");
+
+  // Home is the reader's way to the head of the note's first line. Where exactly Chrome leaves
+  // the caret in a row drawn in a box of its own is its own business; what the note may not come
+  // out of it with is the number second
+  await page.keyboard.press("Home");
+  await page.keyboard.type("Head.");
+
+  await expect.poll(() => noteText(page, "1")).toContain("Head.");
+  await expect(openNote(page)).toHaveText(/^1/);
+});
+
+test("goes back to the reference when the number of a drawn note is pressed", async ({
+  page,
+}) => {
+  await openHarness(page, "notes");
+  const area = page.getByRole("region", { name: "Footnotes on page 1" });
+  await expect(area).toContainText("A footnote near the top of the document.");
+
+  await area.locator(`sup.${editorClassNames.noteMark}`).click();
+
+  // No view is opened over it: the number is the way back, wherever the note is drawn
+  await expect(openNote(page)).toHaveCount(0);
+  await page.keyboard.type("!");
+  await expect
+    .poll(() => docText(page))
+    .toContain(
+      "Paragraph 5 keeps the text running down the page.\n!\nParagraph 6"
+    );
+});
+
+test("goes back to the reference when the number of the open note is pressed", async ({
+  page,
+}) => {
+  await openHarness(page, "notes");
+  await enterFootnote(page, "1");
+
+  await openNote(page).locator(`sup.${editorClassNames.noteMark}`).click();
+
+  await expect(openNote(page)).toHaveCount(0);
+  await page.keyboard.type("!");
+  await expect
+    .poll(() => docText(page))
+    .toContain(
+      "Paragraph 5 keeps the text running down the page.\n!\nParagraph 6"
+    );
 });

@@ -37,7 +37,7 @@ import {
   transactionReaches,
 } from "./editGuard";
 import { lockGuard } from "./locks";
-import { noteGuard, preservedGuard, sectionGuard } from "./preservedGuards";
+import { preservedGuard, sectionGuard } from "./preservedGuards";
 import {
   isCommentNode,
   type ProtectionState,
@@ -105,7 +105,6 @@ export const EDIT_GUARDS: readonly EditGuard[] = [
   protectionGuard,
   lockGuard,
   preservedGuard,
-  noteGuard,
   sectionGuard,
 ];
 

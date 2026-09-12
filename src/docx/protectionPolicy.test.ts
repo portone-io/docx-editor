@@ -12,7 +12,7 @@ import {
   addComment,
   setCommentResolved,
 } from "../editor/commands/commentCommands";
-import { setFootnoteBody } from "../editor/commands/footnoteCommands";
+import { setFootnoteBody } from "../editor/commands/noteCommands";
 import {
   createEditorState,
   editorStateForSession,

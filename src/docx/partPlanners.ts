@@ -9,7 +9,12 @@
 import { HEADER_FOOTER_KINDS } from "../schema/stories";
 import { commentsPlanner } from "./comments";
 import { headerFooterPlanner } from "./headersFooters";
-import { FOOTNOTES_PART, footnotesPlanner } from "./notes/writing";
+import {
+  ENDNOTES_PART,
+  endnotesPlanner,
+  FOOTNOTES_PART,
+  footnotesPlanner,
+} from "./notes/writing";
 import { numberingPlanner } from "./numberingPlanner";
 import type { PartPlanner } from "./partPlan";
 import {
@@ -55,6 +60,7 @@ const PART_WRITERS: readonly StoryWriter[] = [
     entriesPart: null,
   },
   entriesWriter(footnotesPlanner, FOOTNOTES_PART),
+  entriesWriter(endnotesPlanner, ENDNOTES_PART),
 ];
 
 export const PART_PLANNERS: readonly PartPlanner[] = PART_WRITERS.map(

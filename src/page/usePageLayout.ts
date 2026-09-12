@@ -28,6 +28,8 @@ import {
   pageLayout,
   type SectionPixels,
   sectionPaperAt,
+  type TrailingPlacement,
+  type TrailingRows,
 } from "./pageLayout";
 
 /** One place where a page parts from the next. The position is measured on the sheet */
@@ -54,6 +56,20 @@ export interface ReservedRoom {
   clipped: boolean;
 }
 
+/** The rows laid after the last block that one page holds, measured on the sheet */
+export interface TrailingRoom {
+  /** What the page holds, in the order they are laid (`page/pageLayout`) */
+  ids: readonly string[];
+  top: number;
+  /**
+   * The height the page gives the rows, down to the end of its body. Less than they ask for where
+   * one of them is taller than the room the page had left
+   */
+  height: number;
+  /** Whether the rows ask for more than that height */
+  clipped: boolean;
+}
+
 /** The paper area of one visual page, used to place its header and footer stories. */
 export interface PageFace {
   page: number;
@@ -71,6 +87,11 @@ export interface PageFace {
   crossed: boolean;
   /** What the page keeps at the foot of its body, one entry per band, top to bottom */
   reserved: readonly ReservedRoom[];
+  /**
+   * The rows laid after the last block that landed on this page, measured on the sheet, and null
+   * for a page holding none (`page/pageLayout`)
+   */
+  trailing: TrailingRoom | null;
 }
 
 export interface PageOverlay {
@@ -101,6 +122,11 @@ interface PageLayoutOptions {
    */
   bands?: ReadonlyMap<string, DemandBand>;
   /**
+   * The rows laid after the last block of the document, which open pages of their own where the
+   * last page has no room left for them. A new value lays the pages out again
+   */
+  trailing?: TrailingRows;
+  /**
    * Whether anything drawn over the sheet besides the body is composing, such as the view over a
    * note being edited.
    *
@@ -112,6 +138,27 @@ interface PageLayoutOptions {
 }
 
 const NO_ROOM: readonly ReservedRoom[] = [];
+
+/**
+ * One page's trailing rows measured on the sheet rather than from the top of the body, and no
+ * taller than the body they stand in: what is drawn in the room a page kept never paints over the
+ * gap below that page.
+ */
+function trailingOn(
+  placement: TrailingPlacement | undefined,
+  contentTop: number,
+  bodyBottom: number
+): TrailingRoom | null {
+  if (placement === undefined) return null;
+  const top = contentTop + placement.top;
+  const height = Math.max(0, bodyBottom - top);
+  return {
+    ids: placement.ids,
+    top,
+    height: Math.min(placement.height, height),
+    clipped: placement.height > height,
+  };
+}
 
 /**
  * However many times it is called, the calls are coalesced into a single next frame.
@@ -175,6 +222,7 @@ export function usePageLayout({
   revision,
   sections,
   bands,
+  trailing,
   composing,
 }: PageLayoutOptions): PageOverlay | null {
   const [overlay, setOverlay] = useState<PageOverlay | null>(null);
@@ -193,11 +241,15 @@ export function usePageLayout({
         blocks: measured.blocks,
         sections: papers,
         bands,
+        trailing,
       });
       const roomOn = new Map<number, PageReservation[]>();
       for (const room of layout.reserved) {
         roomOn.set(room.page, [...(roomOn.get(room.page) ?? []), room]);
       }
+      const laidOn = new Map<number, TrailingPlacement>(
+        layout.trailing.map((placement) => [placement.page, placement])
+      );
       /** The paper of the page that block opens, which is the paper of its own section */
       const paperOf = (pos: number) => sectionPaperAt(papers, pos);
       // One sheet is drawn at one width, the first section's (`styles/editor.css`), so where a
@@ -251,6 +303,11 @@ export function usePageLayout({
             left: sheet.marginLeft,
             width: sheet.bodyWidth,
             crossed: start.crossed,
+            trailing: trailingOn(
+              laidOn.get(start.page),
+              measured.contentTop,
+              bodyBottom
+            ),
             reserved:
               roomOn.get(start.page)?.map((room) => {
                 const top = measured.contentTop + room.top;
@@ -275,7 +332,7 @@ export function usePageLayout({
   // biome-ignore lint/correctness/useExhaustiveDependencies: revision is the remeasure trigger, compared by identity and never read - the doc must be read from view.state at measure time, not from this closure
   useEffect(() => {
     if (enabled) remeasure();
-  }, [remeasure, revision, enabled, bands]);
+  }, [remeasure, revision, enabled, bands, trailing]);
 
   // Everything the last measurement left behind goes with the pages, the overlay included: held
   // on, it would be handed out again the moment a consumer turns them back on, and the guides and

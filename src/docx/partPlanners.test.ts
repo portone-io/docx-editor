@@ -15,14 +15,19 @@ describe("the part planners", () => {
       "comments",
       "headers and footers",
       "footnotes",
+      "endnotes",
     ]);
     expect(STORY_WRITINGS.map(({ kind, changes }) => [kind, changes])).toEqual([
       ["comment", EVERY_STORY_CHANGE],
       ["header", ["edited"]],
       ["footer", ["edited"]],
       ["footnote", EVERY_STORY_CHANGE],
+      ["endnote", EVERY_STORY_CHANGE],
     ]);
-    expect(STORY_ENTRIES_PARTS.map(({ name }) => name)).toEqual(["footnotes"]);
+    expect(STORY_ENTRIES_PARTS.map(({ name }) => name)).toEqual([
+      "footnotes",
+      "endnotes",
+    ]);
   });
 
   it("names each story kind once, since a second writer of one kind would go unread", () => {

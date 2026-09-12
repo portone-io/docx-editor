@@ -19,6 +19,7 @@ export interface DocumentNote {
 export interface NoteRow {
   readonly key: StoryKey;
   readonly kind: NoteKind;
+  readonly id: string;
   readonly label: string;
   /** The note's story, the same node for as long as it says the same thing (`schema/stories`) */
   readonly story: PMNode;
@@ -46,6 +47,12 @@ interface NoteProjection {
   footnotes: ReadonlyMap<StoryKey, NoteRow>;
   /** The endnotes whose story the document holds, in first-reference order */
   endnotes: readonly NoteRow[];
+  /**
+   * Every note of both kinds by story key, which is the one map the surface holding the open note
+   * looks a row up in: which kind it is does not decide what an edit in it may do
+   * (`ui/notes/useStorySurface`).
+   */
+  rows: ReadonlyMap<StoryKey, NoteRow>;
 }
 
 function deriveNotes(doc: PMNode): NoteProjection {
@@ -53,6 +60,7 @@ function deriveNotes(doc: PMNode): NoteProjection {
   const tooltips: Decoration[] = [];
   const footnotes = new Map<StoryKey, NoteRow>();
   const endnotes: NoteRow[] = [];
+  const rows = new Map<StoryKey, NoteRow>();
   const seen = new Set<string>();
   doc.descendants((node, pos) => {
     if (node.type.name !== "noteReference") return true;
@@ -70,7 +78,8 @@ function deriveNotes(doc: PMNode): NoteProjection {
     const label = stringAttr(node.attrs.label) ?? "?";
     notes.push({ kind, id, label, text, referencePos: pos });
     if (story !== null) {
-      const row: NoteRow = { key, kind, label, story, referencePos: pos };
+      const row: NoteRow = { key, kind, id, label, story, referencePos: pos };
+      rows.set(key, row);
       if (kind === "footnote") footnotes.set(key, row);
       else endnotes.push(row);
     }
@@ -81,6 +90,7 @@ function deriveNotes(doc: PMNode): NoteProjection {
     tooltips: DecorationSet.create(doc, tooltips),
     footnotes,
     endnotes,
+    rows,
   };
 }
 

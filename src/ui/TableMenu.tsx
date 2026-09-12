@@ -21,7 +21,7 @@ import {
   mergeCells,
   splitCell,
 } from "../table";
-import { footnoteItem } from "./footnoteItem";
+import { noteItems } from "./noteItems";
 import { usePanelAtPoint } from "./panelPlacement";
 import { commandRunner } from "./runCommand";
 import { useDismiss } from "./useDismiss";
@@ -75,16 +75,19 @@ const UNLOCK_GROUP: MenuGroup = {
 /**
  * The note group, which this menu is the only pointer path to for a caret in a cell: a click
  * landing in one with nothing selected is this menu's rather than the text menu's
- * (`editor/plugins/textContextMenu`). The shortcut is left off the row, as every row here leaves
+ * (`editor/plugins/textContextMenu`). The shortcut is left off each row, as every row here leaves
  * its own off.
  */
 function noteGroup(takes: SurfaceCapabilities): MenuGroup | null {
-  const footnote = footnoteItem(takes);
-  return footnote === null
+  const notes = noteItems(takes);
+  return notes.length === 0
     ? null
     : {
         name: "note",
-        items: [{ label: footnote.label, command: footnote.command }],
+        items: notes.map((note) => ({
+          label: note.label,
+          command: note.command,
+        })),
       };
 }
 

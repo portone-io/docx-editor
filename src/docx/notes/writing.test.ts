@@ -27,6 +27,10 @@ const FOOTNOTES_REL =
   "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes";
 const FOOTNOTES_TYPE =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml";
+const ENDNOTES_REL =
+  "http://schemas.openxmlformats.org/officeDocument/2006/relationships/endnotes";
+const ENDNOTES_TYPE =
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.endnotes+xml";
 
 /** A run of text as the reader models one: every run carries a run mark, its properties or none */
 const runText = (text: string, rPr: string | null = null) =>
@@ -323,5 +327,72 @@ describe("writing the footnotes part", () => {
 
     const again = importDocx(exportDocx(edited, opened.session));
     expect(sameStory(storyNodeOf(again.doc, key), story)).toBe(true);
+  });
+});
+
+describe("writing the endnotes part", () => {
+  it("rewrites only the edited endnote and keeps every other entry as it arrived", () => {
+    const bytes = makeNotesDocx();
+    const original = decode(unzipSync(bytes)["word/endnotes.xml"]);
+    const opened = importDocx(bytes);
+    const edited = withStories(opened.doc, [
+      [storyKey("endnote", "3"), storyFromText("Rewritten endnote")],
+    ]);
+
+    const exported = exportDocx(edited, opened.session);
+    const written = writtenPart(exported, "word/endnotes.xml");
+    const continuation = original.slice(
+      original.indexOf("<w:endnote "),
+      original.indexOf('<w:endnote w:id="3">')
+    );
+    expect(written).toContain(continuation);
+    expect(written).toContain(
+      '<w:endnote w:id="3"><w:p><w:r><w:t xml:space="preserve">Rewritten endnote</w:t></w:r></w:p></w:endnote>'
+    );
+    expect(written).not.toContain("Endnote body");
+    // The footnotes part nothing touched goes out as the bytes it arrived as
+    expect(
+      bytesEqual(
+        unzipSync(exported)["word/footnotes.xml"],
+        unzipSync(bytes)["word/footnotes.xml"]
+      )
+    ).toBe(true);
+  });
+
+  it("creates an endnotes part beside a footnotes part that already exists", () => {
+    const opened = importDocx(
+      makeDeclaredDocx(
+        `<w:p><w:r><w:t>Text</w:t></w:r>${reference("1")}` +
+          '<w:r><w:endnoteReference w:id="1"/></w:r></w:p>'
+      )
+    );
+    const edited = withStories(opened.doc, [
+      [storyKey("footnote", "1"), storyFromText("A new footnote")],
+      [storyKey("endnote", "1"), storyFromText("A new endnote")],
+    ]);
+
+    const exported = exportDocx(edited, opened.session);
+    expect(writtenPart(exported, "word/_rels/document.xml.rels")).toMatch(
+      new RegExp(
+        `<Relationship (?=[^>]*Type="${ENDNOTES_REL}")(?=[^>]*Target="endnotes.xml")`
+      )
+    );
+    expect(writtenPart(exported, "[Content_Types].xml")).toContain(
+      `<Override PartName="/word/endnotes.xml" ContentType="${ENDNOTES_TYPE}"/>`
+    );
+    expect(writtenPart(exported, "word/endnotes.xml")).toMatch(
+      /^<\?xml [^>]*\?><w:endnotes [^>]*><w:endnote w:type="separator" w:id="-1">.*<w:separator\/>.*<\/w:endnote><w:endnote w:type="continuationSeparator" w:id="0">.*<w:continuationSeparator\/>.*<\/w:endnote><w:endnote w:id="1">/
+    );
+    expect(writtenPart(exported, "word/footnotes.xml")).toContain(
+      "A new footnote"
+    );
+
+    const again = importDocx(exported);
+    expect(
+      sameStory(
+        storyNodeOf(again.doc, storyKey("endnote", "1")),
+        storyOf("A new endnote")
+      )
+    ).toBe(true);
   });
 });

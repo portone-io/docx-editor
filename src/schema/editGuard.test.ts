@@ -25,7 +25,6 @@ describe("the guard list, reached through a guard's own module first", () => {
       "protection",
       "lock",
       "preserved",
-      "note",
       "section",
     ]);
   });

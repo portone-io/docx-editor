@@ -35,7 +35,12 @@ function rowTexts(list: HTMLElement): (string | null)[] {
 }
 
 describe("the notes listed after the last page", () => {
-  it("lists endnotes with their formatting and labels after the last page", () => {
+  /**
+   * A note is drawn in the room a page kept for it, and no page has kept any until one has been
+   * laid out. A note drawn nowhere is one a reader cannot read, so the list holds both kinds
+   * until the pages do.
+   */
+  it("lists both kinds under the sheet until a page has been measured", () => {
     const unmount = renderInto(
       host,
       <DocxEditor
@@ -45,20 +50,41 @@ describe("the notes listed after the last page", () => {
       />
     );
 
+    expect(
+      rowTexts(found('section[aria-label="Footnotes and endnotes"]'))
+    ).toEqual([
+      "1Plain then bold wordsSecond paragraph",
+      "2 Later footnote",
+      "1 Italic endnote",
+    ]);
+    unmount();
+  });
+
+  it("lists endnotes with their formatting and labels with page guides off", () => {
+    const unmount = renderInto(
+      host,
+      <DocxEditor
+        document={makeFormattedNotesDocx()}
+        mode={EDITING}
+        showPageGuides={false}
+        renderImportError={() => null}
+      />
+    );
+
     const sheet = found(`.${editorClassNames.sheet}`);
-    const endnotes = found('section[aria-label="Endnotes"]');
+    const notes = found('section[aria-label="Footnotes and endnotes"]');
     expect(
-      sheet.compareDocumentPosition(endnotes) & Node.DOCUMENT_POSITION_FOLLOWING
+      sheet.compareDocumentPosition(notes) & Node.DOCUMENT_POSITION_FOLLOWING
     ).not.toBe(0);
-    // The footnotes stand at the foot of their pages while the pages are drawn
-    expect(rowTexts(endnotes)).toEqual(["1 Italic endnote"]);
-    expect(
-      endnotes.querySelector(`sup.${editorClassNames.noteMark}`)?.textContent
-    ).toBe("1");
     const italic = [
-      ...endnotes.querySelectorAll<HTMLElement>(`.${editorClassNames.run}`),
+      ...notes.querySelectorAll<HTMLElement>(`.${editorClassNames.run}`),
     ].find((run) => run.textContent === " Italic endnote");
     expect(italic?.style.fontStyle).toBe("italic");
+    expect(
+      [...notes.querySelectorAll(`sup.${editorClassNames.noteMark}`)].map(
+        (mark) => mark.textContent
+      )
+    ).toEqual(["1", "2", "1"]);
     unmount();
   });
 
@@ -106,7 +132,7 @@ describe("the notes listed after the last page", () => {
       "2 Later footnote",
       "1 Italic endnote",
     ]);
-    expect(host.querySelector(`.${editorClassNames.footnoteAreas}`)).toBeNull();
+    expect(host.querySelector(`.${editorClassNames.noteAreas}`)).toBeNull();
     unmount();
   });
 });

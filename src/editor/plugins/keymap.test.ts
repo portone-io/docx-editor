@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import type { EditorState } from "prosemirror-state";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   LETTER_SECT_PR,
   makeDocx,
@@ -215,16 +215,52 @@ describe("the link key", () => {
   });
 });
 
-describe("Mod-Alt-f", () => {
-  it("inserts a footnote on Mod-Alt-f and asks for it to open", () => {
+describe("the note keys by platform", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  /** The keymap as a machine of this platform builds it */
+  async function keysOn(platform: string) {
+    vi.stubGlobal("navigator", { ...navigator, platform });
+    vi.resetModules();
+    return await import("./keymap");
+  }
+
+  it.each([
+    ["MacIntel", "Mod-Alt-e", "Mod-Alt-d"],
+    ["Win32", "Mod-Alt-d", "Mod-Alt-e"],
+  ])(
+    "puts the endnote on the key %s leaves to the page",
+    async (platform, bound, taken) => {
+      const { docxKeymap: keys, NOTE_KEYS } = await keysOn(platform);
+
+      expect(NOTE_KEYS.endnote).toBe(bound);
+      expect(Object.keys(keys)).toContain(bound);
+      // Cmd+Option+D hides the Dock on a Mac, so a binding there would never be reached
+      expect(Object.keys(keys)).not.toContain(taken);
+      // The footnote key is free on both
+      expect(NOTE_KEYS.footnote).toBe("Mod-Alt-f");
+      expect(Object.keys(keys)).toContain("Mod-Alt-f");
+    }
+  );
+});
+
+describe("the note keys", () => {
+  it.each([
+    ["Mod-Alt-f", "footnote"],
+    ["Mod-Alt-d", "endnote"],
+  ])("inserts a note on %s and asks for it to open", (pressed, kind) => {
     const state = editorStateForSession(importDocx(makeNotesDocx(NOTE_BODY)));
     const caret = select(state, 1);
 
-    const inserted = runCommand(caret, docxKeymap["Mod-Alt-f"]);
+    const inserted = runCommand(caret, docxKeymap[pressed]);
 
     const asked = requestedNote(inserted);
-    if (asked === null) throw new Error("no footnote was asked to open");
-    // The footnote just put in is the one the caret goes to, holding no text yet
+    if (asked === null) throw new Error("no note was asked to open");
+    expect(asked.key.startsWith(`${kind}:`)).toBe(true);
+    // The note just put in is the one the caret goes to, holding no text yet
     expect(storyText(storyOf(inserted.doc, asked.key))).toBe("");
     expect(storyOf(caret.doc, asked.key)).toBeNull();
   });

@@ -16,7 +16,7 @@ import { readContextOf } from "../clipboard/readContext";
 import { undo } from "../commands/historyCommands";
 import { createEditorView, editorStateForSession } from "../createEditor";
 import { documentOf, storyDocument } from "../editorDocument";
-import { footnoteExtensions, footnoteHost } from "../notes/footnoteSurface";
+import { noteExtensions, noteHost } from "../notes/noteSurface";
 import {
   createStoryView,
   type StoryExtensions,
@@ -52,8 +52,12 @@ function mainView(body: string = NOTE_BODY): EditorView {
 /** The footnote opened for editing, the way a row does it (`ui/notes/StoryRow`) */
 function openFootnote(
   main: EditorView,
-  host: StoryHost = footnoteHost(main, () => {}),
-  extensions: StoryExtensions = footnoteExtensions(main, "2", () => "1")
+  host: StoryHost = noteHost(main, () => {}),
+  extensions: StoryExtensions = noteExtensions(
+    main,
+    storyKey("footnote", "2"),
+    () => "1"
+  )
 ): StoryView {
   const story = createStoryView({
     mount: document.createElement("div"),
@@ -159,7 +163,7 @@ describe("the view one story is edited in", () => {
   it("keeps its state when the host refuses a write", () => {
     const main = mainView();
     const refusing: StoryHost = {
-      ...footnoteHost(main, () => {}),
+      ...noteHost(main, () => {}),
       write: () => false,
     };
     const story = openFootnote(main, refusing);
@@ -206,7 +210,7 @@ describe("the view one story is edited in", () => {
     const registered: (EditorView | null)[] = [];
     const story = openFootnote(
       main,
-      footnoteHost(main, (_key, view) => registered.push(view))
+      noteHost(main, (_key, view) => registered.push(view))
     );
 
     story.view.dom.dispatchEvent(new FocusEvent("focus"));
@@ -231,7 +235,7 @@ describe("the keys one story is edited with", () => {
   it("binds an editor key only where the story takes what the key puts in", () => {
     const main = mainView();
     const linking = openFootnote(main, undefined, {
-      ...footnoteExtensions(main, "2", () => "1"),
+      ...noteExtensions(main, storyKey("footnote", "2"), () => "1"),
       takes: new Set<SurfaceCapability>(["link"]),
     });
     overAWord(linking);

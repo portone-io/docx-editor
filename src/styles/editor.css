@@ -367,7 +367,7 @@ button.docx-editor-comment-body {
  * document's own text defaults, and the text is set as `prosemirror-view` sets an editor's, so a
  * note wraps where it would in one.
  */
-.docx-editor-footnote-areas {
+.docx-editor-note-areas {
   position: absolute;
   pointer-events: none;
 }
@@ -378,7 +378,15 @@ button.docx-editor-comment-body {
   pointer-events: auto;
 }
 
+/* The endnotes after the last paragraph, drawn over the room the layout kept for them */
+.docx-editor-endnote-area {
+  position: absolute;
+  overflow: hidden;
+  pointer-events: auto;
+}
+
 .docx-editor-footnote-area,
+.docx-editor-endnote-area,
 .docx-editor-note-list {
   box-sizing: border-box;
   color: #000000;
