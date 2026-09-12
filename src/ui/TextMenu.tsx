@@ -36,15 +36,10 @@ import { editsShut } from "../schema/protectionState";
 import { editorClassNames } from "../styles/classNames";
 import { usePanelAtPoint } from "./panelPlacement";
 import { commandRunner, type RunCommand } from "./runCommand";
+import { modifierLabels } from "./shortcutLabels";
 import { ICON_SIZE } from "./ToolbarButton";
 import { useDismiss } from "./useDismiss";
 import { useMenuKeyboard } from "./useMenuKeyboard";
-
-const ON_MAC =
-  typeof navigator !== "undefined" && navigator.platform.includes("Mac");
-
-const MOD = ON_MAC ? "⌘" : "Ctrl+";
-const ALT = ON_MAC ? "⌥" : "Alt+";
 
 /**
  * Cut and copy are handed to the browser from inside the click that asked for them, which is the
@@ -166,6 +161,7 @@ export function TextMenu({
 
   const selected = !state.selection.empty;
   const shut = selectionTouchesLocked(state);
+  const { mod, alt } = modifierLabels();
   // A commenter gets what a reader of the text may do with it - copy it, and comment on it - while
   // the entries that change the body wait for a mode that lets the body be changed. The plugin
   // opens this menu over the selected text alone there, so neither entry is drawn dead
@@ -173,7 +169,7 @@ export function TextMenu({
   const copy: MenuItem = {
     label: "Copy",
     icon: Copy,
-    hint: `${MOD}C`,
+    hint: `${mod}C`,
     enabled: selected,
     run: () => clipboardCommand(view, "copy"),
   };
@@ -183,7 +179,7 @@ export function TextMenu({
           {
             label: "Cut",
             icon: Scissors,
-            hint: `${MOD}X`,
+            hint: `${mod}X`,
             enabled: selected && !shut,
             run: () => clipboardCommand(view, "cut"),
           },
@@ -191,7 +187,7 @@ export function TextMenu({
           {
             label: "Paste",
             icon: ClipboardPaste,
-            hint: `${MOD}V`,
+            hint: `${mod}V`,
             enabled: !shut,
             run: () => {
               void pasteFromClipboard(view);
@@ -221,7 +217,7 @@ export function TextMenu({
     anchored.push({
       label: "Insert footnote",
       icon: Superscript,
-      hint: `${MOD}${ALT}F`,
+      hint: `${mod}${alt}F`,
       enabled: canInsertFootnote(state),
       run: () => run(insertFootnote),
     });

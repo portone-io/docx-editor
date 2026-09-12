@@ -51,6 +51,8 @@ beforeEach(() => {
 afterEach(() => {
   host.remove();
   vi.unstubAllGlobals();
+  // A platform one test spelled for itself; the prototype's own answer comes back
+  Reflect.deleteProperty(navigator, "platform");
 });
 
 const run = (text: string) =>
@@ -176,6 +178,31 @@ describe("the text right click menu", () => {
       "Delete",
       "Add comment",
       "Insert footnoteCtrl+Alt+F",
+    ]);
+    unmount();
+  });
+
+  /**
+   * An iPad keyboard sends Command for every `Mod` binding the editor declares, since
+   * `prosemirror-keymap` reads the platform rather than the word "Mac" alone, so the rows there
+   * are labelled the way a Mac's are.
+   */
+  it("spells the shortcuts the way the bindings read the platform", () => {
+    Object.defineProperty(navigator, "platform", {
+      value: "iPad",
+      configurable: true,
+    });
+    const { handle, unmount } = mount(PARAGRAPH);
+    select(handle, 1, 3);
+    rightClickText();
+
+    expect(labels()).toEqual([
+      "Cut⌘X",
+      "Copy⌘C",
+      "Paste⌘V",
+      "Delete",
+      "Add comment",
+      "Insert footnote⌘⌥F",
     ]);
     unmount();
   });
