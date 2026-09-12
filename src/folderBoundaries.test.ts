@@ -218,6 +218,30 @@ describe("the folder layering", () => {
   });
 
   /**
+   * A band is a name, a place at the foot of a page, an overhead and a measured height on one side
+   * (`page/demands`) and something drawing exactly that much on the other. Assembled in the module
+   * that mounts the editor, a second band would mean editing that module rather than writing one
+   * of its own, and the two halves could drift apart with nothing to catch it.
+   */
+  it("assembles no demand band in the component that mounts the editor", () => {
+    const root = join(srcDir, "DocxEditor.tsx");
+    const bandParts =
+      /(FOOTNOTE_BAND|NOTE_SEPARATOR_HEIGHT|useNoteHeights|DemandBand)/;
+
+    const named = importsOf(root)
+      .filter(({ specifier }) => bandParts.test(specifier))
+      .map(({ specifier }) => specifier);
+    const source = readFileSync(root, "utf8");
+
+    expect(files).toContain(root);
+    expect(named, named.join("\n")).toEqual([]);
+    expect(
+      bandParts.test(source),
+      "DocxEditor.tsx names a band's parts; a band belongs to the folder that draws it"
+    ).toBe(false);
+  });
+
+  /**
    * A side story is drawn at the foot of a page, in a rail beside the page, and in a page's
    * margin, so what draws one cannot know which of them it is drawing for
    */

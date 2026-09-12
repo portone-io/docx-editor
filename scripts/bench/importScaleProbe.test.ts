@@ -234,6 +234,7 @@ function measureNotes(withNotes: boolean): NoteTimings {
           [
             FOOTNOTE_BAND,
             {
+              order: 0,
               overhead: 16,
               heights: new Map([...footnotes.keys()].map((key) => [key, 36])),
             },

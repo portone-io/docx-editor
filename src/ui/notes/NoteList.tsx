@@ -11,7 +11,7 @@ import type { NoteRow } from "../../editor/commands/noteQueries";
 import type { PagePixels } from "../../page/pageLayout";
 import { editorClassNames } from "../../styles/classNames";
 import type { FontFallbacks } from "../../styles/fontStack";
-import { NOTE_SEPARATOR_HEIGHT, noteSeparatorWidth } from "./FootnoteAreas";
+import { NOTE_SEPARATOR_HEIGHT, noteSeparatorWidth } from "./noteSeparator";
 import { StoryRow } from "./StoryRow";
 
 export interface NoteListProps {

@@ -15,15 +15,8 @@ import type { PageOverlay } from "../../page/usePageLayout";
 import type { StoryKey } from "../../schema/stories";
 import { editorClassNames } from "../../styles/classNames";
 import type { FontFallbacks } from "../../styles/fontStack";
+import { NOTE_SEPARATOR_HEIGHT, noteSeparatorWidth } from "./noteSeparator";
 import { type NoteHeightReport, StoryRow } from "./StoryRow";
-
-/** The height a page's footnotes are set under, the rule drawn across the middle of it */
-export const NOTE_SEPARATOR_HEIGHT = 16;
-
-/** Word's rule runs a third of the body and no further than two inches */
-export function noteSeparatorWidth(bodyWidth: number): number {
-  return Math.min(bodyWidth / 3, 192);
-}
 
 export interface FootnoteAreasProps {
   readonly overlay: PageOverlay;
