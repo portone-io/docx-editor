@@ -400,3 +400,69 @@ describe("insertEndnote", () => {
     expect(undoDepth(after)).toBe(1);
   });
 });
+
+describe("an endnote through an export", () => {
+  const endnote = (id: string) =>
+    `<w:r><w:endnoteReference w:id="${id}"/></w:r>`;
+
+  /** Where the reference to this endnote stands in the body */
+  function referencePos(doc: PMNode, id: string): number {
+    let at: number | null = null;
+    doc.descendants((node, pos) => {
+      if (
+        at === null &&
+        node.type.name === "noteReference" &&
+        node.attrs.kind === "endnote" &&
+        node.attrs.id === id
+      ) {
+        at = pos;
+      }
+      return at === null;
+    });
+    if (at === null) throw new Error(`no reference to endnote ${id}`);
+    return at;
+  }
+
+  it("writes an added, an edited and a removed endnote and reads all three back", () => {
+    const opening = importDocx(
+      bytesOf({
+        body: `<w:p>${text("Text")}${endnote("3")}${text(" and ")}${endnote("4")}</w:p>`,
+        endnotes:
+          `<w:endnote w:id="3"><w:p>${text("First endnote")}</w:p></w:endnote>` +
+          `<w:endnote w:id="4"><w:p>${text("Second endnote")}</w:p></w:endnote>`,
+      })
+    );
+    const state = editorStateForSession(opening);
+
+    const inserted = runCommand(select(state, 1), insertEndnote);
+    const rewritten = runCommand(
+      inserted,
+      setEndnoteBody("3", storyFromText("Rewritten endnote"))
+    );
+    const at = referencePos(rewritten.doc, "4");
+    const removed = rewritten.apply(rewritten.tr.delete(at, at + 1));
+
+    const exported = exportDocx(removed.doc, opening.session);
+    const again = importDocx(exported);
+    const written = decode(unzipSync(exported)["word/endnotes.xml"]);
+    expect(
+      documentNotes(editorStateForSession(again)).map(({ kind, id, label }) => [
+        kind,
+        id,
+        label,
+      ])
+    ).toEqual([
+      ["endnote", "5", "1"],
+      ["endnote", "3", "2"],
+    ]);
+    expect(storyText(storyNodeOf(again.doc, storyKey("endnote", "3")))).toBe(
+      "Rewritten endnote"
+    );
+    expect(storyText(storyNodeOf(again.doc, storyKey("endnote", "5")))).toBe(
+      ""
+    );
+    expect(storyNodeOf(again.doc, storyKey("endnote", "4"))).toBeNull();
+    expect(written).not.toContain("Second endnote");
+    expect(written).toContain('<w:endnote w:id="5">');
+  });
+});
