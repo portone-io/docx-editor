@@ -99,7 +99,9 @@ export function FootnoteAreas({
                     label={row.label}
                     name={`Footnote ${row.label}`}
                     fontFallbacks={fontFallbacks}
-                    hidden={!heights.has(row.key)}
+                    // A note nobody has measured yet takes its room unseen, unless it is the one
+                    // the caret is going into: an unseen row takes no caret
+                    hidden={!entered && !heights.has(row.key)}
                     onHeight={onHeight}
                     zoom={zoom}
                     editing={entered ? editing : null}
