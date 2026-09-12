@@ -27,6 +27,11 @@ import {
   resolveParagraph,
   resolveRun,
 } from "../../docx/formatting";
+import {
+  copiedNoteStory,
+  nextNoteId,
+  takenNoteIds,
+} from "../../docx/notes/newNote";
 import { withListNumbering } from "../../docx/paraProps";
 import type { NewLists } from "../../numbering/listRegistry";
 import {
@@ -41,14 +46,26 @@ import {
   RANGE_MARKERS,
 } from "../../ooxml/rangeMarkers";
 import { docxSchema } from "../../schema";
+import {
+  EDITABLE_NOTE_KINDS,
+  type NoteKey,
+  type NoteKind,
+  storyKey,
+} from "../../schema/stories";
 import { listRefOf, numIdsIn } from "../commands/listCommands";
 import { documentFormatting } from "../documentStyles";
+import { documentOf } from "../editorDocument";
 import {
   canStartNewList,
   documentNumbering,
 } from "../plugins/numberingDecorations";
 import type { PastedContent } from "./htmlReader";
-import { type ListKinds, NO_LIST_KINDS } from "./internalChannel";
+import {
+  type ListKinds,
+  NO_LIST_KINDS,
+  NO_NOTE_STORIES,
+  type NoteStories,
+} from "./internalChannel";
 
 /** What one normalizer answers about the document the slice is going into */
 export interface NormalizeContext {
@@ -72,6 +89,17 @@ export interface NormalizeContext {
    * the list button starts one. Null in a document with nowhere to write a definition.
    */
   startList(kind: ListKind): number | null;
+  /**
+   * What the notes the slice's references call said where it was copied
+   * (`./internalChannel`). Empty for a slice that arrived any other way, whose references name
+   * notes of a document this one knows nothing about.
+   */
+  readonly noteStories: NoteStories;
+  /**
+   * A note this paste puts in, under an id no note of this document answers to, registered in
+   * `PastedContent.newStories`. It answers with the id the reference is pasted under.
+   */
+  startNote(kind: NoteKind, story: PMNode): string;
 }
 
 export type SliceNormalizer = (
@@ -205,19 +233,33 @@ export const rekeyNumbering: SliceNormalizer = (slice, context) => {
   });
 };
 
-/** The nodes that anchor something written outside the paragraph they stand in */
-const ANCHOR_NODES: ReadonlySet<string> = new Set([
-  "commentStart",
-  "commentEnd",
-  "commentReference",
-  "noteReference",
-]);
+/**
+ * What each kind of node anchors outside the paragraph it stands in, and whether this one still
+ * anchors it once it is pasted.
+ *
+ * A reference to a note of a kind no writer puts back together is one of them: nothing here can
+ * write that note a second time. A footnote reference is not, since its note travels with the copy
+ * and is put in beside it (`duplicateNotes`).
+ */
+const ANCHORS: Readonly<Record<string, (node: PMNode) => boolean>> = {
+  commentStart: () => true,
+  commentEnd: () => true,
+  commentReference: () => true,
+  noteReference: (node) =>
+    !EDITABLE_NOTE_KINDS.some((kind) => kind === node.attrs.kind),
+};
 
-/** The elements that call something the package writes elsewhere rather than opening a range */
+/**
+ * The elements that call something the package writes elsewhere rather than opening a range, and
+ * the number a note draws inside its own body, which stands for nothing in the text it is
+ * pasted into.
+ */
 const REFERENCE_ELEMENTS = [
   "commentReference",
   "footnoteReference",
   "endnoteReference",
+  "footnoteRef",
+  "endnoteRef",
 ];
 
 /**
@@ -261,11 +303,12 @@ function preservedName(node: PMNode): string | null {
 /**
  * Takes the anchors off what is pasted.
  *
- * A comment marker, a bookmark and a note reference all point at something written elsewhere in
- * the package: the comment, the bookmark's other end, the note's body. A copy of the marker alone
- * points at the same thing a second time, which is a duplicate identifier the file may not hold
- * and a range the reader cannot close. Nothing here duplicates what they point at, so the anchor
- * goes and the text it stood in stays, which is what Word does with a note it has no body for.
+ * A comment marker, a bookmark and an endnote reference all point at something written elsewhere
+ * in the package: the comment, the bookmark's other end, the note's body. A copy of the marker
+ * alone points at the same thing a second time, which is a duplicate identifier the file may not
+ * hold and a range the reader cannot close. Nothing here duplicates what they point at, so the
+ * anchor goes and the text it stood in stays, which is what Word does with a note it has no body
+ * for.
  *
  * A move drop duplicates nothing: the source goes as the drop lands, so the one anchor there was
  * travels with the text it opened. Taking it off would delete a marker the document has no way to
@@ -275,11 +318,45 @@ export const detachAnchors: SliceNormalizer = (slice, { move }) =>
   move
     ? slice
     : mapSliceNodes(slice, (node) => {
-        if (ANCHOR_NODES.has(node.type.name)) return null;
+        if (ANCHORS[node.type.name]?.(node) === true) return null;
         if (!PRESERVED_INLINE.has(node.type.name)) return node;
         const name = preservedName(node);
         return name !== null && ANCHOR_ELEMENTS.has(name) ? null : node;
       });
+
+/**
+ * Gives a pasted note reference a note of its own.
+ *
+ * A note is written once and called from the text by its id, so a second reference naming that id
+ * is one note drawn with one number where the reader made two. The note each reference called was
+ * remembered as the slice was copied (`./internalChannel`) - a cut deletes a footnote together
+ * with its last reference, so the document no longer holds it by the time the paste lands - and
+ * each reference is pasted under a fresh id with a copy of that note beside it.
+ *
+ * A reference no remembered note answers for points at nothing here: a copy from another editor or
+ * another document numbers its notes against its own file, and markup naming one says nothing
+ * about what it said. It goes the way the other anchors do.
+ */
+export const duplicateNotes =
+  (kinds: readonly NoteKind[] = EDITABLE_NOTE_KINDS): SliceNormalizer =>
+  (slice, { move, noteStories, startNote }) =>
+    move
+      ? slice
+      : mapSliceNodes(slice, (node) => {
+          if (node.type !== docxSchema.nodes.noteReference) return node;
+          const kind = kinds.find((candidate) => candidate === node.attrs.kind);
+          const id: unknown = node.attrs.id;
+          if (kind === undefined || typeof id !== "string") return null;
+          const story = noteStories.get(storyKey(kind, id));
+          if (story === undefined) return null;
+          // The XML the reference arrived as names the note it was copied from, so the pasted one
+          // is written from its attrs instead
+          return withAttrs(node, {
+            ...node.attrs,
+            id: startNote(kind, story),
+            referenceXml: null,
+          });
+        });
 
 /**
  * Works out again what the pasted paragraphs are drawn with.
@@ -320,13 +397,15 @@ export const rederiveDisplay: SliceNormalizer = (slice, { state }) => {
 export const DEFAULT_NORMALIZERS: readonly SliceNormalizer[] = [
   dropSourceIdentity,
   detachAnchors,
+  duplicateNotes(),
   rekeyNumbering,
   rederiveDisplay,
 ];
 
 /**
- * The pasted content as this document may hold it, and the definitions of the lists the paste
- * starts - the ones a reading started, and the ones a reissued number was taken for.
+ * The pasted content as this document may hold it, the definitions of the lists the paste starts -
+ * the ones a reading started, and the ones a reissued number was taken for - and the notes it puts
+ * in beside the references calling them.
  */
 export function normalizePasted(
   content: PastedContent,
@@ -342,11 +421,28 @@ export function normalizePasted(
     ...content.newLists.keys(),
   ]);
   const started = new Map<number, NewList>();
+  const document = documentOf(state);
+  const takenNotes = new Map<NoteKind, Set<string>>();
+  const startedNotes = new Map<NoteKey, PMNode>();
   const context: NormalizeContext = {
     state,
     move,
     knownLists: known,
     listKinds: content.listKinds ?? NO_LIST_KINDS,
+    noteStories: content.noteStories ?? NO_NOTE_STORIES,
+    startNote(kind, story) {
+      const ids =
+        takenNotes.get(kind) ??
+        takenNoteIds(state.doc, kind, document.reservedNoteKeys);
+      takenNotes.set(kind, ids);
+      const id = nextNoteId(ids);
+      ids.add(id);
+      startedNotes.set(
+        storyKey(kind, id),
+        copiedNoteStory(story, document.session)
+      );
+      return id;
+    },
     startList(kind) {
       if (!canStartNewList(state)) return null;
       const list = templateList(kind);
@@ -367,5 +463,6 @@ export function normalizePasted(
       started.size === 0
         ? content.newLists
         : (new Map([...content.newLists, ...started]) satisfies NewLists),
+    newStories: startedNotes.size === 0 ? content.newStories : startedNotes,
   };
 }

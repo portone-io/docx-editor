@@ -1,27 +1,39 @@
 // @vitest-environment jsdom
 
+import { unzipSync } from "fflate";
 import type { Node as PMNode } from "prosemirror-model";
-import { AllSelection, Plugin, TextSelection } from "prosemirror-state";
+import {
+  AllSelection,
+  type EditorState,
+  Plugin,
+  TextSelection,
+} from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
 import type { EditorView } from "prosemirror-view";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  decode,
   documentXmlOf,
   makeDocx,
+  makeFormattedNotesDocx,
   makeNotesDocx,
   makeNumberedDocx,
   makeStyledDocx,
   TINY_PNG_DATA_URL,
 } from "../../__testing__/docx";
+import { exportDocx } from "../../docx/exportDocx";
 import { importDocx } from "../../docx/importDocx";
 import type { SessionStore } from "../../docx/session";
+import { storyText } from "../../docx/story";
 import { toRunFormat } from "../../model/format";
 import { emuToPx } from "../../ooxml/image";
 import { styleIdOf } from "../../ooxml/props";
 import { docxSchema } from "../../schema";
-import { storyKey } from "../../schema/stories";
+import { storiesOf, storyKey, storyNodeOf } from "../../schema/stories";
 import { editorClassNames } from "../../styles/classNames";
 import { DEFAULT_FONT_FALLBACKS } from "../../styles/fontStack";
+import { undo } from "../commands/historyCommands";
+import { documentNotes } from "../commands/noteQueries";
 import {
   createEditorState,
   createEditorView,
@@ -650,6 +662,208 @@ describe("copying out of the editor", () => {
     });
 
     expect(links).toContain("https://example.com/docs");
+    view.destroy();
+  });
+});
+
+/** What a copy of the selection leaves on the clipboard, as a paste is handed it */
+function copyOf(view: EditorView): Record<string, string> {
+  const { dom, text } = view.serializeForClipboard(
+    view.state.selection.content()
+  );
+  return { "text/html": dom.innerHTML, "text/plain": text };
+}
+
+/**
+ * Fakes the dragstart `prosemirror-view` writes the dragged slice on. jsdom has neither DragEvent
+ * nor DataTransfer, and it measures no text, so no position can be found from the drag's own
+ * coordinates.
+ */
+function dragOut(view: EditorView): void {
+  const event = new Event("dragstart", { bubbles: true, cancelable: true });
+  Object.defineProperty(event, "dataTransfer", {
+    value: {
+      files: [],
+      clearData: () => {},
+      setData: () => {},
+      effectAllowed: "",
+    },
+  });
+  view.posAtCoords = () => null;
+  view.dom.dispatchEvent(event);
+}
+
+/** Everything the first paragraph holds, whose text calls the first footnote */
+function selectFirstParagraph(view: EditorView): void {
+  const size = view.state.doc.firstChild?.nodeSize ?? 2;
+  view.dispatch(
+    view.state.tr.setSelection(
+      TextSelection.create(view.state.doc, 1, size - 1)
+    )
+  );
+}
+
+function caretAt(view: EditorView, pos: number): void {
+  view.dispatch(
+    view.state.tr.setSelection(TextSelection.create(view.state.doc, pos))
+  );
+}
+
+function caretAtEnd(view: EditorView): void {
+  caretAt(view, view.state.doc.content.size - 1);
+}
+
+/** The id of every note reference the document holds, in document order */
+function referencesIn(doc: PMNode): string[] {
+  const ids: string[] = [];
+  doc.descendants((node) => {
+    const id: unknown = node.attrs.id;
+    if (
+      node.type === docxSchema.nodes.noteReference &&
+      typeof id === "string"
+    ) {
+      ids.push(id);
+    }
+    return true;
+  });
+  return ids;
+}
+
+function notesOf(state: EditorState): string[][] {
+  return documentNotes(state).map(({ id, label, text }) => [id, label, text]);
+}
+
+function storyOfFootnote(state: EditorState, id: string): string {
+  return storyText(storyNodeOf(state.doc, storyKey("footnote", id)));
+}
+
+describe("pasting a footnote reference", () => {
+  it("pastes a cut footnote back with its footnote after the cut deleted it", () => {
+    const { view } = openEditor(makeFormattedNotesDocx());
+    const said = storyOfFootnote(view.state, "2");
+    selectFirstParagraph(view);
+    const copied = copyOf(view);
+    view.dispatch(view.state.tr.deleteSelection());
+    // The cut took the footnote with the last reference to it, so the paste is what puts it back
+    expect(
+      storiesOf(view.state.doc)[storyKey("footnote", "2")]
+    ).toBeUndefined();
+
+    caretAtEnd(view);
+    paste(view, copied);
+
+    expect(notesOf(view.state)).toEqual([
+      ["5", "1", " Later footnote"],
+      ["3", "1", " Italic endnote"],
+      ["6", "2", said],
+    ]);
+    view.destroy();
+  });
+
+  it("takes a paste back together with the footnotes it added in one undo", () => {
+    const { view } = openEditor(makeFormattedNotesDocx());
+    const before = view.state;
+    selectFirstParagraph(view);
+    const copied = copyOf(view);
+    caretAtEnd(view);
+    paste(view, copied);
+    expect(notesOf(view.state)).toHaveLength(4);
+
+    undo(view.state, view.dispatch);
+
+    expect(view.state.doc.eq(before.doc)).toBe(true);
+    expect(Object.keys(storiesOf(view.state.doc))).toEqual(
+      Object.keys(storiesOf(before.doc))
+    );
+    view.destroy();
+  });
+
+  it("numbers a pasted footnote where it lands", () => {
+    const { view } = openEditor(makeFormattedNotesDocx());
+    const said = storyOfFootnote(view.state, "5");
+    // The second paragraph calls the second footnote and an endnote
+    const second = view.state.doc.firstChild?.nodeSize ?? 0;
+    view.dispatch(
+      view.state.tr.setSelection(
+        TextSelection.create(
+          view.state.doc,
+          second + 1,
+          second + view.state.doc.child(1).nodeSize - 1
+        )
+      )
+    );
+    const copied = copyOf(view);
+
+    caretAt(view, 1);
+    paste(view, copied);
+
+    // The copy stands first, so it is the first footnote, and the endnote reference did not come
+    expect(notesOf(view.state)).toEqual([
+      ["6", "1", said],
+      ["2", "2", storyOfFootnote(view.state, "2")],
+      ["5", "3", said],
+      ["3", "1", " Italic endnote"],
+    ]);
+    view.destroy();
+  });
+
+  it("writes a pasted footnote into the file as an entry of its own", () => {
+    const { view, session } = openEditor(makeFormattedNotesDocx());
+    selectFirstParagraph(view);
+    const copied = copyOf(view);
+    caretAtEnd(view);
+    paste(view, copied);
+
+    const exported = exportDocx(view.state.doc, session);
+    const part = decode(unzipSync(exported)["word/footnotes.xml"]);
+    const reopened = editorStateForSession(importDocx(exported));
+
+    expect(part).toContain('<w:footnote w:id="6">');
+    expect(notesOf(reopened)).toEqual(notesOf(view.state));
+    view.destroy();
+  });
+
+  it("gives a footnote reference dragged as a copy a footnote of its own", () => {
+    const { view } = openEditor(makeFormattedNotesDocx());
+    const said = storyOfFootnote(view.state, "2");
+    selectFirstParagraph(view);
+    dragOut(view);
+    const dragged = view.dragging;
+    if (dragged === null) throw new Error("the drag carried nothing");
+
+    caretAtEnd(view);
+    const transformed = view.someProp("transformPasted", (transform) =>
+      transform(dragged.slice, view, false)
+    );
+    if (transformed === undefined) throw new Error("nothing read the drop");
+    view.dispatch(view.state.tr.replaceSelection(transformed));
+
+    expect(notesOf(view.state)).toEqual([
+      ["2", "1", said],
+      ["5", "2", " Later footnote"],
+      ["3", "1", " Italic endnote"],
+      ["6", "3", said],
+    ]);
+    view.destroy();
+  });
+
+  it("copies no note for a reference naming a separator entry", () => {
+    // A separator lays the notes part out rather than saying anything, so nothing copies it
+    const { view } = openEditor(
+      makeNotesDocx(
+        '<w:p><w:r><w:t xml:space="preserve">Text</w:t></w:r>' +
+          '<w:r><w:footnoteReference w:id="-1"/></w:r></w:p>'
+      )
+    );
+    const stories = Object.keys(storiesOf(view.state.doc));
+    selectFirstParagraph(view);
+    const copied = copyOf(view);
+
+    caretAtEnd(view);
+    paste(view, copied);
+
+    expect(Object.keys(storiesOf(view.state.doc))).toEqual(stories);
+    expect(referencesIn(view.state.doc)).toEqual(["-1"]);
     view.destroy();
   });
 });
