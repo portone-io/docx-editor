@@ -28,48 +28,44 @@ A comment body keeps its formatting through an edit; the built-in composer write
 ## Footnotes and endnotes
 
 A footnote is drawn at the foot of the page that holds its reference, under a separator line and
-above the footer, and the endnotes are drawn after the last paragraph of the document, under a
-separator line of their own, onto further pages where they do not fit.
-What a note is drawn without is listed under
-[Pages and sections](/docs/features/pages-and-sections#limitations).
-With page guides turned off, both are listed under the document instead, the footnotes ahead of the
-endnotes.
-Notes are numbered in the document's own format, starting number, and section restarts; a restart
-on every page is counted straight through.
+above the footer; endnotes are drawn after the last paragraph of the document, under a separator
+line of their own, running onto further pages where they do not fit.
+With page guides turned off, both are listed under the document instead, footnotes first.
+Notes are numbered in the document's own format, starting number, and section restarts.
 
 ### Editing a note
 
-Click a note's number, or the note itself where it is drawn, to put the caret in it.
-An endnote stands at the end of the document, so clicking its number is also what takes a reader
-there.
-Clicking the number a note opens with puts the caret back just after the reference that calls it
-and scrolls there; `Escape` does the same, and clicking the document leaves as well.
+Click a note's number, or the note itself, to put the caret in it; for an endnote, clicking the
+number is also what takes you to the end of the document.
+`Escape` or a click on the number the note opens with puts the caret back just after the reference
+and scrolls there, and a click on the document leaves the note as well.
 Insert a note at the caret with **Insert footnote** and **Insert endnote** on the right-click menu,
-over body text and inside a table cell alike, or with `Mod+Alt+F` and `Mod+Alt+D` (`Mod+Alt+E` on
-macOS, which keeps Command+Option+D for itself); either puts the caret in the new note.
+in body text or in a table cell, or with `Mod+Alt+F` and `Mod+Alt+D` (`Mod+Alt+E` on macOS); the
+caret moves into the new note.
 
 A note takes character and paragraph formatting: bold, italic, underline, strikethrough, color,
 highlight, font, size, paragraph style, alignment, spacing, indentation, and tabs.
 Tables, images, links, comments, lists, page breaks, and further notes cannot be added inside one,
 and a paste into a note drops images, links, and note references; whatever a document's own note
 already holds is kept and its text stays editable.
-Notes are edited where they are drawn on the page, so with page guides turned off the listed notes
-are read-only.
 
-Everything typed in a note goes into the document's own history, so one `Mod+Z` takes it back from
+Everything typed in a note goes into the document's history, so `Mod+Z` takes it back from
 anywhere.
-Deleting a note's reference deletes the note, and undo brings both back; `Backspace` at the start of
-a note holding nothing but its number deletes the note and its number and returns the caret to where
-the number stood.
-Selecting a note's text and deleting it leaves the number standing, since the number is the note's
-own rather than text written in it, and one undo brings the text back with it.
-A note left empty is kept.
+Deleting a note's reference deletes the note, and undo brings both back; `Backspace` at the start
+of a note holding nothing but its number does the same and returns the caret to where the
+reference stood.
+Deleting a note's text leaves its number standing, and a note left empty is kept.
 
-Notes cannot be edited in comment-only or read-only mode, where the note a reader opens takes no
-typing.
+### Limitations
 
-A document that asks for its endnotes at the end of each section gets them at the end of the
-document.
+Notes cannot be edited in comment-only or read-only mode, and the notes listed with page guides
+turned off are read-only.
+
+A numbering restart on every page is counted straight through, and a document that asks for its
+endnotes at the end of each section gets them at the end of the document.
+
+[Pages and sections](/docs/features/pages-and-sections#limitations) lists what a note is drawn
+without on the page.
 
 [Comments and notes](/docs/editor-api/comments-and-notes) in the Editor API lists the commands and
 queries behind these controls.
