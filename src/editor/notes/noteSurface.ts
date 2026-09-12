@@ -7,7 +7,8 @@
  *
  * The rest is what the story view asks a kind of story for (`editor/stories`): the host that
  * writes an edit into the main document through the note's own body command, and the extensions
- * that give a note its key rule, its chip, and what a paste into one may carry.
+ * that give a note its key rule, its chip, the number it keeps through an edit, and what a paste
+ * into one may carry.
  */
 
 import { keymap } from "prosemirror-keymap";
@@ -17,7 +18,7 @@ import {
   Mark,
   type Node as PMNode,
 } from "prosemirror-model";
-import { type Command, TextSelection } from "prosemirror-state";
+import { type Command, Plugin, TextSelection } from "prosemirror-state";
 import type { EditorView, NodeViewConstructor } from "prosemirror-view";
 import { docxSchema } from "../../schema";
 import { editShut, transactionAllowed } from "../../schema/guards";
@@ -44,12 +45,20 @@ import {
 
 const OWN_REFERENCE_MARKS: readonly unknown[] = ["footnoteRef", "endnoteRef"];
 
+/** Whether this is the mark a note's entry opens with, which Word draws as the note's number */
+function isOwnMark(node: PMNode): boolean {
+  return (
+    node.type === docxSchema.nodes.rawRunContent &&
+    OWN_REFERENCE_MARKS.includes(node.attrs.element)
+  );
+}
+
 function drawnBySchema(node: PMNode): DOMOutputSpec {
   return docxSchema.nodes.rawRunContent.spec.toDOM?.(node) ?? ["span"];
 }
 
 function markSpec(node: PMNode, labelOf: () => string): DOMOutputSpec {
-  return OWN_REFERENCE_MARKS.includes(node.attrs.element)
+  return isOwnMark(node)
     ? ["sup", { class: editorClassNames.noteMark }, labelOf()]
     : drawnBySchema(node);
 }
@@ -137,8 +146,70 @@ function runOn(main: EditorView, command: Command): boolean {
 
 /** How much room the number the note opens with takes, which the caret may stand after */
 function leadingChipSize(story: PMNode): number {
-  const first = story.firstChild?.firstChild;
-  return first?.type === docxSchema.nodes.rawRunContent ? first.nodeSize : 0;
+  const first = story.firstChild?.firstChild ?? null;
+  return first !== null && isOwnMark(first) ? first.nodeSize : 0;
+}
+
+/** The note's own number, wherever in the story it stands, and null for a story holding none */
+function ownMarkIn(story: PMNode): PMNode | null {
+  let found: PMNode | null = null;
+  story.descendants((node) => {
+    if (isOwnMark(node)) found = node;
+    return found === null;
+  });
+  return found;
+}
+
+/**
+ * The head of the first stretch of the story a run's own content may stand in, and null for a
+ * story left holding no such stretch.
+ */
+function markHome(story: PMNode): number | null {
+  const type = docxSchema.nodes.rawRunContent;
+  let at: number | null = null;
+  story.descendants((node, pos) => {
+    if (at !== null) return false;
+    if (!node.isTextblock) return true;
+    if (node.type.contentMatch.matchType(type) !== null) at = pos + 1;
+    return false;
+  });
+  return at;
+}
+
+/**
+ * Puts the number a note opens with back when an edit inside the note carries it off.
+ *
+ * Word draws a note's number from the mark its entry opens with (`w:footnoteRef`), which arrives
+ * as a preserved chip no deletion guard answers for (`docx/importPolicy`), so selecting the whole
+ * of a note and deleting it took the number along with the text and the entry went back out
+ * without one. Emptying a note stays an ordinary edit - the text goes - while the number, which
+ * is the entry's own rather than anything a reader wrote, goes back at the head of the first
+ * paragraph that takes it, as the very node it stood in the story as - its preserved XML, its run
+ * style and whatever wrapper it opened inside. So an entry nobody touched still goes out as its
+ * own bytes, and an emptied one goes out carrying the element Word reads.
+ *
+ * Putting it back rather than refusing the edit is what keeps the key honest: the guard the chip
+ * would need answers for a whole stretch of an edit, so a refusal would leave the selected text
+ * standing too.
+ *
+ * It is an appended transaction, the way a comment a body edit swept away is put back
+ * (`editor/plugins/commentRestoration`), so the story the host writes is the edit and the number
+ * together: one story change in the document, and one undo for both.
+ *
+ * Backspace at the start of a note holding nothing but its number is a rule of its own and stays
+ * one (`deleteEmptyNote`): it answers the key before any edit is made, so it takes the note and
+ * the reference calling it away rather than leaving a story for this to answer for.
+ */
+function ownMarkRestoration(): Plugin {
+  return new Plugin({
+    appendTransaction(transactions, oldState, newState) {
+      if (!transactions.some((tr) => tr.docChanged)) return null;
+      const lost = ownMarkIn(oldState.doc);
+      if (lost === null || ownMarkIn(newState.doc) !== null) return null;
+      const at = markHome(newState.doc);
+      return at === null ? null : newState.tr.insert(at, lost);
+    },
+  });
 }
 
 /**
@@ -246,7 +317,10 @@ export function noteHost(
   };
 }
 
-/** What a note adds to the story view: its chip, its key rule, and what a paste may bring in */
+/**
+ * What a note adds to the story view: its chip, the number it keeps, its key rule, and what a
+ * paste may bring in
+ */
 export function noteExtensions(
   main: EditorView,
   kind: NoteKind,
@@ -254,7 +328,10 @@ export function noteExtensions(
   labelOf: () => string
 ): StoryExtensions {
   return {
-    plugins: [keymap({ Backspace: deleteEmptyNote(main, kind, key) })],
+    plugins: [
+      ownMarkRestoration(),
+      keymap({ Backspace: deleteEmptyNote(main, kind, key) }),
+    ],
     nodeViews: { rawRunContent: noteMarkView(labelOf) },
     normalizers: NOTE_NORMALIZERS,
     takes: NOTE_TAKES,

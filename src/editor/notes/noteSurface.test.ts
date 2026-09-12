@@ -1,14 +1,18 @@
 // @vitest-environment jsdom
+import { unzipSync } from "fflate";
 import { Fragment, type Node as PMNode, Slice } from "prosemirror-model";
-import { TextSelection } from "prosemirror-state";
+import { AllSelection, TextSelection } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  decode,
   makeNotesDocx,
   NOTE_BODY,
   TINY_PNG_DATA_URL,
 } from "../../__testing__/docx";
+import { exportDocx } from "../../docx/exportDocx";
 import { importDocx } from "../../docx/importDocx";
+import type { SessionStore } from "../../docx/session";
 import { storyOf, storyText } from "../../docx/story";
 import { docxSchema } from "../../schema";
 import type { EditingProtection } from "../../schema/protection";
@@ -16,6 +20,7 @@ import { storyKey } from "../../schema/stories";
 import { DEFAULT_FONT_FALLBACKS } from "../../styles/fontStack";
 import { normalizePasted } from "../clipboard/normalizers";
 import { insertFootnote } from "../commands/footnoteCommands";
+import { undo } from "../commands/historyCommands";
 import { listRefOf, toggleNumberedList } from "../commands/listCommands";
 import { createEditorView, editorStateForSession } from "../createEditor";
 import { documentOf, storyDocument } from "../editorDocument";
@@ -46,20 +51,34 @@ afterEach(() => {
   opened.main = null;
 });
 
-function mainView(
+interface OpenedMain {
+  readonly main: EditorView;
+  /** The session an export of the edited document is written back through */
+  readonly session: SessionStore;
+}
+
+function openMain(
   body: string = NOTE_BODY,
   protection: EditingProtection = "none"
-): EditorView {
+): OpenedMain {
+  const opening = importDocx(makeNotesDocx(body));
   const view = createEditorView({
     mount: document.createElement("div"),
-    state: editorStateForSession(importDocx(makeNotesDocx(body)), {
+    state: editorStateForSession(opening, {
       protection,
       author: { id: "me", name: "Me" },
     }),
     onStateChange: () => {},
   });
   opened.main = view;
-  return view;
+  return { main: view, session: opening.session };
+}
+
+function mainView(
+  body: string = NOTE_BODY,
+  protection: EditingProtection = "none"
+): EditorView {
+  return openMain(body, protection).main;
 }
 
 function openNote(main: EditorView, id = "2", label = "1"): StoryView {
@@ -329,5 +348,170 @@ describe("what a note takes", () => {
     expect(storyText(storyOf(main.state.doc, FOOTNOTE))).toBe(
       "Footnote body\nSecond line"
     );
+  });
+});
+
+/** The elements of every preserved chip the story holds, in document order */
+function chipElements(story: PMNode | null): string[] {
+  const found: string[] = [];
+  story?.descendants((node) => {
+    if (node.type === docxSchema.nodes.rawRunContent) {
+      found.push(String(node.attrs.element));
+    }
+    return true;
+  });
+  return found;
+}
+
+/** The node the story opens with, which is the note's own number for a note that kept it */
+function leadingChip(story: PMNode | null): PMNode | null {
+  const first = story?.firstChild?.firstChild ?? null;
+  return first !== null && first.type === docxSchema.nodes.rawRunContent
+    ? first
+    : null;
+}
+
+function written(main: EditorView): PMNode | null {
+  return storyOf(main.state.doc, FOOTNOTE);
+}
+
+function selectWholeStory(story: StoryView): void {
+  story.view.dispatch(
+    story.view.state.tr.setSelection(new AllSelection(story.view.state.doc))
+  );
+}
+
+/**
+ * The number Word draws a note by is the mark the entry opens with, and the mark comes in as a
+ * chip no guard answers for, so an edit inside the note can carry it off. Emptying a note is an
+ * ordinary edit - the text goes - but the number is the entry's own and stays.
+ */
+describe("the number a note opens with", () => {
+  it("stays standing when the whole note body is deleted", () => {
+    const { main } = openMain();
+    const arrived = leadingChip(written(main));
+    if (arrived === null) throw new Error("the note opens with no number");
+    const story = openNote(main);
+
+    selectWholeStory(story);
+    expect(pressBackspace(story.view)).toBe(true);
+
+    expect(chipElements(written(main))).toEqual(["footnoteRef"]);
+    expect(storyText(written(main))).toBe("");
+    // The very mark the file arrived with, its preserved XML and its run style included
+    expect(leadingChip(written(main))?.eq(arrived)).toBe(true);
+  });
+
+  it("cannot be taken by a Backspace just after it while text follows", () => {
+    const { main } = openMain();
+    const story = openNote(main);
+    const chip = leadingChip(story.view.state.doc);
+    if (chip === null) throw new Error("the note opens with no number");
+
+    // The browser deletes an inline atom itself and ProseMirror reads the change back, so the
+    // deletion is what arrives here rather than a key the keymap answered
+    story.view.dispatch(story.view.state.tr.delete(1, 1 + chip.nodeSize));
+
+    expect(chipElements(written(main))).toEqual(["footnoteRef"]);
+    expect(storyText(written(main))).toBe("Footnote body\nSecond line");
+  });
+
+  it("goes back at the head when a selection across it is typed over", () => {
+    const { main } = openMain();
+    const story = openNote(main);
+
+    // From the number itself to the end of the paragraph it opens
+    const { doc } = story.view.state;
+    story.view.dispatch(
+      story.view.state.tr.setSelection(
+        TextSelection.create(doc, 1, doc.child(0).nodeSize - 1)
+      )
+    );
+    story.view.dispatch(story.view.state.tr.insertText("Rewritten"));
+
+    expect(chipElements(written(main))).toEqual(["footnoteRef"]);
+    expect(storyText(written(main))).toBe("Rewritten\nSecond line");
+  });
+
+  it("goes back when the whole note is pasted over", () => {
+    const { main } = openMain();
+    const story = openNote(main);
+    const pasted = new Slice(
+      Fragment.from(
+        docxSchema.nodes.paragraph.create(null, [
+          docxSchema.text("Pasted over"),
+        ])
+      ),
+      0,
+      0
+    );
+
+    selectWholeStory(story);
+    story.view.dispatch(story.view.state.tr.replaceSelection(pasted));
+
+    expect(chipElements(written(main))).toEqual(["footnoteRef"]);
+    expect(storyText(written(main))).toBe("Pasted over");
+  });
+
+  it("comes back with the text on one undo of the edit that emptied the note", () => {
+    const { main } = openMain();
+    const story = openNote(main);
+
+    selectWholeStory(story);
+    expect(pressBackspace(story.view)).toBe(true);
+    expect(storyText(written(main))).toBe("");
+
+    expect(undo(main.state, (tr) => main.dispatch(tr))).toBe(true);
+
+    expect(chipElements(written(main))).toEqual(["footnoteRef"]);
+    expect(storyText(written(main))).toBe("Footnote body\nSecond line");
+  });
+
+  it("does not keep the emptied note from going on the next Backspace", () => {
+    const { main } = openMain();
+    const story = openNote(main);
+    const references = () => {
+      let found = 0;
+      main.state.doc.descendants((node) => {
+        if (node.type === docxSchema.nodes.noteReference) found += 1;
+        return true;
+      });
+      return found;
+    };
+
+    selectWholeStory(story);
+    expect(pressBackspace(story.view)).toBe(true);
+    expect(references()).toBe(2);
+
+    // The note now holds its restored number and nothing else, which is where plan 4.8 has
+    // Backspace delete the note and the reference that calls it
+    story.view.dispatch(
+      story.view.state.tr.setSelection(
+        TextSelection.create(story.view.state.doc, 1)
+      )
+    );
+    expect(pressBackspace(story.view)).toBe(true);
+
+    expect(references()).toBe(1);
+    expect(written(main)).toBeNull();
+  });
+
+  it("is written back into the footnotes part, and reads back numbering the note", () => {
+    const { main, session } = openMain();
+    const story = openNote(main);
+
+    selectWholeStory(story);
+    expect(pressBackspace(story.view)).toBe(true);
+
+    const exported = exportDocx(main.state.doc, session);
+    expect(decode(unzipSync(exported)["word/footnotes.xml"])).toContain(
+      '<w:footnote w:id="2"><w:p><w:r><w:footnoteRef/></w:r></w:p></w:footnote>'
+    );
+
+    const reopened = editorStateForSession(importDocx(exported));
+    expect(chipElements(storyOf(reopened.doc, FOOTNOTE))).toEqual([
+      "footnoteRef",
+    ]);
+    expect(storyText(storyOf(reopened.doc, FOOTNOTE))).toBe("");
   });
 });

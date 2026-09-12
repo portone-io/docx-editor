@@ -107,6 +107,32 @@ test("composes hangul inside a footnote while the page lays out again", async ({
   await expect(openNote(page)).toContainText("안녕");
 });
 
+/**
+ * The number Word draws a note by is a preserved chip inside the note, and a browser deletes an
+ * inline atom itself: the deletion arrives as a DOM change read back rather than as a key the
+ * keymap answered, which is the path only a real browser takes.
+ */
+test("keeps the note's own number when its whole text is deleted", async ({
+  page,
+}) => {
+  await openHarness(page, "notes");
+  await enterFootnote(page, "1");
+  const number = openNote(page).locator(`.${editorClassNames.noteMark}`);
+  await expect(number).toHaveText("1");
+
+  await pressModKey(page, "a");
+  await page.keyboard.press("Backspace");
+
+  await expect.poll(() => noteText(page, "1")).toBe("");
+  await expect(number).toHaveText("1");
+  // One undo brings the text back under the same number
+  await pressModKey(page, "z");
+  await expect
+    .poll(() => noteText(page, "1"))
+    .toContain("A footnote near the top");
+  await expect(number).toHaveText("1");
+});
+
 test("returns the caret after the reference on Escape", async ({ page }) => {
   await openHarness(page, "notes");
   await enterFootnote(page, "1");
