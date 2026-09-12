@@ -31,6 +31,14 @@ export interface DemandSource {
 }
 
 export interface DemandBand {
+  /**
+   * Where this band stands among the bands one page keeps, counted up from the foot of the body:
+   * 0 stands at the very foot and a higher number above it, between the text and the band below.
+   * Without it a page would stack its bands in the order its text happened to reach them, so the
+   * same two bands could come out one way round on one page and the other way round on the next.
+   * Two bands a page may hold together name two different places
+   */
+  readonly order: number;
   /** Height a page adds once when it holds any demand of this band */
   readonly overhead: number;
   /** The height each id takes in the band. An id not measured yet takes none */

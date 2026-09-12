@@ -100,7 +100,7 @@ function footnoteBand(height: number): ReadonlyMap<string, DemandBand> {
   return new Map([
     [
       FOOTNOTE_BAND,
-      { overhead: 16, heights: new Map([["footnote:1", height]]) },
+      { order: 0, overhead: 16, heights: new Map([["footnote:1", height]]) },
     ],
   ]);
 }

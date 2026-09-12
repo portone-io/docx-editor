@@ -746,7 +746,7 @@ describe("the room a page keeps at its foot", () => {
     overhead = 0
   ): ReadonlyMap<string, DemandBand> {
     return new Map([
-      [BAND, { overhead, heights: new Map(Object.entries(heights)) }],
+      [BAND, { order: 0, overhead, heights: new Map(Object.entries(heights)) }],
     ]);
   }
 
@@ -1086,11 +1086,40 @@ describe("the room a page keeps at its foot", () => {
     ]);
   });
 
+  it("stacks a page's bands where their definitions put them, not where its text met them", () => {
+    // "floor" belongs at the foot of the body and "shelf" above it, whichever of the two the
+    // page's text reaches first
+    const bands: ReadonlyMap<string, DemandBand> = new Map([
+      ["floor", { order: 0, overhead: 0, heights: new Map([["f", 100]]) }],
+      ["shelf", { order: 1, overhead: 0, heights: new Map([["s", 50]]) }],
+    ]);
+    const met = (first: string, second: string) =>
+      pageLayout({
+        blocks: blocks({
+          height: 300,
+          demands: [
+            { offset: 10, id: first[0] ?? "", band: first },
+            { offset: 20, id: second[0] ?? "", band: second },
+          ],
+        }),
+        sections: ONE_SECTION,
+        bands,
+      }).reserved;
+
+    const stacked = [
+      { page: 1, band: "shelf", ids: ["s"], top: PAGE - 150, height: 50 },
+      { page: 1, band: "floor", ids: ["f"], top: PAGE - 100, height: 100 },
+    ];
+    expect(met("floor", "shelf")).toEqual(stacked);
+    expect(met("shelf", "floor")).toEqual(stacked);
+  });
+
   it("adds a band's overhead once to each page that holds it", () => {
     const bands: ReadonlyMap<string, DemandBand> = new Map([
       [
         "wide",
         {
+          order: 1,
           overhead: 30,
           heights: new Map([
             ["w1", 100],
@@ -1099,7 +1128,7 @@ describe("the room a page keeps at its foot", () => {
           ]),
         },
       ],
-      ["narrow", { overhead: 10, heights: new Map([["n1", 20]]) }],
+      ["narrow", { order: 0, overhead: 10, heights: new Map([["n1", 20]]) }],
     ]);
     const result = pageLayout({
       blocks: blocks(
@@ -1120,7 +1149,7 @@ describe("the room a page keeps at its foot", () => {
     // The 480 and the 50 it asks for end at 830, above the 840 the first block's room leaves; with
     // the wide band's 30 counted again they would not
     expect(result.pushes.map((push) => push.pos)).toEqual([20]);
-    // A page's bands stand one under the next, in the order it took them
+    // A page's bands stand one under the next, in the order their definitions name
     expect(result.reserved).toEqual([
       {
         page: 1,

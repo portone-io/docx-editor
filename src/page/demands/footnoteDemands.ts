@@ -17,6 +17,12 @@ import type { DemandSource, PageDemand } from "./index";
 /** The band footnotes are kept in, which the layout's caller hands the heights of */
 export const FOOTNOTE_BAND = "footnote";
 
+/**
+ * Where footnotes stand among the bands a page keeps (`DemandBand.order`). Word sets them at the
+ * very foot of the body, under anything else the page holds there, so this is the last place
+ */
+export const FOOTNOTE_BAND_ORDER = 0;
+
 /** One footnote reference inside a block: where it stands from the block's content start */
 interface HeldReference {
   readonly offset: number;

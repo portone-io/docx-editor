@@ -46,7 +46,10 @@ import { tableMenuAnchor } from "./editor/plugins/tableContextMenu";
 import { textMenuAnchor } from "./editor/plugins/textContextMenu";
 import { DocxImportError, type DocxImportErrorCode } from "./ooxml/errors";
 import type { DemandBand } from "./page/demands";
-import { FOOTNOTE_BAND } from "./page/demands/footnoteDemands";
+import {
+  FOOTNOTE_BAND,
+  FOOTNOTE_BAND_ORDER,
+} from "./page/demands/footnoteDemands";
 import { PageGuides } from "./page/PageGuides";
 import { A4_PAGE_PIXELS, pagePixels, sectionPixels } from "./page/pageLayout";
 import { type PageFace, usePageLayout } from "./page/usePageLayout";
@@ -562,7 +565,11 @@ function DocxEditorSurface(
         ? new Map<string, DemandBand>([
             [
               FOOTNOTE_BAND,
-              { overhead: NOTE_SEPARATOR_HEIGHT, heights: noteHeights },
+              {
+                order: FOOTNOTE_BAND_ORDER,
+                overhead: NOTE_SEPARATOR_HEIGHT,
+                heights: noteHeights,
+              },
             ],
           ])
         : undefined,

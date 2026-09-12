@@ -588,22 +588,29 @@ export function pageLayout({
     }
   };
 
-  /** Records what the page being closed keeps at its foot */
+  /**
+   * Records what the page being closed keeps at its foot, top to bottom. The bands stand where
+   * their own definitions put them (`page/demands`) rather than in the order this page's text
+   * reached them, so two pages holding the same bands stack them the same way round
+   */
   const recordRoom = (page: number) => {
+    const held = [...room.bands]
+      .flatMap(([name, ids]) => {
+        const band = bands.get(name);
+        return band ? [{ name, ids, band }] : [];
+      })
+      .sort((a, b) => b.band.order - a.band.order);
     let top = bodyEnd();
-    for (const [name, ids] of room.bands) {
-      const band = bands.get(name);
-      if (band) {
-        const height = bandHeight(band, ids);
-        reserved.push({
-          page,
-          band: name,
-          ids: [...ids],
-          top: round(top),
-          height: round(height),
-        });
-        top += height;
-      }
+    for (const { name, ids, band } of held) {
+      const height = bandHeight(band, ids);
+      reserved.push({
+        page,
+        band: name,
+        ids: [...ids],
+        top: round(top),
+        height: round(height),
+      });
+      top += height;
     }
   };
 
