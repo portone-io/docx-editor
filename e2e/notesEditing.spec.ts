@@ -144,6 +144,33 @@ test("composes over the number a note is drawn by, and keeps it", async ({
 });
 
 /**
+ * Writing a note again from nothing: select all of it, then type.
+ *
+ * A composition replaces what is selected because the browser does the replacing, and Chrome will
+ * not touch a selection that begins at an element it may not edit. A note always begins with the
+ * number it is drawn by, so the whole of a note is exactly such a selection, and the syllables
+ * used to land in front of the words they were meant to replace. The selection is taken away
+ * before the composition opens now (`editor/plugins/compositionSelection`).
+ */
+test("writes a note again from nothing with hangul", async ({ page }) => {
+  await openHarness(page, "notes");
+  await enterFootnote(page, "1");
+  const number = openNote(page).locator(`.${editorClassNames.noteMark}`);
+  const cdp = await imeSession(page);
+
+  await pressModKey(page, "a");
+  await compose(cdp, ["ㅇ", "아", "안"]);
+  await settle(page);
+  await commitComposition(cdp, "안");
+  await settle(page);
+
+  // Nothing of what stood there is left, and the number the note is drawn by still is
+  await expect.poll(() => noteText(page, "1")).toBe("안");
+  await expect(number).toHaveText("1");
+  expect(await composing(page)).toBe(false);
+});
+
+/**
  * The number Word draws a note by is a preserved chip inside the note, and a browser deletes an
  * inline atom itself: the deletion arrives as a DOM change read back rather than as a key the
  * keymap answered, which is the path only a real browser takes.

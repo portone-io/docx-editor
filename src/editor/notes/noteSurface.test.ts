@@ -10,13 +10,14 @@ import {
   NOTE_BODY,
   TINY_PNG_DATA_URL,
 } from "../../__testing__/docx";
+import { openComposition } from "../../__testing__/editing";
 import { exportDocx } from "../../docx/exportDocx";
 import { importDocx } from "../../docx/importDocx";
 import type { SessionStore } from "../../docx/session";
 import { storyOf, storyText } from "../../docx/story";
 import { docxSchema } from "../../schema";
 import type { EditingProtection } from "../../schema/protection";
-import { storyKey } from "../../schema/stories";
+import { type NoteKind, storyKey } from "../../schema/stories";
 import { DEFAULT_FONT_FALLBACKS } from "../../styles/fontStack";
 import { normalizePasted } from "../clipboard/normalizers";
 import { insertFootnote } from "../commands/footnoteCommands";
@@ -27,6 +28,7 @@ import { documentOf, storyDocument } from "../editorDocument";
 import { requestedNote } from "../plugins/noteNavigation";
 import { createStoryView, type StoryView } from "../stories/storyView";
 import { footnoteExtensions, footnoteHost } from "./footnoteSurface";
+import { noteExtensions, noteHost } from "./noteSurface";
 
 const FOOTNOTE = storyKey("footnote", "2");
 
@@ -351,6 +353,31 @@ describe("what a note takes", () => {
   });
 });
 
+/**
+ * A view over one note of the kind named, which is the surface every kind of note is edited on:
+ * the footnote rows the editor draws today, and the endnote rows the same view will hold.
+ */
+function openNoteOfKind(
+  main: EditorView,
+  kind: NoteKind,
+  id: string
+): StoryView {
+  const key = storyKey(kind, id);
+  const story = createStoryView({
+    mount: document.createElement("div"),
+    host: noteHost(main, kind, () => {}),
+    key,
+    document: storyDocument(
+      documentOf(main.state),
+      documentOf(main.state).geometry
+    ),
+    fontFallbacks: DEFAULT_FONT_FALLBACKS,
+    extensions: noteExtensions(main, kind, key, () => "1"),
+  });
+  opened.story = story;
+  return story;
+}
+
 /** The elements of every preserved chip the story holds, in document order */
 function chipElements(story: PMNode | null): string[] {
   const found: string[] = [];
@@ -513,5 +540,44 @@ describe("the number a note opens with", () => {
       "footnoteRef",
     ]);
     expect(storyText(storyOf(reopened.doc, FOOTNOTE))).toBe("");
+  });
+});
+
+/**
+ * A composition replaces what is selected because the browser does the replacing, and it will not
+ * touch a selection that begins at an element it may not edit. A note's first paragraph always
+ * opens with the number it is drawn by, so selecting the whole of a note and typing meets that
+ * every time; the selection is taken away before the composition opens
+ * (`editor/plugins/compositionSelection`), which every kind of note story is given.
+ */
+describe("a composition opening over the whole of a note", () => {
+  it("empties a footnote and leaves the number it is drawn by", () => {
+    const main = mainView();
+    const story = openNoteOfKind(main, "footnote", "2");
+    selectWholeStory(story);
+
+    openComposition(story.view);
+
+    const held = storyOf(main.state.doc, FOOTNOTE);
+    expect(chipElements(held)).toEqual(["footnoteRef"]);
+    expect(storyText(held)).toBe("");
+  });
+
+  it("leaves an endnote as it stands, since its surface takes no edit at all", () => {
+    const main = mainView();
+    const endnote = storyKey("endnote", "3");
+    const story = openNoteOfKind(main, "endnote", "3");
+    selectWholeStory(story);
+
+    openComposition(story.view);
+
+    // No writer carries an endnote change, so the reference stands under a guard and the view
+    // over that note is read-only whatever the gesture (`noteHost`). The number it is drawn by
+    // is in no danger until a writer for one arrives
+    expect(story.view.editable).toBe(false);
+    expect(chipElements(storyOf(main.state.doc, endnote))).toEqual([
+      "endnoteRef",
+    ]);
+    expect(storyText(storyOf(main.state.doc, endnote))).toBe("Endnote body");
   });
 });

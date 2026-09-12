@@ -37,6 +37,7 @@ import { columnResize } from "./plugins/columnResize";
 import { commentComposer } from "./plugins/commentComposer";
 import { commentDecorations } from "./plugins/commentDecorations";
 import { commentRestoration } from "./plugins/commentRestoration";
+import { compositionSelection } from "./plugins/compositionSelection";
 import {
   displayDerivation,
   withDerivedDisplay,
@@ -125,6 +126,9 @@ export function createEditorState(
       // the preserved bookmark markers and endnote references stay where the file put them.
       lockedContent(),
       documentProtection({ protection, author, editableComments }),
+      // Stands ahead of the history so the deletion it makes goes in with the syllable that
+      // replaces it rather than before the history is watching
+      compositionSelection(),
       history(),
       keymap(docxKeymap),
       historyKeys(),
