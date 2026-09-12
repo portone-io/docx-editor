@@ -41,6 +41,7 @@ The re-derivation after an edit goes to the history with that edit; the one afte
 
 Export writes every part beside the body through a list of part planners (`docx/partPlan`).
 A planner answers with the parts it rewrites and declares what a part it adds needs through the one relationships writer and the one content types writer every planner shares, so those two parts are written once from everything asked for; a part's children are put in by `ooxml/partSplice`, which cuts the original text at its root and leaves every other byte as it arrived.
+The list is `docx/partPlanners`, where each planner stands beside the side stories it writes and the changes to one it carries; the writer runs the planners off that list and the export invariants read what is written off the same list, so a change no planner carries is refused rather than dropped.
 Whether a side story changed is judged once, in `docx/storyParts`, for every story writer and the export invariants alike; a part holding one entry per story, such as the Footnotes part, is written by `storyEntriesPlanner`.
 Every rewritten part is parsed before the package is repacked.
 

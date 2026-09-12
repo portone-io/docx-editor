@@ -27,6 +27,7 @@ import {
 import { sameSource } from "../schema/sourceEquality";
 import {
   asStoryKey,
+  STORY_KINDS,
   type StoryKey,
   type StoryKind,
   storiesOf,
@@ -115,13 +116,74 @@ function changed(changes: readonly StoryChange[]): boolean {
   return changes.some((change) => change.change !== "kept");
 }
 
-/** The kinds of story some part writer carries into the file; a change to any other kind has nowhere to go */
-export const WRITTEN_STORY_KINDS: ReadonlySet<StoryKind> = new Set<StoryKind>([
-  "header",
-  "footer",
-  "comment",
-  "footnote",
-]);
+/** What an edit did to a story, other than leave it as it arrived */
+export type StoryChanged = Exclude<StoryChange["change"], "kept">;
+
+export const EVERY_STORY_CHANGE: readonly StoryChanged[] = [
+  "edited",
+  "removed",
+  "added",
+];
+
+const NO_FROZEN_ENTRIES: ReadonlySet<StoryKey> = new Set();
+
+/**
+ * What one part writer carries into the file: the kind of story it writes and the changes to one
+ * it writes back. A change it leaves out has nowhere to go, and `docx/invariants` refuses it.
+ */
+export interface StoryWriting {
+  readonly kind: StoryKind;
+  readonly changes: readonly StoryChanged[];
+  /** The stories it writes as the bytes they arrived as, whose change it therefore carries nowhere */
+  frozenEntries(session: SessionStore): ReadonlySet<StoryKey>;
+}
+
+/** What a part holding one entry per story writes, which is every change to a story of its kind */
+export function storyEntriesWriting(part: StoryEntriesPart): StoryWriting {
+  return {
+    kind: part.kind,
+    changes: EVERY_STORY_CHANGE,
+    frozenEntries: (session) => part.frozenEntries(session),
+  };
+}
+
+/** A writer that takes these changes to every story of the kind, freezing none of them */
+export function storyWriting(
+  kind: StoryKind,
+  changes: readonly StoryChanged[]
+): StoryWriting {
+  return { kind, changes, frozenEntries: () => NO_FROZEN_ENTRIES };
+}
+
+/**
+ * Every change the document made to a side story that no part writer carries into the file, as the
+ * key it stands under and what was done to it.
+ *
+ * A story changes on the document node whether or not a writer carries it, so a kind with no
+ * writer at all, a change a writer leaves out - a header story added or removed, which the header
+ * writer does not write - and a change to an entry written as it arrived are all reported here
+ * rather than dropped from the file without a word.
+ */
+export function unwrittenStoryChanges(
+  writings: readonly StoryWriting[],
+  doc: PMNode,
+  session: SessionStore
+): readonly { readonly key: StoryKey; readonly change: StoryChanged }[] {
+  const byKind = new Map(writings.map((writing) => [writing.kind, writing]));
+  return STORY_KINDS.flatMap((kind) => {
+    const writing = byKind.get(kind);
+    const frozen = writing?.frozenEntries(session) ?? NO_FROZEN_ENTRIES;
+    return storyChangesOf(doc, session, kind).flatMap((entry) => {
+      if (entry.change === "kept") return [];
+      const key = entry.change === "added" ? entry.key : entry.imported.key;
+      const written =
+        writing !== undefined &&
+        writing.changes.includes(entry.change) &&
+        !frozen.has(key);
+      return written ? [] : [{ key, change: entry.change }];
+    });
+  });
+}
 
 /** A part holding one entry per story, e.g. `w:footnotes` holding a `w:footnote` apiece */
 export interface StoryEntriesPart {

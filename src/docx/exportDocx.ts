@@ -27,7 +27,6 @@ import {
   withXmlParser,
   type XmlParser,
 } from "../ooxml/xml";
-import { commentsPlanner } from "./comments";
 import { repackParts } from "./container";
 import type { ExportRefs } from "./exportRefs";
 import {
@@ -35,13 +34,10 @@ import {
   type FidelityNote,
   fidelityNotesOf,
 } from "./fidelity";
-import { headerFooterPlanner } from "./headersFooters";
 import { hyperlinkRefs } from "./hyperlink";
 import { withUniqueIdentities } from "./identities";
 import { problemsOf } from "./invariants";
 import { NO_IMAGE_REFS, planImageMedia } from "./media";
-import { footnotesPlanner } from "./notes/writing";
-import { numberingPlanner } from "./numberingPlanner";
 import { CONTENT_TYPES_PATH, contentTypeWriter } from "./packageParts";
 import {
   assertPartsParse,
@@ -49,6 +45,7 @@ import {
   type PartPlanner,
   runPartPlanners,
 } from "./partPlan";
+import { PART_PLANNERS } from "./partPlanners";
 import {
   readRelationships,
   relationshipWriter,
@@ -148,14 +145,6 @@ function assertMainPart(documentXml: string, wroteLinks: boolean): void {
  * attribute names a relationship, and it names nothing at all in a part that binds no `r`.
  */
 const LINK_MARKUP: RootDeclarations = { namespaces: { r: R_NS } };
-
-/** The parts written beside the body, in the order their parts go into the package */
-const PART_PLANNERS: readonly PartPlanner[] = [
-  numberingPlanner,
-  commentsPlanner,
-  headerFooterPlanner,
-  footnotesPlanner,
-];
 
 /** What a caller may say about a write beyond handing over the document and its session */
 export interface ExportOptions {

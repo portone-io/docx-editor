@@ -558,7 +558,45 @@ describe("stories no part writer writes", () => {
     expect(refusedWith(edited, opened)).toEqual([
       {
         code: "unsupported-content",
-        message: "the endnote:3 story changed, and no part writer writes it",
+        message:
+          "the endnote:3 story was edited, and no part writer carries that into the file",
+      },
+    ]);
+  });
+
+  it("refuses an export that added a header story, which the header writer leaves out", () => {
+    const opened = importDocx(makeHeadersFootersDocx());
+    const edited = withStory(
+      opened.doc,
+      storyKey("header", "word/header9.xml"),
+      storyFromText("Added")
+    );
+
+    expect(refusedWith(edited, opened)).toEqual([
+      {
+        code: "unsupported-content",
+        message:
+          "the header:word/header9.xml story was added, and no part writer carries that into the file",
+      },
+    ]);
+  });
+
+  it("refuses an export that removed a header story, which the header writer leaves out", () => {
+    const opened = importDocx(makeHeadersFootersDocx());
+    const key = storyKey("header", "word/header1.xml");
+    const kept = Object.fromEntries(
+      Object.entries(storiesOf(opened.doc)).filter(([held]) => held !== key)
+    );
+    const edited = opened.doc.type.create(
+      { ...opened.doc.attrs, [STORIES_ATTR]: kept },
+      opened.doc.content
+    );
+
+    expect(refusedWith(edited, opened)).toEqual([
+      {
+        code: "unsupported-content",
+        message:
+          "the header:word/header1.xml story was removed, and no part writer carries that into the file",
       },
     ]);
   });
@@ -574,7 +612,8 @@ describe("stories no part writer writes", () => {
     expect(refusedWith(edited, opened)).toEqual([
       {
         code: "unsupported-content",
-        message: "the footnote:-1 story changed, and no part writer writes it",
+        message:
+          "the footnote:-1 story was edited, and no part writer carries that into the file",
       },
     ]);
   });

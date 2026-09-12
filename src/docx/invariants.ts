@@ -21,7 +21,7 @@ import {
 } from "../ooxml/xml";
 import { visitPreservedFragments } from "../schema/preservedFragments";
 import { unattributedCommentAuthors } from "../schema/protection";
-import { STORY_KINDS, type StoryKind } from "../schema/stories";
+
 import {
   commentReferencesIn,
   commentsChanged,
@@ -45,8 +45,8 @@ import {
 } from "./identities";
 import { insertedImageSrcs } from "./media";
 import { canDefineNewList, newNumIds, startedLists } from "./newLists";
-import { FOOTNOTES_PART } from "./notes/writing";
 import { CONTENT_TYPES_PATH } from "./packageParts";
+import { STORY_ENTRIES_PARTS, STORY_WRITINGS } from "./partPlanners";
 import { lostOriginal } from "./serializePreserved";
 import {
   type DocxSession,
@@ -55,11 +55,10 @@ import {
   sessionOf,
 } from "./session";
 import {
-  type StoryEntriesPart,
   storyChangesOf,
   storyEntriesOf,
   storyEntriesProblems,
-  WRITTEN_STORY_KINDS,
+  unwrittenStoryChanges,
 } from "./storyParts";
 
 /** One reason the document cannot be written back, with the code `exportDocx` would throw it under */
@@ -219,9 +218,6 @@ const preservedOriginals: ExportInvariant = {
   },
 };
 
-/** The parts written one entry per story, which `PART_PLANNERS` in `./exportDocx` writes through `storyEntriesPlanner` */
-const STORY_ENTRIES_PARTS: readonly StoryEntriesPart[] = [FOOTNOTES_PART];
-
 /**
  * A name held by one node only is settled by `withUniqueIdentities` just before the body is
  * written, and by `withUniqueStoryIdentities` before a header, footer, or footnotes part an edit
@@ -252,37 +248,19 @@ const uniqueIdentities: ExportInvariant = {
   },
 };
 
-/** The kinds a change could be dropped from: one no part writer writes, and one a special entry of the package is */
-function unwrittenKinds(session: SessionStore): readonly StoryKind[] {
-  const special = new Set(
-    Array.from(session.specialNotes, (key) => session.stories.get(key)?.kind)
-  );
-  return STORY_KINDS.filter(
-    (kind) => !WRITTEN_STORY_KINDS.has(kind) || special.has(kind)
-  );
-}
-
 /**
  * A story changes on the document node whether or not a part writer carries it into the file. A
- * change nothing writes - to an endnote, or to a separator entry, which goes back out as it
- * arrived - is refused here rather than dropped from the file without a word.
+ * change nothing writes - to an endnote, to a header story added or removed, or to a separator
+ * entry, which goes back out as it arrived - is refused here rather than dropped from the file
+ * without a word.
  */
 const storiesHaveWriters: ExportInvariant = {
   name: "storiesHaveWriters",
   check(doc, session) {
-    return unwrittenKinds(session).flatMap((kind) =>
-      storyChangesOf(doc, session, kind).flatMap((change): ExportProblem[] => {
-        if (change.change === "kept") return [];
-        const key =
-          change.change === "added" ? change.key : change.imported.key;
-        return WRITTEN_STORY_KINDS.has(kind) && !session.specialNotes.has(key)
-          ? []
-          : [
-              {
-                code: "unsupported-content",
-                message: `the ${key} story changed, and no part writer writes it`,
-              },
-            ];
+    return unwrittenStoryChanges(STORY_WRITINGS, doc, session).map(
+      ({ key, change }): ExportProblem => ({
+        code: "unsupported-content",
+        message: `the ${key} story was ${change}, and no part writer carries that into the file`,
       })
     );
   },
