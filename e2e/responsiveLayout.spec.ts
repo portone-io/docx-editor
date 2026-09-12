@@ -6,6 +6,7 @@ import {
   rightClick,
   selectText,
   settle,
+  spaces,
 } from "./support/harness";
 
 /**
@@ -86,7 +87,7 @@ async function footnotePages(page: Page) {
   return found;
 }
 
-/** The zoom the comment panel reads, beside the zoom the paper itself is drawn at. */
+/** The zoom the comment panel reads, beside the scale the paper itself is drawn at. */
 async function commentTypography(page: Page) {
   return page.evaluate((classes) => {
     const workspace = document.querySelector(`.${classes.workspace}`);
@@ -102,9 +103,11 @@ async function commentTypography(page: Page) {
       throw new Error("comment typography sample missing");
     }
     const styles = getComputedStyle(workspace);
+    // The paper is scaled by a transform, whose used value is a matrix
+    const drawn = new DOMMatrixReadOnly(getComputedStyle(layer).transform);
     return {
       zoom: Number.parseFloat(styles.getPropertyValue("--docx-editor-zoom")),
-      pageZoom: Number.parseFloat(getComputedStyle(layer).zoom),
+      pageZoom: drawn.a,
       meta: Number.parseFloat(getComputedStyle(meta).fontSize),
       body: Number.parseFloat(getComputedStyle(body).fontSize),
     };
@@ -112,18 +115,117 @@ async function commentTypography(page: Page) {
 }
 
 /**
+ * Where the text stands on the paper, in the paper's own pixels: the scale the layer is drawn at is
+ * divided back out, so a reading taken at one zoom is comparable with one taken at another.
+ * `textBottom` is where the last block of the document ends, which every measurement above it and
+ * every space the pagination opened adds into.
+ */
+async function paperLayout(page: Page) {
+  return page.evaluate(
+    ({ classes, boundaries }) => {
+      const workspace = document.querySelector(`.${classes.workspace}`);
+      const layer = document.querySelector(`.${classes.pageLayer}`);
+      const sheet = document.querySelector(`.${classes.sheet}`);
+      if (
+        !(workspace instanceof HTMLElement) ||
+        !(layer instanceof HTMLElement) ||
+        !(sheet instanceof HTMLElement)
+      ) {
+        throw new Error("page layer missing");
+      }
+      const scale =
+        Number.parseFloat(
+          getComputedStyle(workspace).getPropertyValue("--docx-editor-zoom")
+        ) || 1;
+      const sheetTop = sheet.getBoundingClientRect().top;
+      const onPaper = (y: number) =>
+        Math.round(((y - sheetTop) / scale) * 10) / 10;
+      const breaks = Array.from(document.querySelectorAll(boundaries), (mark) =>
+        onPaper(mark.getBoundingClientRect().top)
+      );
+      const opens = new Map<number, number>();
+      let textBottom = 0;
+      let index = -1;
+      for (const block of sheet.children) {
+        const box = block.getBoundingClientRect();
+        if (box.height === 0) continue;
+        index += 1;
+        const top = onPaper(box.top);
+        // A block standing level with a break opens the page below it
+        const standsOn = breaks.filter((at) => at <= top + 1).length + 1;
+        if (!opens.has(standsOn)) opens.set(standsOn, index);
+        textBottom = onPaper(box.bottom);
+      }
+      return {
+        sheetHeight: layer.style.getPropertyValue("--docx-editor-sheet-height"),
+        pages: breaks.length + 1,
+        openedByBlock: [...opens.values()],
+        textBottom,
+      };
+    },
+    { classes: editorClassNames, boundaries: PAGE_BOUNDARIES }
+  );
+}
+
+/** What is left to scroll past the foot of the drawn paper, and whether anything scrolls sideways */
+async function scrollRoom(page: Page) {
+  return page.evaluate((classes) => {
+    const scroller = document.querySelector(`.${classes.root}`);
+    const layer = document.querySelector(`.${classes.pageLayer}`);
+    if (!(scroller instanceof HTMLElement) || !(layer instanceof HTMLElement)) {
+      throw new Error("scroll box missing");
+    }
+    const above = Number.parseFloat(getComputedStyle(scroller).paddingTop);
+    return {
+      belowThePaper: Math.round(
+        scroller.scrollHeight - above - layer.getBoundingClientRect().height
+      ),
+      sideways: scroller.scrollWidth > scroller.clientWidth,
+    };
+  }, editorClassNames);
+}
+
+/** Whether everything drawn over the paper is drawn within it, said in words a failure can read */
+async function marksOnThePaper(page: Page) {
+  return page.evaluate(
+    ({ classes, boundaries }) => {
+      const sheet = document.querySelector(`.${classes.sheet}`);
+      if (!(sheet instanceof HTMLElement)) throw new Error("paper missing");
+      const paper = sheet.getBoundingClientRect();
+      const within = (element: Element) => {
+        const box = element.getBoundingClientRect();
+        return (
+          box.left >= paper.left - 1 &&
+          box.right <= paper.right + 1 &&
+          box.top >= paper.top - 1 &&
+          box.bottom <= paper.bottom + 1
+        );
+      };
+      const say = (found: Element[]) =>
+        found.length === 0
+          ? "none drawn"
+          : found.every(within)
+            ? "on the paper"
+            : "off the paper";
+      return {
+        guides: say([...document.querySelectorAll(boundaries)]),
+        areas: say([
+          ...document.querySelectorAll('[aria-label^="Footnotes on page"]'),
+        ]),
+      };
+    },
+    { classes: editorClassNames, boundaries: PAGE_BOUNDARIES }
+  );
+}
+
+/**
  * The paper is always the width the document names, so a narrow window only scales the sheet it is
  * drawn on. The pages a document breaks into are therefore the document's own, and neither the
  * count nor the sheet height may follow the window.
  *
- * This runs over `notes` rather than the demo, and the fixture is the point of the test. Under the
- * CSS zoom a narrow window draws the paper at, Chrome lays a table's rows out on whole device
- * pixels of the scaled rendering, so a table measures over a pixel taller at one zoom than at
- * another. A document whose page has about that much room left over - which the demo's fourth page
- * has, once it keeps room at its foot for the footnote its text refers to - therefore breaks
- * differently at each zoom, and asserting over it would test Chrome's rounding rather than this
- * layout. `notes` holds no table and fills none of its pages, and it still keeps room at the foot
- * of two of them, so a real change in how the layout answers the window fails here.
+ * This runs over `notes`, which keeps room at the foot of two of its pages, so what the footnote
+ * band asks for is held to the window as well. The document that has almost no room left over is
+ * the demo, and the test below holds that one.
  */
 test("a document's pages do not follow the width of the window", async ({
   page,
@@ -162,8 +264,91 @@ test("a document's pages do not follow the width of the window", async ({
 });
 
 /**
- * The pages this document breaks into are not asserted here; they are asserted over `notes` above,
- * for the reason given there.
+ * Where a document's pages break is the document's own answer, so it may not follow the scale the
+ * paper is being read at, whether the reader chose that scale from the toolbar or the window worked
+ * it out for a narrow screen.
+ *
+ * The demo is the document to hold this over: its fourth page is left with under a pixel of body
+ * once the page keeps room at its foot for the footnote its text refers to. While the paper was
+ * scaled with the CSS `zoom` property, Chromium laid every box out on whole device pixels of the
+ * scaled rendering - a table row came out a third of a pixel taller at 0.75 than at 1, and this
+ * document's blocks over a pixel and a half lower by the foot of that page - so below about 0.8 it
+ * gained a page holding nothing but an empty paragraph. The layer is scaled by a transform instead
+ * (`styles/editor.css`), so the boxes measured are the paper's own whatever it is drawn at.
+ *
+ * `textBottom` is what carries the teeth: a page count only moves once a boundary is actually
+ * crossed, while the foot of the text moves by every fraction of a pixel the measurement drifted.
+ */
+test("a document's pages break in the same places at every zoom", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await openHarness(page, "demo");
+  const zoom = page.getByLabel("Zoom");
+  await zoom.selectOption("1");
+  await settle(page);
+  await settle(page);
+  const baseline = await paperLayout(page);
+  // A one-page document would hold its own answer still, so the comparisons below would pass over a
+  // pagination that had stopped running at all
+  expect(baseline.pages).toBeGreaterThan(1);
+  const opened = await spaces(page);
+
+  for (const factor of ["1.5", "1.25", "0.75", "0.5"]) {
+    await zoom.selectOption(factor);
+    await settle(page);
+    await settle(page);
+    // A page break the text carries parts its page from the next by a space of its own, and how
+    // tall that space is says where on the paper the break was read
+    expect(await spaces(page)).toBe(opened);
+    expect(await paperLayout(page)).toEqual(baseline);
+  }
+
+  // The scale a narrow window works out for itself is the one a reader never asked for
+  await zoom.selectOption("fit-width");
+  for (const width of [1400, 839, 719, 559, 419]) {
+    await page.setViewportSize({ width, height: 900 });
+    await settle(page);
+    await settle(page);
+    expect(await spaces(page)).toBe(opened);
+    expect(await paperLayout(page)).toEqual(baseline);
+  }
+});
+
+/**
+ * What the reader scrolls through, and what stands over the paper, follow the scale the paper is
+ * drawn at rather than the size it was laid out at.
+ *
+ * A transform leaves the layout box unscaled, so the layer stands outside the flow and the box it
+ * stands in holds the room it takes (`ui/usePageRoom`). Were that room the unscaled size, a reader
+ * at half scale would scroll through twice the paper, and at one and a half would not reach the
+ * end of it.
+ */
+test("the scroll box and the marks over the paper follow its scale", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await openHarness(page, "notes");
+  const zoom = page.getByLabel("Zoom");
+  for (const factor of ["1", "1.5", "0.75", "0.5"]) {
+    await zoom.selectOption(factor);
+    await settle(page);
+    await settle(page);
+
+    const room = await scrollRoom(page);
+    // The scroll box ends at the foot of the paper plus its own bottom padding, and the paper is
+    // narrower than the box at each of these scales, so nothing scrolls sideways
+    expect(room).toEqual({ belowThePaper: 24, sideways: false });
+    expect(await marksOnThePaper(page)).toEqual({
+      guides: "on the paper",
+      areas: "on the paper",
+    });
+  }
+});
+
+/**
+ * The pages this document breaks into are asserted above, so what is held here is the rail beside
+ * them.
  */
 test("the demo keeps its comment rail usable in narrow layouts", async ({
   page,
@@ -269,8 +454,8 @@ test("the demo keeps its comment rail usable in narrow layouts", async ({
   await settle(page);
   await expect(zoom).toHaveValue("1");
   await expect(page.locator(`.${editorClassNames.pageLayer}`)).toHaveCSS(
-    "zoom",
-    "1"
+    "transform",
+    "matrix(1, 0, 0, 1, 0, 0)"
   );
   expect(new Set(await frameSnapshots(page, 12)).size).toBe(1);
   expect(
@@ -283,8 +468,8 @@ test("the demo keeps its comment rail usable in narrow layouts", async ({
   await settle(page);
   await settle(page);
   await expect(page.locator(`.${editorClassNames.pageLayer}`)).toHaveCSS(
-    "zoom",
-    "0.5"
+    "transform",
+    "matrix(0.5, 0, 0, 0.5, 0, 0)"
   );
 
   const commentHeader = page

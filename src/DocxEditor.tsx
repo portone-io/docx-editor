@@ -75,6 +75,7 @@ import { TableMenu } from "./ui/TableMenu";
 import { TextMenu } from "./ui/TextMenu";
 import { Toolbar } from "./ui/Toolbar";
 import { useFitWidthZoom } from "./ui/useFitWidthZoom";
+import { usePageRoom } from "./ui/usePageRoom";
 import { type DocxEditorZoom, normalizeZoom } from "./ui/zoom";
 
 export interface DocxEditorHandle {
@@ -406,8 +407,9 @@ function ImportRejection({ error }: { error: DocxImportError }): ReactElement {
 }
 
 /**
- * Publishes the zoom factor to CSS so panels outside the zoomed page layer can
- * scale with the paper. `zoom` on the layer does not reach its siblings.
+ * Publishes the zoom factor to CSS. It is what scales the page layer itself
+ * (`styles/editor.css`), and it reaches the panels beside the paper, which stand outside
+ * the layer and scale their own type with it.
  */
 function zoomVariable(
   factor: number
@@ -449,6 +451,7 @@ function DocxEditorSurface(
   const mountedContextMenus = useRef(contextMenus ?? true).current;
   const mountedFontFallbacks = useRef(fontFallbacks).current;
   const layerRef = useRef<HTMLDivElement | null>(null);
+  const boxRef = useRef<HTMLDivElement | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const mountRef = useRef<HTMLDivElement | null>(null);
   const keptState = useRef<{ of: OpenedDocument; state: EditorState } | null>(
@@ -471,6 +474,7 @@ function DocxEditorSurface(
       : A4_PAGE_PIXELS;
   const fitWidth = useFitWidthZoom(rootRef, page.pageWidth);
   const effectiveZoom = selectedZoom === "fit-width" ? fitWidth : selectedZoom;
+  usePageRoom(boxRef, layerRef, effectiveZoom);
   const changeZoom = (next: DocxEditorZoom) => {
     const normalized = normalizeZoom(next);
     if (zoom === undefined) setUncontrolledZoom(normalized);
@@ -701,31 +705,30 @@ function DocxEditorSurface(
           </button>
         )}
         <div ref={rootRef} className={editorClassNames.root}>
-          {/* The paper and the page marks overlaid on it share one positioning origin */}
-          <div
-            ref={layerRef}
-            className={editorClassNames.pageLayer}
-            style={{ zoom: effectiveZoom }}
-          >
-            <div ref={mountRef} />
-            {overlay && (
-              <PageGuides
+          {/* The scaled layer stands outside the flow, so this box holds the room it takes */}
+          <div ref={boxRef} className={editorClassNames.pageBox}>
+            {/* The paper and the page marks overlaid on it share one positioning origin */}
+            <div ref={layerRef} className={editorClassNames.pageLayer}>
+              <div ref={mountRef} />
+              {overlay && (
+                <PageGuides
+                  overlay={overlay}
+                  headersFootersFor={headersFootersFor}
+                />
+              )}
+              <NotesAroundPage
+                notes={notes}
                 overlay={overlay}
-                headersFootersFor={headersFootersFor}
+                page={page}
+                zoom={effectiveZoom}
+                open={surface.open}
+                editing={surface.editing}
+                readOnly={surface.readOnly}
+                revision={live?.state}
+                onOpen={surface.onOpen}
+                onReturn={surface.onReturn}
               />
-            )}
-            <NotesAroundPage
-              notes={notes}
-              overlay={overlay}
-              page={page}
-              zoom={effectiveZoom}
-              open={surface.open}
-              editing={surface.editing}
-              readOnly={surface.readOnly}
-              revision={live?.state}
-              onOpen={surface.onOpen}
-              onReturn={surface.onReturn}
-            />
+            </div>
           </div>
           {!commentsOpen && commentsPanel}
         </div>

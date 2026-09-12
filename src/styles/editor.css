@@ -472,19 +472,42 @@ button.docx-editor-comment-body {
 }
 
 /*
+ * The reader's zoom scales the page layer with a transform and not with the `zoom`
+ * property, so the paper is laid out at its own size whatever it is being read at and only
+ * the painting is scaled. Under `zoom` Chromium lays every box out on whole device pixels
+ * of the scaled rendering, so a table row came out a fraction taller at one zoom than at
+ * another and a document sitting near a page boundary broke into a different number of
+ * pages for each reader.
+ *
+ * A transform leaves the layout box at its unscaled size, and a scroll box takes in both
+ * that box and the transformed one, so a shrunk layer left in the flow would keep the
+ * scroll area of a full-size one. The layer is therefore taken out of the flow, and this
+ * box stands in the flow in its place, holding the height the layer is drawn at
+ * (`ui/usePageRoom`).
+ */
+.docx-editor-page-box {
+  position: relative;
+  width: 100%;
+}
+
+/*
  * The paper and the boundary guides overlaid on it share one positioning origin.
  *
  * The side padding lives here rather than on the scroll box, because Chromium does not
  * draw a scroll box's own padding past the right edge of sideways-scrolled content.
  * Shrink-wrapping puts the padding beyond the paper even then, and min-width keeps the
- * layer filling the box on wide screens so the paper stays centered.
+ * layer filling the box on wide screens so the paper stays centered - widened by the
+ * reciprocal of the scale, since it is the scaled layer that has to fill the box.
  */
 .docx-editor-page-layer {
-  position: relative;
-  width: fit-content;
-  min-width: 100%;
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: max-content;
+  min-width: calc(100% / var(--docx-editor-zoom, 1));
   box-sizing: border-box;
   padding: 0 16px;
+  transform: scale(var(--docx-editor-zoom, 1));
+  transform-origin: 0 0;
 }
 
 @media (max-width: 840px) {
