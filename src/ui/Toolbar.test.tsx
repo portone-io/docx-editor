@@ -1363,6 +1363,29 @@ describe("the toolbar over a footnote being edited", () => {
     main.destroy();
   });
 
+  it("takes an edit back without taking the focus out of the footnote", () => {
+    const main = openMain();
+    const story = openStory(main);
+    story.view.dispatch(story.view.state.tr.insertText("!", 2));
+    const focused: string[] = [];
+    main.focus = () => focused.push("body");
+    story.view.focus = () => focused.push("footnote");
+    const unmount = show(main, story);
+
+    click("Undo");
+
+    // The body taking the focus is what closes an open footnote (`DocxEditor`), so the caret has
+    // to stay where the reader left it
+    expect(focused).toEqual(["footnote"]);
+    expect(storyOf(main.state.doc, FOOTNOTE)?.textContent).toBe(
+      "Footnote bodySecond line"
+    );
+
+    unmount();
+    story.destroy();
+    main.destroy();
+  });
+
   it("turns off table, image, link, comment, list, and note insertion inside a footnote", () => {
     const shut = [
       "Insert table",

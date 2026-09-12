@@ -407,7 +407,8 @@ export function Toolbar({
   // needs a part of the package the story's own writer does not write (`site/content/docs`)
   const inStory = active.surface === "story";
   const run = commandRunner(view);
-  const runOnMain = commandRunner(main.view);
+  // The document's own history is taken back where the caret stands, not where the edit lands
+  const runOnMain = commandRunner(main.view, view);
   const bar = useRef<HTMLDivElement | null>(null);
   const keys = useLinearWalk({
     container: bar,
