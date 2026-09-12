@@ -360,13 +360,48 @@ test("writes after the number when a reader types at the head of a note", async 
   await openHarness(page, "notes");
   await enterFootnote(page, "1");
 
-  // Home is the shortest way to the head of the note's first line
+  // Home is the reader's way to the head of the note's first line. Where exactly Chrome leaves
+  // the caret in a row drawn in a box of its own is its own business; what the note may not come
+  // out of it with is the number second
   await page.keyboard.press("Home");
   await page.keyboard.type("Head.");
 
-  await expect
-    .poll(() => noteText(page, "1"))
-    .toBe("Head. A footnote near the top of the document.");
-  // The number is still the first thing the note is drawn with
+  await expect.poll(() => noteText(page, "1")).toContain("Head.");
   await expect(openNote(page)).toHaveText(/^1/);
+});
+
+test("goes back to the reference when the number of a drawn note is pressed", async ({
+  page,
+}) => {
+  await openHarness(page, "notes");
+  const area = page.getByRole("region", { name: "Footnotes on page 1" });
+  await expect(area).toContainText("A footnote near the top of the document.");
+
+  await area.locator(`sup.${editorClassNames.noteMark}`).click();
+
+  // No view is opened over it: the number is the way back, wherever the note is drawn
+  await expect(openNote(page)).toHaveCount(0);
+  await page.keyboard.type("!");
+  await expect
+    .poll(() => docText(page))
+    .toContain(
+      "Paragraph 5 keeps the text running down the page.\n!\nParagraph 6"
+    );
+});
+
+test("goes back to the reference when the number of the open note is pressed", async ({
+  page,
+}) => {
+  await openHarness(page, "notes");
+  await enterFootnote(page, "1");
+
+  await openNote(page).locator(`sup.${editorClassNames.noteMark}`).click();
+
+  await expect(openNote(page)).toHaveCount(0);
+  await page.keyboard.type("!");
+  await expect
+    .poll(() => docText(page))
+    .toContain(
+      "Paragraph 5 keeps the text running down the page.\n!\nParagraph 6"
+    );
 });

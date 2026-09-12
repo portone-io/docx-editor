@@ -38,6 +38,7 @@ const FOOTNOTES: StorySurfaceBinding = {
     storyDocument(snapshot, sectionGeometryAt(main, row.referencePos)),
   requestedIn: requestedNote,
   openIn: () => {},
+  returnFrom: () => {},
 };
 
 let host: HTMLDivElement;

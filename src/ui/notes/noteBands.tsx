@@ -180,6 +180,8 @@ export interface NotesAroundPageProps {
   readonly revision?: unknown;
   /** Called for a press on a note no view stands over yet */
   readonly onOpen?: (key: StoryKey, at: { left: number; top: number }) => void;
+  /** Called for a press on the number a note is drawn by, which is the way back to its reference */
+  readonly onReturn?: (key: StoryKey) => void;
 }
 
 /**
@@ -201,6 +203,7 @@ export function NotesAroundPage({
   readOnly,
   revision,
   onOpen,
+  onReturn,
 }: NotesAroundPageProps): ReactElement | null {
   const { footnotes, endnotes, anyNotes, heights, onHeight } = notes.drawn;
   const drawing = {
@@ -214,6 +217,7 @@ export function NotesAroundPage({
     readOnly,
     revision,
     onOpen,
+    onReturn,
   };
   return (
     <>

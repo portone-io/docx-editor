@@ -35,7 +35,11 @@ import { activeLinkSpan } from "./editor/commands/linkCommands";
 import { createEditorView, editorStateForSession } from "./editor/createEditor";
 import { sectionGeometryAt } from "./editor/documentStyles";
 import { storyDocument } from "./editor/editorDocument";
-import { noteExtensions, noteHost } from "./editor/notes/noteSurface";
+import {
+  noteExtensions,
+  noteHost,
+  returnToReference,
+} from "./editor/notes/noteSurface";
 import {
   closeCommentComposer,
   isCommentComposerOpen,
@@ -149,6 +153,7 @@ const NOTE_SURFACE: StorySurfaceBinding = {
   // The kind's own public command is what a consumer calls; here the kind is a value the row
   // carries, so the factory behind the two takes it
   openIn: (main, row) => runOn(main, openNoteCommand(row.kind, row.id)),
+  returnFrom: (main, row) => returnToReference(main, row.key),
 };
 
 /** What a mode hands the reader, which is everything the component reads off the kind */
@@ -719,6 +724,7 @@ function DocxEditorSurface(
               readOnly={surface.readOnly}
               revision={live?.state}
               onOpen={surface.onOpen}
+              onReturn={surface.onReturn}
             />
           </div>
           {!commentsOpen && commentsPanel}

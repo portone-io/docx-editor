@@ -110,6 +110,8 @@ export interface NoteAreasProps {
   readonly revision?: unknown;
   /** Called for a press on a note no view stands over yet */
   readonly onOpen?: (key: StoryKey, at: { left: number; top: number }) => void;
+  /** Called for a press on the number a note is drawn by, which is the way back to its reference */
+  readonly onReturn?: (key: StoryKey) => void;
 }
 
 export function NoteAreas({
@@ -127,6 +129,7 @@ export function NoteAreas({
   readOnly = false,
   revision,
   onOpen,
+  onReturn,
 }: NoteAreasProps): ReactElement {
   return (
     <div
@@ -183,6 +186,9 @@ export function NoteAreas({
                 revision={entered ? revision : undefined}
                 onPress={
                   onOpen === undefined ? undefined : (at) => onOpen(row.key, at)
+                }
+                onReturn={
+                  onReturn === undefined ? undefined : () => onReturn(row.key)
                 }
               />,
             ];

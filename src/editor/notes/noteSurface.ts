@@ -164,9 +164,10 @@ function referenceOf(main: EditorView, key: StoryKey) {
 
 /**
  * Puts the caret back just after the reference that calls this note and takes the body's focus,
- * which is what leaves the note: Escape runs it, and so does a press on the note's own number.
+ * which is what leaves the note: Escape runs it, and so does a press on the note's own number,
+ * whether a view stands over that note or it is only drawn (`ui/notes/StoryRow`).
  */
-function backToReference(main: EditorView, key: StoryKey): void {
+export function returnToReference(main: EditorView, key: StoryKey): void {
   const found = referenceOf(main, key);
   if (found !== null) {
     const after = found.pos + found.node.nodeSize;
@@ -375,7 +376,7 @@ export function noteHost(
     },
     undo: () => runOn(main, undo),
     redo: () => runOn(main, redo),
-    leave: (key) => backToReference(main, key),
+    leave: (key) => returnToReference(main, key),
     shut(key) {
       if (editsShut(main.state)) return true;
       const found = referenceOf(main, key);
@@ -405,7 +406,7 @@ export function noteExtensions(
       keymap({ Backspace: deleteEmptyNote(main, key) }),
     ],
     nodeViews: {
-      rawRunContent: noteMarkView(labelOf, () => backToReference(main, key)),
+      rawRunContent: noteMarkView(labelOf, () => returnToReference(main, key)),
     },
     normalizers: NOTE_NORMALIZERS,
     takes: NOTE_TAKES,

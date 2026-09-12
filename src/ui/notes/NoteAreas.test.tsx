@@ -430,3 +430,50 @@ describe("the endnotes after the last paragraph", () => {
     expect(rowsOf(endnoteArea(1))[0]?.style.visibility).toBe("");
   });
 });
+
+describe("a press on the number a note is drawn by", () => {
+  /** A press, as the row answers one: the mouse going down over the element */
+  function pressOn(element: Element): void {
+    act(() => {
+      element.dispatchEvent(
+        new MouseEvent("mousedown", { bubbles: true, cancelable: true })
+      );
+    });
+  }
+
+  it("asks for the way back rather than opening the note", () => {
+    const asked: string[] = [];
+    const opened: string[] = [];
+    draw({
+      overlay: overlayOf(face(1, [room(["footnote:2"], 900)])),
+      heights: new Map([[storyKey("footnote", "2"), 40]]),
+      onOpen: (key) => opened.push(key),
+      onReturn: (key) => asked.push(key),
+    });
+
+    const number = area(1).querySelector(`sup.${editorClassNames.noteMark}`);
+    if (number === null) throw new Error("the note drew no number");
+    pressOn(number);
+
+    expect(asked).toEqual([storyKey("footnote", "2")]);
+    expect(opened).toEqual([]);
+  });
+
+  it("opens the note for a press on what a reader wrote in it", () => {
+    const asked: string[] = [];
+    const opened: string[] = [];
+    draw({
+      overlay: overlayOf(face(1, [room(["footnote:2"], 900)])),
+      heights: new Map([[storyKey("footnote", "2"), 40]]),
+      onOpen: (key) => opened.push(key),
+      onReturn: (key) => asked.push(key),
+    });
+
+    const words = area(1).querySelector(`.${editorClassNames.run}`);
+    if (words === null) throw new Error("the note drew no text");
+    pressOn(words);
+
+    expect(opened).toEqual([storyKey("footnote", "2")]);
+    expect(asked).toEqual([]);
+  });
+});
