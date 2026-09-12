@@ -303,6 +303,46 @@ test("a document's pages break in the same places at every zoom", async ({
 });
 
 /**
+ * An application is free to scale whatever it mounts the editor inside - a dialog opening on a
+ * scale, a container fitting itself to a small screen - and a rectangle read on the paper is then
+ * drawn at that scale as well as at the reader's own, so the measurement has to divide by both.
+ * Read against the layer's own scale alone, the demo came to 5, 5 and 9 pages under shells of 0.6,
+ * 0.85 and 1.4 where it stands at 6.
+ */
+test("a document's pages ignore a scale the application puts around the editor", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await openHarness(page, "demo");
+  const baseline = await paperLayout(page, await pageScale(page));
+  expect(baseline.pages).toBeGreaterThan(1);
+  const opened = await spaces(page);
+
+  for (const shell of ["scale(0.6)", "scale(0.85)", "scale(1.4)"]) {
+    await page.evaluate((transform) => {
+      const around = document.body.firstElementChild;
+      if (!(around instanceof HTMLElement)) throw new Error("nothing to scale");
+      around.style.transformOrigin = "0 0";
+      around.style.transform = transform;
+    }, shell);
+    // A transform moves no box a resize observation would see, so the pages are laid out again by
+    // nudging the window: what is read below is a measurement taken while the shell stood
+    await page.setViewportSize({ width: 1399, height: 900 });
+    await settle(page);
+    await page.setViewportSize({ width: 1400, height: 900 });
+    await settle(page);
+    await settle(page);
+
+    expect(await pageScale(page)).toBeCloseTo(
+      Number.parseFloat(shell.replace(/\D*([\d.]+).*/, "$1")),
+      5
+    );
+    expect(await spaces(page)).toBe(opened);
+    expect(await paperLayout(page, await pageScale(page))).toEqual(baseline);
+  }
+});
+
+/**
  * What the reader scrolls through, and what stands over the paper, follow the scale the paper is
  * drawn at rather than the size it was laid out at.
  *
