@@ -34,11 +34,31 @@ What a note is drawn without is listed under
 With page guides turned off, footnotes are listed there too, ahead of the endnotes.
 Notes are numbered in the document's own format, starting number, and section restarts; a restart
 on every page is counted straight through.
-Deleting a footnote reference deletes its footnote, and undo brings both back.
+### Editing a footnote
+
+Click a footnote's number, or the footnote itself at the foot of the page, to put the caret in it;
+`Escape` puts the caret back just after the number, and clicking the document leaves as well.
+Insert a footnote at the caret with the toolbar's **Insert footnote** button or `Mod+Alt+F`, which
+puts the caret in the new footnote.
+
+A footnote takes character and paragraph formatting: bold, italic, underline, strikethrough, color,
+highlight, font, size, paragraph style, alignment, spacing, indentation, and tabs.
+Tables, images, links, comments, lists, page breaks, and further footnotes cannot be added inside
+one, and a paste into a footnote drops images and links; whatever a document's own footnote already
+holds is kept and its text stays editable.
+Footnotes are edited on the page, so with page guides turned off the listed footnotes are read-only.
+
+Everything typed in a footnote goes into the document's own history, so one `Mod+Z` takes it back
+from anywhere.
+Deleting a footnote reference deletes its footnote, and undo brings both back; `Backspace` at the
+start of a footnote that holds no text deletes the footnote and its number and returns the caret to
+where the number stood.
+A footnote left empty is kept.
+
+Notes cannot be edited in comment-only or read-only mode, where the footnote a reader opens takes no
+typing, and endnotes cannot be edited in any mode.
 A selection that runs across an endnote reference cannot be replaced, so typing or deleting over it
 leaves the text as it stands.
-Editing a note in place is not offered yet; a program can insert a footnote and edit its body through
-commands.
 
 [Comments and notes](/docs/editor-api/comments-and-notes) in the Editor API lists the commands and
 queries behind these controls.
