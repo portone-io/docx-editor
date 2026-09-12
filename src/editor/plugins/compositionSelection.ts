@@ -3,11 +3,11 @@
  *
  * A composition normally replaces what is selected because the browser does the replacing and
  * ProseMirror reads the result back. Chrome will not touch a selection that begins at an element
- * it may not edit, though - a note's number, a preserved chip, a note reference - and it does not
- * say so: the composition lands beside the words it was meant to replace, so the selected text
- * stays standing with the syllables typed in front of it, or nothing happens at all. A footnote
- * meets it every time, since a note's first paragraph opens with the number it is drawn by, and
- * selecting the whole of a note to write it again is an ordinary thing to do.
+ * it may not edit, though - the number a note is drawn by, a note reference - and it does not say
+ * so: the composition lands beside the words it was meant to replace, so the selected text stays
+ * standing with the syllables typed in front of it, or nothing happens at all. A footnote meets it
+ * every time, since a note's first paragraph opens with the number it is drawn by, and selecting
+ * the whole of a note to write it again is an ordinary thing to do.
  *
  * So the selection is deleted here rather than left to the browser, in the frame the composition
  * opens in and before ProseMirror marks the view as composing, which leaves the composition
@@ -15,9 +15,9 @@
  * selection spanning whole blocks (`endComposition`), which is the case it already knows it cannot
  * hand over.
  *
- * The deletion is an edit like any other: the guards judge it, and a refusal leaves the browser to
- * the composition as before (`./lockedContent` ends one a refusal broke). It goes into the history
- * in the same group as the syllable that follows it, so one undo takes both.
+ * The deletion is an edit like any other, so the guards judge it: across an endnote reference or a
+ * bookmark marker it is refused, and the composition is left to the browser exactly where it stood
+ * before this plugin - which is all a marker the browser skips of its own accord ever needed.
  */
 
 import { deleteSelection } from "prosemirror-commands";

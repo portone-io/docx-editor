@@ -126,8 +126,9 @@ export function createEditorState(
       // the preserved bookmark markers and endnote references stay where the file put them.
       lockedContent(),
       documentProtection({ protection, author, editableComments }),
-      // Stands ahead of the history so the deletion it makes goes in with the syllable that
-      // replaces it rather than before the history is watching
+      // Beside the plugins that answer for an edit rather than among the keys and the clipboard
+      // under them. For a DOM event the plugin registered first is asked first, and this one hands
+      // every composition on, so where it stands takes nothing from what stands below it
       compositionSelection(),
       history(),
       keymap(docxKeymap),
