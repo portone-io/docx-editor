@@ -14,6 +14,7 @@ import {
   noteText,
   openHarness,
   pressModKey,
+  rightClick,
   settle,
 } from "./support/harness";
 import {
@@ -129,6 +130,25 @@ test("returns the caret after the reference on Escape", async ({ page }) => {
     .toContain(
       "Paragraph 5 keeps the text running down the page.\n!\nParagraph 6"
     );
+});
+
+test("inserts a footnote from the right click menu and puts the caret in it", async ({
+  page,
+}) => {
+  await openHarness(page, "notes");
+  await page.locator(`.${editorClassNames.sheet} p`).first().click();
+
+  await rightClick(page);
+  await page.getByRole("menuitem", { name: "Insert footnote" }).click();
+
+  await untilNoteHoldsTheCaret(page);
+  await page.keyboard.type("A note written from the menu.");
+  await expect
+    .poll(() => noteText(page, "3"))
+    .toContain("A note written from the menu.");
+  await expect(
+    page.getByRole("region", { name: "Footnotes on page 1" })
+  ).toContainText("A note written from the menu.");
 });
 
 test("inserts a footnote on Mod+Alt+F and puts the caret in it", async ({

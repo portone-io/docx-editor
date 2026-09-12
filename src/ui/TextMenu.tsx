@@ -1,4 +1,4 @@
-/** Custom text context menu with clipboard, comment, and optional locking actions. */
+/** Custom text context menu with clipboard, comment, footnote, and optional locking actions. */
 
 import {
   ClipboardPaste,
@@ -8,6 +8,7 @@ import {
   type LucideIcon,
   MessageSquarePlus,
   Scissors,
+  Superscript,
   Trash2,
 } from "lucide-react";
 import { deleteSelection } from "prosemirror-commands";
@@ -15,6 +16,10 @@ import type { EditorState } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 import { Fragment, type ReactElement, useCallback, useRef } from "react";
 import { canAddComment } from "../editor/commands/commentCommands";
+import {
+  canInsertFootnote,
+  insertFootnote,
+} from "../editor/commands/footnoteCommands";
 import {
   lockSelection,
   type SelectionLock,
@@ -35,10 +40,11 @@ import { ICON_SIZE } from "./ToolbarButton";
 import { useDismiss } from "./useDismiss";
 import { useMenuKeyboard } from "./useMenuKeyboard";
 
-const MOD =
-  typeof navigator !== "undefined" && navigator.platform.includes("Mac")
-    ? "⌘"
-    : "Ctrl+";
+const ON_MAC =
+  typeof navigator !== "undefined" && navigator.platform.includes("Mac");
+
+const MOD = ON_MAC ? "⌘" : "Ctrl+";
+const ALT = ON_MAC ? "⌥" : "Alt+";
 
 /**
  * Cut and copy are handed to the browser from inside the click that asked for them, which is the
@@ -200,14 +206,27 @@ export function TextMenu({
         ]
       : [copy],
   ];
-  groups.push([
+  const anchored: MenuItem[] = [
     {
       label: "Add comment",
       icon: MessageSquarePlus,
       enabled: canAddComment(state),
       run: () => run(openCommentComposer),
     },
-  ]);
+  ];
+  // A footnote is body content, so the entry waits for a mode that lets the body be changed, the
+  // way Cut, Paste and Delete do. Whether it can run is then the command's own answer and no rule
+  // of this menu's, which is what leaves it dead around locked content
+  if (bodyOpen) {
+    anchored.push({
+      label: "Insert footnote",
+      icon: Superscript,
+      hint: `${MOD}${ALT}F`,
+      enabled: canInsertFootnote(state),
+      run: () => run(insertFootnote),
+    });
+  }
+  groups.push(anchored);
   if (allowLocking && bodyOpen) {
     groups.push([lockItem(selectionLock(state), run)]);
   }

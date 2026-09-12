@@ -12,7 +12,9 @@ import {
   type DocxEditorMode,
 } from "../DocxEditor";
 import { defineClipboardEvent } from "../editor/clipboard/__testing__/clipboardEvent";
+import { requestedNote } from "../editor/plugins/noteNavigation";
 import { toRunFormat } from "../model/format";
+import { storyKey } from "../schema/stories";
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -173,6 +175,7 @@ describe("the text right click menu", () => {
       "PasteCtrl+V",
       "Delete",
       "Add comment",
+      "Insert footnoteCtrl+Alt+F",
     ]);
     unmount();
   });
@@ -340,6 +343,7 @@ describe("the lock entries", () => {
       "PasteCtrl+V",
       "Delete",
       "Add comment",
+      "Insert footnoteCtrl+Alt+F",
       "Lock",
     ]);
     expect(host.querySelectorAll("hr")).toHaveLength(2);
@@ -400,6 +404,58 @@ describe("the lock entries", () => {
     expect(blocked("Cut")).toBe(true);
     expect(blocked("Delete")).toBe(true);
     expect(blocked("Copy")).toBe(false);
+    unmount();
+  });
+});
+
+describe("the insert footnote entry", () => {
+  it("puts a footnote at the caret and asks for the new one to be opened", () => {
+    const { handle, unmount } = mount(PARAGRAPH);
+    select(handle, 3, 3);
+    rightClickText();
+    act(() => item("Insert footnote").click());
+
+    const reference = handle.view.state.doc.child(0).child(1);
+    expect(reference.type.name).toBe("noteReference");
+    expect(reference.attrs).toMatchObject({ kind: "footnote", id: "1" });
+    // The caret goes into the new footnote through the request the command carries, which is what
+    // opens the view over it (`editor/plugins/noteNavigation`)
+    expect(requestedNote(handle.view.state)?.key).toBe(
+      storyKey("footnote", "1")
+    );
+    expect(host.querySelector('[role="menu"]')).toBeNull();
+    unmount();
+  });
+
+  it("is unclickable where the caret stands in locked content", () => {
+    const { handle, unmount } = mount(WITH_LOCK);
+    // A caret in the middle of the locked text, then one in the plain text before it
+    select(handle, 7, 7);
+    rightClickText();
+    expect(blocked("Insert footnote")).toBe(true);
+
+    select(handle, 2, 2);
+    rightClickText();
+    expect(blocked("Insert footnote")).toBe(false);
+    unmount();
+  });
+
+  it("is not offered to a commenter, whose mode takes no body edit", () => {
+    const { handle, unmount } = mount(PARAGRAPH, {
+      mode: { kind: "comment", author: AUTHOR },
+    });
+    select(handle, 1, 4);
+    rightClickText();
+
+    expect(labels()).not.toContain("Insert footnoteCtrl+Alt+F");
+    unmount();
+  });
+
+  it("is not offered to a reader, who gets the browser's own menu", () => {
+    const { unmount } = mount(PARAGRAPH, { mode: { kind: "readOnly" } });
+    rightClickText();
+
+    expect(host.querySelector('[role="menu"]')).toBeNull();
     unmount();
   });
 });

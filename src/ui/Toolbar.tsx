@@ -15,7 +15,6 @@ import {
   MessagesSquare,
   Redo2,
   Strikethrough,
-  Superscript,
   Table,
   Underline,
   Undo2,
@@ -23,10 +22,6 @@ import {
 import type { Command, EditorState } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 import { type KeyboardEvent, type ReactElement, useMemo, useRef } from "react";
-import {
-  canInsertFootnote,
-  insertFootnote,
-} from "../editor/commands/footnoteCommands";
 import {
   activeFontFamily,
   activeFontSize,
@@ -511,12 +506,6 @@ export function Toolbar({
           icon={Link}
           disabled={!takes.has("link") || !openLinkPanel(state)}
           onRun={() => run(openLinkPanel)}
-        />
-        <ToolbarButton
-          label="Insert footnote"
-          icon={Superscript}
-          disabled={!takes.has("note") || !canInsertFootnote(state)}
-          onRun={() => run(insertFootnote)}
         />
         <ToolbarButton
           label={commentsOpen ? "Hide comments" : "Show comments"}

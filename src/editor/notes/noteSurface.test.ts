@@ -87,6 +87,22 @@ function pressBackspace(view: EditorView): boolean {
   return view.someProp("handleKeyDown", (run) => run(view, event)) === true;
 }
 
+/** Mod is the platform's own modifier, read the way `prosemirror-keymap` reads it */
+const ON_MAC =
+  typeof navigator !== "undefined" && /Mac/.test(navigator.platform);
+
+function pressInsertFootnote(view: EditorView): boolean {
+  const event = new KeyboardEvent("keydown", {
+    key: "f",
+    altKey: true,
+    ctrlKey: !ON_MAC,
+    metaKey: ON_MAC,
+    bubbles: true,
+    cancelable: true,
+  });
+  return view.someProp("handleKeyDown", (run) => run(view, event)) === true;
+}
+
 function paragraph(...content: readonly PMNode[]): PMNode {
   return docxSchema.nodes.paragraph.create(
     null,
@@ -120,6 +136,23 @@ describe("what a note takes", () => {
     expect(storyText(storyOf(main.state.doc, FOOTNOTE))).toBe(
       "Footnote body\nSecond line"
     );
+  });
+
+  it("binds no footnote insertion inside a footnote, though the body has the key", () => {
+    const main = mainView();
+    const story = openNote(main);
+    const before = main.state.doc;
+
+    // A note may not hold a note (5.3 of the notes plan), and the key is bound only where the
+    // surface takes what it puts in (`editor/stories/storyState`), so a note is bound none
+    expect(pressInsertFootnote(story.view)).toBe(false);
+    expect(main.state.doc).toBe(before);
+
+    main.dispatch(
+      main.state.tr.setSelection(TextSelection.create(main.state.doc, 1))
+    );
+    expect(pressInsertFootnote(main)).toBe(true);
+    expect(main.state.doc).not.toBe(before);
   });
 
   it("drops an image or a new link pasted into a footnote", () => {

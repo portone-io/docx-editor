@@ -1425,7 +1425,6 @@ describe("the toolbar over a footnote being edited", () => {
       "Insert image",
       "Link",
       "Show comments",
-      "Insert footnote",
     ]) {
       expect(button(label).disabled, label).toBe(false);
     }
@@ -1438,7 +1437,7 @@ describe("the toolbar over a footnote being edited", () => {
     main.destroy();
   });
 
-  it("turns off table, image, link, comment, list, and note insertion inside a footnote", () => {
+  it("turns off table, image, link, comment, and list insertion inside a footnote", () => {
     const shut = [
       "Insert table",
       "Insert image",
@@ -1446,7 +1445,6 @@ describe("the toolbar over a footnote being edited", () => {
       "Show comments",
       "Numbered list",
       "Bulleted list",
-      "Insert footnote",
     ];
     const main = openMain();
     const story = openStory(main);
@@ -1460,7 +1458,6 @@ describe("the toolbar over a footnote being edited", () => {
       "Show comments",
       "Numbered list",
       "Bulleted list",
-      "Insert footnote",
     ]);
     inBody();
 
