@@ -308,6 +308,53 @@ describe("DocxEditor", () => {
     unmount();
   });
 
+  it("draws each footnote once when page guides are turned off after being drawn", async () => {
+    const file = makeNotesDocx();
+    const turnOff = { current: () => {} };
+    function Guided() {
+      const [guides, setGuides] = useState(true);
+      turnOff.current = () => setGuides(false);
+      return (
+        <DocxEditor
+          document={file}
+          mode={EDITING}
+          showPageGuides={guides}
+          renderImportError={() => null}
+        />
+      );
+    }
+    const areas = () =>
+      host.querySelectorAll('section[aria-label^="Footnotes on page"]').length;
+    const drawn = (body: string) =>
+      [...host.querySelectorAll(`.${editorClassNames.noteRow}`)].filter((row) =>
+        row.textContent?.includes(body)
+      ).length;
+
+    const unmount = render(<Guided />);
+    await settled();
+    await nextFrame();
+
+    act(() => turnOff.current());
+    await nextFrame();
+    await nextFrame();
+
+    // Nothing of the pages is left standing: an overlay kept from before would draw the guides
+    // over positions that no longer mean anything, and the footnote over them as well as in the
+    // list below
+    expect(
+      host.querySelectorAll(`.${editorClassNames.pageGuides}`)
+    ).toHaveLength(0);
+    expect(areas()).toBe(0);
+    expect(drawn("Footnote body")).toBe(1);
+    expect(drawn("Endnote body")).toBe(1);
+    expect(
+      host.querySelectorAll(
+        `section[aria-label="Footnotes and endnotes"] .${editorClassNames.noteRow}`
+      ).length
+    ).toBe(2);
+    unmount();
+  });
+
   it("draws no plain-text notes panel", () => {
     const unmount = render(
       <DocxEditor
