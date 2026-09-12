@@ -117,7 +117,6 @@ function changed(changes: readonly StoryChange[]): boolean {
   return changes.some((change) => change.change !== "kept");
 }
 
-/** What an edit did to a story, other than leave it as it arrived */
 export type StoryChanged = Exclude<StoryChange["change"], "kept">;
 
 export const EVERY_STORY_CHANGE: readonly StoryChanged[] = [
@@ -210,7 +209,6 @@ export interface StoryEntriesPart {
   prelude(taken: ReadonlySet<string>): string;
 }
 
-/** One story as its part is written with it, beside what an edit did to it */
 interface WrittenStory extends StoryToSettle {
   readonly change: StoryChange;
 }

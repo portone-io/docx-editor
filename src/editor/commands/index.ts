@@ -175,11 +175,7 @@ export {
   selectionTouchesLocked,
   unlockSelection,
 } from "./lockCommands";
-/**
- * Putting a note in, opening one for editing, and writing what one says, a command apiece for
- * footnotes and endnotes. An edit deleting the last reference to a note deletes the note, and one
- * copying a reference gives the copy a note of its own, so neither needs a command.
- */
+// Deleting or copying a note's reference settles the note itself, so neither has a command
 export {
   canInsertEndnote,
   canInsertFootnote,

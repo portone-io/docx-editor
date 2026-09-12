@@ -3,19 +3,9 @@
  *
  * A right click is answered by one of two menus - the text menu, and the table menu wherever the
  * click lands in a cell with nothing selected (`editor/plugins/textContextMenu`) - and a note goes
- * into a table cell as readily as into a paragraph, a contract's note on a clause among them. So
- * what each row says and what it runs is written down here rather than once per menu, and the
- * command asked without a dispatch, which is the `canInsert` query itself, is what each menu draws
- * a dead row from.
- *
- * There is a row per kind because there is a command per kind (`editor/commands/noteCommands`),
- * and the two differ in where the note is drawn rather than in anything a menu has to know: a
- * footnote stands at the foot of the page that calls it and an endnote after the last paragraph.
- *
- * Whether the rows are there at all is the surface's own declaration (`editor/stories/storyView`):
- * a note is one of the things a surface says it takes, since the part the surface is written back
- * as has to carry the note's own entry, and a menu asks that rather than asking which surface it
- * is drawn over.
+ * into a table cell as readily as into a paragraph, so each row is written down once here. The
+ * command asked without a dispatch is what each menu draws a dead row from, and whether the rows
+ * are there at all is the surface's own declaration (`editor/stories/storyView`).
  */
 
 import type { LucideIcon } from "lucide-react";

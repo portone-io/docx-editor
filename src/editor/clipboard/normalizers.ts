@@ -234,11 +234,8 @@ export const rekeyNumbering: SliceNormalizer = (slice, context) => {
 };
 
 /**
- * What each kind of node anchors outside the paragraph it stands in, and whether this one still
- * anchors it once it is pasted.
- *
- * A note reference is not one of them, whichever kind of note it calls: its note travels with the
- * copy and is put in beside it (`duplicateNotes`).
+ * The nodes that anchor something written outside the paragraph they stand in. A note reference is
+ * not one of them: its note travels with the copy and is put in beside it (`duplicateNotes`).
  */
 const ANCHORS: Readonly<Record<string, (node: PMNode) => boolean>> = {
   commentStart: () => true,
@@ -260,10 +257,8 @@ const REFERENCE_ELEMENTS = [
 ];
 
 /**
- * The mark a note's own body opens with, which stands for the number that note is called by.
- *
- * Outside its note it names nothing: the body would draw a number the text never asked for, and
- * the writer would put a note's own mark into the document story.
+ * The mark a note's own body opens with, which stands for the number that note is called by and
+ * names nothing outside its note.
  */
 const NOTE_OWN_MARKS = ["footnoteRef", "endnoteRef"];
 
@@ -332,10 +327,6 @@ export const detachAnchors: SliceNormalizer = (slice, { move }) =>
  * A reference no remembered note answers for points at nothing here: a copy from another editor or
  * another document numbers its notes against its own file, and markup naming one says nothing
  * about what it said. It goes the way the other anchors do.
- *
- * Which kinds of note this answers for is not its own to choose: `EDITABLE_NOTE_KINDS`
- * (`schema/stories`) is the one value that says so, and a copy remembers the stories of those
- * kinds alone (`./internalChannel`, `./htmlReader`).
  */
 export const duplicateNotes: SliceNormalizer = (
   slice,

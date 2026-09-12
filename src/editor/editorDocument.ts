@@ -50,11 +50,8 @@ export interface EditorDocument {
   /** The paper the document is written on, which decides the width a new table is fitted to */
   readonly geometry: PageGeometry;
   /**
-   * Whether these values stand for a side story rather than for the body.
-   *
-   * A story writes down no section of its own, so the paper a block in one is written on is the
-   * paper of the place the story is called from, which is the geometry above rather than anything
-   * the story's own blocks say (`editor/documentStyles`).
+   * Whether these values stand for a side story rather than for the body, whose paper is then the
+   * geometry above rather than anything the story's own blocks say (`editor/documentStyles`).
    */
   readonly sideStory: boolean;
   /** The distance between automatic tab stops when no custom stop applies */

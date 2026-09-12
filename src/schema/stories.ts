@@ -79,11 +79,8 @@ export function noteKeyOf(
 
 /**
  * The kinds of note an edit may add, delete, copy and rewrite, which is both of them: each part is
- * written back one entry per note (`docx/notes/writing`).
- *
- * The value stays here, and stays a list, because what an edit may do to a note is asked in the
- * guards, the lifecycle, the clipboard and the navigation alike, and a kind of note added to the
- * format would open all four by joining this list.
+ * written back one entry per note (`docx/notes/writing`). The lifecycle, the clipboard and the
+ * navigation all read this one list, so a kind of note added to the format joins it once.
  */
 export const EDITABLE_NOTE_KINDS: readonly NoteKind[] = NOTE_KINDS;
 
