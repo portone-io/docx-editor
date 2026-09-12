@@ -61,7 +61,13 @@ export interface TrailingRoom {
   /** What the page holds, in the order they are laid (`page/pageLayout`) */
   ids: readonly string[];
   top: number;
+  /**
+   * The height the page gives the rows, down to the end of its body. Less than they ask for where
+   * one of them is taller than the room the page had left
+   */
   height: number;
+  /** Whether the rows ask for more than that height */
+  clipped: boolean;
 }
 
 /** The paper area of one visual page, used to place its header and footer stories. */
@@ -133,18 +139,25 @@ interface PageLayoutOptions {
 
 const NO_ROOM: readonly ReservedRoom[] = [];
 
-/** One page's trailing rows measured on the sheet rather than from the top of the body */
+/**
+ * One page's trailing rows measured on the sheet rather than from the top of the body, and no
+ * taller than the body they stand in: what is drawn in the room a page kept never paints over the
+ * gap below that page.
+ */
 function trailingOn(
   placement: TrailingPlacement | undefined,
-  contentTop: number
+  contentTop: number,
+  bodyBottom: number
 ): TrailingRoom | null {
-  return placement === undefined
-    ? null
-    : {
-        ids: placement.ids,
-        top: contentTop + placement.top,
-        height: placement.height,
-      };
+  if (placement === undefined) return null;
+  const top = contentTop + placement.top;
+  const height = Math.max(0, bodyBottom - top);
+  return {
+    ids: placement.ids,
+    top,
+    height: Math.min(placement.height, height),
+    clipped: placement.height > height,
+  };
 }
 
 /**
@@ -290,7 +303,11 @@ export function usePageLayout({
             left: sheet.marginLeft,
             width: sheet.bodyWidth,
             crossed: start.crossed,
-            trailing: trailingOn(laidOn.get(start.page), measured.contentTop),
+            trailing: trailingOn(
+              laidOn.get(start.page),
+              measured.contentTop,
+              bodyBottom
+            ),
             reserved:
               roomOn.get(start.page)?.map((room) => {
                 const top = measured.contentTop + room.top;

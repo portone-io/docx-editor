@@ -360,7 +360,6 @@ describe("DocxEditor", () => {
       <DocxEditor
         document={makeNotesDocx()}
         mode={EDITING}
-        showPageGuides={false}
         renderImportError={() => null}
       />
     );

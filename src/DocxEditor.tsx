@@ -713,7 +713,6 @@ function DocxEditorSurface(
               notes={notes}
               overlay={overlay}
               page={page}
-              pageGuides={showPageGuides}
               zoom={effectiveZoom}
               open={surface.open}
               editing={surface.editing}

@@ -18,11 +18,18 @@ import type {
   PageFace,
   PageOverlay,
   ReservedRoom,
+  TrailingRoom,
 } from "../../page/usePageLayout";
 import { storyKey } from "../../schema/stories";
 import { editorClassNames } from "../../styles/classNames";
 import { DEFAULT_FONT_FALLBACKS } from "../../styles/fontStack";
-import { FootnoteAreas, type FootnoteAreasProps } from "./FootnoteAreas";
+import {
+  endnoteAreasOf,
+  footnoteAreasOf,
+  type NoteArea,
+  NoteAreas,
+  type NoteAreasProps,
+} from "./NoteAreas";
 import type { RowEditing } from "./StoryRow";
 
 declare global {
@@ -71,7 +78,11 @@ function room(
   return { band: FOOTNOTE_BAND, ids, top, height: 80, clipped };
 }
 
-function face(page: number, reserved: readonly ReservedRoom[]): PageFace {
+function face(
+  page: number,
+  reserved: readonly ReservedRoom[],
+  trailing: TrailingRoom | null = null
+): PageFace {
   return {
     page,
     pos: 0,
@@ -82,7 +93,7 @@ function face(page: number, reserved: readonly ReservedRoom[]): PageFace {
     width: 640,
     crossed: false,
     reserved,
-    trailing: null,
+    trailing,
   };
 }
 
@@ -90,24 +101,49 @@ function overlayOf(...pages: PageFace[]): PageOverlay {
   return { left: 0, top: 0, width: 800, sheetHeight: 4000, marks: [], pages };
 }
 
-function draw(
-  props: Pick<FootnoteAreasProps, "overlay"> & Partial<FootnoteAreasProps>
-): void {
+type DrawnProps = Pick<NoteAreasProps, "overlay"> & Partial<NoteAreasProps>;
+
+function drawAreas(props: DrawnProps, areas: readonly NoteArea[]): void {
   const live = createRoot(host);
   root = live;
   act(() =>
     live.render(
-      <FootnoteAreas
-        footnotes={openedFootnotes()}
+      <NoteAreas
+        rows={openedFootnotes()}
+        areaClassName={editorClassNames.footnoteArea}
         heights={new Map()}
         onHeight={() => {}}
         fontFallbacks={DEFAULT_FONT_FALLBACKS}
         textStyle={{}}
         zoom={1}
         {...props}
+        areas={areas}
       />
     )
   );
+}
+
+/** The footnotes of an overlay, drawn the way the editor draws them */
+function draw(props: DrawnProps): void {
+  drawAreas(props, footnoteAreasOf(props.overlay));
+}
+
+/** The endnotes of an overlay, drawn the way the editor draws them */
+function drawEndnotes(props: DrawnProps): void {
+  drawAreas(
+    {
+      rows: openedRows(),
+      areaClassName: editorClassNames.endnoteArea,
+      ...props,
+    },
+    endnoteAreasOf(props.overlay)
+  );
+}
+
+/** Every note of the formatted fixture by story key, endnote included */
+function openedRows() {
+  const state = createEditorState(importDocx(makeFormattedNotesDocx()).doc);
+  return noteProjection.read(state).rows;
 }
 
 function area(page: number): HTMLElement {
@@ -162,7 +198,7 @@ describe("the footnotes at the foot of each page", () => {
 
   it("names a footnote drawing a mark of its own by its kind alone", () => {
     draw({
-      footnotes: customMarkFootnotes(),
+      rows: customMarkFootnotes(),
       overlay: overlayOf(face(1, [room(["footnote:2"], 900)])),
     });
 
@@ -301,5 +337,96 @@ describe("the footnotes at the foot of each page", () => {
         "[data-rpr], [data-rattrs], [data-fmt], [data-ppr]"
       )
     ).toBeNull();
+  });
+});
+
+/** The room a page gives the endnotes laid after the last paragraph */
+function trailing(
+  ids: readonly string[],
+  top: number,
+  height = 90,
+  clipped = false
+): TrailingRoom {
+  return { ids, top, height, clipped };
+}
+
+function endnoteArea(page: number): HTMLElement {
+  const found = host.querySelector(
+    `section[aria-label="Endnotes on page ${page}"]`
+  );
+  if (!(found instanceof HTMLElement)) {
+    throw new Error(`no endnotes were drawn on page ${page}`);
+  }
+  return found;
+}
+
+describe("the endnotes after the last paragraph", () => {
+  it("draws endnotes after the last paragraph on pages of their own", () => {
+    drawEndnotes({
+      overlay: overlayOf(
+        face(1, []),
+        face(2, [], trailing(["endnote:3"], 1400))
+      ),
+    });
+
+    const drawn = endnoteArea(2);
+    expect(host.querySelector('section[aria-label="Endnotes on page 1"]')).toBe(
+      null
+    );
+    expect(drawn.style.top).toBe("1400px");
+    expect(drawn.style.left).toBe("80px");
+    expect(drawn.style.width).toBe("640px");
+    expect(rowsOf(drawn).map((row) => row.textContent)).toEqual([
+      "1 Italic endnote",
+    ]);
+    // The note's number is its label, drawn the way the reference in the text draws it
+    expect(
+      drawn.querySelector(`sup.${editorClassNames.noteMark}`)?.textContent
+    ).toBe("1");
+  });
+
+  it("draws the rule once, above the page the endnotes begin on", () => {
+    drawEndnotes({
+      overlay: overlayOf(
+        face(1, [], trailing(["endnote:3"], 900)),
+        face(2, [], trailing(["footnote:2"], 100, 40))
+      ),
+    });
+
+    const rule = `.${editorClassNames.noteSeparator}`;
+    expect(endnoteArea(1).querySelectorAll(rule)).toHaveLength(1);
+    expect(endnoteArea(2).querySelectorAll(rule)).toHaveLength(0);
+  });
+
+  /**
+   * Every height is zero until a row has been drawn once, so the room the first layout keeps is
+   * the rule alone. Standing in exactly that room is what keeps the notes off the page below.
+   */
+  it("takes no more room than the page kept, and scrolls what asks for more", () => {
+    drawEndnotes({
+      overlay: overlayOf(face(1, [], trailing(["endnote:3"], 900, 16))),
+    });
+    expect(endnoteArea(1).style.height).toBe("16px");
+    expect(endnoteArea(1).style.overflowY).toBe("hidden");
+
+    drawEndnotes({
+      overlay: overlayOf(face(1, [], trailing(["endnote:3"], 900, 60, true))),
+    });
+    expect(endnoteArea(1).style.height).toBe("60px");
+    expect(endnoteArea(1).style.overflowY).toBe("auto");
+  });
+
+  it("keeps a row nobody has measured yet unseen, and shows it once it is measured", () => {
+    const overlay = overlayOf(face(1, [], trailing(["endnote:3"], 900)));
+    drawEndnotes({ overlay });
+
+    expect(rowsOf(endnoteArea(1))[0]?.style.visibility).toBe("hidden");
+
+    drawEndnotes({
+      overlay,
+      heights: new Map([[storyKey("endnote", "3"), 90]]),
+    });
+
+    expect(rowsOf(endnoteArea(1))[0]?.style.visibility).toBe("");
   });
 });

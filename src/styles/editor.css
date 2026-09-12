@@ -367,7 +367,7 @@ button.docx-editor-comment-body {
  * document's own text defaults, and the text is set as `prosemirror-view` sets an editor's, so a
  * note wraps where it would in one.
  */
-.docx-editor-footnote-areas {
+.docx-editor-note-areas {
   position: absolute;
   pointer-events: none;
 }

@@ -28,17 +28,17 @@ import {
 import type { PagePixels, TrailingRows } from "../../page/pageLayout";
 import type { PageOverlay } from "../../page/usePageLayout";
 import type { StoryKey } from "../../schema/stories";
+import { editorClassNames } from "../../styles/classNames";
 import {
   DEFAULT_FONT_FALLBACKS,
   type FontFallbacks,
 } from "../../styles/fontStack";
 import { documentDefaultsVariables } from "../../styles/inlineStyle";
-import { FootnoteAreas } from "./FootnoteAreas";
+import { endnoteAreasOf, footnoteAreasOf, NoteAreas } from "./NoteAreas";
 import { NoteList } from "./NoteList";
 import { useNoteHeights } from "./noteHeights";
 import { NOTE_SEPARATOR_HEIGHT } from "./noteSeparator";
 import type { NoteHeightReport, RowEditing } from "./StoryRow";
-import { TrailingNotes } from "./TrailingNotes";
 
 const NO_ROWS: ReadonlyMap<StoryKey, NoteRow> = new Map();
 const NO_NOTE_ROWS: readonly NoteRow[] = [];
@@ -162,12 +162,13 @@ export function useNoteBands({
 
 export interface NotesAroundPageProps {
   readonly notes: NoteBands;
-  /** Where the pages stand, or null while none are drawn */
+  /**
+   * Where the pages stand, or null while none are measured, which is what decides where the notes
+   * go: a page keeps room for them only once it has been laid out
+   */
   readonly overlay: PageOverlay | null;
-  /** The paper the first section is drawn on, which the list after the last page is as wide as */
+  /** The paper the first section is drawn on, which the list under the sheet is as wide as */
   readonly page: PagePixels;
-  /** Whether the pages are drawn at all, which is what decides where the footnotes go */
-  readonly pageGuides: boolean;
   readonly zoom: number;
   /** The note the caret is in, which is the one row an editing view stands over */
   readonly open?: StoryKey | null;
@@ -183,14 +184,17 @@ export interface NotesAroundPageProps {
 
 /**
  * The notes around the paper: each footnote over the room its page keeps, and the endnotes over
- * the room kept after the last paragraph. With no pages drawn there is no room to stand in at all,
- * so both are listed under the sheet instead, where neither is edited in place.
+ * the room kept after the last paragraph.
+ *
+ * Until a page has been measured there is no room to stand in - the guides may be off, or the
+ * first frame may not have been laid out yet - and a note drawn nowhere is a note a reader cannot
+ * read, so both kinds are listed under the sheet until there is. Only a note standing in its own
+ * room is edited in place.
  */
 export function NotesAroundPage({
   notes,
   overlay,
   page,
-  pageGuides,
   zoom,
   open,
   editing,
@@ -199,41 +203,39 @@ export function NotesAroundPage({
   onOpen,
 }: NotesAroundPageProps): ReactElement | null {
   const { footnotes, endnotes, anyNotes, heights, onHeight } = notes.drawn;
+  const drawing = {
+    heights,
+    onHeight,
+    fontFallbacks: notes.drawn.fontFallbacks,
+    textStyle: notes.drawn.textStyle,
+    zoom,
+    open,
+    editing,
+    readOnly,
+    revision,
+    onOpen,
+  };
   return (
     <>
       {overlay !== null && footnotes.size > 0 && (
-        <FootnoteAreas
+        <NoteAreas
           overlay={overlay}
-          footnotes={footnotes}
-          heights={heights}
-          onHeight={onHeight}
-          fontFallbacks={notes.drawn.fontFallbacks}
-          textStyle={notes.drawn.textStyle}
-          zoom={zoom}
-          open={open}
-          editing={editing}
-          readOnly={readOnly}
-          revision={revision}
-          onOpen={onOpen}
+          areas={footnoteAreasOf(overlay)}
+          areaClassName={editorClassNames.footnoteArea}
+          rows={footnotes}
+          {...drawing}
         />
       )}
       {overlay !== null && endnotes.length > 0 && (
-        <TrailingNotes
+        <NoteAreas
           overlay={overlay}
+          areas={endnoteAreasOf(overlay)}
+          areaClassName={editorClassNames.endnoteArea}
           rows={notes.rows}
-          heights={heights}
-          onHeight={onHeight}
-          fontFallbacks={notes.drawn.fontFallbacks}
-          textStyle={notes.drawn.textStyle}
-          zoom={zoom}
-          open={open}
-          editing={editing}
-          readOnly={readOnly}
-          revision={revision}
-          onOpen={onOpen}
+          {...drawing}
         />
       )}
-      {anyNotes && !pageGuides && (
+      {anyNotes && overlay === null && (
         <NoteList
           footnotes={[...footnotes.values()]}
           endnotes={endnotes}

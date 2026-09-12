@@ -35,7 +35,12 @@ function rowTexts(list: HTMLElement): (string | null)[] {
 }
 
 describe("the notes listed after the last page", () => {
-  it("lists nothing under the sheet while the pages are drawn", () => {
+  /**
+   * A note is drawn in the room a page kept for it, and no page has kept any until one has been
+   * laid out. A note drawn nowhere is one a reader cannot read, so the list holds both kinds
+   * until the pages do.
+   */
+  it("lists both kinds under the sheet until a page has been measured", () => {
     const unmount = renderInto(
       host,
       <DocxEditor
@@ -45,9 +50,13 @@ describe("the notes listed after the last page", () => {
       />
     );
 
-    // Each kind stands where the pages keep room for it: the footnotes at the foot of the page
-    // that calls them, the endnotes after the last paragraph (`./TrailingNotes`)
-    expect(host.querySelector(`.${editorClassNames.noteList}`)).toBeNull();
+    expect(
+      rowTexts(found('section[aria-label="Footnotes and endnotes"]'))
+    ).toEqual([
+      "1Plain then bold wordsSecond paragraph",
+      "2 Later footnote",
+      "1 Italic endnote",
+    ]);
     unmount();
   });
 
@@ -123,7 +132,7 @@ describe("the notes listed after the last page", () => {
       "2 Later footnote",
       "1 Italic endnote",
     ]);
-    expect(host.querySelector(`.${editorClassNames.footnoteAreas}`)).toBeNull();
+    expect(host.querySelector(`.${editorClassNames.noteAreas}`)).toBeNull();
     unmount();
   });
 });

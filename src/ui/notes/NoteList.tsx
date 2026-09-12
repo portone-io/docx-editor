@@ -1,6 +1,10 @@
 /**
- * The notes listed after the last page: every endnote, and the footnotes ahead of them while no
- * pages are drawn for footnotes to stand at the foot of.
+ * The notes listed under the sheet while no page has kept room for them: the footnotes ahead of
+ * the endnotes, the order they are called in.
+ *
+ * A note stands where its own page keeps room for it (`./NoteAreas`), which needs a page that has
+ * been laid out: the guides may be off, or the first frame may not have been measured yet. Until
+ * then they are listed here, where none of them is edited in place.
  *
  * Each note is drawn from its story (`./StoryRow`) across the width the body is set at, so a note
  * wraps here where it would on the page.
