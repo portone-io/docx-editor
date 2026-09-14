@@ -2,6 +2,9 @@
 
 Use `pnpm check` for the default local gate. Run the specialized checks when a change affects packaging, a fresh consumer installation, or browser behavior.
 
+While a change is in progress, run only the test files that cover it, such as `pnpm vitest run src/docx/invariants.test.ts`, and reserve `pnpm check` for once before the commit.
+The whole suite takes minutes, so running it after every edit slows the work down without telling you more than the affected files do.
+
 ## Commands
 
 | Command | Scope |

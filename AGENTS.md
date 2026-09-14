@@ -43,6 +43,10 @@ Prefer precise types over `any` and broad type assertions. Use narrowing, type g
 
 Follow the [public API vocabulary](./site/content/docs/editor-api/index.mdx#commands-and-queries) when adding or renaming an export.
 
+### Verifying
+
+Run only the test files that cover a change while working on it, and the full `pnpm check` once before committing. [Testing](./docs/testing.md) lists the checks.
+
 ### Usability
 
 When changing editor interactions, check where focus, selection, and scroll end up, and whether users can understand why an action is unavailable or rejected.
