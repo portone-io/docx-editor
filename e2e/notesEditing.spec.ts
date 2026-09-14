@@ -140,6 +140,28 @@ async function caretBeforeTheNumber(
   await page.waitForTimeout(8);
 }
 
+/**
+ * Whether the browser's own caret stands in front of the number, which is the place a press may
+ * not leave it: the editor can say the caret is elsewhere and the browser still write here.
+ */
+function caretInFrontOfTheNumber(page: Page): Promise<boolean> {
+  return page.evaluate((classes) => {
+    const line = document.querySelector(
+      `.${classes.noteRowOpen} .ProseMirror p`
+    );
+    const number = line?.querySelector(`sup.${classes.noteMark}`);
+    const selection = window.getSelection();
+    const at = selection?.focusNode ?? null;
+    if (!line || !number || at === null || selection?.isCollapsed !== true) {
+      return false;
+    }
+    const before = document.createRange();
+    before.setStart(line, 0);
+    before.setEnd(at, selection.focusOffset);
+    return before.toString() === "";
+  }, editorClassNames);
+}
+
 /** What the open note draws in front of the number it is drawn by */
 function drawnBeforeTheNumber(page: Page): Promise<string> {
   return page.evaluate((classes) => {
@@ -386,6 +408,93 @@ for (const note of NOTES) {
     await commitComposition(cdp, "안");
     await settle(page);
 
+    await numberStaysFirst(page, note);
+  });
+
+  /**
+   * The sequence a reader reported: Home, which lands on the number itself, and one press more,
+   * which is the press that used to walk past it and leave the browser's caret in front of the
+   * number while the editor still said otherwise. Every press that reaches that way is answered
+   * where there is nothing left of the number to reach (`editor/notes/noteSurface`), so the caret
+   * stays where it stands and what is typed next lands after the number.
+   */
+  test(`presses past the head of a ${note.kind} leave the caret after its number`, async ({
+    page,
+  }) => {
+    await openHarness(page, "notes");
+    await enterNote(page, note.label, note.called);
+    const spelled = await noteText(page, note.id, note.kind);
+
+    await caretToTheHead(page, spelled);
+    for (const press of ["Home", "ArrowLeft", "Home", "ArrowUp"]) {
+      await page.keyboard.press(press);
+      await page.waitForTimeout(8);
+      expect(await caretInFrontOfTheNumber(page), `after ${press}`).toBe(false);
+    }
+    await page.keyboard.type("X");
+    await settle(page);
+
+    await expect
+      .poll(() => noteText(page, note.id, note.kind))
+      .toBe(`X${spelled}`);
+    await numberStaysFirst(page, note);
+  });
+
+  /**
+   * The same with Shift held, which builds a selection rather than moving a caret. Selecting the
+   * number is an ordinary thing to do, so it stays possible; what may not happen is a press
+   * reaching past it, and what is typed over it puts the number back.
+   */
+  test(`shift presses past the head of a ${note.kind} reach no further than its number`, async ({
+    page,
+  }) => {
+    await openHarness(page, "notes");
+    await enterNote(page, note.label, note.called);
+    const spelled = await noteText(page, note.id, note.kind);
+
+    await caretToTheHead(page, spelled);
+    for (const press of ["Shift+ArrowLeft", "Shift+ArrowLeft", "Shift+Home"]) {
+      await page.keyboard.press(press);
+      await page.waitForTimeout(8);
+      expect(await caretInFrontOfTheNumber(page), `after ${press}`).toBe(false);
+    }
+    await page.keyboard.type("X");
+    await settle(page);
+
+    await expect
+      .poll(() => noteText(page, note.id, note.kind))
+      .toBe(`X${spelled}`);
+    await numberStaysFirst(page, note);
+  });
+
+  /**
+   * The other end of the same note, where a press has nothing to reach either. Nothing stands
+   * there for a press to walk past, and this is what says so.
+   */
+  test(`presses past the end of a ${note.kind} write at its end`, async ({
+    page,
+  }) => {
+    await openHarness(page, "notes");
+    await enterNote(page, note.label, note.called);
+    const spelled = await noteText(page, note.id, note.kind);
+
+    for (const press of [
+      "End",
+      "ArrowRight",
+      "ArrowRight",
+      "Shift+ArrowRight",
+      "Shift+End",
+      "End",
+    ]) {
+      await page.keyboard.press(press);
+      await page.waitForTimeout(8);
+    }
+    await page.keyboard.type("X");
+    await settle(page);
+
+    await expect
+      .poll(() => noteText(page, note.id, note.kind))
+      .toBe(`${spelled}X`);
     await numberStaysFirst(page, note);
   });
 }

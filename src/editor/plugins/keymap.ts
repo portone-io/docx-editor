@@ -149,7 +149,7 @@ export function historyKeys(): Plugin {
  * Whether the editor is running on a Mac, which decides the Mod key and what the system takes
  * before a page sees it.
  */
-function onMac(): boolean {
+export function onMac(): boolean {
   return typeof navigator !== "undefined" && navigator.platform.includes("Mac");
 }
 

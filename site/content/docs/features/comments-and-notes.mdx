@@ -56,6 +56,12 @@ of a note holding nothing but its number does the same and returns the caret to 
 reference stood.
 Deleting a note's text leaves its number standing, and a note left empty is kept.
 
+The number a note is drawn by always comes first, so the caret stops just after it: `Home` and the
+left arrow at the start of a note leave the caret where it stands rather than moving in front of
+the number.
+Selecting the number and typing over it still works, and the number goes back in front of what you
+wrote.
+
 ### Limitations
 
 Notes cannot be edited in comment-only or read-only mode, and the notes listed with page guides

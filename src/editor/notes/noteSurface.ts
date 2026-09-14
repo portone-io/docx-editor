@@ -35,6 +35,7 @@ import {
 } from "../clipboard/normalizers";
 import { redo, undo } from "../commands/historyCommands";
 import { noteBodyCommand } from "../commands/noteCommands";
+import { onMac } from "../plugins/keymap";
 import { noteReferenceAt } from "../plugins/noteNavigation";
 import type { StoryNodeSpecs } from "../stories/storyMarkup";
 import {
@@ -219,6 +220,68 @@ function markHome(story: PMNode): number | null {
 }
 
 /**
+ * Every press that reaches towards the number, which stands at the head of the note: leftwards,
+ * upwards, and to the start of the line or of the story. Each is bound on its own and with Shift
+ * held, since a selection may not be built through the number either.
+ *
+ * Ctrl+A is the line start on a Mac and Select All everywhere else, so it is bound only where it
+ * moves a caret.
+ */
+function pressesTowardsTheNumber(): readonly string[] {
+  return [
+    "ArrowLeft",
+    "ArrowUp",
+    "Home",
+    "PageUp",
+    "Mod-ArrowLeft",
+    "Mod-ArrowUp",
+    "Mod-Home",
+    ...(onMac() ? ["Ctrl-a"] : []),
+  ];
+}
+
+/**
+ * Answers such a press where there is nothing left of the number to reach, so that the caret
+ * stays where it stands.
+ *
+ * The rule below puts a selection that reached the place in front of the number back after it,
+ * which answers for a selection the editor set itself. It does not answer for a press the browser
+ * makes its own move for - Home, and the arrow it hands back - because the browser moves its own
+ * caret first and ProseMirror writes a corrected selection to the DOM only when the correction
+ * changed the state. A correction that lands where the state already stood changes nothing, so the
+ * browser is left holding a caret in front of the number with nothing saying so, and the next
+ * character or composition goes in there. Answering the press is what keeps the two saying the
+ * same thing.
+ *
+ * A press that still has somewhere to go is left alone, so the keys mean what they mean everywhere
+ * else in the note; a press that extends is answered only once the selection already reaches the
+ * number, which leaves selecting the number itself the ordinary gesture it was.
+ */
+function holdAtTheNumber(extend: boolean): Command {
+  return (state, dispatch) => {
+    const floor = caretFloor(state.doc);
+    const home = markHome(state.doc);
+    if (floor === null || home === null) return false;
+    const { selection } = state;
+    if (extend ? selection.head > home : selection.from > floor) return false;
+    if (dispatch && !extend) {
+      dispatch(state.tr.setSelection(TextSelection.create(state.doc, floor)));
+    }
+    return true;
+  };
+}
+
+/** The presses above, each as the press itself and as the same press extending a selection */
+function keysOffTheNumber(): Record<string, Command> {
+  return Object.fromEntries(
+    pressesTowardsTheNumber().flatMap((press) => [
+      [press, holdAtTheNumber(false)],
+      [`Shift-${press}`, holdAtTheNumber(true)],
+    ])
+  );
+}
+
+/**
  * Keeps the number a note is drawn by the first thing the note holds: an edit that carried it off
  * has it put back, and the caret never stands ahead of it.
  *
@@ -234,11 +297,13 @@ function markHome(story: PMNode): number | null {
  * beside the composed text rather than rewriting the node it stands in is what keeps a composition
  * over it open (`e2e/notesEditing.spec.ts`).
  *
- * Holding the caret after the number is what keeps this a rule a reader never runs into: every way
- * into a note leaves the caret where the note's own text begins, so the move above answers only
- * what a paste or a plugin wrote straight into the story. A selection reaching over the number is
- * left alone: it is an edit like any other, and what it sweeps away is put back, which keeps a
- * paste over the whole of a note one paragraph.
+ * Holding the caret after the number is what keeps this a rule a reader mostly never runs into:
+ * every way into a note leaves the caret where the note's own text begins, so the move above
+ * answers what a paste, a plugin, or a press the browser already made its own move for wrote into
+ * the story. It is the second half of the same rule as the presses answered above, and it is the
+ * half that acts after the fact, which is why both are needed. A selection reaching over the
+ * number is left alone: it is an edit like any other, and what it sweeps away is put back, which
+ * keeps a paste over the whole of a note one paragraph.
  */
 function ownMarkFirst(): Plugin {
   return new Plugin({
@@ -358,6 +423,7 @@ export function noteExtensions(
   return {
     plugins: [
       ownMarkFirst(),
+      keymap(keysOffTheNumber()),
       keymap({ Backspace: deleteEmptyNote(main, key) }),
     ],
     nodeViews: {
