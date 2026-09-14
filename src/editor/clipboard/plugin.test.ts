@@ -464,7 +464,6 @@ describe("copying out of the editor", () => {
       docxSchema.nodes.noteReference.create({
         id: "2",
         kind: "footnote",
-        label: "7",
         text: "what the footnote says",
       }),
     ]);
@@ -476,7 +475,7 @@ describe("copying out of the editor", () => {
     view.dispatch(view.state.tr.setSelection(new AllSelection(view.state.doc)));
     const { text } = view.serializeForClipboard(view.state.selection.content());
 
-    expect(text).toBe("bodya picture of a cat7");
+    expect(text).toBe("bodya picture of a cat1");
     expect(text).not.toContain("Jane Doe");
     expect(text).not.toContain("what the comment says");
     expect(text).not.toContain("what the footnote says");

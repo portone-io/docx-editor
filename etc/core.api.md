@@ -231,7 +231,7 @@ export interface NewListLevel extends NumberingLevel {
 }
 
 // @public
-export type NumberFormat = "decimal" | "decimalZero" | "bullet" | "lowerLetter" | "upperLetter" | "lowerRoman" | "upperRoman" | "ganada" | "koreanDigital" | "chineseCounting";
+export type NumberFormat = "decimal" | "decimalZero" | "bullet" | "lowerLetter" | "upperLetter" | "lowerRoman" | "upperRoman" | "ganada" | "koreanDigital" | "chineseCounting" | "chicago";
 
 // @public (undocumented)
 export interface Numbering {

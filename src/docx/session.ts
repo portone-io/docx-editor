@@ -23,6 +23,7 @@ import {
   type ParagraphStyleOption,
 } from "./formatting";
 import type { HeaderFooterStories } from "./headersFooters";
+import type { NoteNumbering } from "./notes/reading";
 import type { PageGeometry } from "./pageGeometry";
 import type { ImportedStory } from "./story";
 
@@ -103,6 +104,10 @@ export class SessionStore implements DocxSession, SessionIdentity {
    * instead (`docx/story`), so the two compare the way a body block and its original do.
    */
   readonly stories: ReadonlyMap<StoryKey, ImportedStory>;
+  /** How the settings count each kind of note, which a section may override (`docx/notes/numbering`) */
+  readonly noteNumbering: NoteNumbering;
+  /** The note entries that lay out the page rather than say anything: separators and the continuation notice */
+  readonly specialNotes: ReadonlySet<StoryKey>;
 
   constructor(opened: Omit<SessionStore, "kind" | "blocksOf">) {
     this.sessionId = opened.sessionId;
@@ -123,6 +128,8 @@ export class SessionStore implements DocxSession, SessionIdentity {
     this.commentReferenceIds = opened.commentReferenceIds;
     this.headerFooterStories = opened.headerFooterStories;
     this.stories = opened.stories;
+    this.noteNumbering = opened.noteNumbering;
+    this.specialNotes = opened.specialNotes;
   }
 
   /**

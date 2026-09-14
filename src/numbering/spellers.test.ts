@@ -74,6 +74,18 @@ describe("the formats a marker is counted in", () => {
     ]);
   });
 
+  it("spells chicago marks and doubles them after the fourth", () => {
+    expect(spelled("chicago", [1, 2, 3, 4, 5, 8, 9])).toEqual([
+      "*",
+      "†",
+      "‡",
+      "§",
+      "**",
+      "§§",
+      "***",
+    ]);
+  });
+
   /** The pattern §17.18.59 gives: 一, …, 十, 十一, …, 二十, …, 九十九, 一〇〇, 一〇一 */
   it("chineseCounting counts in tens up to ninety-nine and digit by digit past it", () => {
     expect(spelled("chineseCounting", FIRST_TEN)).toEqual([

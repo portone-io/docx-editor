@@ -10,6 +10,7 @@ import type { Node as PMNode } from "prosemirror-model";
 import { EditorState, type Plugin } from "prosemirror-state";
 import { tableEditing } from "prosemirror-tables";
 import { EditorView } from "prosemirror-view";
+import { withNoteLabels } from "../docx/notes/numbering";
 import type { SessionStore } from "../docx/session";
 import { pageDecorations } from "../page/pageDecorations";
 import { pageGeometryStyle, pagePixels } from "../page/pageLayout";
@@ -46,6 +47,7 @@ import { docxKeymap, historyKeys } from "./plugins/keymap";
 import { linkPanel } from "./plugins/linkPanel";
 import { listInputRules } from "./plugins/listInputRules";
 import { lockedContent } from "./plugins/lockedContent";
+import { noteNumbering } from "./plugins/noteNumbering";
 import { numberingMarkers } from "./plugins/numberingDecorations";
 import { rowResize } from "./plugins/rowResize";
 import { tabCaret } from "./plugins/tabCaret";
@@ -101,8 +103,13 @@ export function createEditorState(
   } = options;
   return EditorState.create({
     // The values the document arrived with were worked out against whatever opened it; the
-    // state's are worked out against its own snapshot, tables' shared lines included
-    doc: withDerivedDisplay(doc, document),
+    // state's are worked out against its own snapshot, tables' shared lines and note labels
+    // included
+    doc: withNoteLabels(
+      withDerivedDisplay(doc, document),
+      document.noteNumbering,
+      document.specialNotes
+    ),
     plugins: [
       // Consumer plugins lead the array. ProseMirror walks the plugins in order and takes the
       // first answer for a keypress, a paste, a drop or any other DOM event, so this is the
@@ -143,6 +150,8 @@ export function createEditorState(
       // A comment outlives the text it was written for: an edit that sweeps its reference away has
       // it put back where the deletion left, detached from the page (`plugins/commentRestoration`)
       commentRestoration(),
+      // Numbers the note references again after an edit that moves one or a section break
+      noteNumbering(),
       // What the notes under the page are, worked out from the document the same way
       noteProjection.plugin,
       // Adjacent text tabs still need separate DOM ranges for layout and pointer selection.

@@ -10,6 +10,7 @@
 import type { Node as PMNode } from "prosemirror-model";
 import { DocxExportError } from "../ooxml/errors";
 import { decodeUtf8, parseXml } from "../ooxml/xml";
+import type { FidelityCollector } from "./fidelity";
 import {
   CONTENT_TYPES_PATH,
   type ContentTypeWriter,
@@ -21,6 +22,8 @@ import type { SessionStore } from "./session";
 export interface PartPlanContext {
   readonly relationships: RelationshipWriter;
   readonly contentTypes: ContentTypeWriter;
+  /** Where a story writer records an approximation it had to make, beside the body writer's */
+  readonly notes: FidelityCollector;
 }
 
 export interface PartPlanner {

@@ -4,7 +4,11 @@ import { describe, expect, it } from "vitest";
 import { exportErrorCode } from "../__testing__/docx";
 import { docxSchema } from "../schema";
 import { wrappersOf } from "../schema/wrappers";
-import { withUniqueIdentities } from "./identities";
+import {
+  identityProblemsInStories,
+  withUniqueIdentities,
+  withUniqueStoryIdentities,
+} from "./identities";
 import { copiedControlPrefix } from "./sdt";
 
 const BOUND_PR =
@@ -313,5 +317,87 @@ describe("the control rule", () => {
       expect(withUniqueIdentities(original)).toBe(original);
       expect(prefixesOf(original)).toEqual([PREFIX, PREFIX]);
     });
+  });
+});
+
+/** The stories of one part, none of them written as the bytes it arrived as */
+const rewritable = (...stories: readonly PMNode[]) =>
+  stories.map((story) => ({ story, frozen: false }));
+
+describe("the stories of one part", () => {
+  it("releases a paragraph id that an earlier story of the same part already wrote", () => {
+    const first = doc(opened({ srcId: "d1-abc:footnote:1:0" }));
+    const second = doc(opened({ srcId: "d1-abc:footnote:2:0" }));
+    const [kept, released] = withUniqueStoryIdentities(
+      rewritable(first, second)
+    );
+
+    expect(kept).toBe(first);
+    expect(released.child(0).attrs).toMatchObject({
+      srcId: "d1-abc:footnote:2:0",
+      pAttrs: null,
+    });
+  });
+
+  it("keeps a paragraph id that a different part already holds", () => {
+    const body = doc(opened({}));
+    const header = doc(opened({ srcId: "d1-abc:header:word/header1.xml:0" }));
+    const footer = doc(opened({ srcId: "d1-abc:footer:word/footer1.xml:0" }));
+
+    expect(withUniqueIdentities(body)).toBe(body);
+    expect(withUniqueStoryIdentities(rewritable(header))[0]).toBe(header);
+    expect(withUniqueStoryIdentities(rewritable(footer))[0]).toBe(footer);
+  });
+
+  it("refuses a preserved block standing twice in one story", () => {
+    const preserved = () =>
+      docxSchema.nodes.rawBlock.create({
+        srcId: SOURCE,
+        name: "w:tbl",
+        display: "chip",
+        guarded: false,
+      });
+    const twice = doc(preserved(), preserved());
+    const stories = rewritable(doc(paragraph()), twice);
+
+    expect(exportErrorCode(() => withUniqueStoryIdentities(stories))).toBe(
+      "unsupported-content"
+    );
+    expect(identityProblemsInStories(stories)).toEqual([
+      {
+        code: "unsupported-content",
+        message: "a preserved block stands in two places (rawBlock)",
+        story: 1,
+        pos: twice.child(0).nodeSize,
+      },
+    ]);
+  });
+
+  it("leaves a frozen story every name it holds and releases the one an earlier story claims", () => {
+    const edited = doc(opened({ srcId: "d1-abc:footnote:1:0" }));
+    const frozen = doc(opened({ srcId: "d1-abc:footnote:1:0" }));
+    const settled = withUniqueStoryIdentities([
+      { story: edited, frozen: false },
+      { story: frozen, frozen: true },
+    ]);
+
+    expect(settled[1]).toBe(frozen);
+    expect(settled[0].child(0).attrs).toMatchObject({
+      srcId: null,
+      pAttrs: null,
+    });
+  });
+
+  it("hands back an untouched story node for node", () => {
+    const first = doc(opened({}, text("2026", control(3))));
+    const second = doc(
+      opened({ srcId: "d1-abc:body:5", pAttrs: 'w14:paraId="00000042"' }),
+      table(cell(paragraph(text("-08-04", control(4)))))
+    );
+    const settled = withUniqueStoryIdentities(rewritable(first, second));
+
+    expect(settled).toHaveLength(2);
+    expect(settled[0]).toBe(first);
+    expect(settled[1]).toBe(second);
   });
 });

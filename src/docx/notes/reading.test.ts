@@ -8,12 +8,12 @@ import {
   makeNotesDocx,
   NOTE_BODY,
   withBlocks,
-} from "../__testing__/docx";
-import { documentNotes } from "../editor/commands/noteQueries";
-import { createEditorState } from "../editor/createEditor";
-import { docxSchema } from "../schema";
-import { exportDocx } from "./exportDocx";
-import { importDocx } from "./importDocx";
+} from "../../__testing__/docx";
+import { documentNotes } from "../../editor/commands/noteQueries";
+import { createEditorState } from "../../editor/createEditor";
+import { docxSchema } from "../../schema";
+import { exportDocx } from "../exportDocx";
+import { importDocx } from "../importDocx";
 
 function editFirstText(doc: PMNode): PMNode {
   const paragraph = doc.child(0);

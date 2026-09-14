@@ -18,10 +18,15 @@ import {
   type ParagraphStyleOption,
 } from "../docx/formatting";
 import { canDefineNewList } from "../docx/newLists";
+import {
+  DEFAULT_NOTE_NUMBERING,
+  type NoteNumbering,
+} from "../docx/notes/reading";
 import { A4_PORTRAIT, type PageGeometry } from "../docx/pageGeometry";
 import type { SessionStore } from "../docx/session";
 import type { DocumentDefaults } from "../model/format";
 import { NEW_LISTS_ATTR, newListsOf } from "../numbering/listRegistry";
+import type { StoryKey } from "../schema/stories";
 
 /** The document-level values one editing state is built on */
 export interface EditorDocument {
@@ -46,9 +51,15 @@ export interface EditorDocument {
   readonly reservedCommentIds: ReadonlySet<string>;
   /** Every paragraph id present in the opened comment parts, including orphan extension entries */
   readonly reservedCommentParaIds: ReadonlySet<string>;
+  /** How the document counts its footnotes and endnotes, which the note labels are spelled in */
+  readonly noteNumbering: NoteNumbering;
+  /** The note entries that lay out the page rather than number a note: separators and the continuation notice */
+  readonly specialNotes: ReadonlySet<StoryKey>;
 }
 
 const NO_IDS: ReadonlySet<string> = new Set();
+
+const NO_SPECIAL_NOTES: ReadonlySet<StoryKey> = new Set();
 
 /** A document whose paragraph styles the editor does not know offers none to pick from */
 const NO_PARAGRAPH_STYLES: ParagraphStyleOption[] = [];
@@ -64,6 +75,8 @@ export const NO_DOCUMENT: EditorDocument = {
   defaultTabStopPt: DEFAULT_TAB_STOP_PT,
   reservedCommentIds: NO_IDS,
   reservedCommentParaIds: NO_IDS,
+  noteNumbering: DEFAULT_NOTE_NUMBERING,
+  specialNotes: NO_SPECIAL_NOTES,
 };
 
 /**
@@ -111,6 +124,8 @@ export function editorDocumentOf(
     defaultTabStopPt: session.defaultTabStopPt,
     reservedCommentIds: new Set(session.comments.byId.keys()),
     reservedCommentParaIds: reservedParaIds(session),
+    noteNumbering: session.noteNumbering,
+    specialNotes: session.specialNotes,
   };
 }
 

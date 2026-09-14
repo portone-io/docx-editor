@@ -4,7 +4,8 @@
  * The body (document.xml) is always rebuilt from preserved and edited blocks. Every other part is
  * written by a planner (`./partPlan`) that answers only when the document gives it something to
  * write: numbering.xml when a list was newly started, the comment parts when comments changed,
- * media parts when an image was inserted. Content types and relationships change only when one
+ * a header, a footer, or the Footnotes part when a story it holds changed, media parts when an
+ * image was inserted. Content types and relationships change only when one
  * of those additions declares itself through the context every planner shares.
  *
  * The body is written before that relationships part, because a link asks for its relationship as
@@ -26,7 +27,6 @@ import {
   withXmlParser,
   type XmlParser,
 } from "../ooxml/xml";
-import { commentsPlanner } from "./comments";
 import { repackParts } from "./container";
 import type { ExportRefs } from "./exportRefs";
 import {
@@ -34,12 +34,10 @@ import {
   type FidelityNote,
   fidelityNotesOf,
 } from "./fidelity";
-import { headerFooterPlanner } from "./headersFooters";
 import { hyperlinkRefs } from "./hyperlink";
 import { withUniqueIdentities } from "./identities";
 import { problemsOf } from "./invariants";
 import { NO_IMAGE_REFS, planImageMedia } from "./media";
-import { numberingPlanner } from "./numberingPlanner";
 import { CONTENT_TYPES_PATH, contentTypeWriter } from "./packageParts";
 import {
   assertPartsParse,
@@ -47,6 +45,7 @@ import {
   type PartPlanner,
   runPartPlanners,
 } from "./partPlan";
+import { PART_PLANNERS } from "./partPlanners";
 import {
   readRelationships,
   relationshipWriter,
@@ -147,13 +146,6 @@ function assertMainPart(documentXml: string, wroteLinks: boolean): void {
  */
 const LINK_MARKUP: RootDeclarations = { namespaces: { r: R_NS } };
 
-/** The parts written beside the body, in the order their parts go into the package */
-const PART_PLANNERS: readonly PartPlanner[] = [
-  numberingPlanner,
-  commentsPlanner,
-  headerFooterPlanner,
-];
-
 /** What a caller may say about a write beyond handing over the document and its session */
 export interface ExportOptions {
   /**
@@ -240,6 +232,7 @@ function writeDocx(
   const context: PartPlanContext = {
     relationships: relationshipWriter(readRelationships(store.parts, relsPath)),
     contentTypes: contentTypeWriter(store.parts),
+    notes,
   };
   // The body has to know which relationship a newly inserted image ends up on, so the
   // media is planned before the body is written

@@ -27,6 +27,7 @@ import {
   serializeXml,
 } from "../ooxml/xml";
 import { docxSchema } from "../schema";
+import type { NoteKind } from "../schema/stories";
 // The two comment modules are named outright rather than through the folder's barrel: the barrel
 // also carries the writer, which reads a story back out (`./story`), and a story is read here
 import { commentParaId, importedCommentReplies } from "./comments/model";
@@ -41,7 +42,6 @@ import {
 } from "./importPreserved";
 import type { ImageSources } from "./media";
 import { NO_IMAGES } from "./media";
-import { type ImportedNotes, NO_NOTES, type NoteKind, noteById } from "./notes";
 import { NO_THEME_FONTS, type ThemeFonts } from "./theme";
 import { wrapperFits, wrapperKindFor } from "./wrappers";
 
@@ -91,9 +91,7 @@ function buildModelledRunChild(
   el: Element,
   marks: readonly Mark[],
   images: ImageSources,
-  comments: ImportedComments,
-  notes: ImportedNotes,
-  noteLabel: ImportSources["noteLabel"]
+  comments: ImportedComments
 ): PMNode[] | null {
   switch (el.localName) {
     case "t": {
@@ -152,17 +150,17 @@ function buildModelledRunChild(
       if (id === null) return null;
       const kind: NoteKind =
         el.localName === "footnoteReference" ? "footnote" : "endnote";
-      const note = noteById(notes, kind, id);
       const written = attributeByLocalName(el, "customMarkFollows");
       // The attribute is absent far more often than it is there, and only then does it say nothing
       const customMarkFollows =
         written !== null && (ST_OnOff.parse(written) ?? true);
+      // Labelled once the whole body is read, since a label depends on every reference before it
+      // (`docx/notes/numbering`)
       return [
         docxSchema.nodes.noteReference.create(
           {
             kind,
             id,
-            label: note ? noteLabel(kind, id) : "?",
             customMarkFollows,
             referenceXml: serializeXml(el),
           },
@@ -187,8 +185,6 @@ function buildRunNodes(
   images: ImageSources,
   themeFonts: ThemeFonts,
   comments: ImportedComments,
-  notes: ImportedNotes,
-  noteLabel: ImportSources["noteLabel"],
   wrappers: readonly Mark[] = []
 ): PMNode[] {
   const mark = runMark(run, themeFonts);
@@ -201,14 +197,7 @@ function buildRunNodes(
     const policy = policyFor(child, "r");
     if (policy.tier === "model") {
       if (child.localName === "rPr") continue;
-      const built = buildModelledRunChild(
-        child,
-        marks,
-        images,
-        comments,
-        notes,
-        noteLabel
-      );
+      const built = buildModelledRunChild(child, marks, images, comments);
       if (built !== null) {
         nodes.push(...built);
         continue;
@@ -256,7 +245,7 @@ function commentRangeNode(
 
 /**
  * What the body is read with: the images its drawings can point at, the fonts a theme reference
- * resolves to, the addresses its links can point at, and the bodies of its comments and notes.
+ * resolves to, the addresses its links can point at, and the comments its references name.
  * They travel together from `docx/importDocx` down through the tables to here.
  */
 export interface ImportSources {
@@ -264,8 +253,6 @@ export interface ImportSources {
   themeFonts: ThemeFonts;
   links: LinkTargets;
   comments: ImportedComments;
-  notes: ImportedNotes;
-  noteLabel: (kind: NoteKind, id: string) => string;
 }
 
 export const NO_IMPORT_SOURCES: ImportSources = {
@@ -273,8 +260,6 @@ export const NO_IMPORT_SOURCES: ImportSources = {
   themeFonts: NO_THEME_FONTS,
   links: NO_LINK_TARGETS,
   comments: NO_COMMENTS,
-  notes: NO_NOTES,
-  noteLabel: () => "?",
 };
 
 /**
@@ -297,8 +282,6 @@ function buildModelledInline(
       sources.images,
       sources.themeFonts,
       sources.comments,
-      sources.notes,
-      sources.noteLabel,
       wrappers
     );
   }
