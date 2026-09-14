@@ -12,6 +12,7 @@ import { editorClassNames } from "../src/styles/classNames";
 import {
   composing,
   docText,
+  noteOpening,
   noteText,
   openHarness,
   pressModKey,
@@ -50,16 +51,168 @@ async function untilNoteHoldsTheCaret(page: Page): Promise<void> {
     .toBe(true);
 }
 
-async function enterFootnote(page: Page, label: string): Promise<void> {
-  await reference(page, label).click();
+async function enterNote(page: Page, label: string, kind = "Footnote") {
+  await reference(page, label, kind).click();
   await untilNoteHoldsTheCaret(page);
+}
+
+type NoteKind = "footnote" | "endnote";
+
+/** One note of the fixture as the gestures below reach it, and as a test reads its story back */
+interface NoteUnderTest {
+  readonly kind: NoteKind;
+  /** The id the notes part names the entry by */
+  readonly id: string;
+  /** The number the body draws its reference as, which is how a test presses it */
+  readonly label: string;
+  /** What the reference is called on the page, which names the kind */
+  readonly called: string;
+}
+
+const FOOTNOTE: NoteUnderTest = {
+  kind: "footnote",
+  id: "1",
+  label: "1",
+  called: "Footnote",
+};
+const ENDNOTE: NoteUnderTest = {
+  kind: "endnote",
+  id: "1",
+  label: "1",
+  called: "Endnote",
+};
+const NOTES: readonly NoteUnderTest[] = [FOOTNOTE, ENDNOTE];
+
+/**
+ * Whether the browser's caret stands at the first place in the note a caret may: just after the
+ * number, which is where the note's own text begins.
+ *
+ * It is read off the browser's own selection rather than off the editor, because what the gestures
+ * below are about is where the browser will write.
+ */
+function caretIsAtTheHead(page: Page): Promise<boolean> {
+  return page.evaluate((classes) => {
+    const line = document.querySelector(
+      `.${classes.noteRowOpen} .ProseMirror p`
+    );
+    const number = line?.querySelector(`sup.${classes.noteMark}`);
+    const selection = window.getSelection();
+    const at = selection?.focusNode ?? null;
+    if (!line || !number || at === null || selection?.isCollapsed !== true) {
+      return false;
+    }
+    const before = document.createRange();
+    before.setStart(line, 0);
+    before.setEnd(at, selection.focusOffset);
+    return before.toString() === (number.textContent ?? "");
+  }, editorClassNames);
+}
+
+/**
+ * Walks the caret back to the head of the note, which is where a reader who means to write in
+ * front of the number ends up.
+ *
+ * Home is not the key for it: on a Mac it scrolls the page instead. The walk is driven one press
+ * at a time and read back after each, since Chrome drops an arrow press that arrives while the
+ * main thread is busy (`./README.md`), and it stops the moment the caret arrives rather than
+ * counting characters, so the step that lands on the number is never taken by accident.
+ */
+async function caretToTheHead(page: Page, spelled: string): Promise<void> {
+  for (let step = 0; step < spelled.length + 10; step += 1) {
+    if (await caretIsAtTheHead(page)) return;
+    await page.keyboard.press("ArrowLeft");
+    await page.waitForTimeout(8);
+  }
+  throw new Error("the caret never reached the head of the note");
+}
+
+/**
+ * The same walk and one step more, which is the reader asking for the place in front of the
+ * number. Nothing they write from there may land there, and that is what each gesture below
+ * measures: a walk that stopped at the head would pass whether the rule held or not.
+ */
+async function caretBeforeTheNumber(
+  page: Page,
+  spelled: string
+): Promise<void> {
+  await caretToTheHead(page, spelled);
+  await page.keyboard.press("ArrowLeft");
+  await page.waitForTimeout(8);
+}
+
+/**
+ * Whether the browser's own caret stands in front of the number, which is the place a press may
+ * not leave it: the editor can say the caret is elsewhere and the browser still write here.
+ */
+function caretInFrontOfTheNumber(page: Page): Promise<boolean> {
+  return page.evaluate((classes) => {
+    const line = document.querySelector(
+      `.${classes.noteRowOpen} .ProseMirror p`
+    );
+    const number = line?.querySelector(`sup.${classes.noteMark}`);
+    const selection = window.getSelection();
+    const at = selection?.focusNode ?? null;
+    if (!line || !number || at === null || selection?.isCollapsed !== true) {
+      return false;
+    }
+    const before = document.createRange();
+    before.setStart(line, 0);
+    before.setEnd(at, selection.focusOffset);
+    return before.toString() === "";
+  }, editorClassNames);
+}
+
+/** What the open note draws in front of the number it is drawn by */
+function drawnBeforeTheNumber(page: Page): Promise<string> {
+  return page.evaluate((classes) => {
+    const line = document.querySelector(
+      `.${classes.noteRowOpen} .ProseMirror p`
+    );
+    const number = line?.querySelector(`sup.${classes.noteMark}`);
+    if (!line || !number) throw new Error("the open note draws no number");
+    const range = document.createRange();
+    range.setStart(line, 0);
+    range.setEndBefore(number);
+    return range.toString();
+  }, editorClassNames);
+}
+
+/**
+ * Nothing stands in front of the number, in the story the file is written from or on the screen.
+ *
+ * The story is read for the node the number is, since the number spells no text of its own and a
+ * test reading the note as text could not tell where it stands.
+ */
+async function numberStaysFirst(
+  page: Page,
+  note: NoteUnderTest
+): Promise<void> {
+  expect((await noteOpening(page, note.id, note.kind))[0]).toBe(
+    "rawRunContent"
+  );
+  expect(await drawnBeforeTheNumber(page)).toBe("");
+}
+
+/** Hands the view a clipboard the way the browser does for a paste of plain text */
+function pasteText(page: Page, text: string): Promise<void> {
+  return page.evaluate((pasted) => {
+    const data = new DataTransfer();
+    data.setData("text/plain", pasted);
+    document.activeElement?.dispatchEvent(
+      new ClipboardEvent("paste", {
+        bubbles: true,
+        cancelable: true,
+        clipboardData: data,
+      })
+    );
+  }, text);
 }
 
 test("types, formats, and undoes inside a footnote at the foot of its page", async ({
   page,
 }) => {
   await openHarness(page, "notes");
-  await enterFootnote(page, "1");
+  await enterNote(page, "1");
 
   await page.keyboard.type(" Edited.");
   await expect.poll(() => noteText(page, "1")).toContain("Edited.");
@@ -86,7 +239,7 @@ test("composes hangul inside a footnote while the page lays out again", async ({
 }) => {
   await openHarness(page, "notes");
   // Footnote 2 stands several pages in, so its row is the one a relayout could move
-  await enterFootnote(page, "2");
+  await enterNote(page, "2");
   const cdp = await imeSession(page);
 
   // 안녕: one composition per syllable, as a 2-beolsik IME delivers it
@@ -109,66 +262,242 @@ test("composes hangul inside a footnote while the page lays out again", async ({
 });
 
 /**
- * A composition that writes over the number a note is drawn by.
+ * Every gesture that puts a reader at the head of a note, in both kinds of note.
  *
- * The number goes back into the very paragraph the composition is open in, which is the one edit
- * that puts a node beside composed text rather than rewriting it - the same difference that lets
- * a comment be put back under an open composition (`hangulComposition.spec.ts`). Only a real
- * browser holds a composition, so this is the one place the pairing can be measured.
- */
-test("composes over the number a note is drawn by, and keeps it", async ({
-  page,
-}) => {
-  await openHarness(page, "notes");
-  await enterFootnote(page, "1");
-  const number = openNote(page).locator(`.${editorClassNames.noteMark}`);
-  await expect(number).toHaveText("1");
-  const cdp = await imeSession(page);
-
-  // Back over every character the note spells, then one step of selection onto the number itself
-  const spelled = await noteText(page, "1");
-  for (let step = 0; step < spelled.length; step += 1) {
-    await page.keyboard.press("ArrowLeft");
-  }
-  await page.keyboard.press("Shift+ArrowLeft");
-  await compose(cdp, ["ㅇ", "아", "안"]);
-  await settle(page);
-  await commitComposition(cdp, "안");
-  await settle(page);
-
-  // What was composed stands where the number was, and the number stands ahead of it
-  await expect.poll(() => noteText(page, "1")).toBe(`안${spelled}`);
-  await expect(number).toHaveText("1");
-  // The composition was let go of rather than left open over a note the restoration moved
-  expect(await composing(page)).toBe(false);
-});
-
-/**
- * Writing a note again from nothing: select all of it, then type.
+ * The number Word draws a note by is the first thing the entry holds, and the file has to go out
+ * that way whatever the reader did. Two rules hold it: the caret is kept off the place in front of
+ * the number, and an edit that wrote there has the number put back at the head
+ * (`editor/notes/noteSurface`). Only a browser can drive the gestures that reach for that place -
+ * a composition, a selection the browser itself replaces, a caret the browser left where
+ * ProseMirror would not have put it - which is why they are all driven here rather than in jsdom.
  *
- * A composition replaces what is selected because the browser does the replacing, and Chrome will
- * not touch a selection that begins at an element it may not edit. A note always begins with the
- * number it is drawn by, so the whole of a note is exactly such a selection, and the syllables
- * used to land in front of the words they were meant to replace. The selection is taken away
- * before the composition opens now (`editor/plugins/compositionSelection`).
+ * A footnote and an endnote share the surface, so each gesture is driven in both.
  */
-test("writes a note again from nothing with hangul", async ({ page }) => {
-  await openHarness(page, "notes");
-  await enterFootnote(page, "1");
-  const number = openNote(page).locator(`.${editorClassNames.noteMark}`);
-  const cdp = await imeSession(page);
+for (const note of NOTES) {
+  test(`types in front of the number of a ${note.kind} and writes after it`, async ({
+    page,
+  }) => {
+    await openHarness(page, "notes");
+    await enterNote(page, note.label, note.called);
+    const spelled = await noteText(page, note.id, note.kind);
 
-  await pressModKey(page, "a");
-  await compose(cdp, ["ㅇ", "아", "안"]);
-  await settle(page);
-  await commitComposition(cdp, "안");
-  await settle(page);
+    await caretBeforeTheNumber(page, spelled);
+    await page.keyboard.type("Head.");
+    await settle(page);
 
-  // Nothing of what stood there is left, and the number the note is drawn by still is
-  await expect.poll(() => noteText(page, "1")).toBe("안");
-  await expect(number).toHaveText("1");
-  expect(await composing(page)).toBe(false);
-});
+    await expect
+      .poll(() => noteText(page, note.id, note.kind))
+      .toBe(`Head.${spelled}`);
+    await numberStaysFirst(page, note);
+  });
+
+  test(`composes in front of the number of a ${note.kind} and writes after it`, async ({
+    page,
+  }) => {
+    await openHarness(page, "notes");
+    await enterNote(page, note.label, note.called);
+    const spelled = await noteText(page, note.id, note.kind);
+    const cdp = await imeSession(page);
+
+    await caretBeforeTheNumber(page, spelled);
+    for (const stage of ["ㅇ", "아", "안"]) {
+      await setComposition(cdp, stage);
+      // The syllables may not be seen standing in front of the number even mid-composition
+      expect(await drawnBeforeTheNumber(page), `at buffer ${stage}`).toBe("");
+    }
+    await commitComposition(cdp, "안");
+    await settle(page);
+
+    await expect
+      .poll(() => noteText(page, note.id, note.kind))
+      .toBe(`안${spelled}`);
+    await numberStaysFirst(page, note);
+  });
+
+  /**
+   * The reader's own report: four jamo struck at the head of a note, which a 2-beolsik IME
+   * delivers as four compositions rather than one, since ㄹ closes no syllable with ㄹ after it.
+   */
+  test(`writes jamo in front of the number of a ${note.kind} one composition at a time`, async ({
+    page,
+  }) => {
+    await openHarness(page, "notes");
+    await enterNote(page, note.label, note.called);
+    const spelled = await noteText(page, note.id, note.kind);
+    const cdp = await imeSession(page);
+
+    await caretBeforeTheNumber(page, spelled);
+    for (let struck = 0; struck < 4; struck += 1) {
+      await setComposition(cdp, "ㄹ");
+      await commitComposition(cdp, "ㄹ");
+      expect(await drawnBeforeTheNumber(page), `at jamo ${struck}`).toBe("");
+    }
+    await settle(page);
+
+    await expect
+      .poll(() => noteText(page, note.id, note.kind))
+      .toBe(`ㄹㄹㄹㄹ${spelled}`);
+    await numberStaysFirst(page, note);
+  });
+
+  test(`composes over the number a ${note.kind} is drawn by and keeps it`, async ({
+    page,
+  }) => {
+    await openHarness(page, "notes");
+    await enterNote(page, note.label, note.called);
+    const spelled = await noteText(page, note.id, note.kind);
+    const cdp = await imeSession(page);
+
+    await caretToTheHead(page, spelled);
+    await page.keyboard.press("Shift+ArrowLeft");
+    await compose(cdp, ["ㅇ", "아", "안"]);
+    await settle(page);
+    await commitComposition(cdp, "안");
+    await settle(page);
+
+    await expect
+      .poll(() => noteText(page, note.id, note.kind))
+      .toBe(`안${spelled}`);
+    await numberStaysFirst(page, note);
+  });
+
+  /**
+   * Writing a note again from nothing: select all of it, then type.
+   *
+   * A composition replaces what is selected because the browser does the replacing, and Chrome
+   * will not touch a selection that begins at an element it may not edit. A note always begins
+   * with the number it is drawn by, so the whole of a note is exactly such a selection, and the
+   * syllables used to land in front of the words they were meant to replace. The selection is
+   * taken away before the composition opens now (`editor/plugins/compositionSelection`).
+   */
+  test(`writes a ${note.kind} again from nothing with hangul`, async ({
+    page,
+  }) => {
+    await openHarness(page, "notes");
+    await enterNote(page, note.label, note.called);
+    const cdp = await imeSession(page);
+
+    await pressModKey(page, "a");
+    await compose(cdp, ["ㅇ", "아", "안"]);
+    await settle(page);
+    await commitComposition(cdp, "안");
+    await settle(page);
+
+    // Nothing of what stood there is left, and the number the note is drawn by still is
+    await expect.poll(() => noteText(page, note.id, note.kind)).toBe("안");
+    await numberStaysFirst(page, note);
+    expect(await composing(page)).toBe(false);
+  });
+
+  /**
+   * A paste that arrives mid-composition, which ProseMirror hands to the browser rather than
+   * reading itself, so what lands is whatever the browser writes into the open composition.
+   */
+  test(`pastes while composing in front of the number of a ${note.kind}`, async ({
+    page,
+  }) => {
+    await openHarness(page, "notes");
+    await enterNote(page, note.label, note.called);
+    const spelled = await noteText(page, note.id, note.kind);
+    const cdp = await imeSession(page);
+
+    await caretBeforeTheNumber(page, spelled);
+    await setComposition(cdp, "ㅇ");
+    await pasteText(page, "Pasted");
+    await settle(page);
+    await commitComposition(cdp, "안");
+    await settle(page);
+
+    await numberStaysFirst(page, note);
+  });
+
+  /**
+   * The sequence a reader reported: Home, which lands on the number itself, and one press more,
+   * which is the press that used to walk past it and leave the browser's caret in front of the
+   * number while the editor still said otherwise. Every press that reaches that way is answered
+   * where there is nothing left of the number to reach (`editor/notes/noteSurface`), so the caret
+   * stays where it stands and what is typed next lands after the number.
+   */
+  test(`presses past the head of a ${note.kind} leave the caret after its number`, async ({
+    page,
+  }) => {
+    await openHarness(page, "notes");
+    await enterNote(page, note.label, note.called);
+    const spelled = await noteText(page, note.id, note.kind);
+
+    await caretToTheHead(page, spelled);
+    for (const press of ["Home", "ArrowLeft", "Home", "ArrowUp"]) {
+      await page.keyboard.press(press);
+      await page.waitForTimeout(8);
+      expect(await caretInFrontOfTheNumber(page), `after ${press}`).toBe(false);
+    }
+    await page.keyboard.type("X");
+    await settle(page);
+
+    await expect
+      .poll(() => noteText(page, note.id, note.kind))
+      .toBe(`X${spelled}`);
+    await numberStaysFirst(page, note);
+  });
+
+  /**
+   * The same with Shift held, which builds a selection rather than moving a caret. Selecting the
+   * number is an ordinary thing to do, so it stays possible; what may not happen is a press
+   * reaching past it, and what is typed over it puts the number back.
+   */
+  test(`shift presses past the head of a ${note.kind} reach no further than its number`, async ({
+    page,
+  }) => {
+    await openHarness(page, "notes");
+    await enterNote(page, note.label, note.called);
+    const spelled = await noteText(page, note.id, note.kind);
+
+    await caretToTheHead(page, spelled);
+    for (const press of ["Shift+ArrowLeft", "Shift+ArrowLeft", "Shift+Home"]) {
+      await page.keyboard.press(press);
+      await page.waitForTimeout(8);
+      expect(await caretInFrontOfTheNumber(page), `after ${press}`).toBe(false);
+    }
+    await page.keyboard.type("X");
+    await settle(page);
+
+    await expect
+      .poll(() => noteText(page, note.id, note.kind))
+      .toBe(`X${spelled}`);
+    await numberStaysFirst(page, note);
+  });
+
+  /**
+   * The other end of the same note, where a press has nothing to reach either. Nothing stands
+   * there for a press to walk past, and this is what says so.
+   */
+  test(`presses past the end of a ${note.kind} write at its end`, async ({
+    page,
+  }) => {
+    await openHarness(page, "notes");
+    await enterNote(page, note.label, note.called);
+    const spelled = await noteText(page, note.id, note.kind);
+
+    for (const press of [
+      "End",
+      "ArrowRight",
+      "ArrowRight",
+      "Shift+ArrowRight",
+      "Shift+End",
+      "End",
+    ]) {
+      await page.keyboard.press(press);
+      await page.waitForTimeout(8);
+    }
+    await page.keyboard.type("X");
+    await settle(page);
+
+    await expect
+      .poll(() => noteText(page, note.id, note.kind))
+      .toBe(`${spelled}X`);
+    await numberStaysFirst(page, note);
+  });
+}
 
 /**
  * The number Word draws a note by is a preserved chip inside the note, and a browser deletes an
@@ -179,7 +508,7 @@ test("keeps the note's own number when its whole text is deleted", async ({
   page,
 }) => {
   await openHarness(page, "notes");
-  await enterFootnote(page, "1");
+  await enterNote(page, "1");
   const number = openNote(page).locator(`.${editorClassNames.noteMark}`);
   await expect(number).toHaveText("1");
 
@@ -198,7 +527,7 @@ test("keeps the note's own number when its whole text is deleted", async ({
 
 test("returns the caret after the reference on Escape", async ({ page }) => {
   await openHarness(page, "notes");
-  await enterFootnote(page, "1");
+  await enterNote(page, "1");
 
   await page.keyboard.press("Escape");
 
@@ -354,22 +683,6 @@ test("inserts an endnote on the endnote key and puts the caret in it", async ({
   ).toContainText("An endnote written where it was added.");
 });
 
-test("writes after the number when a reader types at the head of a note", async ({
-  page,
-}) => {
-  await openHarness(page, "notes");
-  await enterFootnote(page, "1");
-
-  // Home is the reader's way to the head of the note's first line. Where exactly Chrome leaves
-  // the caret in a row drawn in a box of its own is its own business; what the note may not come
-  // out of it with is the number second
-  await page.keyboard.press("Home");
-  await page.keyboard.type("Head.");
-
-  await expect.poll(() => noteText(page, "1")).toContain("Head.");
-  await expect(openNote(page)).toHaveText(/^1/);
-});
-
 test("goes back to the reference when the number of a drawn note is pressed", async ({
   page,
 }) => {
@@ -393,7 +706,7 @@ test("goes back to the reference when the number of the open note is pressed", a
   page,
 }) => {
   await openHarness(page, "notes");
-  await enterFootnote(page, "1");
+  await enterNote(page, "1");
 
   await openNote(page).locator(`sup.${editorClassNames.noteMark}`).click();
 

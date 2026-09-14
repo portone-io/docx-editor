@@ -47,11 +47,7 @@ interface NoteProjection {
   footnotes: ReadonlyMap<StoryKey, NoteRow>;
   /** The endnotes whose story the document holds, in first-reference order */
   endnotes: readonly NoteRow[];
-  /**
-   * Every note of both kinds by story key, which is the one map the surface holding the open note
-   * looks a row up in: which kind it is does not decide what an edit in it may do
-   * (`ui/notes/useStorySurface`).
-   */
+  /** Every note of both kinds by story key, which the surface over the open note reads rows from */
   rows: ReadonlyMap<StoryKey, NoteRow>;
 }
 

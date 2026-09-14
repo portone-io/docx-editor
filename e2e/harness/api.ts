@@ -89,6 +89,11 @@ export interface DocxHarness {
    * off the screen, so a test can tell an edit that landed from one that was only drawn
    */
   noteText(kind: "footnote" | "endnote", id: string): string;
+  /**
+   * The node types the first block of one note holds, in order. The number a note is drawn by is
+   * one of them, so this is what says whether it still stands first
+   */
+  noteOpening(kind: "footnote" | "endnote", id: string): string[];
 }
 
 declare global {

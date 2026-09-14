@@ -1,14 +1,13 @@
 /**
  * The notes drawn over the paper, in the room the page layout kept for them.
  *
- * The two kinds are drawn by one component because they differ in five things and in nothing else:
- * where a page's room comes from, what a reader is told the area is called, the class it carries,
- * whether the rule above the notes is drawn on that page, and what is drawn in it. Everything else
- * - the layer over the sheet, a row that takes its room before anyone has measured it, the one
- * editing view, a press that opens a note - has to hold for both, and holds here once.
+ * One component draws both kinds, since they differ only in where a page's room comes from, what
+ * the area is called, its class, whether the rule above the notes is drawn on that page, and what
+ * is drawn in it; the layer over the sheet, the row that takes its room before it is measured, the
+ * one editing view and the press that opens a note hold for both.
  *
- * Each area is given the height the layout kept, so a page's notes are the size of the room its
- * body ended above, and one asking for more room than the page had left scrolls inside it.
+ * Each area is given the height the layout kept, so one asking for more room than the page had
+ * left scrolls inside it.
  */
 
 import type { CSSProperties, ReactElement } from "react";

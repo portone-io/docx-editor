@@ -7,6 +7,7 @@ import { type ParagraphFormat, toParagraphFormat } from "../../model/format";
 import type { TabAlignment, TabStop } from "../../model/tabStops";
 import { docxSchema } from "../../schema";
 import { editorClassNames, editorCssVariables } from "../../styles/classNames";
+import { pageScaleAround } from "../../styles/visualScale";
 import { documentDefaultTabStopPt } from "../documentStyles";
 import { setTabWidths, tabWidths } from "./tabDecorations";
 
@@ -95,12 +96,6 @@ function computedStyle(element: Element): CSSStyleDeclaration {
   );
 }
 
-function scaleOf(view: EditorView): number {
-  const layer = view.dom.closest(`.${editorClassNames.pageLayer}`);
-  const parsed = Number.parseFloat(layer ? computedStyle(layer).zoom : "");
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
-}
-
 function paragraphLayoutContext(
   view: EditorView,
   slot: HTMLElement
@@ -143,7 +138,6 @@ function cloneParagraph(
   clone.style.textAlign = "start";
   clone.style.visibility = "hidden";
   clone.style.pointerEvents = "none";
-  clone.style.zoom = "1";
   clone.setAttribute("aria-hidden", "true");
   if (resetTabs) {
     for (const slot of clone.querySelectorAll<HTMLElement>(
@@ -323,7 +317,7 @@ function measureTabs(
   cache: WeakMap<PMNode, CachedParagraphLayout>,
   generation: number
 ): ReadonlyMap<number, number> {
-  const scale = scaleOf(view);
+  const scale = pageScaleAround(view.dom);
   const defaultStopPt = documentDefaultTabStopPt(view.state);
   const widths = new Map(tabWidths(view.state));
   const paragraphs = new Map<HTMLElement, HTMLElement[]>();

@@ -2,13 +2,9 @@
  * Which side story the caret is in, and what the one view over it is built from.
  *
  * One story is open at a time (`editor/stories/storyView`), and this is what holds that true: the
- * state here names one story key, so the surface it hands back is the body or that story and never
- * a second one. Everything the view is built from - the host an edit leaves through, what the kind
- * adds to the view, the values the story is edited against - arrives as one binding, so a second
- * kind of story is another binding rather than more of the component that renders this.
- *
- * What the surface is not is what draws the rows: where a story stands on the screen is the drawing
- * side's (`./noteBands`), and a row is handed `editing` only while it is the open one.
+ * state here names one story key. Everything the view is built from arrives as one binding, so a
+ * second kind of story is another binding rather than more of the component that renders this.
+ * Where a story stands on the screen is the drawing side's (`./noteBands`).
  */
 
 import type { EditorState } from "prosemirror-state";

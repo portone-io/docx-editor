@@ -54,7 +54,9 @@ export const editorClassNames = {
   rawRunContent: `${PREFIX}-raw-run`,
   /** A preserved block, drawn by the `display` its policy gave it */
   rawBlock: `${PREFIX}-raw-block`,
-  /** The box holding both the paper and the marks overlaid on it */
+  /** The room the scaled page layer takes up in the scroll box */
+  pageBox: `${PREFIX}-page-box`,
+  /** The box holding both the paper and the marks overlaid on it, scaled to the reader's zoom */
   pageLayer: `${PREFIX}-page-layer`,
   /** All of the page marks drawn over the paper */
   pageGuides: `${PREFIX}-page-guides`,

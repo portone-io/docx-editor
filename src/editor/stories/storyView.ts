@@ -7,10 +7,9 @@
  * where they judge a body edit, and what leaves the main document holding the only history: the
  * undo keys here run the host's.
  *
- * What this file does not know is which kind of story it is drawing and where it is drawn. A note
- * stands at the foot of a page, a comment body in a rail beside it, a header in a page margin, so
- * anything about a page, a note number or a panel would make one of the three rewrite this file.
- * What differs between the kinds arrives as `StoryExtensions`.
+ * This file does not know which kind of story it is drawing or where it is drawn: a note stands
+ * at the foot of a page, a comment body in a rail beside it, a header in a page margin. What
+ * differs between the kinds arrives as `StoryExtensions`.
  */
 
 import type { Node as PMNode } from "prosemirror-model";

@@ -2,8 +2,7 @@
  * The parts written beside the body, and what each of their planners carries into the file.
  *
  * `docx/exportDocx` runs these planners and `docx/invariants` reads what they write off the same
- * list, so the two cannot disagree about it: a kind of story whose planner is missing, or a change
- * its planner leaves out, is refused before the export rather than dropped without a word.
+ * list, so the two cannot disagree about which change has a writer.
  */
 
 import { HEADER_FOOTER_KINDS } from "../schema/stories";

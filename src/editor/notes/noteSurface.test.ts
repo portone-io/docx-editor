@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { unzipSync } from "fflate";
 import { Fragment, type Node as PMNode, Slice } from "prosemirror-model";
-import { AllSelection, TextSelection } from "prosemirror-state";
+import { AllSelection, NodeSelection, TextSelection } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -118,13 +118,19 @@ function afterTheNumber(story: StoryView): number {
   return 1 + chip.nodeSize;
 }
 
-function pressBackspace(view: EditorView): boolean {
+/** One press, asked of the view's own keymaps the way the browser asks */
+function press(view: EditorView, key: string, shift = false): boolean {
   const event = new KeyboardEvent("keydown", {
-    key: "Backspace",
+    key,
+    shiftKey: shift,
     bubbles: true,
     cancelable: true,
   });
   return view.someProp("handleKeyDown", (run) => run(view, event)) === true;
+}
+
+function pressBackspace(view: EditorView): boolean {
+  return press(view, "Backspace");
 }
 
 /** Mod is the platform's own modifier, read the way `prosemirror-keymap` reads it */
@@ -702,18 +708,138 @@ describe("the place before the number a note opens with", () => {
     expect(storyText(written(main))).toBe("AheadFootnote body\nSecond line");
   });
 
-  it("writes the number first into the file after such an edit", () => {
-    const { main, session } = openMain();
-    const story = openNote(main);
+  /** One kind of note as the exported package carries it */
+  interface WrittenNote {
+    readonly kind: NoteKind;
+    readonly id: string;
+    readonly part: string;
+    /** The entry's opening tag, which is where the note this test edited begins */
+    readonly opens: string;
+    /** The element Word reads the note's number from */
+    readonly number: string;
+  }
 
-    story.view.dispatch(story.view.state.tr.insertText("Ahead", 1));
+  const WRITTEN: readonly WrittenNote[] = [
+    {
+      kind: "footnote",
+      id: "2",
+      part: "word/footnotes.xml",
+      opens: '<w:footnote w:id="2">',
+      number: "<w:footnoteRef/>",
+    },
+    {
+      kind: "endnote",
+      id: "3",
+      part: "word/endnotes.xml",
+      opens: '<w:endnote w:id="3">',
+      number: "<w:endnoteRef/>",
+    },
+  ];
 
+  /** The entry this note was written back as, read out of the exported package */
+  function writtenEntry(
+    main: EditorView,
+    session: SessionStore,
+    note: WrittenNote
+  ): string {
     const part = decode(
-      unzipSync(exportDocx(main.state.doc, session))["word/footnotes.xml"]
+      unzipSync(exportDocx(main.state.doc, session))[note.part]
     );
-    const entry = part.slice(part.indexOf('<w:footnote w:id="2">'));
-    expect(entry.indexOf("<w:footnoteRef/>")).toBeLessThan(
-      entry.indexOf("Ahead")
-    );
-  });
+    return part.slice(part.indexOf(note.opens));
+  }
+
+  for (const note of WRITTEN) {
+    it(`writes the number of a ${note.kind} first into the file after such an edit`, () => {
+      const { main, session } = openMain();
+      const story = openNote(main, note.id, "1", note.kind);
+
+      story.view.dispatch(story.view.state.tr.insertText("Ahead", 1));
+
+      const entry = writtenEntry(main, session, note);
+      expect(entry).toContain(note.number);
+      expect(entry.indexOf(note.number)).toBeLessThan(entry.indexOf("Ahead"));
+    });
+
+    /**
+     * The press a reader reported: Home lands on the number itself, and the press after it used to
+     * walk past the number and leave the browser writing in front of it. Every press that reaches
+     * that way is answered where there is nothing left of the number to reach, so the caret stays
+     * where it stands and the file still gets the number first.
+     */
+    it(`holds the caret after the number of a ${note.kind} when a press reaches past it`, () => {
+      const { main, session } = openMain();
+      const story = openNote(main, note.id, "1", note.kind);
+      const chip = leadingChip(story.view.state.doc);
+      if (chip === null) throw new Error("the note opens with no number");
+      const after = 1 + chip.nodeSize;
+      // Where Home leaves a reader, which is the number itself selected
+      story.view.dispatch(
+        story.view.state.tr.setSelection(
+          NodeSelection.create(story.view.state.doc, 1)
+        )
+      );
+
+      for (const key of ["ArrowLeft", "ArrowLeft", "Home", "ArrowUp"]) {
+        expect(press(story.view, key), key).toBe(true);
+        expect(story.view.state.selection.from, key).toBe(after);
+        expect(story.view.state.selection.empty, key).toBe(true);
+      }
+
+      story.view.dispatch(story.view.state.tr.insertText("Written"));
+      const entry = writtenEntry(main, session, note);
+      expect(entry).toContain(note.number);
+      expect(entry.indexOf(note.number)).toBeLessThan(entry.indexOf("Written"));
+    });
+
+    it(`leaves a press with somewhere still to go in a ${note.kind} alone`, () => {
+      const main = mainView();
+      const story = openNote(main, note.id, "1", note.kind);
+      const chip = leadingChip(story.view.state.doc);
+      if (chip === null) throw new Error("the note opens with no number");
+      const after = 1 + chip.nodeSize;
+
+      // One step into the note's own text, where the keys mean what they mean everywhere else
+      story.view.dispatch(
+        story.view.state.tr.setSelection(
+          TextSelection.create(story.view.state.doc, after + 1)
+        )
+      );
+      expect(press(story.view, "ArrowLeft")).toBe(false);
+
+      // And from the head, a press that extends still reaches the number, which is selectable
+      story.view.dispatch(
+        story.view.state.tr.setSelection(
+          TextSelection.create(story.view.state.doc, after)
+        )
+      );
+      expect(press(story.view, "ArrowLeft", true)).toBe(false);
+    });
+
+    /**
+     * The same, reached the way a reader reaches it: a composition opening over a selection that
+     * covers the number. The selection goes before the browser can replace it
+     * (`editor/plugins/compositionSelection`) and the number goes back at the head, so what the
+     * file gets is the number and then the words.
+     */
+    it(`writes the number of a ${note.kind} first after a composition over it`, () => {
+      const { main, session } = openMain();
+      const story = openNote(main, note.id, "1", note.kind);
+      const chip = leadingChip(story.view.state.doc);
+      if (chip === null) throw new Error("the note opens with no number");
+      story.view.dispatch(
+        story.view.state.tr.setSelection(
+          TextSelection.create(story.view.state.doc, 1, 1 + chip.nodeSize)
+        )
+      );
+
+      openComposition(story.view);
+      story.view.dispatch(story.view.state.tr.insertText("Composed"));
+
+      const entry = writtenEntry(main, session, note);
+      expect(entry).toContain(note.number);
+      expect(entry.indexOf(note.number)).toBeLessThan(
+        entry.indexOf("Composed")
+      );
+    });
+  }
 });

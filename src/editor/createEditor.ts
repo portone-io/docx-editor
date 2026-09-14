@@ -123,12 +123,11 @@ export function createEditorState(
       editorDocument(document),
       // Refuses every edit no guard in `schema/guards` lets through, whoever asked for it. It is
       // not optional: a document that locked a part of itself stays locked in every consumer, and
-      // the preserved bookmark markers and endnote references stay where the file put them.
+      // the preserved bookmark markers stay where the file put them.
       lockedContent(),
       documentProtection({ protection, author, editableComments }),
-      // Beside the plugins that answer for an edit rather than among the keys and the clipboard
-      // under them. For a DOM event the plugin registered first is asked first, and this one hands
-      // every composition on, so where it stands takes nothing from what stands below it
+      // Ahead of the keys and the clipboard: the plugin registered first sees a DOM event first,
+      // and this one hands every composition on
       compositionSelection(),
       history(),
       keymap(docxKeymap),
@@ -157,15 +156,12 @@ export function createEditorState(
       // A comment outlives the text it was written for: an edit that sweeps its reference away has
       // it put back where the deletion left, detached from the page (`plugins/commentRestoration`)
       commentRestoration(),
-      // A footnote goes with the last reference to it, and a copied reference gets a footnote of its
-      // own. It stands ahead of the numbering, which then labels what it settled
+      // A note goes with the last reference to it, and a copied reference gets a note of its own.
+      // It stands ahead of the numbering, which then labels what it settled
       noteLifecycle(),
-      // Numbers the note references again after an edit that moves one or a section break
       noteNumbering(),
       // What the notes under the page are, worked out from the document the same way
       noteProjection.plugin,
-      // Holds which note a press on a number or a command asked to open, which whatever draws the
-      // notes reads back (`plugins/noteNavigation`)
       noteNavigation(),
       // Adjacent text tabs still need separate DOM ranges for layout and pointer selection.
       tabDecorations(),
