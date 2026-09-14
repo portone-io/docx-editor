@@ -19,7 +19,7 @@ IME tests drive Chrome's real composition pipeline through CDP `Input.imeSetComp
 | `keys.spec.ts` | Enter during an active composition |
 | `pageLayout.spec.ts` | Stable page measurement during composition, and per-section paper in the page boundaries and the sheet width |
 | `tablePagination.spec.ts` | Long-table row boundaries, repeated headers, and page-gap placement |
-| `pageBreak.spec.ts` | Page-break placement and editing behavior |
+| `pageBreak.spec.ts` | Page-break placement, editing, and arrow navigation past the break beside a footnote |
 | `lockedContent.spec.ts` | Composition at and inside locked content boundaries |
 | `keyboard.spec.ts` | Keyboard-only menus, toolbar navigation, focus return, and link-panel focus |
 | `linkCard.spec.ts` | Link-card placement, stability, tab access, and focus return |

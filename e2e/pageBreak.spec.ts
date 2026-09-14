@@ -8,14 +8,17 @@
  */
 
 import { expect, type Page, test } from "@playwright/test";
-import { editorClassNames } from "../src/styles/classNames";
+import { editorAttributes, editorClassNames } from "../src/styles/classNames";
 import {
   type BlockReport,
   blockHeight,
   blocks,
   caretAt,
   caretBox,
+  docText,
+  editorFocused,
   firstTextParagraph,
+  noteText,
   openHarness,
   pressModKey,
   settle,
@@ -138,3 +141,50 @@ test("a paragraph holding nothing but a page break is measured and given its spa
   expect(await blockHeight(page, standalone)).toBeGreaterThan(0);
   expect(Number.parseFloat(await spaces(page))).toBeGreaterThan(0);
 });
+
+for (const direction of ["ArrowDown", "ArrowUp"] as const) {
+  test(`${direction} skips the page-break space beside a footnote and types in the body`, async ({
+    page,
+  }) => {
+    await openHarness(page, "demo");
+    const before = await blocks(page);
+    const heading = before.find((block) =>
+      block.docText.includes("15. Links and locked content")
+    );
+    if (!heading) throw new Error("the demo's page-break heading is missing");
+    const from = direction === "ArrowDown" ? heading.index - 1 : heading.index;
+    await caretAt(page, from, direction === "ArrowDown" ? 0 : 1);
+    await page
+      .locator(`.${editorClassNames.sheet} > *`)
+      .nth(from)
+      .scrollIntoViewIfNeeded();
+    const noteBefore = await noteText(page, "1");
+
+    await page.keyboard.press(direction);
+    await settle(page);
+
+    expect(await editorFocused(page)).toBe(true);
+    const caret = await caretBox(page);
+    expect(caret.bottom - caret.top).toBeLessThan(40);
+    expect(
+      await page.evaluate((attribute) => {
+        const anchor = window.getSelection()?.anchorNode;
+        const element =
+          anchor instanceof Element ? anchor : anchor?.parentElement;
+        return Boolean(element?.closest(`[${attribute}]`));
+      }, editorAttributes.pageBreakSpace)
+    ).toBe(false);
+
+    await page.keyboard.type("Navigation text.");
+    await expect.poll(() => docText(page)).toContain("Navigation text.");
+    expect(await noteText(page, "1")).toBe(noteBefore);
+    const written = (await blocks(page)).find((block) =>
+      block.docText.includes("Navigation text.")
+    );
+    expect(written?.index).toBe(
+      direction === "ArrowDown" ? heading.index : heading.index - 1
+    );
+    await pressModKey(page, "z");
+    await expect.poll(() => docText(page)).not.toContain("Navigation text.");
+  });
+}
