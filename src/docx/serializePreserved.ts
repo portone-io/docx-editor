@@ -8,14 +8,19 @@
  */
 
 import type { Node as PMNode } from "prosemirror-model";
-import { DocxExportError, type ExportProblemReason } from "../ooxml/errors";
+import {
+  DocxExportError,
+  type ExportProblemReason,
+  type ExportProblemStory,
+} from "../ooxml/errors";
 import type { ExportRefs } from "./exportRefs";
 import { originalBlock, type SessionStore, splitBlockKey } from "./session";
 
 /** Why there is no original to write, which a block that came in from another document answers differently */
 export function lostOriginal(
   node: PMNode,
-  session: SessionStore | null
+  session: SessionStore | null,
+  story: ExportProblemStory | null
 ): { readonly message: string; readonly reason: ExportProblemReason } {
   const srcId: unknown = node.attrs.srcId;
   const key = typeof srcId === "string" ? splitBlockKey(srcId) : null;
@@ -23,7 +28,7 @@ export function lostOriginal(
   if (key === null || key.sessionId === session?.sessionId) {
     return {
       message: "a preserved block has lost its original XML",
-      reason: { kind: "lost-preserved-xml", node: name },
+      reason: { kind: "lost-preserved-xml", node: name, story },
     };
   }
   return {
@@ -32,6 +37,7 @@ export function lostOriginal(
       kind: "preserved-from-another-document",
       node: name,
       sessionId: key.sessionId,
+      story,
     },
   };
 }
@@ -44,10 +50,12 @@ export function serializePreservedBlock(
   if (typeof xml === "string") return xml;
   const imported = refs.session ? originalBlock(node, refs.session) : undefined;
   if (!imported) {
-    throw new DocxExportError(
-      "lost-original",
-      lostOriginal(node, refs.session).message
-    );
+    // The writer is handed one block at a time and does not know which story it came out of, so
+    // the reason names none; `docx/invariants` predicts the same refusal with the story on it
+    const { message, reason } = lostOriginal(node, refs.session, null);
+    throw new DocxExportError("lost-original", message, {
+      problem: { code: "lost-original", message, reason },
+    });
   }
   return imported.xml;
 }

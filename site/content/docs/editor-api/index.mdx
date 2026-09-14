@@ -83,8 +83,7 @@ Wrap a command from elsewhere in `canRunCommand(command, state)` to hold it to t
 
 `canExport` reports whether the document can be written back.
 `documentExportProblems` lists every reason it could not, each with the `DocxExportError` code, a
-`reason` naming the content it is about, and the `pos` where the problem stands - for a footnote or
-an endnote, the first reference to it in the body, which a panel can select.
+`reason` naming the content it is about, and the `pos` a panel can select.
 [Checking before export](/docs/core/errors#checking-before-export) lists the reasons and the codes.
 
 `documentFidelity` lists what the main body holds that the editor cannot model: markup kept

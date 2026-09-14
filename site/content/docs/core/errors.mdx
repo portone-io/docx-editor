@@ -44,7 +44,7 @@ import { exportDocx, exportProblems } from "@portone/docx-editor/core";
 
 const problems = exportProblems(doc, session);
 if (problems.length > 0) {
-  console.warn(problems[0].code, problems[0].message);
+  console.warn(problems[0].code, problems[0].reason.kind);
 } else {
   const bytes = exportDocx(doc, session);
 }
@@ -65,15 +65,16 @@ The `message` is an English one-liner for a developer and may be reworded; switc
 | `vertical-merge-past-table` | `invalid-table` | A vertical merge reaching past the last row of its table. |
 | `lost-preserved-xml` | `lost-original` | The `node` written from its original XML alone, which it no longer holds. |
 | `preserved-from-another-document` | `lost-original` | A placeholder pasted in from another open document, and the `sessionId` it was opened in. |
-| `duplicate-preserved-block` | `unsupported-content` | The `node` standing in two places, and the `story` it stands in or `null` for the body. |
+| `duplicate-preserved-block` | `unsupported-content` | The `node` standing in two places. |
 | `undefined-list` | `unsupported-content` | The `numId` of a list nothing defines. |
 | `unwritten-story-change` | `unsupported-content` | The `story` whose `change` - `"added"`, `"edited"` or `"removed"` - nothing writes back. |
 | `story-id-not-a-number` | `unsupported-content` | The `story` added under an id no entry can be identified by. |
 | `missing-content-types` | `missing-content-types` | The `part` the writer would add to a package with no content types part to declare it in. |
 
-A `story` is the side story the problem is about: its `kind` (`comment`, `footnote`, `endnote`,
-`header` or `footer`) and the `id` it stands under, which is a note's number, a comment's id, or a
-header or footer part's path. A `part` is `media`, `numbering`, `comments`, `commentsExtended`,
+Every reason but `unwritable-part-root` and `missing-content-types` carries a `story`: the side
+story the content stands in, or `null` for the body. A `story` has a `kind` (`comment`, `footnote`,
+`endnote`, `header` or `footer`) and an `id`: a note's number, a comment's id, or a header or
+footer part's path. A `part` is `media`, `numbering`, `comments`, `commentsExtended`, `people`,
 `footnotes` or `endnotes`.
 
 That is enough to say what a person has to put back:
@@ -95,16 +96,17 @@ function whatToRevert({ reason }: ExportProblem): string {
 }
 ```
 
-`pos` is where the problem stands: the block or marker itself, and for a footnote or an endnote the
-first reference to that note in the body, since the note's own text stands nowhere in it. A caller
-can select that position to show which note to revert. It is absent for a problem of the package,
-for a header or a footer, and for a note nothing in the body refers to.
+`pos` is a position in the body: the block or marker itself, or, for a footnote or an endnote, the
+first reference to that note, since the note's text stands nowhere in the body. It is absent for a
+problem of the package, for content of a header, footer or comment story, and for a note nothing
+refers to; `reason.story` then says which story to open.
 
 `exportDocx` throws the first entry of the same list, and the `DocxExportError` carries that entry
 as `problem`, so a `catch` reads the same `reason` and `pos` without asking again.
 An empty list does not guarantee that writing will succeed: a `DocxExportError` the list did not
-predict is still thrown under the same codes, for a plugin that wrote an invalid node or attr, or
-for a bug in the editor, and such an error carries no `problem`.
+predict is thrown under the same codes with no `problem`, for a part root that binds a prefix the
+writer needs, such as `w`, to another namespace (`unsupported-content`), for a plugin that wrote an
+invalid node or attr, or for a bug in the editor.
 Both functions need an XML parser, and are refused with the import code `no-xml-parser` without
 one.
 An export failure leaves the editor state untouched.

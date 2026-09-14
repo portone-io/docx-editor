@@ -16,10 +16,11 @@ import type { Node as PMNode } from "prosemirror-model";
 import { elementXml } from "../../ooxml/element";
 import { wName } from "../../ooxml/names";
 import { R_NS } from "../../ooxml/xml";
-import type { NoteKind, StoryKey } from "../../schema/stories";
+import { type NoteKind, noteKeyOf, type StoryKey } from "../../schema/stories";
 import type { PartPlanner } from "../partPlan";
 import type { SessionStore } from "../session";
 import { type StoryEntriesPart, storyEntriesPlanner } from "../storyParts";
+import { eachNoteReference } from "./references";
 
 const NOTE_CONTENT_TYPES: Readonly<Record<NoteKind, string>> = {
   footnote:
@@ -106,16 +107,9 @@ function frozenNotes(
 /** The ids the references of one kind name, an orphan's included */
 function referenceIds(doc: PMNode, kind: NoteKind): ReadonlySet<string> {
   const ids = new Set<string>();
-  doc.descendants((node) => {
-    const id: unknown = node.attrs.id;
-    if (
-      node.type.name === "noteReference" &&
-      node.attrs.kind === kind &&
-      typeof id === "string"
-    ) {
-      ids.add(id);
-    }
-    return true;
+  eachNoteReference(doc, ({ key }) => {
+    const note = key === null ? null : noteKeyOf(key);
+    if (note?.kind === kind) ids.add(note.id);
   });
   return ids;
 }

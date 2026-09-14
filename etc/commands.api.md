@@ -297,7 +297,7 @@ export function editingProtection(state: EditorState): EditingProtection;
 export type EditorCommand = Command;
 
 // @public
-export type ExportPartName = "media" | "numbering" | "comments" | "commentsExtended" | "footnotes" | "endnotes";
+export type ExportPartName = "media" | "numbering" | "comments" | "commentsExtended" | "people" | "footnotes" | "endnotes";
 
 // @public
 export interface ExportProblem {
@@ -313,11 +313,13 @@ export type ExportProblemReason =
 /** A preserved fragment holding bookmark markup could not be parsed (`malformed-xml`) */
     {
     readonly kind: "unreadable-preserved-xml";
+    readonly story: ExportProblemStory | null;
 }
 /** A bookmark marker carries no id to pair it by (`malformed-xml`) */
 | {
     readonly kind: "unnamed-bookmark";
     readonly marker: "start" | "end";
+    readonly story: ExportProblemStory | null;
 }
 /**
 * A bookmark marker whose partner is gone (`malformed-xml`): a `start` with no end after it, or
@@ -327,11 +329,13 @@ export type ExportProblemReason =
     readonly kind: "unmatched-bookmark";
     readonly id: string;
     readonly marker: "start" | "end";
+    readonly story: ExportProblemStory | null;
 }
 /** One bookmark id is started twice (`malformed-xml`) */
 | {
     readonly kind: "repeated-bookmark-start";
     readonly id: string;
+    readonly story: ExportProblemStory | null;
 }
 /** A part cannot be rewritten around its root element (`malformed-xml`) */
 | {
@@ -341,17 +345,20 @@ export type ExportProblemReason =
 /** A cell's vertical merge covers rows its table does not have (`invalid-table`) */
 | {
     readonly kind: "vertical-merge-past-table";
+    readonly story: ExportProblemStory | null;
 }
 /** A node that is written from its original XML alone no longer holds it (`lost-original`) */
 | {
     readonly kind: "lost-preserved-xml";
     readonly node: string;
+    readonly story: ExportProblemStory | null;
 }
 /** A placeholder pasted in from another opened document, whose XML this session never read (`lost-original`) */
 | {
     readonly kind: "preserved-from-another-document";
     readonly node: string;
     readonly sessionId: string;
+    readonly story: ExportProblemStory | null;
 }
 /** One preserved block stands in two places, and it has one original XML to be written (`unsupported-content`) */
 | {
@@ -363,6 +370,7 @@ export type ExportProblemReason =
 | {
     readonly kind: "undefined-list";
     readonly numId: number;
+    readonly story: ExportProblemStory | null;
 }
 /** A story was changed and no part writer carries that change into the file (`unsupported-content`) */
 | {

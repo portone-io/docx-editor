@@ -72,7 +72,12 @@ export type ExportStoryKind =
   | "header"
   | "footer";
 
-/** One side story, as the document holds it */
+/**
+ * One side story, as the document holds it.
+ *
+ * A reason names it wherever the content the refusal is about may stand outside the body, and the
+ * refusal is then about that story rather than the document: `story` is null for the body itself.
+ */
 export interface ExportProblemStory {
   readonly kind: ExportStoryKind;
   /** A note's number, a comment's id, or the path of the part a header or footer stands in */
@@ -85,6 +90,7 @@ export type ExportPartName =
   | "numbering"
   | "comments"
   | "commentsExtended"
+  | "people"
   | "footnotes"
   | "endnotes";
 
@@ -98,9 +104,16 @@ export type ExportPartName =
  */
 export type ExportProblemReason =
   /** A preserved fragment holding bookmark markup could not be parsed (`malformed-xml`) */
-  | { readonly kind: "unreadable-preserved-xml" }
+  | {
+      readonly kind: "unreadable-preserved-xml";
+      readonly story: ExportProblemStory | null;
+    }
   /** A bookmark marker carries no id to pair it by (`malformed-xml`) */
-  | { readonly kind: "unnamed-bookmark"; readonly marker: "start" | "end" }
+  | {
+      readonly kind: "unnamed-bookmark";
+      readonly marker: "start" | "end";
+      readonly story: ExportProblemStory | null;
+    }
   /**
    * A bookmark marker whose partner is gone (`malformed-xml`): a `start` with no end after it, or
    * an `end` with no start before it.
@@ -109,34 +122,50 @@ export type ExportProblemReason =
       readonly kind: "unmatched-bookmark";
       readonly id: string;
       readonly marker: "start" | "end";
+      readonly story: ExportProblemStory | null;
     }
   /** One bookmark id is started twice (`malformed-xml`) */
-  | { readonly kind: "repeated-bookmark-start"; readonly id: string }
+  | {
+      readonly kind: "repeated-bookmark-start";
+      readonly id: string;
+      readonly story: ExportProblemStory | null;
+    }
   /** A part cannot be rewritten around its root element (`malformed-xml`) */
   | {
       readonly kind: "unwritable-part-root";
       readonly part: ExportPartName;
     }
   /** A cell's vertical merge covers rows its table does not have (`invalid-table`) */
-  | { readonly kind: "vertical-merge-past-table" }
+  | {
+      readonly kind: "vertical-merge-past-table";
+      readonly story: ExportProblemStory | null;
+    }
   /** A node that is written from its original XML alone no longer holds it (`lost-original`) */
-  | { readonly kind: "lost-preserved-xml"; readonly node: string }
+  | {
+      readonly kind: "lost-preserved-xml";
+      readonly node: string;
+      readonly story: ExportProblemStory | null;
+    }
   /** A placeholder pasted in from another opened document, whose XML this session never read (`lost-original`) */
   | {
       readonly kind: "preserved-from-another-document";
       readonly node: string;
       /** The session the placeholder was opened in */
       readonly sessionId: string;
+      readonly story: ExportProblemStory | null;
     }
   /** One preserved block stands in two places, and it has one original XML to be written (`unsupported-content`) */
   | {
       readonly kind: "duplicate-preserved-block";
       readonly node: string;
-      /** The side story it stands in, and null for a block of the body */
       readonly story: ExportProblemStory | null;
     }
   /** A paragraph is in a list neither the file nor the editor's register defines (`unsupported-content`) */
-  | { readonly kind: "undefined-list"; readonly numId: number }
+  | {
+      readonly kind: "undefined-list";
+      readonly numId: number;
+      readonly story: ExportProblemStory | null;
+    }
   /** A story was changed and no part writer carries that change into the file (`unsupported-content`) */
   | {
       readonly kind: "unwritten-story-change";
@@ -163,8 +192,9 @@ export interface ExportProblem {
   readonly reason: ExportProblemReason;
   /**
    * Where the problem stands in the document: the block or marker it is about, or, for a footnote
-   * or an endnote, the first reference to that note in the body. Absent for a problem of the
-   * package, of the session, of a header or footer, and of a note the body refers to nowhere.
+   * or an endnote, the first reference to that note in the body, the note's own text standing
+   * nowhere there. Absent for a problem of the package, of the session, of a header, footer or
+   * comment story, and of a note the body refers to nowhere.
    */
   readonly pos?: number;
 }

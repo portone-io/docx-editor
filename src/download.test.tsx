@@ -223,7 +223,7 @@ describe("downloadDocx", () => {
         {
           code: "unsupported-content",
           message: "the list numbered 1 has no definition to be written",
-          reason: { kind: "undefined-list", numId: 1 },
+          reason: { kind: "undefined-list", numId: 1, story: null },
           pos: 0,
         },
         {
