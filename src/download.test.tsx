@@ -223,12 +223,14 @@ describe("downloadDocx", () => {
         {
           code: "unsupported-content",
           message: "the list numbered 1 has no definition to be written",
+          reason: { kind: "undefined-list", numId: 1 },
           pos: 0,
         },
         {
           code: "missing-content-types",
           message:
             "cannot add a part to a package that has no [Content_Types].xml",
+          reason: { kind: "missing-content-types", part: "numbering" },
         },
       ],
     });

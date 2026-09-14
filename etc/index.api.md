@@ -178,13 +178,19 @@ export type DocxEditorZoom = "fit-width" | number;
 
 // @public
 export class DocxExportError extends Error {
-    constructor(code: DocxExportErrorCode, message: string, options?: ErrorOptions);
+    constructor(code: DocxExportErrorCode, message: string, options?: DocxExportErrorOptions);
     // (undocumented)
     readonly code: DocxExportErrorCode;
+    readonly problem?: ExportProblem;
 }
 
 // @public
 export type DocxExportErrorCode = "missing-content-types" | "unsupported-content" | "lost-original" | "malformed-xml" | "invalid-table";
+
+// @public
+export interface DocxExportErrorOptions extends ErrorOptions {
+    readonly problem?: ExportProblem;
+}
 
 // @public
 export class DocxImportError extends Error {
@@ -232,13 +238,99 @@ export { EditorState }
 export { EditorView }
 
 // @public
+export type ExportPartName = "media" | "numbering" | "comments" | "commentsExtended" | "footnotes" | "endnotes";
+
+// @public
 export interface ExportProblem {
     // (undocumented)
     readonly code: DocxExportErrorCode;
-    // (undocumented)
     readonly message: string;
     readonly pos?: number;
+    readonly reason: ExportProblemReason;
 }
+
+// @public
+export type ExportProblemReason =
+/** A preserved fragment holding bookmark markup could not be parsed (`malformed-xml`) */
+    {
+    readonly kind: "unreadable-preserved-xml";
+}
+/** A bookmark marker carries no id to pair it by (`malformed-xml`) */
+| {
+    readonly kind: "unnamed-bookmark";
+    readonly marker: "start" | "end";
+}
+/**
+* A bookmark marker whose partner is gone (`malformed-xml`): a `start` with no end after it, or
+* an `end` with no start before it.
+*/
+| {
+    readonly kind: "unmatched-bookmark";
+    readonly id: string;
+    readonly marker: "start" | "end";
+}
+/** One bookmark id is started twice (`malformed-xml`) */
+| {
+    readonly kind: "repeated-bookmark-start";
+    readonly id: string;
+}
+/** A part cannot be rewritten around its root element (`malformed-xml`) */
+| {
+    readonly kind: "unwritable-part-root";
+    readonly part: ExportPartName;
+}
+/** A cell's vertical merge covers rows its table does not have (`invalid-table`) */
+| {
+    readonly kind: "vertical-merge-past-table";
+}
+/** A node that is written from its original XML alone no longer holds it (`lost-original`) */
+| {
+    readonly kind: "lost-preserved-xml";
+    readonly node: string;
+}
+/** A placeholder pasted in from another opened document, whose XML this session never read (`lost-original`) */
+| {
+    readonly kind: "preserved-from-another-document";
+    readonly node: string;
+    readonly sessionId: string;
+}
+/** One preserved block stands in two places, and it has one original XML to be written (`unsupported-content`) */
+| {
+    readonly kind: "duplicate-preserved-block";
+    readonly node: string;
+    readonly story: ExportProblemStory | null;
+}
+/** A paragraph is in a list neither the file nor the editor's register defines (`unsupported-content`) */
+| {
+    readonly kind: "undefined-list";
+    readonly numId: number;
+}
+/** A story was changed and no part writer carries that change into the file (`unsupported-content`) */
+| {
+    readonly kind: "unwritten-story-change";
+    readonly story: ExportProblemStory;
+    readonly change: "added" | "edited" | "removed";
+}
+/** A story was added under an id its part identifies entries by no whole number of (`unsupported-content`) */
+| {
+    readonly kind: "story-id-not-a-number";
+    readonly story: ExportProblemStory;
+}
+/** A part the writer has to add cannot be declared, the package having no content types part (`missing-content-types`) */
+| {
+    readonly kind: "missing-content-types";
+    readonly part: ExportPartName;
+};
+
+// @public
+export interface ExportProblemStory {
+    readonly id: string;
+    // (undocumented)
+    readonly kind: ExportStoryKind;
+}
+
+// @public
+export type ExportStoryKind = "comment" | "footnote" | "endnote" | "header" | "footer";
 
 // @public
 export interface FontFallbackGroup {

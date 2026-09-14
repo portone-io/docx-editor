@@ -35,6 +35,7 @@ describe("canExport", () => {
         code: "missing-content-types",
         message:
           "cannot add a part to a package that has no [Content_Types].xml",
+        reason: { kind: "missing-content-types", part: "numbering" },
       },
     ]);
   });

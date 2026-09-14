@@ -4,12 +4,19 @@ import type { EditorState } from "prosemirror-state";
 import { type ExportProblem, exportProblems } from "../../docx/invariants";
 import { documentOf } from "../editorDocument";
 
-export type { ExportProblem } from "../../docx/invariants";
+export type {
+  ExportPartName,
+  ExportProblem,
+  ExportProblemReason,
+  ExportProblemStory,
+  ExportStoryKind,
+} from "../../docx/invariants";
 
 /**
  * Every reason writing the document back would be refused, in the order `exportDocx` would raise
- * them, each with the code and message the refusal would carry and the position in the document
- * where there is one. Empty when the file would be written.
+ * them, each with the code and message the refusal would carry, the `reason` naming what it is
+ * about, and the position in the document where there is one. Empty when the file would be
+ * written.
  *
  * A state built without an opened document has no file to write back into, so nothing about it
  * can be refused and it reports no problem.

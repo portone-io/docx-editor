@@ -86,8 +86,9 @@ interface DocxEditorHandle {
 The ref holds `null` until a document has been opened, and again for a refused document, so read
 it at click time.
 `exportBytes` throws `DocxExportError` when it cannot write safely; `exportProblems` reports every
-reason it would, under the same codes
-([Checking before export](/docs/core/errors#checking-before-export)).
+reason it would, each under the same code and with the `reason` and `pos` naming the content to put
+back ([Checking before export](/docs/core/errors#checking-before-export)).
+A thrown `DocxExportError` carries the entry it was raised for as `problem`.
 [Getting started](/docs/getting-started#export-the-edited-document) covers `downloadDocx`, which
 wraps the handle for a browser download.
 

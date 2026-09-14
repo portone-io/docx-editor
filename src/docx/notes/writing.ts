@@ -122,7 +122,7 @@ function referenceIds(doc: PMNode, kind: NoteKind): ReadonlySet<string> {
 
 /** The part one kind of note is written into, which every name it takes is the kind's own plural */
 function notesPart(kind: NoteKind): StoryEntriesPart {
-  const plural = `${kind}s`;
+  const plural: "footnotes" | "endnotes" = `${kind}s`;
   return {
     name: plural,
     kind,

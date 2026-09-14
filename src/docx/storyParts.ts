@@ -8,7 +8,11 @@
 
 import type { Node as PMNode } from "prosemirror-model";
 import { attrsText, openTagXml, type XmlAttr } from "../ooxml/element";
-import type { DocxExportErrorCode } from "../ooxml/errors";
+import type {
+  DocxExportErrorCode,
+  ExportPartName,
+  ExportProblemReason,
+} from "../ooxml/errors";
 import { NAMESPACES, wName } from "../ooxml/names";
 import {
   ensureRootDeclarations,
@@ -155,6 +159,15 @@ export function storyWriting(
   return { kind, changes, frozenEntries: () => NO_FROZEN_ENTRIES };
 }
 
+/** A change to a side story that no part writer carries into the file */
+export interface UnwrittenStoryChange {
+  readonly key: StoryKey;
+  readonly kind: StoryKind;
+  /** The id the story stands under, which is its key past the kind */
+  readonly id: string;
+  readonly change: StoryChanged;
+}
+
 /**
  * Every change the document made to a side story that no part writer carries into the file, as the
  * key it stands under and what was done to it.
@@ -168,7 +181,7 @@ export function unwrittenStoryChanges(
   writings: readonly StoryWriting[],
   doc: PMNode,
   session: SessionStore
-): readonly { readonly key: StoryKey; readonly change: StoryChanged }[] {
+): readonly UnwrittenStoryChange[] {
   const byKind = new Map(writings.map((writing) => [writing.kind, writing]));
   return STORY_KINDS.flatMap((kind) => {
     const writing = byKind.get(kind);
@@ -180,14 +193,16 @@ export function unwrittenStoryChanges(
         writing !== undefined &&
         writing.changes.includes(entry.change) &&
         !frozen.has(key);
-      return written ? [] : [{ key, change: entry.change }];
+      return written
+        ? []
+        : [{ key, kind, id: storyIdOf(key, kind), change: entry.change }];
     });
   });
 }
 
 /** A part holding one entry per story, e.g. `w:footnotes` holding a `w:footnote` apiece */
 export interface StoryEntriesPart {
-  readonly name: string;
+  readonly name: ExportPartName;
   readonly kind: StoryKind;
   readonly relType: string;
   readonly contentType: string;
@@ -209,7 +224,12 @@ export interface StoryEntriesPart {
   prelude(taken: ReadonlySet<string>): string;
 }
 
-interface WrittenStory extends StoryToSettle {
+/** One story a part writes, beside the key it stands under */
+export interface StoryEntry extends StoryToSettle {
+  readonly key: StoryKey;
+}
+
+interface WrittenStory extends StoryEntry {
   readonly change: StoryChange;
 }
 
@@ -232,11 +252,13 @@ function writtenStories(
   return changes.flatMap((change): WrittenStory[] => {
     const story = writtenStoryOf(change, frozen);
     if (story === null) return [];
+    const key = change.change === "added" ? change.key : change.imported.key;
     return [
       {
         change,
+        key,
         story,
-        frozen: change.change !== "added" && frozen.has(change.imported.key),
+        frozen: change.change !== "added" && frozen.has(key),
       },
     ];
   });
@@ -251,7 +273,7 @@ export function storyEntriesOf(
   part: StoryEntriesPart,
   doc: PMNode,
   session: SessionStore
-): readonly StoryToSettle[] {
+): readonly StoryEntry[] {
   const changes = storyChangesOf(doc, session, part.kind);
   return changed(changes)
     ? writtenStories(changes, part.frozenEntries(session))
@@ -262,6 +284,7 @@ export function storyEntriesOf(
 export interface StoryPartProblem {
   readonly code: DocxExportErrorCode;
   readonly message: string;
+  readonly reason: ExportProblemReason;
 }
 
 /**
@@ -283,6 +306,13 @@ function addedIdProblems(
           {
             code: "unsupported-content",
             message: `the ${change.key} story is named by no whole number, and a ${wName(part.entry)} is identified by one`,
+            reason: {
+              kind: "story-id-not-a-number",
+              story: {
+                kind: part.kind,
+                id: storyIdOf(change.key, part.kind),
+              },
+            },
           },
         ]
       : []
@@ -311,7 +341,13 @@ export function storyEntriesProblems(
     const problem = partRootProblem(xml, part.root);
     return problem === null
       ? []
-      : [{ code: "malformed-xml", message: problem }];
+      : [
+          {
+            code: "malformed-xml",
+            message: problem,
+            reason: { kind: "unwritable-part-root", part: part.name },
+          },
+        ];
   }
   return session.parts.has(CONTENT_TYPES_PATH)
     ? []
@@ -319,6 +355,7 @@ export function storyEntriesProblems(
         {
           code: "missing-content-types",
           message: `cannot add a part to a package that has no ${CONTENT_TYPES_PATH}`,
+          reason: { kind: "missing-content-types", part: part.name },
         },
       ];
 }

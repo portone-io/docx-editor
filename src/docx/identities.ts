@@ -199,6 +199,8 @@ export const IDENTITY_RULES: readonly IdentityRule[] = [
 export interface IdentityProblem {
   readonly code: DocxExportErrorCode;
   readonly message: string;
+  /** The node type standing twice, which `docx/invariants` names in the problem's reason */
+  readonly node: string;
   readonly pos: number;
 }
 
@@ -206,6 +208,7 @@ function refusalOf(block: PMNode, pos: number): IdentityProblem {
   return {
     code: "unsupported-content",
     message: `a preserved block stands in two places (${block.type.name})`,
+    node: block.type.name,
     pos,
   };
 }

@@ -50,21 +50,61 @@ if (problems.length > 0) {
 }
 ```
 
-Each problem carries the `code` and `message` the `DocxExportError` would carry, and `pos` when
-the problem stands at a place in the document.
+Each problem carries the `code` and `message` the `DocxExportError` would carry, a `reason` saying
+which situation was met, and `pos` when the problem stands at a place in the document.
+The `message` is an English one-liner for a developer and may be reworded; switch on `code` and
+`reason.kind` instead.
 
-| Code | What is reported |
-| --- | --- |
-| `malformed-xml` | A bookmark marker whose partner is gone, or a comments, footnotes, or endnotes part with no root element once a comment or note in it has changed. |
-| `invalid-table` | A vertical merge reaching past the last row of its table. |
-| `lost-original` | A preserved block that lost its original XML, or a placeholder pasted in from another open document. |
-| `unsupported-content` | A preserved block copied so that it stands in two places, a paragraph in a list nothing defines, a namespace prefix already bound to another namespace, or a change nothing writes back yet: a header or footer story added or removed, a note added under an id that is no whole number, or a changed footnote or endnote separator. |
-| `missing-content-types` | A part the writer adds (an image, a numbering part, a comment part, a footnotes or endnotes part) in a package with no content types part to declare it in. |
+| `reason.kind` | `code` | What it names |
+| --- | --- | --- |
+| `unreadable-preserved-xml` | `malformed-xml` | Preserved markup holding a bookmark that could not be parsed. |
+| `unnamed-bookmark` | `malformed-xml` | A bookmark `marker`, `"start"` or `"end"`, carrying no id to pair it by. |
+| `unmatched-bookmark` | `malformed-xml` | The bookmark `id` whose partner is gone, and which `marker` is left standing. |
+| `repeated-bookmark-start` | `malformed-xml` | A bookmark `id` started twice. |
+| `unwritable-part-root` | `malformed-xml` | The `part` whose root element the writer cannot rewrite around. |
+| `vertical-merge-past-table` | `invalid-table` | A vertical merge reaching past the last row of its table. |
+| `lost-preserved-xml` | `lost-original` | The `node` written from its original XML alone, which it no longer holds. |
+| `preserved-from-another-document` | `lost-original` | A placeholder pasted in from another open document, and the `sessionId` it was opened in. |
+| `duplicate-preserved-block` | `unsupported-content` | The `node` standing in two places, and the `story` it stands in or `null` for the body. |
+| `undefined-list` | `unsupported-content` | The `numId` of a list nothing defines. |
+| `unwritten-story-change` | `unsupported-content` | The `story` whose `change` - `"added"`, `"edited"` or `"removed"` - nothing writes back. |
+| `story-id-not-a-number` | `unsupported-content` | The `story` added under an id no entry can be identified by. |
+| `missing-content-types` | `missing-content-types` | The `part` the writer would add to a package with no content types part to declare it in. |
 
-`exportDocx` throws the first entry of the same list.
+A `story` is the side story the problem is about: its `kind` (`comment`, `footnote`, `endnote`,
+`header` or `footer`) and the `id` it stands under, which is a note's number, a comment's id, or a
+header or footer part's path. A `part` is `media`, `numbering`, `comments`, `commentsExtended`,
+`footnotes` or `endnotes`.
+
+That is enough to say what a person has to put back:
+
+```ts
+import type { ExportProblem } from "@portone/docx-editor/core";
+
+function whatToRevert({ reason }: ExportProblem): string {
+  switch (reason.kind) {
+    case "unwritten-story-change":
+      return `Revert ${reason.story.kind} ${reason.story.id} to save this file.`;
+    case "duplicate-preserved-block":
+      return "A block was copied. Delete the copy to save this file.";
+    case "undefined-list":
+      return "Remove the list from this paragraph to save this file.";
+    default:
+      return "This document cannot be saved as it stands.";
+  }
+}
+```
+
+`pos` is where the problem stands: the block or marker itself, and for a footnote or an endnote the
+first reference to that note in the body, since the note's own text stands nowhere in it. A caller
+can select that position to show which note to revert. It is absent for a problem of the package,
+for a header or a footer, and for a note nothing in the body refers to.
+
+`exportDocx` throws the first entry of the same list, and the `DocxExportError` carries that entry
+as `problem`, so a `catch` reads the same `reason` and `pos` without asking again.
 An empty list does not guarantee that writing will succeed: a `DocxExportError` the list did not
 predict is still thrown under the same codes, for a plugin that wrote an invalid node or attr, or
-for a bug in the editor.
+for a bug in the editor, and such an error carries no `problem`.
 Both functions need an XML parser, and are refused with the import code `no-xml-parser` without
 one.
 An export failure leaves the editor state untouched.

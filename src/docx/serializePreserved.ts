@@ -8,7 +8,7 @@
  */
 
 import type { Node as PMNode } from "prosemirror-model";
-import { DocxExportError } from "../ooxml/errors";
+import { DocxExportError, type ExportProblemReason } from "../ooxml/errors";
 import type { ExportRefs } from "./exportRefs";
 import { originalBlock, type SessionStore, splitBlockKey } from "./session";
 
@@ -16,12 +16,24 @@ import { originalBlock, type SessionStore, splitBlockKey } from "./session";
 export function lostOriginal(
   node: PMNode,
   session: SessionStore | null
-): string {
+): { readonly message: string; readonly reason: ExportProblemReason } {
   const srcId: unknown = node.attrs.srcId;
   const key = typeof srcId === "string" ? splitBlockKey(srcId) : null;
-  return key === null || key.sessionId === session?.sessionId
-    ? "a preserved block has lost its original XML"
-    : `a preserved block comes from another document (${key.sessionId})`;
+  const name = node.type.name;
+  if (key === null || key.sessionId === session?.sessionId) {
+    return {
+      message: "a preserved block has lost its original XML",
+      reason: { kind: "lost-preserved-xml", node: name },
+    };
+  }
+  return {
+    message: `a preserved block comes from another document (${key.sessionId})`,
+    reason: {
+      kind: "preserved-from-another-document",
+      node: name,
+      sessionId: key.sessionId,
+    },
+  };
 }
 
 export function serializePreservedBlock(
@@ -34,7 +46,7 @@ export function serializePreservedBlock(
   if (!imported) {
     throw new DocxExportError(
       "lost-original",
-      lostOriginal(node, refs.session)
+      lostOriginal(node, refs.session).message
     );
   }
   return imported.xml;

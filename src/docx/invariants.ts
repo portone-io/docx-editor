@@ -5,6 +5,10 @@
  * would throw, so a screen can ask at edit time what `exportDocx` would say. The list is walked in
  * order and `exportDocx` throws its first entry, which is what keeps the two from disagreeing.
  *
+ * A code covers several situations, so each entry also carries the `ExportProblemReason`
+ * (`ooxml/errors`) naming the one that was met and the content it is about. Every place a problem
+ * is built names its own, rather than a reader telling them apart by the message.
+ *
  * The checks inspect model attrs and preserved XML without running the writers. Bookmark
  * fragments and list definitions use the export parser. `assertBookmarkPairs` in `./exportDocx`
  * and `assertPartsParse` in `./partPlan` remain the final checks over the parts as actually written.
@@ -12,7 +16,11 @@
 
 import type { Node as PMNode } from "prosemirror-model";
 import { spanCount, toParagraphFormat } from "../model/format";
-import type { DocxExportErrorCode } from "../ooxml/errors";
+import type {
+  ExportProblem,
+  ExportProblemReason,
+  ExportProblemStory,
+} from "../ooxml/errors";
 import {
   attributeByLocalName,
   parseXml,
@@ -21,7 +29,14 @@ import {
 } from "../ooxml/xml";
 import { visitPreservedFragments } from "../schema/preservedFragments";
 import { unattributedCommentAuthors } from "../schema/protection";
-import { HEADER_FOOTER_KINDS } from "../schema/stories";
+import {
+  HEADER_FOOTER_KINDS,
+  NOTE_KINDS,
+  type NoteKind,
+  type StoryKey,
+  type StoryKind,
+  storyKey,
+} from "../schema/stories";
 
 import {
   commentReferencesIn,
@@ -38,11 +53,7 @@ import {
 import { unrecordedAuthors } from "./comments/people";
 import { currentCommentBodies } from "./comments/writing";
 import type { ExportOptions } from "./exportDocx";
-import {
-  identityProblems,
-  identityProblemsInStories,
-  type StoryToSettle,
-} from "./identities";
+import { identityProblems, identityProblemsInStories } from "./identities";
 import { insertedImageSrcs } from "./media";
 import { canDefineNewList, newNumIds, startedLists } from "./newLists";
 import { CONTENT_TYPES_PATH } from "./packageParts";
@@ -55,19 +66,21 @@ import {
   sessionOf,
 } from "./session";
 import {
+  type StoryEntry,
   storyChangesOf,
   storyEntriesOf,
   storyEntriesProblems,
+  storyIdOf,
   unwrittenStoryChanges,
 } from "./storyParts";
 
-/** One reason the document cannot be written back, with the code `exportDocx` would throw it under */
-export interface ExportProblem {
-  readonly code: DocxExportErrorCode;
-  readonly message: string;
-  /** Where the problem stands in the document. Absent for a problem of the package, of the session, or of a side story */
-  readonly pos?: number;
-}
+export type {
+  ExportPartName,
+  ExportProblem,
+  ExportProblemReason,
+  ExportProblemStory,
+  ExportStoryKind,
+} from "../ooxml/errors";
 
 interface ExportInvariant {
   readonly name: string;
@@ -96,6 +109,7 @@ const bookmarkPairs: ExportInvariant = {
         problems.push({
           code: "malformed-xml",
           message: "preserved bookmark XML could not be parsed",
+          reason: { kind: "unreadable-preserved-xml" },
           pos,
         });
         return;
@@ -113,6 +127,10 @@ const bookmarkPairs: ExportInvariant = {
           problems.push({
             code: "malformed-xml",
             message: `a bookmark${kind} has no id`,
+            reason: {
+              kind: "unnamed-bookmark",
+              marker: kind === "Start" ? "start" : "end",
+            },
             pos,
           });
         } else if (kind === "Start") {
@@ -120,6 +138,7 @@ const bookmarkPairs: ExportInvariant = {
             problems.push({
               code: "malformed-xml",
               message: `bookmark ${value} has more than one start marker`,
+              reason: { kind: "repeated-bookmark-start", id: value },
               pos,
             });
           } else {
@@ -130,6 +149,11 @@ const bookmarkPairs: ExportInvariant = {
           problems.push({
             code: "malformed-xml",
             message: `bookmark ${value} ends without an earlier start marker`,
+            reason: {
+              kind: "unmatched-bookmark",
+              id: value,
+              marker: "end",
+            },
             pos,
           });
         }
@@ -139,6 +163,7 @@ const bookmarkPairs: ExportInvariant = {
       problems.push({
         code: "malformed-xml",
         message: `bookmark ${id} has no end marker`,
+        reason: { kind: "unmatched-bookmark", id, marker: "start" },
         pos,
       });
     }
@@ -174,6 +199,7 @@ const tableGrids: ExportInvariant = {
         problems.push({
           code: "invalid-table",
           message: "a vertical merge in the table reaches past the last row",
+          reason: { kind: "vertical-merge-past-table" },
           pos,
         });
       }
@@ -190,11 +216,17 @@ const CARRIES_ITS_XML: ReadonlySet<string> = new Set([
 ]);
 
 /** Why a preserved node has nothing to be written from, or null when it has */
-function lostOriginalOf(node: PMNode, session: SessionStore): string | null {
+function lostOriginalOf(
+  node: PMNode,
+  session: SessionStore
+): { readonly message: string; readonly reason: ExportProblemReason } | null {
   if (CARRIES_ITS_XML.has(node.type.name)) {
     return typeof node.attrs.xml === "string"
       ? null
-      : "a preserved element has lost its original XML";
+      : {
+          message: "a preserved element has lost its original XML",
+          reason: { kind: "lost-preserved-xml", node: node.type.name },
+        };
   }
   if (node.type.isInGroup("preserved")) {
     if (typeof node.attrs.xml === "string") return null;
@@ -209,14 +241,29 @@ const preservedOriginals: ExportInvariant = {
   check(doc, session) {
     const problems: ExportProblem[] = [];
     doc.descendants((node, pos) => {
-      const message = lostOriginalOf(node, session);
-      if (message !== null)
-        problems.push({ code: "lost-original", message, pos });
+      const lost = lostOriginalOf(node, session);
+      if (lost !== null) {
+        problems.push({ code: "lost-original", ...lost, pos });
+      }
       return true;
     });
     return problems;
   },
 };
+
+/** The stories one part settles its names across, all of them of the one kind the part holds */
+interface StoryPartEntries {
+  readonly kind: StoryKind;
+  readonly entries: readonly StoryEntry[];
+}
+
+/** The story a key names, and null where there is no key to name one */
+function storyNameOf(
+  key: StoryKey | null,
+  kind: StoryKind
+): ExportProblemStory | null {
+  return key === null ? null : { kind, id: storyIdOf(key, kind) };
+}
 
 /**
  * A name held by one node only is settled by `withUniqueIdentities` just before the body is
@@ -224,26 +271,59 @@ const preservedOriginals: ExportInvariant = {
  * changed is written again: a later claimant is rebuilt from its own attrs, and a block preserved
  * as nothing but its original XML has nothing to be rebuilt from, so the pass refuses it. The pass
  * is asked here rather than read again, so the block it names is the one the write would refuse
- * over. A block of a side story stands nowhere in the body, so its problem carries no position.
+ * over. A block of a side story stands nowhere in the body, so its problem is reported where the
+ * body refers to the note it belongs to, and nowhere at all for a header or a footer.
  */
 const uniqueIdentities: ExportInvariant = {
   name: "uniqueIdentities",
   check(doc, session) {
-    const parts: readonly (readonly StoryToSettle[])[] = [
+    const parts: readonly StoryPartEntries[] = [
       ...HEADER_FOOTER_KINDS.flatMap((kind) =>
-        storyChangesOf(doc, session, kind)
-      ).flatMap((change) =>
-        change.change === "edited"
-          ? [[{ story: change.current, frozen: false }]]
-          : []
+        storyChangesOf(doc, session, kind).flatMap(
+          (change): StoryPartEntries[] =>
+            change.change === "edited"
+              ? [
+                  {
+                    kind,
+                    entries: [
+                      {
+                        key: change.imported.key,
+                        story: change.current,
+                        frozen: false,
+                      },
+                    ],
+                  },
+                ]
+              : []
+        )
       ),
-      ...STORY_ENTRIES_PARTS.map((part) => storyEntriesOf(part, doc, session)),
+      ...STORY_ENTRIES_PARTS.map((part) => ({
+        kind: part.kind,
+        entries: storyEntriesOf(part, doc, session),
+      })),
     ];
     return [
-      ...identityProblems(doc),
-      ...parts
-        .flatMap((entries) => identityProblemsInStories(entries))
-        .map(({ code, message }): ExportProblem => ({ code, message })),
+      ...identityProblems(doc).map(
+        ({ code, message, node, pos }): ExportProblem => ({
+          code,
+          message,
+          reason: { kind: "duplicate-preserved-block", node, story: null },
+          pos,
+        })
+      ),
+      ...parts.flatMap(({ kind, entries }) =>
+        identityProblemsInStories(entries).map(
+          ({ code, message, node, story }): ExportProblem => ({
+            code,
+            message,
+            reason: {
+              kind: "duplicate-preserved-block",
+              node,
+              story: storyNameOf(entries[story]?.key ?? null, kind),
+            },
+          })
+        )
+      ),
     ];
   },
 };
@@ -258,9 +338,14 @@ const storiesHaveWriters: ExportInvariant = {
   name: "storiesHaveWriters",
   check(doc, session) {
     return unwrittenStoryChanges(STORY_WRITINGS, doc, session).map(
-      ({ key, change }): ExportProblem => ({
+      ({ key, kind, id, change }): ExportProblem => ({
         code: "unsupported-content",
         message: `the ${key} story was ${change}, and no part writer carries that into the file`,
+        reason: {
+          kind: "unwritten-story-change",
+          story: { kind, id },
+          change,
+        },
       })
     );
   },
@@ -291,6 +376,7 @@ const listDefinitions: ExportInvariant = {
       problems.push({
         code: "unsupported-content",
         message: `the list numbered ${numId} has no definition to be written`,
+        reason: { kind: "undefined-list", numId },
         pos,
       });
       return false;
@@ -339,18 +425,21 @@ const mediaContentTypes: ExportInvariant = {
       problems.push({
         code: "missing-content-types",
         message: `cannot add an image to a package that has no ${CONTENT_TYPES_PATH}`,
+        reason: { kind: "missing-content-types", part: "media" },
       });
     }
     if (!canDefineNewList(session) && newNumIds(doc, session).length > 0) {
       problems.push({
         code: "missing-content-types",
         message: `cannot add a part to a package that has no ${CONTENT_TYPES_PATH}`,
+        reason: { kind: "missing-content-types", part: "numbering" },
       });
     }
     if (addsCommentsPart(doc, session)) {
       problems.push({
         code: "missing-content-types",
         message: `cannot add a part to a package that has no ${CONTENT_TYPES_PATH}`,
+        reason: { kind: "missing-content-types", part: "comments" },
       });
     }
     return problems;
@@ -369,8 +458,13 @@ const commentPartRoots: ExportInvariant = {
     const { xml, extendedXml, extendedPartPath } = session.comments;
     if (xml !== null && commentsChanged(doc, session)) {
       const problem = commentsRootProblem(xml);
-      if (problem !== null)
-        problems.push({ code: "malformed-xml", message: problem });
+      if (problem !== null) {
+        problems.push({
+          code: "malformed-xml",
+          message: problem,
+          reason: { kind: "unwritable-part-root", part: "comments" },
+        });
+      }
     }
     if (
       extendedXml !== null &&
@@ -378,8 +472,13 @@ const commentPartRoots: ExportInvariant = {
       (commentReferencesIn(doc).size > 0 || extendedPartPath !== null)
     ) {
       const problem = extensionsRootProblem(extendedXml);
-      if (problem !== null)
-        problems.push({ code: "malformed-xml", message: problem });
+      if (problem !== null) {
+        problems.push({
+          code: "malformed-xml",
+          message: problem,
+          reason: { kind: "unwritable-part-root", part: "commentsExtended" },
+        });
+      }
     }
     return problems;
   },
@@ -398,6 +497,66 @@ const notePartRoots: ExportInvariant = {
       storyEntriesProblems(part, doc, session)
     ),
 };
+
+/**
+ * Where the body first refers to each note, under the key naming that note.
+ *
+ * A note's text is a story of its own and stands nowhere in the body, so a problem about one is
+ * reported at the reference a reader would have to look at to decide what to do about it.
+ */
+function noteReferencePositions(doc: PMNode): ReadonlyMap<StoryKey, number> {
+  const first = new Map<StoryKey, number>();
+  doc.descendants((node, pos) => {
+    if (node.type.name !== "noteReference") return true;
+    const kind = NOTE_KINDS.find((candidate) => candidate === node.attrs.kind);
+    const id: unknown = node.attrs.id;
+    if (kind !== undefined && typeof id === "string") {
+      const key = storyKey(kind, id);
+      if (!first.has(key)) first.set(key, pos);
+    }
+    return true;
+  });
+  return first;
+}
+
+/** The story a reason is about, and null for one about the body or the package */
+function storyOf(reason: ExportProblemReason): ExportProblemStory | null {
+  switch (reason.kind) {
+    case "duplicate-preserved-block":
+    case "story-id-not-a-number":
+    case "unwritten-story-change":
+      return reason.story;
+    default:
+      return null;
+  }
+}
+
+/** The note a reason is about, and null for one about no note */
+function noteOf(
+  reason: ExportProblemReason
+): { readonly kind: NoteKind; readonly id: string } | null {
+  const story = storyOf(reason);
+  if (story === null) return null;
+  const kind = NOTE_KINDS.find((candidate) => candidate === story.kind);
+  return kind === undefined ? null : { kind, id: story.id };
+}
+
+/** Every problem about a note reported where the body refers to that note, the rest as they stand */
+function atNoteReferences(
+  problems: readonly ExportProblem[],
+  doc: PMNode
+): readonly ExportProblem[] {
+  const notes = problems.map((problem) =>
+    problem.pos === undefined ? noteOf(problem.reason) : null
+  );
+  if (notes.every((note) => note === null)) return problems;
+  const references = noteReferencePositions(doc);
+  return problems.map((problem, at) => {
+    const note = notes[at];
+    const pos = note ? references.get(storyKey(note.kind, note.id)) : undefined;
+    return pos === undefined ? problem : { ...problem, pos };
+  });
+}
 
 /** In the order the problems are reported, which is the order `exportDocx` throws them in */
 const EXPORT_INVARIANTS: readonly ExportInvariant[] = [
@@ -429,8 +588,9 @@ export function problemsOf(
 ): readonly ExportProblem[] {
   const known = answered.get(doc);
   if (known && known.session === session) return known.problems;
-  const problems = EXPORT_INVARIANTS.flatMap((invariant) =>
-    invariant.check(doc, session)
+  const problems = atNoteReferences(
+    EXPORT_INVARIANTS.flatMap((invariant) => invariant.check(doc, session)),
+    doc
   );
   answered.set(doc, { session, problems });
   return problems;
@@ -438,8 +598,9 @@ export function problemsOf(
 
 /**
  * Known reasons writing this document back would be refused, in the order `exportDocx` would
- * raise them. An empty list does not rule out failures while writing. Each entry carries the code and message the
- * `DocxExportError` would carry, and the position in the document where there is one.
+ * raise them. An empty list does not rule out failures while writing. Each entry carries the code
+ * and message the `DocxExportError` would carry, the `reason` naming what the refusal is about,
+ * and the position in the document where there is one.
  *
  * The list definitions are read to tell a new list from one the document already had, so this
  * needs an XML parser the way `exportDocx` does and takes the same option.
