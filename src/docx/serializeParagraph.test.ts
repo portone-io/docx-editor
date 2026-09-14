@@ -273,3 +273,26 @@ describe("a hyperlink around a stretch of text", () => {
     expect(serializeParagraph(open(xml, LINKS), REFS)).toBe(xml);
   });
 });
+
+describe("a note reference the editor built", () => {
+  const reference = (attrs: Record<string, unknown>) =>
+    paragraph(
+      docxSchema.nodes.noteReference.create(
+        { kind: "footnote", id: "8", referenceXml: null, ...attrs },
+        null,
+        [runMark()]
+      )
+    );
+
+  it("writes the id it names", () => {
+    expect(serializeParagraph(reference({}))).toBe(
+      '<w:p><w:r><w:footnoteReference w:id="8"/></w:r></w:p>'
+    );
+  });
+
+  it("writes that a custom mark follows it", () => {
+    expect(serializeParagraph(reference({ customMarkFollows: true }))).toBe(
+      '<w:p><w:r><w:footnoteReference w:customMarkFollows="1" w:id="8"/></w:r></w:p>'
+    );
+  });
+});

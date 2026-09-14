@@ -20,6 +20,8 @@ interface RowEntry {
   pos: number;
   top: number;
   height: number;
+  /** What the engine's own rows have opened above this one, as the browser drew them */
+  appliedAbove: number;
 }
 
 function span(value: unknown): number {
@@ -70,6 +72,7 @@ function rowEntries(
       pos,
       top: (rect.top - tableTop) / scale - appliedBefore,
       height: rect.height / scale,
+      appliedAbove: appliedBefore,
     });
   });
   return entries;
@@ -194,6 +197,15 @@ export const tableKind: BlockKind = {
       }
     }
 
+    // What each cut opened just above its own row: the spacer and the headers repeated with it,
+    // at the heights the browser drew them rather than the heights the cut asked for
+    const opened = new Map<number, number>();
+    rows.forEach((row, index) => {
+      const above = index === 0 ? 0 : (rows[index - 1]?.appliedAbove ?? 0);
+      const here = row.appliedAbove - above;
+      if (here > 0) opened.set(row.pos, here);
+    });
+
     const firstBodyBoundary = candidates.find(
       (candidate) => candidate.offset > repeatHeaderHeight + 0.5
     );
@@ -204,6 +216,7 @@ export const tableKind: BlockKind = {
 
     return {
       candidates,
+      opened,
       // The smallest useful first piece: the headers followed by one body row group
       minFirstPiece:
         firstBodyBoundary?.offset ??

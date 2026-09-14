@@ -68,10 +68,13 @@ export const paragraphKind: BlockKind = {
     const candidates: BreakCandidate[] = [];
     /** What the spaces read so far have opened up inside this block */
     let appliedHeight = 0;
+    /** What each break's own space is drawn at, which is 0 until the layout cuts there */
+    const opened = new Map<number, number>();
     // Each space element is the one the break at the same ordinal was given
     dom.querySelectorAll(BREAK_SPACE).forEach((space, index) => {
       const box = space.getBoundingClientRect();
       const found = breaks.at(index);
+      const drawn = box.height / scale;
       if (found) {
         candidates.push({
           at: found.at,
@@ -79,8 +82,9 @@ export const paragraphKind: BlockKind = {
           forced: true,
           repeatHeight: 0,
         });
+        if (drawn > 0) opened.set(found.at, drawn);
       }
-      appliedHeight += box.height / scale;
+      appliedHeight += drawn;
     });
     return {
       candidates,
@@ -92,6 +96,7 @@ export const paragraphKind: BlockKind = {
       breakAfter:
         dom.querySelectorAll(PAGE_BREAK_BR).length > candidates.length,
       appliedHeight,
+      opened,
       keepWithNext: toParagraphFormat(node.attrs.format)?.keepNext === true,
     };
   },

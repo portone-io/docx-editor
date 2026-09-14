@@ -228,6 +228,24 @@ function acrossNode(
   return select(state, pos - 1, pos + size + 1);
 }
 
+/**
+ * A selection running from the character before the endnote reference to the end of the paragraph
+ * it closes, which is where the document puts it
+ */
+function acrossEndnoteReference(protection: EditingProtection): EditorState {
+  const state = opened(protection);
+  const spans: { pos: number; size: number }[] = [];
+  state.doc.descendants((node, pos) => {
+    if (node.type.name === "noteReference" && node.attrs.kind === "endnote") {
+      spans.push({ pos, size: node.nodeSize });
+    }
+    return spans.length === 0;
+  });
+  const reference = spans[0];
+  if (reference === undefined) throw new Error("no endnote reference");
+  return select(state, reference.pos - 1, reference.pos + reference.size);
+}
+
 /** A caret standing right after that node */
 function afterNode(
   typeName: string,
@@ -365,9 +383,15 @@ const PLACES: readonly Place[] = [
     state: (protection) => acrossNode("rawRunContent", protection),
   },
   {
+    // A footnote reference may be deleted, and its footnote goes with it
     name: "a selection running across a footnote reference",
-    guards: ["protection", "note"],
+    guards: ["protection"],
     state: (protection) => acrossNode("noteReference", protection),
+  },
+  {
+    name: "a selection running across an endnote reference",
+    guards: ["protection", "note"],
+    state: acrossEndnoteReference,
   },
   {
     // The selection crosses the boundary the break sits on, so anything that replaces it joins
@@ -451,6 +475,11 @@ const CASES: readonly CommandCase[] = [
     command: commands.setCommentResolved("0", true),
   },
   { name: "selectComment", command: commands.selectComment("0") },
+  { name: "insertFootnote", command: commands.insertFootnote },
+  {
+    name: "setFootnoteBody",
+    command: commands.setFootnoteBody("2", storyFromText("note")),
+  },
   { name: "decreaseIndent", command: commands.decreaseIndent },
   { name: "increaseIndent", command: commands.increaseIndent },
   { name: "decreaseListLevel", command: commands.decreaseListLevel },
@@ -555,6 +584,7 @@ const NOT_A_COMMAND: Readonly<Record<string, string>> = {
   canExport: "the query an export control is drawn from",
   canFormatText: "the query the character formatting controls are drawn from",
   canIncreaseIndent: "the query the increase-indent button is drawn from",
+  canInsertFootnote: "the query an insert-footnote control is drawn from",
   canInsertImage: "the query the image button is drawn from",
   canInsertTable: "the query the insert-table button is drawn from",
   canMergeCells: "the query the merge row is drawn from",
@@ -573,7 +603,8 @@ const NOT_A_COMMAND: Readonly<Record<string, string>> = {
   documentFidelity: "what the document holds that the editor cannot model",
   documentFontNames: "the fonts the document names",
   documentHasLocked: "a query about the document",
-  documentNotes: "the notes displayed after the document",
+  documentNotes:
+    "the notes drawn at the foot of their pages and after the last page",
   documentParagraphStyles: "the styles the document defines",
   editingProtection: "a query about what the editor as a whole may receive",
   fittedExtent: "the rule an oversized image is shrunk by",

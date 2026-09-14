@@ -7,6 +7,7 @@ import { LETTER_GEOMETRY } from "../__testing__/docx";
 import { DEFAULT_SECTION, type DocumentSection } from "../docx/sections";
 import { editorClassNames, editorCssVariables } from "../styles/classNames";
 import type { BreakCandidate } from "./blockKinds";
+import type { DemandBand, PageDemand } from "./demands";
 import {
   A4_PAGE_PIXELS,
   type MeasuredBlock,
@@ -733,6 +734,475 @@ describe("pageLayout", () => {
     );
     expect(style).toContain(editorCssVariables.pageMarginLeft);
     expect(style).toContain(editorCssVariables.pageHeight);
+  });
+});
+
+describe("the room a page keeps at its foot", () => {
+  const BAND = "test";
+
+  /** The one band these demands are kept in, holding each id at the height given */
+  function band(
+    heights: Readonly<Record<string, number>>,
+    overhead = 0
+  ): ReadonlyMap<string, DemandBand> {
+    return new Map([
+      [BAND, { order: 0, overhead, heights: new Map(Object.entries(heights)) }],
+    ]);
+  }
+
+  function demand(id: string, offset: number): PageDemand {
+    return { offset, id, band: BAND };
+  }
+
+  function laidOut(
+    list: MeasuredBlock[],
+    bands: ReadonlyMap<string, DemandBand>
+  ) {
+    return pageLayout({ blocks: list, sections: ONE_SECTION, bands });
+  }
+
+  it("lays every page out as before when no band is given", () => {
+    const shapes = [
+      blocks(900, 300, 700),
+      blocks(900, broken(300, 50)),
+      blocks(broken(400, 100, 250)),
+      blocks(2500, 200),
+      blocks({
+        height: 1500,
+        candidates: rowBoundaries(100, 300, 600, 900, 1200),
+        minFirstPiece: 300,
+      }),
+      blocks(600, { height: 200, keepWithNext: true }, 150, 30),
+    ];
+    for (const plain of shapes) {
+      const asking = plain.map((block) => ({
+        ...block,
+        demands: [demand("a", 10), demand("b", block.height / 2)],
+      }));
+      const unchanged = layout(plain);
+      expect(pageLayout({ blocks: asking, sections: ONE_SECTION })).toEqual(
+        unchanged
+      );
+      expect(
+        pageLayout({ blocks: asking, sections: ONE_SECTION, bands: new Map() })
+      ).toEqual(unchanged);
+      expect(unchanged.reserved).toEqual([]);
+    }
+  });
+
+  it("ends a page above the room its blocks demand", () => {
+    const result = laidOut(
+      blocks({ height: 400, demands: [demand("a", 100)] }, 400),
+      band({ a: 300 })
+    );
+
+    // The 300 kept for the first block leaves 600 of body, which the second 400 runs past
+    expect(result.pushes).toEqual([
+      { pos: 10, marginTop: PAGE + STEP - 400, push: PAGE + STEP - 400 },
+    ]);
+    // The page itself still ends where its paper does
+    expect(result.splits).toEqual([
+      { y: PAGE, page: 2, forced: false, crossed: false },
+    ]);
+    expect(result.reserved).toEqual([
+      { page: 1, band: BAND, ids: ["a"], top: PAGE - 300, height: 300 },
+    ]);
+  });
+
+  it("pushes a block to the next page when its demand does not fit beneath it", () => {
+    const result = laidOut(
+      blocks(600, { height: 300, demands: [demand("a", 200)] }),
+      band({ a: 200 })
+    );
+
+    // The 300 fits in the 400 left, but not with the 200 its own place asks for beneath it
+    expect(result.pushes).toEqual([
+      { pos: 10, marginTop: PAGE + STEP - 600, push: PAGE + STEP - 600 },
+    ]);
+    expect(result.reserved).toEqual([
+      {
+        page: 2,
+        band: BAND,
+        ids: ["a"],
+        top: 2 * PAGE + STEP - 200,
+        height: 200,
+      },
+    ]);
+  });
+
+  it("counts one id demanded twice on a page once", () => {
+    const result = laidOut(
+      blocks(
+        { height: 300, demands: [demand("a", 10), demand("a", 200)] },
+        { height: 300, demands: [demand("a", 100)] }
+      ),
+      band({ a: 350 }, 20)
+    );
+
+    // Kept once, the 370 fits under the 600 of text; kept for every place, it would not
+    expect(result.pushes).toEqual([]);
+    expect(result.reserved).toEqual([
+      { page: 1, band: BAND, ids: ["a"], top: PAGE - 370, height: 370 },
+    ]);
+  });
+
+  it("ends the page a tall block crosses above that page's demands", () => {
+    const result = laidOut(
+      blocks({ height: 2500, demands: [demand("a", 500)] }),
+      band({ a: 100 })
+    );
+
+    expect(result.splits).toEqual([
+      { y: PAGE - 100, page: 2, forced: false, crossed: true },
+      { y: 2 * PAGE - 100, page: 3, forced: false, crossed: true },
+    ]);
+    expect(result.reserved).toEqual([
+      { page: 1, band: BAND, ids: ["a"], top: PAGE - 100, height: 100 },
+    ]);
+    expect(result.bodyHeight).toBe(3 * PAGE - 100);
+  });
+
+  it("reserves room on the page where a table row's demand lands", () => {
+    const result = laidOut(
+      blocks({
+        height: 1200,
+        candidates: rowBoundaries(0, 300, 600, 900),
+        minFirstPiece: 300,
+        demands: [demand("first row", 100), demand("third row", 650)],
+      }),
+      band({ "first row": 50, "third row": 150 })
+    );
+
+    // The third row ends at 900, above the 950 the first row's room leaves, but not with the 150
+    // its own place asks for; with no demand the table would continue at the fourth row instead
+    expect(result.cuts).toEqual([{ at: 102, height: PAGE + STEP - 600 }]);
+    expect(result.reserved).toEqual([
+      { page: 1, band: BAND, ids: ["first row"], top: PAGE - 50, height: 50 },
+      {
+        page: 2,
+        band: BAND,
+        ids: ["third row"],
+        top: 2 * PAGE + STEP - 150,
+        height: 150,
+      },
+    ]);
+  });
+
+  it("carries a demand that does not fit to the top of the next page", () => {
+    const result = laidOut(
+      blocks(
+        { height: 900, demands: [demand("carried", 100)] },
+        { height: 300, demands: [demand("own", 50)] }
+      ),
+      band({ carried: 200, own: 100 })
+    );
+
+    // The 900 opens its page and cannot move, and the 200 does not fit beneath it, so the next
+    // page keeps it ahead of the demand of its own
+    expect(result.pushes.map((push) => push.pos)).toEqual([10]);
+    expect(result.reserved).toEqual([
+      {
+        page: 2,
+        band: BAND,
+        ids: ["carried", "own"],
+        top: 2 * PAGE + STEP - 300,
+        height: 300,
+      },
+    ]);
+  });
+
+  it("carries the demands a page cannot keep in the order their places stand", () => {
+    const heights = band({ x: 150, y: 150 });
+    const asking = {
+      height: 900,
+      demands: [demand("x", 100), demand("y", 200)],
+    };
+
+    // The first page lets go of the last it took first, and the next page keeps both as they stand
+    const once = laidOut(blocks(asking, 300), heights);
+    expect(once.reserved).toEqual([
+      {
+        page: 2,
+        band: BAND,
+        ids: ["x", "y"],
+        top: 2 * PAGE + STEP - 300,
+        height: 300,
+      },
+    ]);
+
+    // Under a 900 it cannot move either, the second page lets both go again, and the third keeps
+    // them in the same order
+    const twice = laidOut(blocks(asking, 900, 50), heights);
+    expect(twice.pages).toHaveLength(3);
+    expect(twice.reserved).toEqual([
+      {
+        page: 3,
+        band: BAND,
+        ids: ["x", "y"],
+        top: 3 * PAGE + 2 * STEP - 300,
+        height: 300,
+      },
+    ]);
+  });
+
+  it("does not carry a demand whose id the page it stands on already keeps", () => {
+    const result = laidOut(
+      blocks(
+        // Opening its page, this one cannot move, so its second demand is let go rather than
+        // pushed with it
+        { height: 800, demands: [demand("a", 100), demand("b", 200)] },
+        { height: 50, demands: [demand("a", 10)] }
+      ),
+      band({ a: 100, b: 600 })
+    );
+
+    // "a" is already kept on the first page, so the second place it stands at asks for nothing
+    // more: carrying it as well would draw one footnote at the foot of both pages
+    expect(result.pushes).toEqual([]);
+    expect(result.reserved).toEqual([
+      { page: 1, band: BAND, ids: ["a"], top: PAGE - 100, height: 100 },
+      {
+        page: 2,
+        band: BAND,
+        ids: ["b"],
+        top: 2 * PAGE + STEP - 600,
+        height: 600,
+      },
+    ]);
+    expect(
+      result.reserved.flatMap((room) => room.ids),
+      "one id is kept on one page"
+    ).toEqual(["a", "b"]);
+  });
+
+  it("carries every demand that follows one its page let go", () => {
+    const result = laidOut(
+      blocks(
+        { height: 900, demands: [demand("x", 100)] },
+        { height: 50, demands: [demand("y", 10)] }
+      ),
+      band({ x: 200, y: 40 })
+    );
+
+    // The 50 and its 40 would fit beneath the 900, but kept there y would stand a page ahead of the
+    // demand before it
+    expect(result.pushes).toEqual([]);
+    expect(result.reserved).toEqual([
+      {
+        page: 2,
+        band: BAND,
+        ids: ["x", "y"],
+        top: 2 * PAGE + STEP - 240,
+        height: 240,
+      },
+    ]);
+  });
+
+  it("does not push a block off the page it opens to make room for a carried demand", () => {
+    const result = laidOut(
+      blocks({ ...broken(900, 900), demands: [demand("a", 100)] }, 900),
+      band({ a: 200 })
+    );
+
+    // The break opens the second page with the carried 200 on it, and the 900 that follows starts
+    // that page, so it stays and the 200 is carried on again rather than left alone on a page
+    expect(result.pushes).toEqual([]);
+    expect(result.cuts).toEqual([{ at: 100, height: PAGE + STEP - 900 }]);
+    expect(result.pages).toHaveLength(3);
+    expect(result.reserved).toEqual([
+      {
+        page: 3,
+        band: BAND,
+        ids: ["a"],
+        top: 3 * PAGE + 2 * STEP - 200,
+        height: 200,
+      },
+    ]);
+  });
+
+  it("leaves a block where it is when an empty page could not hold it with its demand either", () => {
+    const result = laidOut(
+      blocks(300, { height: 600, demands: [demand("a", 100)] }),
+      band({ a: 500 })
+    );
+
+    // Pushed, the 600 and its 500 would not fit the next page either, and this page's 700 would
+    // be left empty for nothing
+    expect(result.pushes).toEqual([]);
+    expect(result.splits).toEqual([
+      { y: PAGE, page: 2, forced: false, crossed: false },
+    ]);
+    expect(result.reserved).toEqual([
+      {
+        page: 2,
+        band: BAND,
+        ids: ["a"],
+        top: 2 * PAGE + STEP - 500,
+        height: 500,
+      },
+    ]);
+  });
+
+  it("crosses a page its room fills at the end of its paper rather than opening an empty one", () => {
+    const result = laidOut(
+      blocks({ height: 2500, demands: [demand("a", 0)] }),
+      band({ a: PAGE })
+    );
+
+    expect(result.splits).toEqual([
+      { y: PAGE, page: 2, forced: false, crossed: true },
+      { y: 2 * PAGE, page: 3, forced: false, crossed: true },
+    ]);
+    expect(result.reserved).toEqual([
+      { page: 1, band: BAND, ids: ["a"], top: 0, height: PAGE },
+    ]);
+  });
+
+  it("opens a page past the last block for a demand carried beyond it", () => {
+    const result = laidOut(
+      blocks({ height: 900, demands: [demand("a", 100)] }),
+      band({ a: 200 })
+    );
+
+    expect(result.splits).toEqual([
+      { y: PAGE, page: 2, forced: false, crossed: false },
+    ]);
+    expect(result.pages).toHaveLength(2);
+    expect(result.bodyHeight).toBe(PAGE + STEP + PAGE);
+    expect(result.reserved).toEqual([
+      {
+        page: 2,
+        band: BAND,
+        ids: ["a"],
+        top: 2 * PAGE + STEP - 200,
+        height: 200,
+      },
+    ]);
+  });
+
+  it("keeps a demand taller than an empty page on the page it lands on", () => {
+    const result = laidOut(
+      blocks({ height: 100, demands: [demand("tall", 50)] }, 300),
+      band({ tall: 1500 })
+    );
+
+    // No page could keep it whole, so it stays with its place, and that page's body ends with the
+    // text that has to stay there, which is where its band starts
+    expect(result.reserved).toEqual([
+      { page: 1, band: BAND, ids: ["tall"], top: 100, height: 1500 },
+    ]);
+    expect(result.pushes).toEqual([
+      { pos: 10, marginTop: PAGE + STEP - 100, push: PAGE + STEP - 100 },
+    ]);
+    expect(result.pages).toHaveLength(2);
+  });
+
+  it("takes no notice of a demand whose band is not given", () => {
+    const result = laidOut(
+      blocks({
+        height: 2500,
+        demands: [demand("a", 500), { offset: 950, id: "b", band: "other" }],
+      }),
+      band({ a: 100 })
+    );
+
+    // The unknown place stands below the body end the known one leaves, and holds nothing there
+    expect(result.splits.map((split) => split.y)).toEqual([
+      PAGE - 100,
+      2 * PAGE - 100,
+    ]);
+    expect(result.reserved).toEqual([
+      { page: 1, band: BAND, ids: ["a"], top: PAGE - 100, height: 100 },
+    ]);
+  });
+
+  it("stacks a page's bands where their definitions put them, not where its text met them", () => {
+    // "floor" belongs at the foot of the body and "shelf" above it, whichever of the two the
+    // page's text reaches first
+    const bands: ReadonlyMap<string, DemandBand> = new Map([
+      ["floor", { order: 0, overhead: 0, heights: new Map([["f", 100]]) }],
+      ["shelf", { order: 1, overhead: 0, heights: new Map([["s", 50]]) }],
+    ]);
+    const met = (first: string, second: string) =>
+      pageLayout({
+        blocks: blocks({
+          height: 300,
+          demands: [
+            { offset: 10, id: first[0] ?? "", band: first },
+            { offset: 20, id: second[0] ?? "", band: second },
+          ],
+        }),
+        sections: ONE_SECTION,
+        bands,
+      }).reserved;
+
+    const stacked = [
+      { page: 1, band: "shelf", ids: ["s"], top: PAGE - 150, height: 50 },
+      { page: 1, band: "floor", ids: ["f"], top: PAGE - 100, height: 100 },
+    ];
+    expect(met("floor", "shelf")).toEqual(stacked);
+    expect(met("shelf", "floor")).toEqual(stacked);
+  });
+
+  it("adds a band's overhead once to each page that holds it", () => {
+    const bands: ReadonlyMap<string, DemandBand> = new Map([
+      [
+        "wide",
+        {
+          order: 1,
+          overhead: 30,
+          heights: new Map([
+            ["w1", 100],
+            ["w2", 50],
+            ["w3", 70],
+          ]),
+        },
+      ],
+      ["narrow", { order: 0, overhead: 10, heights: new Map([["n1", 20]]) }],
+    ]);
+    const result = pageLayout({
+      blocks: blocks(
+        {
+          height: 300,
+          demands: [
+            { offset: 10, id: "w1", band: "wide" },
+            { offset: 20, id: "n1", band: "narrow" },
+          ],
+        },
+        { height: 480, demands: [{ offset: 50, id: "w2", band: "wide" }] },
+        { height: 600, demands: [{ offset: 100, id: "w3", band: "wide" }] }
+      ),
+      sections: ONE_SECTION,
+      bands,
+    });
+
+    // The 480 and the 50 it asks for end at 830, above the 840 the first block's room leaves; with
+    // the wide band's 30 counted again they would not
+    expect(result.pushes.map((push) => push.pos)).toEqual([20]);
+    // A page's bands stand one under the next, in the order their definitions name
+    expect(result.reserved).toEqual([
+      {
+        page: 1,
+        band: "wide",
+        ids: ["w1", "w2"],
+        top: PAGE - 30 - 180,
+        height: 30 + 100 + 50,
+      },
+      {
+        page: 1,
+        band: "narrow",
+        ids: ["n1"],
+        top: PAGE - 30,
+        height: 10 + 20,
+      },
+      {
+        page: 2,
+        band: "wide",
+        ids: ["w3"],
+        top: 2 * PAGE + STEP - 100,
+        height: 30 + 70,
+      },
+    ]);
   });
 });
 

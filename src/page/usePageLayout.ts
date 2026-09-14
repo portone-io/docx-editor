@@ -18,11 +18,13 @@ import {
   useState,
 } from "react";
 import { editorCssVariables } from "../styles/classNames";
+import type { DemandBand } from "./demands";
 import { measureSheet } from "./measureBlocks";
 import { setPageMarks } from "./pageDecorations";
 import {
   A4_SECTION_PIXELS,
   PAGE_SPLIT_PX,
+  type PageReservation,
   pageLayout,
   type SectionPixels,
   sectionPaperAt,
@@ -35,6 +37,21 @@ export interface PageMark {
   /** The height of the gap between pages. 0 where the text crosses the boundary */
   height: number;
   crossed: boolean;
+}
+
+/** The room one page keeps at the foot of its body for one band, measured on the sheet */
+export interface ReservedRoom {
+  band: string;
+  /** What the page keeps there, in the order it took them (`page/pageLayout`) */
+  ids: readonly string[];
+  top: number;
+  /**
+   * The height the page gives the band, down to the end of its body. Less than the band asks for
+   * where it holds more than the page could give it
+   */
+  height: number;
+  /** Whether the band asks for more than that height */
+  clipped: boolean;
 }
 
 /** The paper area of one visual page, used to place its header and footer stories. */
@@ -52,6 +69,8 @@ export interface PageFace {
   left: number;
   width: number;
   crossed: boolean;
+  /** What the page keeps at the foot of its body, one entry per band, top to bottom */
+  reserved: readonly ReservedRoom[];
 }
 
 export interface PageOverlay {
@@ -75,7 +94,15 @@ interface PageLayoutOptions {
    * change by the caller. A4 where a document names none, and where none is open
    */
   sections?: readonly SectionPixels[];
+  /**
+   * The bands the demands of the text are kept in (`page/demands`), by name. Left out, the pages
+   * are the ones the blocks alone come to, which is also what a document asking for no room
+   * should be laid out through. A new value lays the pages out again
+   */
+  bands?: ReadonlyMap<string, DemandBand>;
 }
+
+const NO_ROOM: readonly ReservedRoom[] = [];
 
 /**
  * However many times it is called, the calls are coalesced into a single next frame.
@@ -138,6 +165,7 @@ export function usePageLayout({
   enabled,
   revision,
   sections,
+  bands,
 }: PageLayoutOptions): PageOverlay | null {
   const [overlay, setOverlay] = useState<PageOverlay | null>(null);
   const papers =
@@ -151,7 +179,15 @@ export function usePageLayout({
       if (!view || !box || !enabled) return;
 
       const measured = measureSheet(view, box);
-      const layout = pageLayout({ blocks: measured.blocks, sections: papers });
+      const layout = pageLayout({
+        blocks: measured.blocks,
+        sections: papers,
+        bands,
+      });
+      const roomOn = new Map<number, PageReservation[]>();
+      for (const room of layout.reserved) {
+        roomOn.set(room.page, [...(roomOn.get(room.page) ?? []), room]);
+      }
       /** The paper of the page that block opens, which is the paper of its own section */
       const paperOf = (pos: number) => sectionPaperAt(papers, pos);
       // One sheet is drawn at one width, the first section's (`styles/editor.css`), so where a
@@ -194,6 +230,8 @@ export function usePageLayout({
             measured.contentTop +
             start.bodyStart -
             (start.crossed ? 0 : paper.marginTop);
+          const bodyBottom =
+            measured.contentTop + start.bodyStart + paper.bodyHeight;
           return {
             page: start.page,
             pos: start.pos,
@@ -203,6 +241,18 @@ export function usePageLayout({
             left: sheet.marginLeft,
             width: sheet.bodyWidth,
             crossed: start.crossed,
+            reserved:
+              roomOn.get(start.page)?.map((room) => {
+                const top = measured.contentTop + room.top;
+                const height = Math.max(0, bodyBottom - top);
+                return {
+                  band: room.band,
+                  ids: room.ids,
+                  top,
+                  height: Math.min(room.height, height),
+                  clipped: room.height > height,
+                };
+              }) ?? NO_ROOM,
           };
         }),
       };
@@ -215,10 +265,14 @@ export function usePageLayout({
   // biome-ignore lint/correctness/useExhaustiveDependencies: revision is the remeasure trigger, compared by identity and never read - the doc must be read from view.state at measure time, not from this closure
   useEffect(() => {
     if (enabled) remeasure();
-  }, [remeasure, revision, enabled]);
+  }, [remeasure, revision, enabled, bands]);
 
+  // Everything the last measurement left behind goes with the pages, the overlay included: held
+  // on, it would be handed out again the moment a consumer turns them back on, and the guides and
+  // the footnotes standing over them would be drawn at positions measured before they went off
   useEffect(() => {
     if (enabled) return;
+    setOverlay(null);
     layer.current?.style.removeProperty(editorCssVariables.sheetHeight);
     if (!view) return;
     setPageMarks(view, { pushes: [], cuts: [] });

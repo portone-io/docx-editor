@@ -7,14 +7,21 @@
  * The engine's own marks are taken back off as they are read, so a block already pushed and a
  * break already given its space read as they would with neither applied. A measurement that read
  * them in would add to what is already there, and the layout would creep on every pass.
+ * Every demand source (`page/demands`) is asked about every block as well, after its kind, and the
+ * places it reads have the spaces the engine opened inside the block taken back off the same way.
  * Where there is no layout (in tests) everything is 0, so the result is a single page.
  */
 
 import type { Node as PMNode } from "prosemirror-model";
 import type { EditorView } from "prosemirror-view";
 import { editorAttributes } from "../styles/classNames";
-import { blockKindFor, type MeasuredBlock } from "./blockKinds";
-import { blockKindsOf } from "./pageDecorations";
+import {
+  type BreakCandidate,
+  blockKindFor,
+  type MeasuredBlock,
+  type MeasureTarget,
+} from "./blockKinds";
+import { blockKindsOf, demandSourcesOf } from "./pageDecorations";
 
 /**
  * The measurements taken in order to draw the page overlay. Positions are relative to
@@ -29,6 +36,8 @@ export interface SheetMeasure {
   contentBottom: number;
   blocks: MeasuredBlock[];
 }
+
+const NOTHING_OPENED: ReadonlyMap<number, number> = new Map();
 
 function pixels(value: string): number {
   const parsed = Number.parseFloat(value);
@@ -61,6 +70,33 @@ function drawnBlocks(view: EditorView): DrawnBlock[] {
   return found;
 }
 
+/**
+ * A place read off a block as drawn, taken back to where it stands in the block with no space in
+ * it. A cut opens a space, and the rows it repeats, just above the candidate it was given, so a
+ * place below that candidate is drawn lower by all of it and a place above it not at all.
+ *
+ * How much was opened is the kind's own answer, read off the sheet as drawn (`KindMeasure.opened`)
+ * rather than the height the layout asked the cut for: a table's spacer row takes half of a
+ * collapsed border on each side and comes out about half a pixel taller than it was given, and
+ * over several cuts a place below them would drift into the piece after its own. Asking the kind
+ * keeps a demand source from having to know what any kind draws.
+ */
+function naturalOffset(
+  candidates: readonly BreakCandidate[],
+  opened: ReadonlyMap<number, number>,
+  drawn: number
+): number {
+  let shift = 0;
+  for (const candidate of candidates) {
+    const space = opened.get(candidate.at);
+    if (space === undefined) continue;
+    const start = candidate.offset + shift;
+    if (drawn < start) break;
+    shift += Math.min(space, drawn - start);
+  }
+  return drawn - shift;
+}
+
 export function measureSheet(
   view: EditorView,
   layer: HTMLElement
@@ -75,6 +111,7 @@ export function measureSheet(
   const sheetY = (viewportY: number) => (viewportY - sheetRect.top) / scale;
 
   const kinds = blockKindsOf(view.state);
+  const sources = demandSourcesOf(view.state);
   const blocks: MeasuredBlock[] = [];
   let previousBottom = contentTop;
   /** Everything the engine has opened up above the point being read */
@@ -87,7 +124,7 @@ export function measureSheet(
     const above = applied;
     const blockY = (viewportY: number) => sheetY(viewportY) - above;
     const top = blockY(rect.top);
-    const measured = blockKindFor(kinds, node).measure({
+    const target: MeasureTarget = {
       view,
       node,
       pos,
@@ -95,7 +132,8 @@ export function measureSheet(
       sheetY: blockY,
       top,
       scale,
-    });
+    };
+    const measured = blockKindFor(kinds, node).measure(target);
 
     applied += measured.appliedHeight;
     const bottom = sheetY(rect.bottom) - applied;
@@ -108,6 +146,16 @@ export function measureSheet(
       candidates: measured.candidates,
       minFirstPiece: measured.minFirstPiece,
       keepWithNext: measured.keepWithNext ?? false,
+      demands: sources
+        .flatMap((source) => source.demandsIn(target))
+        .map((demand) => ({
+          ...demand,
+          offset: naturalOffset(
+            measured.candidates,
+            measured.opened ?? NOTHING_OPENED,
+            demand.offset
+          ),
+        })),
     });
     previousBottom = bottom;
   }

@@ -85,6 +85,7 @@ const SERIALIZE_TABLE_READS: readonly string[] = [
 const SERIALIZE_PARAGRAPH_READS: readonly string[] = [
   "alt",
   "brAttrs",
+  "customMarkFollows",
   "extent",
   "id",
   "kind",

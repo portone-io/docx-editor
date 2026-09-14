@@ -138,6 +138,9 @@ export function canFormatText(state: EditorState): boolean;
 export function canIncreaseIndent(state: EditorState): boolean;
 
 // @public
+export function canInsertFootnote(state: EditorState): boolean;
+
+// @public
 export function canInsertImage(state: EditorState): boolean;
 
 // @public
@@ -378,6 +381,9 @@ export const increaseIndent: Command;
 export const increaseListLevel: Command;
 
 // @public
+export const insertFootnote: Command;
+
+// @public
 export function insertImage(image: ImageToInsert): Command;
 
 // @public
@@ -504,6 +510,9 @@ export function setFontFamily(name: string | null): Command;
 
 // @public
 export function setFontSize(pt: number | null): Command;
+
+// @public
+export function setFootnoteBody(id: string, body: Node_2): Command;
 
 // @public
 export function setLineSpacing(spacing: LineSpacing): Command;

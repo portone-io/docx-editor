@@ -3,7 +3,7 @@
 import type { Node as PMNode } from "prosemirror-model";
 import type { EditorState } from "prosemirror-state";
 import { Decoration, DecorationSet } from "prosemirror-view";
-import { storyKey, storyOf, storyText } from "../../docx/story";
+import { type StoryKey, storyKey, storyOf, storyText } from "../../docx/story";
 import type { NoteKind } from "../../schema/stories";
 import { documentProjection } from "../plugins/documentProjection";
 
@@ -15,17 +15,21 @@ export interface DocumentNote {
   readonly referencePos: number;
 }
 
+/** One note the body refers to, as the notes drawn around the page draw it */
+export interface NoteRow {
+  readonly key: StoryKey;
+  readonly kind: NoteKind;
+  readonly label: string;
+  /** The note's story, the same node for as long as it says the same thing (`schema/stories`) */
+  readonly story: PMNode;
+}
+
 function stringAttr(value: unknown): string | null {
   return typeof value === "string" ? value : null;
 }
 
 function noteKindOf(node: PMNode): NoteKind {
   return node.attrs.kind === "endnote" ? "endnote" : "footnote";
-}
-
-/** What one note says, read off the story the document holds it in (`docx/story`) */
-function noteText(doc: PMNode, kind: NoteKind, id: string): string {
-  return storyText(storyOf(doc, storyKey(kind, id)));
 }
 
 interface NoteProjection {
@@ -36,40 +40,52 @@ interface NoteProjection {
    * says is a story on the document and not an attr of the reference.
    */
   tooltips: DecorationSet;
+  /** The footnotes whose story the document holds, by story key, in first-reference order */
+  footnotes: ReadonlyMap<StoryKey, NoteRow>;
+  /** The endnotes whose story the document holds, in first-reference order */
+  endnotes: readonly NoteRow[];
 }
 
 function deriveNotes(doc: PMNode): NoteProjection {
   const notes: DocumentNote[] = [];
   const tooltips: Decoration[] = [];
+  const footnotes = new Map<StoryKey, NoteRow>();
+  const endnotes: NoteRow[] = [];
   const seen = new Set<string>();
   doc.descendants((node, pos) => {
     if (node.type.name !== "noteReference") return true;
     const id = stringAttr(node.attrs.id);
     if (id === null) return true;
     const kind = noteKindOf(node);
-    const text = noteText(doc, kind, id);
+    const key = storyKey(kind, id);
+    const story = storyOf(doc, key);
+    const text = storyText(story);
     if (text !== "") {
       tooltips.push(Decoration.node(pos, pos + node.nodeSize, { title: text }));
     }
-    const key = storyKey(kind, id);
     if (seen.has(key)) return true;
     seen.add(key);
-    notes.push({
-      kind,
-      id,
-      label: stringAttr(node.attrs.label) ?? "?",
-      text,
-      referencePos: pos,
-    });
+    const label = stringAttr(node.attrs.label) ?? "?";
+    notes.push({ kind, id, label, text, referencePos: pos });
+    if (story !== null) {
+      const row: NoteRow = { key, kind, label, story };
+      if (kind === "footnote") footnotes.set(key, row);
+      else endnotes.push(row);
+    }
     return true;
   });
-  return { notes, tooltips: DecorationSet.create(doc, tooltips) };
+  return {
+    notes,
+    tooltips: DecorationSet.create(doc, tooltips),
+    footnotes,
+    endnotes,
+  };
 }
 
 /**
  * Which notes the document refers to is the document's to decide, so the list is worked out once
- * per edit (`editor/plugins/documentProjection`) rather than once per render of the panel under
- * the page.
+ * per edit (`editor/plugins/documentProjection`) rather than once per render of the notes drawn
+ * around the page.
  */
 export const noteProjection = documentProjection<NoteProjection>(
   "docxEditorNotes",

@@ -344,12 +344,36 @@ export function documentDefaultsStyle(
   defaults: DocumentDefaults,
   fontFallbacks: FontFallbacks = DEFAULT_FONT_FALLBACKS
 ): string {
+  return Object.entries(documentDefaultsVariables(defaults, fontFallbacks))
+    .map(([name, value]) => `${name}:${value}`)
+    .join(";");
+}
+
+export type DocumentDefaultsVariables = Readonly<
+  Record<
+    | typeof editorCssVariables.fontSize
+    | typeof editorCssVariables.lineHeight
+    | typeof editorCssVariables.fontFamily,
+    string
+  >
+>;
+
+/**
+ * The same values as the variables they are written into, for a box drawn outside the sheet that
+ * is to set its text the way the sheet does: a note drawn at the foot of a page, or after the last
+ */
+export function documentDefaultsVariables(
+  defaults: DocumentDefaults,
+  fontFallbacks: FontFallbacks = DEFAULT_FONT_FALLBACKS
+): DocumentDefaultsVariables {
   const fontFamily = defaults.fontFamily
     ? withFontFallback(defaults.fontFamily, fontFallbacks)
     : fontFallbacks.defaultStack;
-  return [
-    `${editorCssVariables.fontSize}:${pt(defaults.fontSizePt ?? FALLBACK_FONT_SIZE_PT)}`,
-    `${editorCssVariables.lineHeight}:${lineHeightValue(defaults.lineSpacing)}`,
-    `${editorCssVariables.fontFamily}:${fontFamily}`,
-  ].join(";");
+  return {
+    [editorCssVariables.fontSize]: pt(
+      defaults.fontSizePt ?? FALLBACK_FONT_SIZE_PT
+    ),
+    [editorCssVariables.lineHeight]: lineHeightValue(defaults.lineSpacing),
+    [editorCssVariables.fontFamily]: fontFamily,
+  };
 }

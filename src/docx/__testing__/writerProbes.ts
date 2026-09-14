@@ -18,7 +18,7 @@
  */
 
 import { unzipSync } from "fflate";
-import type { Node as PMNode } from "prosemirror-model";
+import { Fragment, type Node as PMNode } from "prosemirror-model";
 import {
   type Command,
   type EditorState,
@@ -41,13 +41,16 @@ import {
   addCommentReply,
   type DocumentComment,
   type DocumentCommentReply,
+  type DocumentNote,
   decreaseIndent,
   decreaseListLevel,
   documentComments,
+  documentNotes,
   documentParagraphStyles,
   type ImageToInsert,
   increaseIndent,
   increaseListLevel,
+  insertFootnote,
   insertImage,
   insertLineBreak,
   insertPageBreak,
@@ -67,6 +70,7 @@ import {
   setCommentResolved,
   setFontFamily,
   setFontSize,
+  setFootnoteBody,
   setLineSpacing,
   setLink,
   setParagraphAlign,
@@ -100,6 +104,7 @@ import {
 } from "../../ooxml/xml";
 import { docxSchema } from "../../schema";
 import { sameSource } from "../../schema/sourceEquality";
+import { storyKey, storyNodeOf } from "../../schema/stories";
 import {
   addColumnAfter,
   addColumnBefore,
@@ -423,6 +428,51 @@ function replyReading(
     throw new Error(`the comment holds no reply reading "${text}"`);
   }
   return reply;
+}
+
+/** What the footnote the battery inserts is given to say, which the footnotes part has to carry */
+const FOOTNOTE_TEXT = "The footnote the battery wrote";
+
+/** The footnote the battery inserted, which takes an id above every one the document had */
+function newestFootnote(state: EditorState): DocumentNote {
+  const newest = documentNotes(state)
+    .filter((note) => note.kind === "footnote")
+    .reduce<DocumentNote | null>(
+      (latest, note) =>
+        latest === null || Number(note.id) > Number(latest.id) ? note : latest,
+      null
+    );
+  if (newest === null) throw new Error("the document refers to no footnote");
+  return newest;
+}
+
+/** That footnote's story with italic words after its number, as a composer of one's own writes one */
+function footnoteBody(state: EditorState): PMNode {
+  const story = storyNodeOf(
+    state.doc,
+    storyKey("footnote", newestFootnote(state).id)
+  );
+  const paragraph = story?.firstChild;
+  if (!story || !paragraph) throw new Error("the footnote holds no paragraph");
+  const words = docxSchema.text(FOOTNOTE_TEXT, [
+    docxSchema.marks.run.create({ rPr: "<w:rPr><w:i/></w:rPr>" }),
+  ]);
+  return story.copy(
+    Fragment.from(paragraph.copy(paragraph.content.addToEnd(words)))
+  );
+}
+
+/** The text of the footnotes part the export wrote, under whichever name the package gives it */
+function footnotesPart(exported: ExportedPackage): string {
+  const path = Object.keys(exported.parts).find(
+    (name) =>
+      name.endsWith(".xml") &&
+      /<(?:\w+:)?footnotes[\s>]/.test(exported.text(name))
+  );
+  if (path === undefined) {
+    throw new Error(`${exported.name} wrote no footnotes part`);
+  }
+  return exported.text(path);
 }
 
 /** The address a probe links a stretch of text to, which the export writes a relationship for */
@@ -1415,6 +1465,42 @@ export const WRITER_PROBES: Readonly<Record<string, readonly WriterProbe[]>> = {
         ).not.toContain(ANOTHER_COMMENT.text),
     },
   ],
+  insertFootnote: [
+    {
+      name: "insert a footnote",
+      slot: "pictured",
+      check: (before, after) => {
+        const footnotes = (state: EditorState) =>
+          documentNotes(state).filter((note) => note.kind === "footnote");
+        expect(footnotes(after).length).toBe(footnotes(before).length + 1);
+        expect(newestFootnote(after).text).toBe("");
+      },
+      run: (state) => ran(state, insertFootnote),
+    },
+  ],
+  setFootnoteBody: [
+    {
+      name: "write a formatted body into that footnote",
+      slot: "pictured",
+      check: (_before, after) =>
+        expect(newestFootnote(after).text).toBe(FOOTNOTE_TEXT),
+      run: (state) =>
+        ran(
+          state,
+          setFootnoteBody(newestFootnote(state).id, footnoteBody(state))
+        ),
+      expect: (exported) => {
+        const part = footnotesPart(exported);
+        expect(part, `${exported.name} footnotes part`).toContain(
+          FOOTNOTE_TEXT
+        );
+        expect(
+          part,
+          `${exported.name} writes the run formatting a footnote body was given`
+        ).toContain("<w:rPr><w:i/></w:rPr>");
+      },
+    },
+  ],
   // The locks go last: the lock guard turns down every edit reaching into a locked stretch,
   // whichever probe asked for it. The stretch locked first is the one now carrying a link, so the
   // export writes a control around a hyperlink as well
@@ -1482,6 +1568,7 @@ export const NOT_A_WRITER: Readonly<Record<string, string>> = {
   canExport: "the query an export control is drawn from",
   canFormatText: "the query the character formatting controls are drawn from",
   canIncreaseIndent: "the query the increase-indent button is drawn from",
+  canInsertFootnote: "the query an insert-footnote control is drawn from",
   canInsertImage: "the query the image button is drawn from",
   canInsertTable: "the query the insert-table button is drawn from",
   canMergeCells: "the query the merge row is drawn from",
@@ -1499,7 +1586,8 @@ export const NOT_A_WRITER: Readonly<Record<string, string>> = {
   documentFidelity: "a query about the document, writing nothing",
   documentFontNames: "the fonts the document names",
   documentHasLocked: "a query about the document",
-  documentNotes: "the notes displayed after the document",
+  documentNotes:
+    "the notes drawn at the foot of their pages and after the last page",
   documentParagraphStyles: "the styles the document defines",
   editingProtection: "a query about what the editor as a whole may receive",
   fittedExtent: "the rule an oversized image is shrunk by",

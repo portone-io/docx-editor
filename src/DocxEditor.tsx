@@ -54,7 +54,7 @@ import type { FontFallbacks } from "./styles/fontStack";
 import { CommentsPanel, shownBesideThePage } from "./ui/CommentsPanel";
 import { LinkCard } from "./ui/LinkCard";
 import { LinkPanel } from "./ui/LinkPanel";
-import { NotesPanel } from "./ui/NotesPanel";
+import { NotesAroundPage, useNoteBands } from "./ui/notes/noteBands";
 import type { DocxEditorPresets } from "./ui/presets";
 import { TableMenu } from "./ui/TableMenu";
 import { TextMenu } from "./ui/TextMenu";
@@ -540,12 +540,21 @@ function DocxEditorSurface(
     [sections]
   );
 
+  // What the notes ask a page to keep at its foot, and what draws them, in one place
+  // (`ui/notes/noteBands`): a second band is another of these rather than more of this component
+  const notes = useNoteBands({
+    state: live?.state ?? null,
+    of: opened,
+    fontFallbacks: mountedFontFallbacks,
+  });
+
   const overlay = usePageLayout({
     view: live?.view ?? null,
     layer: layerRef,
     enabled: showPageGuides,
     revision: live?.state.doc,
     sections: sectionPapers,
+    bands: notes.bands,
   });
 
   const headersFootersFor = useMemo(() => {
@@ -656,9 +665,13 @@ function DocxEditorSurface(
                 headersFootersFor={headersFootersFor}
               />
             )}
-            {live && opened?.status === "opened" && (
-              <NotesPanel state={live.state} pageWidth={page.pageWidth} />
-            )}
+            <NotesAroundPage
+              notes={notes}
+              overlay={overlay}
+              page={page}
+              pageGuides={showPageGuides}
+              zoom={effectiveZoom}
+            />
           </div>
           {!commentsOpen && commentsPanel}
         </div>

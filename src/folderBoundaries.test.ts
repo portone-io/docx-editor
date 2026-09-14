@@ -216,4 +216,52 @@ describe("the folder layering", () => {
       `these modules read each other:\n${cycle.join(" ->\n")}\nMove what both of them need into a module that imports neither, or make one of the two imports \`import type\`.`
     ).toEqual([]);
   });
+
+  /**
+   * A band is a name, a place at the foot of a page, an overhead and a measured height on one side
+   * (`page/demands`) and something drawing exactly that much on the other. Assembled in the module
+   * that mounts the editor, a second band would mean editing that module rather than writing one
+   * of its own, and the two halves could drift apart with nothing to catch it.
+   */
+  it("assembles no demand band in the component that mounts the editor", () => {
+    const root = join(srcDir, "DocxEditor.tsx");
+    const bandParts =
+      /(FOOTNOTE_BAND|NOTE_SEPARATOR_HEIGHT|useNoteHeights|DemandBand)/;
+
+    const named = importsOf(root)
+      .filter(({ specifier }) => bandParts.test(specifier))
+      .map(({ specifier }) => specifier);
+    const source = readFileSync(root, "utf8");
+
+    expect(files).toContain(root);
+    expect(named, named.join("\n")).toEqual([]);
+    expect(
+      bandParts.test(source),
+      "DocxEditor.tsx names a band's parts; a band belongs to the folder that draws it"
+    ).toBe(false);
+  });
+
+  /**
+   * A side story is drawn at the foot of a page, in a rail beside the page, and in a page's
+   * margin, so what draws one cannot know which of them it is drawing for
+   */
+  it("keeps editor/stories free of page, notes, comments, and ui modules", () => {
+    const storiesDir = join(srcDir, "editor", "stories");
+    const stories = files.filter((file) => file.startsWith(storiesDir + sep));
+    const forbidden =
+      /(^|\/)(page|ui|notes|comments)(\/|$)|(note|comment)[^/]*\.tsx?$/i;
+
+    const reached = stories.flatMap((file) =>
+      importsOf(file)
+        .filter(({ target }) =>
+          forbidden.test(relative(srcDir, target).split(sep).join("/"))
+        )
+        .map(
+          ({ specifier }) => `${relative(srcDir, file)} imports "${specifier}"`
+        )
+    );
+
+    expect(stories.length).toBeGreaterThan(0);
+    expect(reached, reached.join("\n")).toEqual([]);
+  });
 });

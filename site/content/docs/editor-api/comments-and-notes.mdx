@@ -1,6 +1,6 @@
 ---
 title: Comments and notes
-description: Write, edit, resolve and read comment threads, and read the document's footnotes and endnotes.
+description: Write, edit, resolve and read comment threads, insert and edit footnotes, and read the document's footnotes and endnotes.
 ---
 
 Everything on this page comes from `@portone/docx-editor/commands`.
@@ -101,3 +101,21 @@ first-reference order, each a read-only `DocumentNote` with `kind` (`"footnote"`
 `label` is empty for a reference that draws its own mark rather than a number, which is how the
 file asks for a dagger or an asterisk of its own; the mark itself stands in the document beside
 the reference, so such a note is named by its kind alone on the page.
+
+| Command | What it does |
+| --- | --- |
+| `insertFootnote` | Puts a footnote reference at the end of the selection, calling a new footnote that holds no text yet. |
+| `canInsertFootnote(state)` | Whether a footnote can go in at the end of the selection. |
+| `setFootnoteBody(id, body)` | Replaces a footnote's body with a `doc` node of `docxSchema`, as `setCommentBody` does for a comment. |
+
+A new footnote is written in the document's `FootnoteText` paragraph style with its number in the
+`FootnoteReference` character style where the document defines them, and in superscript where it
+does not.
+Neither command applies under the `readOnly` and `comment` modes or where the reference stands in
+locked content.
+`setFootnoteBody` also answers `false` for an id no reference in the text names, for a separator
+entry, and for a body that says what the footnote already says.
+
+A transaction that deletes the last reference to a footnote deletes the footnote with it, so one undo
+brings both back; one that copies a reference gives the copy a new id and a copy of the footnote.
+Endnotes have no commands, and an endnote reference cannot be deleted or copied.

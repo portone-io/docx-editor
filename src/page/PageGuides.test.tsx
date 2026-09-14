@@ -25,6 +25,7 @@ function face(page: number, top: number): PageFace {
     left: 80,
     width: 640,
     crossed: false,
+    reserved: [],
   };
 }
 

@@ -14,3 +14,16 @@ Measured on Apple M4 with 16 GiB RAM, macOS 26.5.1, and Node.js 22.18.0. Times a
 | rich | 4,000 | 973.7 (2.16x) | 552.2 (2.48x) | 99.2 (3.98x) | 62,668.2 (11.88x) |
 
 The export column is load-sensitive, swinging several times over between a busy and an idle machine, so only ratios measured on an idle machine are comparable with these.
+
+## Notes
+
+The notes case opens 1,000 paragraphs referring to 280 footnotes and 20 endnotes, each note holding a bold run and every fourth a second paragraph, beside the same paragraphs referring to nothing.
+`Markup` draws every note's story as the notes around the page draw it.
+`Demands` asks the footnote source about every block once, and `Again` asks a second time, as the next layout pass does; the source remembers what each block node holds, and in jsdom nothing has a layout to read.
+`Layout` is the median of 21 page layout passes over synthetic 20px blocks carrying those demands, with the footnote band for the document with notes and no band for the one without, which is what the editor hands over.
+Times are milliseconds, measured on the same machine as above.
+
+| Case | Import | State | Markup | Demands | Again | Layout |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| no notes | 34.8 | 13.0 | 0.0 | 0.23 | 0.02 | 0.26 |
+| 280 footnotes, 20 endnotes | 92.8 | 28.3 | 11.8 | 3.39 | 0.44 | 0.23 |

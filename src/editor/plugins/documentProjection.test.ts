@@ -125,6 +125,25 @@ describe("a value projected from the document", () => {
     ]);
     expect(noteProjection.read(caretAt(opened, 1))).toBe(held);
   });
+
+  it("derives the note rows once per document change and not per selection change", () => {
+    const opened = createEditorState(importDocx(makeNotesDocx()).doc);
+    const held = noteProjection.read(opened);
+    expect([...held.footnotes.keys()]).toEqual(["footnote:2"]);
+    expect(held.endnotes.map((row) => row.key)).toEqual(["endnote:3"]);
+
+    const moved = caretAt(opened, 1);
+    expect(noteProjection.read(moved).footnotes).toBe(held.footnotes);
+    expect(noteProjection.read(moved).endnotes).toBe(held.endnotes);
+
+    const edited = moved.apply(moved.tr.insertText("x", 1));
+    const rows = noteProjection.read(edited);
+    expect(rows.footnotes).not.toBe(held.footnotes);
+    // A story the edit did not touch is the node it was, which is what a row is drawn from
+    expect(rows.footnotes.get("footnote:2")?.story).toBe(
+      held.footnotes.get("footnote:2")?.story
+    );
+  });
 });
 
 describe("public projection results", () => {

@@ -57,6 +57,14 @@ export function storyKey(kind: StoryKind, id: string): StoryKey {
 }
 
 /**
+ * The kinds of note an edit may add, delete, copy and rewrite.
+ *
+ * A reference to a note of any other kind stays where the file put it (`./preservedGuards`),
+ * since no writer puts that notes part back together.
+ */
+export const EDITABLE_NOTE_KINDS: readonly NoteKind[] = ["footnote"];
+
+/**
  * The key this text spells, or null for one that names no kind of story.
  *
  * An id carries colons of its own - a header is named by its part path - so the kind is read off

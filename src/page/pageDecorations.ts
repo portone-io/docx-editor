@@ -3,7 +3,8 @@
  * own kind draws the cuts inside it as (`page/kinds`).
  *
  * The kinds the editor was built with are held here, so the measurement and the decorations read
- * one registry and a block is measured by the same kind that draws it.
+ * one registry and a block is measured by the same kind that draws it. The demand sources
+ * (`page/demands`) the measurement asks about every block are held beside them.
  * The document model is left untouched, so no trace of any of it is left in the exported XML or
  * in the edit history.
  */
@@ -18,6 +19,7 @@ import {
 import { Decoration, DecorationSet, type EditorView } from "prosemirror-view";
 import { editorAttributes } from "../styles/classNames";
 import { type BlockKind, blockKindFor, type PageCut } from "./blockKinds";
+import { DEFAULT_DEMAND_SOURCES, type DemandSource } from "./demands";
 import { DEFAULT_BLOCK_KINDS } from "./kinds";
 import type { BlockPush } from "./pageLayout";
 
@@ -36,8 +38,12 @@ export interface PageMarksInput {
 
 interface PageMarks extends PageMarksInput {
   kinds: readonly BlockKind[];
+  sources: readonly DemandSource[];
   decorations: DecorationSet;
 }
+
+/** What the editor was built with, which every set of marks carries on to the next */
+type PageRegistry = Pick<PageMarks, "kinds" | "sources">;
 
 const marksKey = new PluginKey<PageMarks>("docxPageDecorations");
 
@@ -106,12 +112,13 @@ function decorationsFor(
 
 function marksFor(
   doc: PMNode,
-  kinds: readonly BlockKind[],
+  { kinds, sources }: PageRegistry,
   pushes: readonly BlockPush[],
   cuts: readonly PageCut[]
 ): PageMarks {
   return {
     kinds,
+    sources,
     pushes,
     cuts,
     decorations: decorationsFor(doc, kinds, pushes, cuts),
@@ -168,12 +175,13 @@ function samePageMarks(a: PageMarksInput, b: PageMarksInput): boolean {
 }
 
 export function pageDecorations(
-  kinds: readonly BlockKind[] = DEFAULT_BLOCK_KINDS
+  kinds: readonly BlockKind[] = DEFAULT_BLOCK_KINDS,
+  sources: readonly DemandSource[] = DEFAULT_DEMAND_SOURCES
 ): Plugin<PageMarks> {
   return new Plugin<PageMarks>({
     key: marksKey,
     state: {
-      init: (_config, state) => marksFor(state.doc, kinds, [], []),
+      init: (_config, state) => marksFor(state.doc, { kinds, sources }, [], []),
       apply(tr, value) {
         const next = tr.getMeta(marksKey);
         if (next) return next;
@@ -184,7 +192,7 @@ export function pageDecorations(
         // points at
         return marksFor(
           tr.doc,
-          value.kinds,
+          value,
           value.pushes.map((push) => ({
             ...push,
             pos: tr.mapping.map(push.pos),
@@ -210,6 +218,16 @@ export function blockKindsOf(state: EditorState): readonly BlockKind[] {
   return marksKey.getState(state)?.kinds ?? DEFAULT_BLOCK_KINDS;
 }
 
+/** The demand sources the editor was built with, which the measurement asks about every block */
+export function demandSourcesOf(state: EditorState): readonly DemandSource[] {
+  return marksKey.getState(state)?.sources ?? DEFAULT_DEMAND_SOURCES;
+}
+
+/** The cuts the sheet is drawn with, whose spaces the measurement takes back off a demand's place */
+export function pageCutsOf(state: EditorState): readonly PageCut[] {
+  return marksKey.getState(state)?.cuts ?? [];
+}
+
 function current(view: EditorView): PageMarksInput {
   return marksKey.getState(view.state) ?? { pushes: [], cuts: [] };
 }
@@ -223,7 +241,10 @@ export function setPageMarks(view: EditorView, next: PageMarksInput): void {
         marksKey,
         marksFor(
           view.state.doc,
-          blockKindsOf(view.state),
+          {
+            kinds: blockKindsOf(view.state),
+            sources: demandSourcesOf(view.state),
+          },
           next.pushes,
           next.cuts
         )

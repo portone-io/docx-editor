@@ -24,6 +24,7 @@ import type {
   DocxHarness,
 } from "./api";
 import { longTableFixture } from "./longTableFixture";
+import { notesFixture } from "./notesFixture";
 import { tabFixture } from "./tabFixture";
 import { twoSectionsFixture } from "./twoSectionsFixture";
 
@@ -47,9 +48,12 @@ function fixtureUrl(name: string): string {
 async function loadFixture(name: string): Promise<DocxBytes> {
   const generated =
     name === "long-table" || name === "tabs" || name === "two-sections";
-  const fixture = generated ? DEFAULT_FIXTURE : name;
+  // The notes document is built over the demo, whose header and footer it keeps
+  const fixture =
+    name === "notes" ? "demo" : generated ? DEFAULT_FIXTURE : name;
   const response = await fetch(fixtureUrl(fixture));
   const bytes = new Uint8Array(await response.arrayBuffer());
+  if (name === "notes") return notesFixture(bytes);
   if (name === "long-table") return longTableFixture(bytes);
   if (name === "tabs") return tabFixture(bytes);
   if (name === "two-sections") return twoSectionsFixture(bytes);
