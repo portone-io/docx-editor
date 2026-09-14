@@ -1,5 +1,29 @@
 # @portone/docx-editor
 
+## 0.6.1
+
+### Patch Changes
+
+- [#137](https://github.com/portone-io/docx-editor/pull/137) [`a2f1a96`](https://github.com/portone-io/docx-editor/commit/a2f1a96a97c9dd45e07c962ae4a85e8d6954f657) Thanks [@Deea222](https://github.com/Deea222)! - Typing with an IME over a selection that begins at a footnote's number now replaces the selection. Selecting the whole of a footnote and typing over it left its words standing behind the composed text.
+
+- [#138](https://github.com/portone-io/docx-editor/pull/138) [`16467c2`](https://github.com/portone-io/docx-editor/commit/16467c21934d9659f6e0b85d2094277cfcaa7366) Thanks [@Deea222](https://github.com/Deea222)! - Edit, insert, delete, and copy endnotes the way footnotes are, and draw them after the last paragraph of the document.
+
+- [#137](https://github.com/portone-io/docx-editor/pull/137) [`a2f1a96`](https://github.com/portone-io/docx-editor/commit/a2f1a96a97c9dd45e07c962ae4a85e8d6954f657) Thanks [@Deea222](https://github.com/Deea222)! - Paste a copied footnote reference with a copy of its footnote.
+
+- [#137](https://github.com/portone-io/docx-editor/pull/137) [`a2f1a96`](https://github.com/portone-io/docx-editor/commit/a2f1a96a97c9dd45e07c962ae4a85e8d6954f657) Thanks [@Deea222](https://github.com/Deea222)! - Edit footnotes in place: insert one from the right-click menu or with Mod+Alt+F, open it by clicking its number, and leave it with Escape.
+
+- [#136](https://github.com/portone-io/docx-editor/pull/136) [`3c74b87`](https://github.com/portone-io/docx-editor/commit/3c74b87e52233b990e820752d50383411032e81d) Thanks [@Deea222](https://github.com/Deea222)! - Add the `insertFootnote`, `canInsertFootnote`, and `setFootnoteBody` commands, and delete a footnote together with its last reference, so one undo brings both back.
+
+- [#136](https://github.com/portone-io/docx-editor/pull/136) [`3c74b87`](https://github.com/portone-io/docx-editor/commit/3c74b87e52233b990e820752d50383411032e81d) Thanks [@Deea222](https://github.com/Deea222)! - Draw footnotes at the foot of the page that refers to them, with the page ending above them, and list endnotes with their formatting after the last page, in place of the plain-text notes list.
+
+- [#135](https://github.com/portone-io/docx-editor/pull/135) [`d6c701e`](https://github.com/portone-io/docx-editor/commit/d6c701ee3ce60b52772c7413e9f003fc717dbd77) Thanks [@Deea222](https://github.com/Deea222)! - Number footnotes and endnotes in the document's own format, starting number, and section restarts, and renumber them after every edit. A reference that carries its own mark, such as a dagger, is announced by its kind alone rather than by a number it does not have.
+
+- [#135](https://github.com/portone-io/docx-editor/pull/135) [`d6c701e`](https://github.com/portone-io/docx-editor/commit/d6c701ee3ce60b52772c7413e9f003fc717dbd77) Thanks [@Deea222](https://github.com/Deea222)! - Save an edited, added, or deleted footnote or endnote into the file, creating the notes part where the document had none. An export that changed something nothing writes back yet, such as a note separator, is refused rather than saved without the change.
+
+- [#140](https://github.com/portone-io/docx-editor/pull/140) [`a35b24c`](https://github.com/portone-io/docx-editor/commit/a35b24ccbac8cbc9d851381290e0e469a4abc6f1) Thanks [@Deea222](https://github.com/Deea222)! - Fix arrow navigation entering page-break spacing near footnotes, where typed text could appear without being saved in the document.
+
+- [#139](https://github.com/portone-io/docx-editor/pull/139) [`0e8c474`](https://github.com/portone-io/docx-editor/commit/0e8c474a913c5dba8f40cdc539c401782fba5c64) Thanks [@Deea222](https://github.com/Deea222)! - A document breaks into the same pages at every zoom and window width. Below a zoom of about 0.8, a document sitting close to a page boundary could gain a page and its pages could move as the window narrowed; a scale an application puts around the editor, such as a dialog that opens on a scale, no longer moves them either.
+
 ## 0.6.0
 
 ### Minor Changes
