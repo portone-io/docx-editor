@@ -110,6 +110,8 @@ export const paragraphKind: BlockKind = {
       into.push(
         Decoration.inline(at, at + size, {
           nodeName: "span",
+          // Chrome can enter the enlarged break and insert text outside the document model.
+          contenteditable: "false",
           style: spaceStyle(height),
           [editorAttributes.pageBreakSpace]: `${height}`,
         })
