@@ -25,7 +25,9 @@ import {
   createEditorState,
   editorStateForSession,
 } from "../editor/createEditor";
-import type { DocxExportError } from "../ooxml/errors";
+// A test file is exempt from the folder ranks, so the editor's own lookup answers here too
+import { noteReferenceAt } from "../editor/plugins/noteNavigation";
+import { DocxExportError } from "../ooxml/errors";
 import { docxSchema } from "../schema";
 import {
   STORIES_ATTR,
@@ -59,7 +61,11 @@ const MERGED_TABLE =
 
 const REL_BASE =
   "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+const EXTENDED_REL =
+  "http://schemas.microsoft.com/office/2011/relationships/commentsExtended";
+const DOCUMENT_RELS = "word/_rels/document.xml.rels";
 const W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const W15_NS = "http://schemas.microsoft.com/office/word/2012/wordml";
 
 /** A package whose Comments part has a root the writer cannot rewrite around */
 function rootlessCommentsDocx(body: string): Uint8Array {
@@ -214,6 +220,12 @@ describe("bookmark pairs", () => {
       {
         code: "malformed-xml",
         message: "bookmark 8 has no end marker",
+        reason: {
+          kind: "unmatched-bookmark",
+          id: "8",
+          marker: "start",
+          story: null,
+        },
         pos: opened.doc.child(0).nodeSize,
       },
     ]);
@@ -237,11 +249,21 @@ describe("bookmark pairs", () => {
       {
         code: "malformed-xml",
         message: "bookmark 8 has more than one start marker",
+        reason: {
+          kind: "repeated-bookmark-start",
+          id: "8",
+          story: null,
+        },
         pos: start.nodeSize + inside.nodeSize,
       },
       {
         code: "unsupported-content",
         message: "a preserved block stands in two places (rawBlock)",
+        reason: {
+          kind: "duplicate-preserved-block",
+          node: "rawBlock",
+          story: null,
+        },
         pos: start.nodeSize + inside.nodeSize,
       },
     ]);
@@ -260,7 +282,50 @@ describe("bookmark pairs", () => {
       {
         code: "malformed-xml",
         message: "bookmark 4 ends without an earlier start marker",
+        reason: {
+          kind: "unmatched-bookmark",
+          id: "4",
+          marker: "end",
+          story: null,
+        },
         pos: 2,
+      },
+    ]);
+  });
+
+  it("a bookmark marker carrying no id is a malformed-xml problem", () => {
+    const opened = importDocx(
+      makeDocx(`<w:bookmarkStart w:name="Range"/>${paragraph("Inside")}`)
+    );
+
+    expect(exportProblems(opened.doc, opened.session)).toEqual([
+      {
+        code: "malformed-xml",
+        message: "a bookmarkStart has no id",
+        reason: { kind: "unnamed-bookmark", marker: "start", story: null },
+        pos: 0,
+      },
+    ]);
+  });
+
+  it("preserved bookmark markup that does not parse is a malformed-xml problem", () => {
+    const opened = importDocx(makeDocx(paragraph("Body")));
+    const broken = opened.doc.copy(
+      Fragment.from([
+        opened.doc.child(0),
+        docxSchema.nodes.rawBlock.create({
+          name: "w:customXml",
+          xml: '<w:customXml><w:bookmarkStart w:id="3"',
+        }),
+      ])
+    );
+
+    expect(exportProblems(broken, opened.session)).toEqual([
+      {
+        code: "malformed-xml",
+        message: "preserved bookmark XML could not be parsed",
+        reason: { kind: "unreadable-preserved-xml", story: null },
+        pos: opened.doc.child(0).nodeSize,
       },
     ]);
   });
@@ -274,40 +339,57 @@ describe("bookmark pairs", () => {
       {
         code: "malformed-xml",
         message: "bookmark 9 ends without an earlier start marker",
+        reason: {
+          kind: "unmatched-bookmark",
+          id: "9",
+          marker: "end",
+          story: null,
+        },
         pos: 1 + "Inside".length,
       },
     ]);
   });
 });
 
+/** The table with its first cell merged down over more rows than the table has */
+function withOverlongMerge(table: PMNode): PMNode {
+  return table.copy(
+    Fragment.from(
+      table.children.map((row, index) =>
+        index === 0
+          ? row.copy(
+              Fragment.from(
+                row.children.map((entry, column) =>
+                  column === 0
+                    ? entry.type.create(
+                        { ...entry.attrs, rowspan: 9 },
+                        entry.content
+                      )
+                    : entry
+                )
+              )
+            )
+          : row
+      )
+    )
+  );
+}
+
 describe("table grids", () => {
   it("a vertical merge past the last row is an invalid-table problem", () => {
     const opened = importDocx(makeDocx(paragraph("Before") + MERGED_TABLE));
-    const table = opened.doc.child(1);
-    const rows = table.children.map((row, index) =>
-      index === 0
-        ? row.copy(
-            Fragment.from(
-              row.children.map((entry, column) =>
-                column === 0
-                  ? entry.type.create(
-                      { ...entry.attrs, rowspan: 9 },
-                      entry.content
-                    )
-                  : entry
-              )
-            )
-          )
-        : row
-    );
     const overlong = opened.doc.copy(
-      Fragment.from([opened.doc.child(0), table.copy(Fragment.from(rows))])
+      Fragment.from([
+        opened.doc.child(0),
+        withOverlongMerge(opened.doc.child(1)),
+      ])
     );
 
     expect(exportProblems(overlong, opened.session)).toEqual([
       {
         code: "invalid-table",
         message: "a vertical merge in the table reaches past the last row",
+        reason: { kind: "vertical-merge-past-table", story: null },
         pos: opened.doc.child(0).nodeSize,
       },
     ]);
@@ -328,6 +410,7 @@ describe("preserved originals", () => {
       {
         code: "lost-original",
         message: "a preserved block has lost its original XML",
+        reason: { kind: "lost-preserved-xml", node: "rawBlock", story: null },
         pos: opened.doc.child(0).nodeSize,
       },
     ]);
@@ -349,6 +432,12 @@ describe("preserved originals", () => {
       {
         code: "lost-original",
         message: `a preserved block comes from another document (${alpha.session.sessionId})`,
+        reason: {
+          kind: "preserved-from-another-document",
+          node: "rawBlock",
+          sessionId: alpha.session.sessionId,
+          story: null,
+        },
         pos: beta.doc.child(0).nodeSize,
       },
     ]);
@@ -373,6 +462,11 @@ describe("unique identities", () => {
       {
         code: "unsupported-content",
         message: "a preserved block stands in two places (rawBlock)",
+        reason: {
+          kind: "duplicate-preserved-block",
+          node: "rawBlock",
+          story: null,
+        },
         pos: opened.doc.child(0).nodeSize + placeholder.nodeSize,
       },
     ]);
@@ -403,6 +497,32 @@ describe("the numbering part", () => {
   });
 });
 
+describe("list definitions", () => {
+  it("a paragraph in a list nothing defines is an unsupported-content problem", () => {
+    const opened = importDocx(makeDeclaredDocx(paragraph("Body")));
+    const first = opened.doc.child(0);
+    const listed = opened.doc.copy(
+      Fragment.from([
+        first.type.create(
+          { ...first.attrs, format: { numbering: { numId: 7, ilvl: 0 } } },
+          first.content,
+          first.marks
+        ),
+        ...opened.doc.children.slice(1),
+      ])
+    );
+
+    expect(exportProblems(listed, opened.session)).toEqual([
+      {
+        code: "unsupported-content",
+        message: "the list numbered 7 has no definition to be written",
+        reason: { kind: "undefined-list", numId: 7, story: null },
+        pos: 0,
+      },
+    ]);
+  });
+});
+
 describe("content types", () => {
   it("an inserted image without a content types part is a missing-content-types problem", () => {
     const opened = importDocx(makeDocx(paragraph("Body")));
@@ -414,6 +534,7 @@ describe("content types", () => {
         code: "missing-content-types",
         message:
           "cannot add an image to a package that has no [Content_Types].xml",
+        reason: { kind: "missing-content-types", part: "media" },
       },
     ]);
   });
@@ -439,6 +560,7 @@ describe("content types", () => {
         code: "missing-content-types",
         message:
           "cannot add a part to a package that has no [Content_Types].xml",
+        reason: { kind: "missing-content-types", part: "commentsExtended" },
       },
     ]);
   });
@@ -451,6 +573,7 @@ describe("content types", () => {
         code: "missing-content-types",
         message:
           "cannot add a part to a package that has no [Content_Types].xml",
+        reason: { kind: "missing-content-types", part: "numbering" },
       },
     ]);
   });
@@ -464,6 +587,83 @@ describe("content types", () => {
         code: "missing-content-types",
         message:
           "cannot add a part to a package that has no [Content_Types].xml",
+        reason: { kind: "missing-content-types", part: "comments" },
+      },
+    ]);
+  });
+});
+
+/** The state with a comment written over the first word by an author the file records */
+function withCommentBy(
+  state: EditorState,
+  author: string,
+  authorId: string
+): EditorState {
+  const { from, to } = rangeOfText(state.doc, "Body");
+  return apply(
+    select(state, from, to),
+    addComment({ text: `${author} was here`, author, authorId })
+  );
+}
+
+describe("the comment parts", () => {
+  it("names the people part when a new author has nowhere to be recorded", () => {
+    const opened = importDocx(makeDeclaredDocx(paragraph("Body")));
+    const commented = withCommentBy(
+      editorStateForSession(opened),
+      "Ada",
+      "ada"
+    );
+    const saved = unzipSync(exportDocx(commented.doc, opened.session));
+    delete saved["[Content_Types].xml"];
+    delete saved["word/people.xml"];
+    const reopened = importDocx(zipSync(saved));
+    const second = withCommentBy(
+      editorStateForSession(reopened),
+      "Grace",
+      "grace"
+    );
+
+    expect(exportProblems(second.doc, reopened.session)).toEqual([
+      {
+        code: "missing-content-types",
+        message:
+          "cannot add a part to a package that has no [Content_Types].xml",
+        reason: { kind: "missing-content-types", part: "people" },
+      },
+    ]);
+  });
+
+  it("reports an extended comments part with no root once a thread changes", () => {
+    const encoder = new TextEncoder();
+    const opened = importDocx(makeDeclaredDocx(paragraph("Body")));
+    const commented = withComment(editorStateForSession(opened));
+    const saved = unzipSync(exportDocx(commented.doc, opened.session));
+    saved["word/commentsExtended.xml"] = encoder.encode(
+      `<w15:notes xmlns:w15="${W15_NS}"/>`
+    );
+    saved[DOCUMENT_RELS] = encoder.encode(
+      new TextDecoder()
+        .decode(saved[DOCUMENT_RELS])
+        .replace(
+          "</Relationships>",
+          `<Relationship Id="rId99" Target="commentsExtended.xml" Type="${EXTENDED_REL}"/>` +
+            "</Relationships>"
+        )
+    );
+    const reopened = importDocx(zipSync(saved));
+    const id = commentReferencesIn(reopened.doc).keys().next().value;
+    expect(id).toBeDefined();
+    const resolved = apply(
+      editorStateForSession(reopened),
+      setCommentResolved(id ?? "", true)
+    );
+
+    expect(refusedWith(resolved.doc, reopened)).toEqual([
+      {
+        code: "malformed-xml",
+        message: "the commentsEx part has no commentsEx root element",
+        reason: { kind: "unwritable-part-root", part: "commentsExtended" },
       },
     ]);
   });
@@ -479,6 +679,7 @@ describe("comment part roots", () => {
       {
         code: "malformed-xml",
         message: "the comments part has no comments root element",
+        reason: { kind: "unwritable-part-root", part: "comments" },
       },
     ]);
   });
@@ -512,6 +713,11 @@ describe("unique identities in a header", () => {
       {
         code: "unsupported-content",
         message: "a preserved block stands in two places (rawBlock)",
+        reason: {
+          kind: "duplicate-preserved-block",
+          node: "rawBlock",
+          story: { kind: "header", id: "word/header1.xml" },
+        },
       },
     ]);
     expect(() => exportDocx(edited, opened.session)).toThrowError(
@@ -534,13 +740,16 @@ function withStory(doc: PMNode, key: StoryKey, story: PMNode): PMNode {
   );
 }
 
-/** The problems the document reports, and that the export throws the first of them */
+/** The problems the document reports, and that the export throws the first of them as it stands */
 function refusedWith(doc: PMNode, opened: ReturnType<typeof importDocx>) {
   const problems = exportProblems(doc, opened.session);
-  expect(() => exportDocx(doc, opened.session)).toThrowError(
+  const write = () => exportDocx(doc, opened.session);
+  expect(write).toThrowError(DocxExportError);
+  expect(write).toThrowError(
     expect.objectContaining<Partial<DocxExportError>>({
       code: problems[0]?.code,
       message: problems[0]?.message,
+      problem: problems[0],
     })
   );
   return problems;
@@ -560,6 +769,11 @@ describe("stories no part writer writes", () => {
         code: "unsupported-content",
         message:
           "the header:word/header9.xml story was added, and no part writer carries that into the file",
+        reason: {
+          kind: "unwritten-story-change",
+          story: { kind: "header", id: "word/header9.xml" },
+          change: "added",
+        },
       },
     ]);
   });
@@ -580,6 +794,11 @@ describe("stories no part writer writes", () => {
         code: "unsupported-content",
         message:
           "the header:word/header1.xml story was removed, and no part writer carries that into the file",
+        reason: {
+          kind: "unwritten-story-change",
+          story: { kind: "header", id: "word/header1.xml" },
+          change: "removed",
+        },
       },
     ]);
   });
@@ -597,6 +816,11 @@ describe("stories no part writer writes", () => {
         code: "unsupported-content",
         message:
           "the footnote:-1 story was edited, and no part writer carries that into the file",
+        reason: {
+          kind: "unwritten-story-change",
+          story: { kind: "footnote", id: "-1" },
+          change: "edited",
+        },
       },
     ]);
   });
@@ -620,6 +844,7 @@ describe("the footnotes part", () => {
         code: "missing-content-types",
         message:
           "cannot add a part to a package that has no [Content_Types].xml",
+        reason: { kind: "missing-content-types", part: "footnotes" },
       },
     ]);
   });
@@ -637,6 +862,10 @@ describe("the footnotes part", () => {
         code: "unsupported-content",
         message:
           "the footnote:abc story is named by no whole number, and a w:footnote is identified by one",
+        reason: {
+          kind: "story-id-not-a-number",
+          story: { kind: "footnote", id: "abc" },
+        },
       },
     ]);
   });
@@ -658,11 +887,12 @@ describe("the footnotes part", () => {
       {
         code: "malformed-xml",
         message: "the footnotes part has no footnotes root element",
+        reason: { kind: "unwritable-part-root", part: "footnotes" },
       },
     ]);
   });
 
-  it("a preserved block standing twice in an edited footnote is an unsupported-content problem with no position", () => {
+  it("a preserved block standing twice in an edited footnote is reported where the body refers to that note", () => {
     const parts = unzipSync(makeNotesDocx());
     parts["word/footnotes.xml"] = new TextEncoder().encode(
       `<w:footnotes xmlns:w="${W_NS}"><w:footnote w:id="2">${paragraph("Note")}` +
@@ -683,6 +913,163 @@ describe("the footnotes part", () => {
       {
         code: "unsupported-content",
         message: "a preserved block stands in two places (rawBlock)",
+        reason: {
+          kind: "duplicate-preserved-block",
+          node: "rawBlock",
+          story: { kind: "footnote", id: "2" },
+        },
+        pos: noteReferenceAt(opened.doc, "footnote", "2")?.pos,
+      },
+    ]);
+  });
+
+  it("reports the same problem with no position when nothing in the body refers to the note", () => {
+    const parts = unzipSync(makeNotesDocx(paragraph("Text")));
+    parts["word/footnotes.xml"] = new TextEncoder().encode(
+      `<w:footnotes xmlns:w="${W_NS}"><w:footnote w:id="2">${paragraph("Note")}` +
+        '<w:customXml w:uri="urn:placeholder" w:element="kept"/></w:footnote></w:footnotes>'
+    );
+    const opened = importDocx(zipSync(parts));
+    const key = storyKey("footnote", "2");
+    const story = storyNodeOf(opened.doc, key);
+    if (!story) throw new Error("the footnote was not read");
+    const placeholder = story.child(1);
+    const edited = withStory(
+      opened.doc,
+      key,
+      story.copy(Fragment.from([story.child(0), placeholder, placeholder]))
+    );
+
+    expect(refusedWith(edited, opened)).toEqual([
+      {
+        code: "unsupported-content",
+        message: "a preserved block stands in two places (rawBlock)",
+        reason: {
+          kind: "duplicate-preserved-block",
+          node: "rawBlock",
+          story: { kind: "footnote", id: "2" },
+        },
+      },
+    ]);
+  });
+});
+
+/** The footnotes part of `makeNotesDocx` with footnote 2 holding these blocks instead */
+function withFootnoteBody(parts: Record<string, Uint8Array>, body: string) {
+  parts["word/footnotes.xml"] = new TextEncoder().encode(
+    `<w:footnotes xmlns:w="${W_NS}"><w:footnote w:id="2">${body}</w:footnote></w:footnotes>`
+  );
+  return parts;
+}
+
+describe("content the writer puts out of a side story", () => {
+  it("refuses an unmatched bookmark in an edited header, naming the story it stands in", () => {
+    const opened = importDocx(makeHeadersFootersDocx());
+    const key = storyKey("header", "word/header1.xml");
+    const story = storyNodeOf(opened.doc, key);
+    if (!story) throw new Error("the header was not read");
+    const edited = withStory(
+      opened.doc,
+      key,
+      story.copy(
+        Fragment.from([
+          ...story.children,
+          docxSchema.nodes.rawBlock.create({
+            name: "w:bookmarkEnd",
+            xml: '<w:bookmarkEnd w:id="77"/>',
+          }),
+        ])
+      )
+    );
+
+    expect(refusedWith(edited, opened)).toEqual([
+      {
+        code: "malformed-xml",
+        message: "bookmark 77 ends without an earlier start marker",
+        reason: {
+          kind: "unmatched-bookmark",
+          id: "77",
+          marker: "end",
+          story: { kind: "header", id: "word/header1.xml" },
+        },
+      },
+    ]);
+  });
+
+  it("leaves a header nobody edited alone, whatever markup it holds", () => {
+    const parts = unzipSync(makeHeadersFootersDocx());
+    parts["word/header1.xml"] = new TextEncoder().encode(
+      `<w:hdr xmlns:w="${W_NS}">${paragraph("Head")}` +
+        '<w:bookmarkEnd w:id="77"/></w:hdr>'
+    );
+    const opened = importDocx(zipSync(parts));
+
+    expect(exportProblems(opened.doc, opened.session)).toEqual([]);
+    expect(() => exportDocx(opened.doc, opened.session)).not.toThrow();
+  });
+
+  it("refuses a placeholder from another document in an edited footnote, where the body refers to that note", () => {
+    const alpha = importDocx(
+      makeDocx(
+        paragraph("alpha") +
+          '<w:customXml w:uri="urn:alpha" w:element="from-alpha"/>'
+      )
+    );
+    const opened = importDocx(makeNotesDocx());
+    const key = storyKey("footnote", "2");
+    const story = storyNodeOf(opened.doc, key);
+    if (!story) throw new Error("the footnote was not read");
+    const edited = withStory(
+      opened.doc,
+      key,
+      story.copy(Fragment.from([story.child(0), alpha.doc.child(1)]))
+    );
+
+    expect(refusedWith(edited, opened)).toEqual([
+      {
+        code: "lost-original",
+        message: `a preserved block comes from another document (${alpha.session.sessionId})`,
+        reason: {
+          kind: "preserved-from-another-document",
+          node: "rawBlock",
+          sessionId: alpha.session.sessionId,
+          story: { kind: "footnote", id: "2" },
+        },
+        pos: noteReferenceAt(opened.doc, "footnote", "2")?.pos,
+      },
+    ]);
+  });
+
+  it("refuses a vertical merge past the last row inside an edited footnote", () => {
+    const opened = importDocx(
+      zipSync(
+        withFootnoteBody(
+          unzipSync(makeNotesDocx()),
+          paragraph("Note") + MERGED_TABLE
+        )
+      )
+    );
+    const key = storyKey("footnote", "2");
+    const story = storyNodeOf(opened.doc, key);
+    if (!story) throw new Error("the footnote was not read");
+    expect(story.child(1).type.name).toBe("table");
+    const edited = withStory(
+      opened.doc,
+      key,
+      story.copy(
+        Fragment.from([story.child(0), withOverlongMerge(story.child(1))])
+      )
+    );
+
+    expect(refusedWith(edited, opened)).toEqual([
+      {
+        code: "invalid-table",
+        message: "a vertical merge in the table reaches past the last row",
+        reason: {
+          kind: "vertical-merge-past-table",
+          story: { kind: "footnote", id: "2" },
+        },
+        pos: noteReferenceAt(opened.doc, "footnote", "2")?.pos,
       },
     ]);
   });
@@ -728,6 +1115,23 @@ describe("exportDocx", () => {
         code: problems[0]?.code,
         message: problems[0]?.message,
       })
+    );
+  });
+
+  it("carries the problem the query reports first, reason and position included", () => {
+    const opened = importDocx(
+      makeDocx(
+        paragraph("Body") +
+          '<w:customXml w:uri="urn:placeholder" w:element="kept"/>'
+      )
+    );
+    const placeholder = opened.doc.child(1);
+    const twice = opened.doc.copy(
+      Fragment.from([opened.doc.child(0), placeholder, placeholder])
+    );
+
+    expect(refusedWith(twice, opened)[0]?.reason.kind).toBe(
+      "duplicate-preserved-block"
     );
   });
 });

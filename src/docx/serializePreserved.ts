@@ -8,20 +8,38 @@
  */
 
 import type { Node as PMNode } from "prosemirror-model";
-import { DocxExportError } from "../ooxml/errors";
+import {
+  DocxExportError,
+  type ExportProblemReason,
+  type ExportProblemStory,
+} from "../ooxml/errors";
 import type { ExportRefs } from "./exportRefs";
 import { originalBlock, type SessionStore, splitBlockKey } from "./session";
 
 /** Why there is no original to write, which a block that came in from another document answers differently */
 export function lostOriginal(
   node: PMNode,
-  session: SessionStore | null
-): string {
+  session: SessionStore | null,
+  story: ExportProblemStory | null
+): { readonly message: string; readonly reason: ExportProblemReason } {
   const srcId: unknown = node.attrs.srcId;
   const key = typeof srcId === "string" ? splitBlockKey(srcId) : null;
-  return key === null || key.sessionId === session?.sessionId
-    ? "a preserved block has lost its original XML"
-    : `a preserved block comes from another document (${key.sessionId})`;
+  const name = node.type.name;
+  if (key === null || key.sessionId === session?.sessionId) {
+    return {
+      message: "a preserved block has lost its original XML",
+      reason: { kind: "lost-preserved-xml", node: name, story },
+    };
+  }
+  return {
+    message: `a preserved block comes from another document (${key.sessionId})`,
+    reason: {
+      kind: "preserved-from-another-document",
+      node: name,
+      sessionId: key.sessionId,
+      story,
+    },
+  };
 }
 
 export function serializePreservedBlock(
@@ -32,10 +50,12 @@ export function serializePreservedBlock(
   if (typeof xml === "string") return xml;
   const imported = refs.session ? originalBlock(node, refs.session) : undefined;
   if (!imported) {
-    throw new DocxExportError(
-      "lost-original",
-      lostOriginal(node, refs.session)
-    );
+    // The writer is handed one block at a time and does not know which story it came out of, so
+    // the reason names none; `docx/invariants` predicts the same refusal with the story on it
+    const { message, reason } = lostOriginal(node, refs.session, null);
+    throw new DocxExportError("lost-original", message, {
+      problem: { code: "lost-original", message, reason },
+    });
   }
   return imported.xml;
 }

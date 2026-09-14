@@ -12,6 +12,7 @@ import {
   type NoteNumberingProps,
   withNoteProps,
 } from "./reading";
+import { eachNoteReference } from "./references";
 
 /** A spelling longer than this is drawn as the count in decimal, which bounds a crafted `w:numStart` */
 const MAX_LABEL_CHARS = 64;
@@ -35,16 +36,8 @@ interface SectionReferences {
  */
 function referencesBySection(doc: PMNode): readonly SectionReferences[] {
   const found: { readonly block: number; readonly reference: Reference }[] = [];
-  doc.forEach((block, offset, index) => {
-    block.descendants((node, pos) => {
-      if (node.type.name === "noteReference") {
-        found.push({
-          block: index,
-          reference: { pos: offset + 1 + pos, node },
-        });
-      }
-      return true;
-    });
+  eachNoteReference(doc, ({ node, pos, block }) => {
+    found.push({ block, reference: { pos, node } });
   });
   if (found.length === 0) return [];
   const sections = sectionsOf(doc);

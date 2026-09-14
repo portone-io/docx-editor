@@ -10,6 +10,7 @@ import { toParagraphFormat } from "../model/format";
 import { NEW_LISTS_ATTR, newListsOf } from "../numbering/listRegistry";
 import { type NewList, parseNumbering } from "../numbering/parseNumbering";
 import { R_NS } from "../ooxml/xml";
+import { asStoryKey, storiesOf, storyNodeOf } from "../schema/stories";
 import { CONTENT_TYPES_PATH } from "./packageParts";
 import type { SessionStore } from "./session";
 
@@ -35,15 +36,28 @@ function collectNumIds(node: PMNode, into: Set<number>): void {
   if (visit(node)) node.descendants(visit);
 }
 
-function numIdsIn(node: PMNode): Set<number> {
+/**
+ * The ids the document numbers anything by, its side stories included: a footnote's paragraph is
+ * written into a part of its own, but the definition it numbers by stands in the one numbering
+ * part the whole package shares.
+ */
+function numIdsNow(doc: PMNode): Set<number> {
   const used = new Set<number>();
-  collectNumIds(node, used);
+  collectNumIds(doc, used);
+  for (const key of Object.keys(storiesOf(doc))) {
+    const story = asStoryKey(key);
+    const node = story === null ? null : storyNodeOf(doc, story);
+    if (node !== null) collectNumIds(node, used);
+  }
   return used;
 }
 
 function numIdsAtOpen(session: SessionStore): Set<number> {
   const used = new Set<number>();
   for (const block of session.blocks) collectNumIds(block.node, used);
+  for (const story of session.stories.values()) {
+    for (const block of story.blocks) collectNumIds(block.node, used);
+  }
   return used;
 }
 
@@ -56,7 +70,7 @@ function numIdsAtOpen(session: SessionStore): Set<number> {
 export function newNumIds(doc: PMNode, session: SessionStore): number[] {
   const defined = parseNumbering(session.numberingXml).lists;
   const atOpen = numIdsAtOpen(session);
-  return Array.from(numIdsIn(doc))
+  return Array.from(numIdsNow(doc))
     .filter((numId) => !defined.has(numId) && !atOpen.has(numId))
     .sort((a, b) => a - b);
 }

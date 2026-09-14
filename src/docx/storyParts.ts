@@ -8,7 +8,11 @@
 
 import type { Node as PMNode } from "prosemirror-model";
 import { attrsText, openTagXml, type XmlAttr } from "../ooxml/element";
-import type { DocxExportErrorCode } from "../ooxml/errors";
+import type {
+  DocxExportErrorCode,
+  ExportPartName,
+  ExportProblemReason,
+} from "../ooxml/errors";
 import { NAMESPACES, wName } from "../ooxml/names";
 import {
   ensureRootDeclarations,
@@ -31,6 +35,7 @@ import {
   STORY_KINDS,
   type StoryKey,
   type StoryKind,
+  splitStoryKey,
   storiesOf,
   storyKey,
   storyNodeOf,
@@ -73,11 +78,6 @@ function byId(a: string, b: string): number {
   return a < b ? -1 : 1;
 }
 
-/** The id a key of this kind names */
-export function storyIdOf(key: StoryKey, kind: StoryKind): string {
-  return key.slice(kind.length + 1);
-}
-
 function arrivedChange(doc: PMNode, imported: ImportedStory): StoryChange {
   const current = storyNodeOf(doc, imported.key);
   if (current === null) return { change: "removed", imported };
@@ -104,7 +104,7 @@ export function storyChangesOf(
         ? []
         : [key];
     })
-    .sort((a, b) => byId(storyIdOf(a, kind), storyIdOf(b, kind)))
+    .sort((a, b) => byId(splitStoryKey(a).id, splitStoryKey(b).id))
     .flatMap((key): StoryChange[] => {
       const current = storyNodeOf(doc, key);
       return current === null ? [] : [{ change: "added", key, current }];
@@ -155,6 +155,12 @@ export function storyWriting(
   return { kind, changes, frozenEntries: () => NO_FROZEN_ENTRIES };
 }
 
+/** A change to a side story that no part writer carries into the file */
+export interface UnwrittenStoryChange {
+  readonly key: StoryKey;
+  readonly change: StoryChanged;
+}
+
 /**
  * Every change the document made to a side story that no part writer carries into the file, as the
  * key it stands under and what was done to it.
@@ -168,7 +174,7 @@ export function unwrittenStoryChanges(
   writings: readonly StoryWriting[],
   doc: PMNode,
   session: SessionStore
-): readonly { readonly key: StoryKey; readonly change: StoryChanged }[] {
+): readonly UnwrittenStoryChange[] {
   const byKind = new Map(writings.map((writing) => [writing.kind, writing]));
   return STORY_KINDS.flatMap((kind) => {
     const writing = byKind.get(kind);
@@ -185,9 +191,47 @@ export function unwrittenStoryChanges(
   });
 }
 
+/** One side story the export writes block by block, under the key it stands at */
+export interface RewrittenStory {
+  readonly key: StoryKey;
+  readonly story: PMNode;
+}
+
+/**
+ * Every side story the export writes block by block, which is every one a part writer carries an
+ * addition or an edit of.
+ *
+ * A story the writer hands back as the bytes it arrived as - one nobody touched, one its part
+ * freezes, one whose change no writer carries, which `unwrittenStoryChanges` refuses instead -
+ * goes out holding exactly what it came in holding, so nothing about it can newly be refused. The
+ * same "changed and written" answer decides both, so a writer and the invariants cannot disagree
+ * about which story is written from a node.
+ */
+export function rewrittenStories(
+  writings: readonly StoryWriting[],
+  doc: PMNode,
+  session: SessionStore
+): readonly RewrittenStory[] {
+  const byKind = new Map(writings.map((writing) => [writing.kind, writing]));
+  return STORY_KINDS.flatMap((kind) => {
+    const writing = byKind.get(kind);
+    if (writing === undefined) return [];
+    const frozen = writing.frozenEntries(session);
+    return storyChangesOf(doc, session, kind).flatMap(
+      (entry): RewrittenStory[] => {
+        if (entry.change !== "added" && entry.change !== "edited") return [];
+        const key = entry.change === "added" ? entry.key : entry.imported.key;
+        return writing.changes.includes(entry.change) && !frozen.has(key)
+          ? [{ key, story: entry.current }]
+          : [];
+      }
+    );
+  });
+}
+
 /** A part holding one entry per story, e.g. `w:footnotes` holding a `w:footnote` apiece */
 export interface StoryEntriesPart {
-  readonly name: string;
+  readonly name: ExportPartName;
   readonly kind: StoryKind;
   readonly relType: string;
   readonly contentType: string;
@@ -209,7 +253,12 @@ export interface StoryEntriesPart {
   prelude(taken: ReadonlySet<string>): string;
 }
 
-interface WrittenStory extends StoryToSettle {
+/** One story a part writes, beside the key it stands under */
+export interface StoryEntry extends StoryToSettle {
+  readonly key: StoryKey;
+}
+
+interface WrittenStory extends StoryEntry {
   readonly change: StoryChange;
 }
 
@@ -232,11 +281,13 @@ function writtenStories(
   return changes.flatMap((change): WrittenStory[] => {
     const story = writtenStoryOf(change, frozen);
     if (story === null) return [];
+    const key = change.change === "added" ? change.key : change.imported.key;
     return [
       {
         change,
+        key,
         story,
-        frozen: change.change !== "added" && frozen.has(change.imported.key),
+        frozen: change.change !== "added" && frozen.has(key),
       },
     ];
   });
@@ -251,7 +302,7 @@ export function storyEntriesOf(
   part: StoryEntriesPart,
   doc: PMNode,
   session: SessionStore
-): readonly StoryToSettle[] {
+): readonly StoryEntry[] {
   const changes = storyChangesOf(doc, session, part.kind);
   return changed(changes)
     ? writtenStories(changes, part.frozenEntries(session))
@@ -262,6 +313,7 @@ export function storyEntriesOf(
 export interface StoryPartProblem {
   readonly code: DocxExportErrorCode;
   readonly message: string;
+  readonly reason: ExportProblemReason;
 }
 
 /**
@@ -276,17 +328,19 @@ function addedIdProblems(
   part: StoryEntriesPart,
   changes: readonly StoryChange[]
 ): readonly StoryPartProblem[] {
-  return changes.flatMap((change): StoryPartProblem[] =>
-    change.change === "added" &&
-    ST_DecimalNumber.parse(storyIdOf(change.key, part.kind)) === null
+  return changes.flatMap((change): StoryPartProblem[] => {
+    if (change.change !== "added") return [];
+    const story = splitStoryKey(change.key);
+    return ST_DecimalNumber.parse(story.id) === null
       ? [
           {
             code: "unsupported-content",
             message: `the ${change.key} story is named by no whole number, and a ${wName(part.entry)} is identified by one`,
+            reason: { kind: "story-id-not-a-number", story },
           },
         ]
-      : []
-  );
+      : [];
+  });
 }
 
 /**
@@ -311,7 +365,13 @@ export function storyEntriesProblems(
     const problem = partRootProblem(xml, part.root);
     return problem === null
       ? []
-      : [{ code: "malformed-xml", message: problem }];
+      : [
+          {
+            code: "malformed-xml",
+            message: problem,
+            reason: { kind: "unwritable-part-root", part: part.name },
+          },
+        ];
   }
   return session.parts.has(CONTENT_TYPES_PATH)
     ? []
@@ -319,6 +379,7 @@ export function storyEntriesProblems(
         {
           code: "missing-content-types",
           message: `cannot add a part to a package that has no ${CONTENT_TYPES_PATH}`,
+          reason: { kind: "missing-content-types", part: part.name },
         },
       ];
 }
@@ -348,7 +409,7 @@ function entryXml(
     return serializeStory(
       settled,
       null,
-      containerOf(part, storyIdOf(change.key, part.kind)),
+      containerOf(part, splitStoryKey(change.key).id),
       refs
     );
   }
@@ -492,7 +553,7 @@ function planEntries(
   const taken = new Set([
     ...changes.map((change) =>
       change.change === "added"
-        ? storyIdOf(change.key, part.kind)
+        ? splitStoryKey(change.key).id
         : change.imported.id
     ),
     ...part.referencedIds(doc),

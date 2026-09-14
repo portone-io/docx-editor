@@ -173,7 +173,7 @@ export function exportDocx(
  *
  * The first problem `exportProblems` reports is thrown before anything is written, so a refusal a
  * caller could have asked about ahead of time arrives with the same code and message it would
- * have read there.
+ * have read there, and carries that entry as the error's `problem`.
  */
 export function exportDocxReport(
   doc: PMNode,
@@ -207,7 +207,9 @@ function reportThrough(
   return withXmlParser(options?.xmlParser, () => {
     const store = sessionOf(session);
     const problem = problemsOf(doc, store)[0];
-    if (problem) throw new DocxExportError(problem.code, problem.message);
+    if (problem) {
+      throw new DocxExportError(problem.code, problem.message, { problem });
+    }
     const approximated: FidelityNote[] = [];
     const bytes = writeDocx(
       doc,

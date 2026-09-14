@@ -593,6 +593,7 @@ describe("a list number no definition stands behind", () => {
       {
         code: "unsupported-content",
         message: "the list numbered 9 has no definition to be written",
+        reason: { kind: "undefined-list", numId: 9, story: null },
         pos: 0,
       },
     ]);

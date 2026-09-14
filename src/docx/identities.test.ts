@@ -367,6 +367,7 @@ describe("the stories of one part", () => {
       {
         code: "unsupported-content",
         message: "a preserved block stands in two places (rawBlock)",
+        node: "rawBlock",
         story: 1,
         pos: twice.child(0).nodeSize,
       },

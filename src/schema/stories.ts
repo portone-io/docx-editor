@@ -62,19 +62,33 @@ export function storyKey<K extends StoryKind>(
 /** The key of a story that is a note: `footnote:2`, `endnote:3` */
 export type NoteKey = `${NoteKind}:${string}`;
 
+/** What a key names: which kind of story it is, and the id it stands under */
+export interface StoryName {
+  readonly kind: StoryKind;
+  readonly id: string;
+}
+
 /**
- * The note this key names, and null for a key naming a story of another kind.
+ * The kind and the id a key names.
  *
- * A note's id never carries a colon - a note is identified by a whole number (§17.11.2, §17.11.8)
- * - so the kind is everything up to the first one.
+ * An id carries colons of its own - a header is named by its part path - so the kind is everything
+ * up to the first one. A key is spelled `${StoryKind}:${string}`, so the kind always reads back;
+ * text that may spell no kind at all comes through `asStoryKey` first.
  */
+export function splitStoryKey(key: StoryKey): StoryName {
+  const at = key.indexOf(":");
+  const named = key.slice(0, at);
+  const kind = STORY_KINDS.find((candidate) => candidate === named);
+  return { kind: kind ?? "comment", id: key.slice(at + 1) };
+}
+
+/** The note this key names, and null for a key naming a story of another kind */
 export function noteKeyOf(
   key: StoryKey
 ): { readonly kind: NoteKind; readonly id: string } | null {
-  const at = key.indexOf(":");
-  const named = key.slice(0, at);
-  const kind = NOTE_KINDS.find((candidate) => candidate === named);
-  return kind === undefined ? null : { kind, id: key.slice(at + 1) };
+  const { kind, id } = splitStoryKey(key);
+  const note = NOTE_KINDS.find((candidate) => candidate === kind);
+  return note === undefined ? null : { kind: note, id };
 }
 
 /**

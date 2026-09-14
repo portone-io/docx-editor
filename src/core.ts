@@ -29,9 +29,16 @@ export type { ParagraphStyleOption } from "./docx/formatting";
 export type { DocxBytes, ImportOptions } from "./docx/importDocx";
 /**
  * What the writer would refuse the document over, asked ahead of the write. The first entry is
- * what `exportDocx` throws, so the two cannot disagree.
+ * what `exportDocx` throws, so the two cannot disagree. `reason` tells the situations one code
+ * covers apart and names the content each is about.
  */
-export type { ExportProblem } from "./docx/invariants";
+export type {
+  ExportPartName,
+  ExportProblem,
+  ExportProblemReason,
+  ExportProblemStory,
+  ExportStoryKind,
+} from "./docx/invariants";
 export { exportProblems } from "./docx/invariants";
 export type { DocxSession } from "./docx/session";
 export { documentNumbering, documentPartPath } from "./docx/session";
@@ -78,6 +85,7 @@ export type {
 export { parseNumbering } from "./numbering/parseNumbering";
 export type {
   DocxExportErrorCode,
+  DocxExportErrorOptions,
   DocxImportErrorCode,
 } from "./ooxml/errors";
 export { DocxExportError, DocxImportError } from "./ooxml/errors";

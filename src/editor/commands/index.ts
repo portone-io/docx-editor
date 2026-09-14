@@ -98,7 +98,13 @@ export {
  * with the code `exportDocx` would throw it under. `canExport` is what an export control is
  * drawn from, and `downloadDocx` answers `blocked` with the same list.
  */
-export type { ExportProblem } from "./exportQueries";
+export type {
+  ExportPartName,
+  ExportProblem,
+  ExportProblemReason,
+  ExportProblemStory,
+  ExportStoryKind,
+} from "./exportQueries";
 export { canExport, documentExportProblems } from "./exportQueries";
 export type {
   FidelityCode,
