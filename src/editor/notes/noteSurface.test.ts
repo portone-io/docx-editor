@@ -702,18 +702,83 @@ describe("the place before the number a note opens with", () => {
     expect(storyText(written(main))).toBe("AheadFootnote body\nSecond line");
   });
 
-  it("writes the number first into the file after such an edit", () => {
-    const { main, session } = openMain();
-    const story = openNote(main);
+  /** One kind of note as the exported package carries it */
+  interface WrittenNote {
+    readonly kind: NoteKind;
+    readonly id: string;
+    readonly part: string;
+    /** The entry's opening tag, which is where the note this test edited begins */
+    readonly opens: string;
+    /** The element Word reads the note's number from */
+    readonly number: string;
+  }
 
-    story.view.dispatch(story.view.state.tr.insertText("Ahead", 1));
+  const WRITTEN: readonly WrittenNote[] = [
+    {
+      kind: "footnote",
+      id: "2",
+      part: "word/footnotes.xml",
+      opens: '<w:footnote w:id="2">',
+      number: "<w:footnoteRef/>",
+    },
+    {
+      kind: "endnote",
+      id: "3",
+      part: "word/endnotes.xml",
+      opens: '<w:endnote w:id="3">',
+      number: "<w:endnoteRef/>",
+    },
+  ];
 
+  /** The entry this note was written back as, read out of the exported package */
+  function writtenEntry(
+    main: EditorView,
+    session: SessionStore,
+    note: WrittenNote
+  ): string {
     const part = decode(
-      unzipSync(exportDocx(main.state.doc, session))["word/footnotes.xml"]
+      unzipSync(exportDocx(main.state.doc, session))[note.part]
     );
-    const entry = part.slice(part.indexOf('<w:footnote w:id="2">'));
-    expect(entry.indexOf("<w:footnoteRef/>")).toBeLessThan(
-      entry.indexOf("Ahead")
-    );
-  });
+    return part.slice(part.indexOf(note.opens));
+  }
+
+  for (const note of WRITTEN) {
+    it(`writes the number of a ${note.kind} first into the file after such an edit`, () => {
+      const { main, session } = openMain();
+      const story = openNote(main, note.id, "1", note.kind);
+
+      story.view.dispatch(story.view.state.tr.insertText("Ahead", 1));
+
+      const entry = writtenEntry(main, session, note);
+      expect(entry).toContain(note.number);
+      expect(entry.indexOf(note.number)).toBeLessThan(entry.indexOf("Ahead"));
+    });
+
+    /**
+     * The same, reached the way a reader reaches it: a composition opening over a selection that
+     * covers the number. The selection goes before the browser can replace it
+     * (`editor/plugins/compositionSelection`) and the number goes back at the head, so what the
+     * file gets is the number and then the words.
+     */
+    it(`writes the number of a ${note.kind} first after a composition over it`, () => {
+      const { main, session } = openMain();
+      const story = openNote(main, note.id, "1", note.kind);
+      const chip = leadingChip(story.view.state.doc);
+      if (chip === null) throw new Error("the note opens with no number");
+      story.view.dispatch(
+        story.view.state.tr.setSelection(
+          TextSelection.create(story.view.state.doc, 1, 1 + chip.nodeSize)
+        )
+      );
+
+      openComposition(story.view);
+      story.view.dispatch(story.view.state.tr.insertText("Composed"));
+
+      const entry = writtenEntry(main, session, note);
+      expect(entry).toContain(note.number);
+      expect(entry.indexOf(note.number)).toBeLessThan(
+        entry.indexOf("Composed")
+      );
+    });
+  }
 });

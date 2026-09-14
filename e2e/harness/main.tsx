@@ -210,6 +210,18 @@ function lockedText(view: EditorView): string {
   return text;
 }
 
+/** The node types the first block of one note holds, in order */
+function noteOpening(
+  view: EditorView,
+  kind: "footnote" | "endnote",
+  id: string
+): string[] {
+  const first = storyOf(view.state.doc, storyKey(kind, id))?.firstChild;
+  return first === null || first === undefined
+    ? []
+    : first.children.map((child) => child.type.name);
+}
+
 function install(view: EditorView): void {
   const counts: CompositionCounts = { start: 0, update: 0, end: 0 };
   view.dom.addEventListener("compositionstart", () => {
@@ -275,6 +287,7 @@ function install(view: EditorView): void {
     lockedText: () => lockedText(view),
     noteText: (kind, id) =>
       storyText(storyOf(view.state.doc, storyKey(kind, id))),
+    noteOpening: (kind, id) => noteOpening(view, kind, id),
   };
 
   window.docxHarness = harness;

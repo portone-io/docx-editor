@@ -151,6 +151,18 @@ export function noteText(
   );
 }
 
+/** The node types the first block of one note holds, in order */
+export function noteOpening(
+  page: Page,
+  id: string,
+  kind: "footnote" | "endnote" = "footnote"
+): Promise<string[]> {
+  return page.evaluate(
+    ([noteKind, noteId]) => window.docxHarness.noteOpening(noteKind, noteId),
+    [kind, id] as const
+  );
+}
+
 export function blockHeight(page: Page, blockIndex: number): Promise<number> {
   return page.evaluate(
     (index) => window.docxHarness.blockHeight(index),
