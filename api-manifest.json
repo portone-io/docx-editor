@@ -97,6 +97,7 @@
     "isStrikeActive",
     "isUnderlineActive",
     "lockSelection",
+    "openFootnote",
     "readImageFile",
     "redo",
     "removeComment",

@@ -84,6 +84,11 @@ export interface DocxHarness {
   lock(blockIndex: number, offset: number, length: number): boolean;
   /** The text every locked control in the document holds */
   lockedText(): string;
+  /**
+   * What one footnote of the open document says, read off the story the document holds rather
+   * than off the screen, so a test can tell an edit that landed from one that was only drawn
+   */
+  noteText(id: string): string;
 }
 
 declare global {

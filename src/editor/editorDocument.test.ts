@@ -11,8 +11,10 @@ import {
 } from "../__testing__/docx";
 import { importDocx } from "../docx/importDocx";
 import { documentNumbering as sessionNumbering } from "../docx/session";
+import { storyFromText } from "../docx/story";
 import { newListsValue } from "../numbering/listRegistry";
 import { templateList } from "../numbering/listTemplate";
+import { STORIES_ATTR } from "../schema/stories";
 import { createEditorState, editorStateForSession } from "./createEditor";
 import { documentFormatting, documentGeometry } from "./documentStyles";
 import {
@@ -215,5 +217,22 @@ describe("the snapshot across transactions", () => {
     expect(attributed.doc.attrs).not.toBe(typed.doc.attrs);
     expect(documentOf(attributed)).not.toBe(documentOf(typed));
     expect(documentOf(attributed)).toEqual(documentOf(typed));
+  });
+
+  /**
+   * Typing inside a footnote writes a story on every keystroke, and the sheet's own style is
+   * cached against the snapshot's identity (`editor/createEditor`), so a snapshot built again
+   * there would be built once per key.
+   */
+  it("keeps the snapshot when only a story changed", () => {
+    const state = editorStateForSession(opened());
+    const stories = { "footnote:2": storyFromText("A footnote").toJSON() };
+
+    const written = state.apply(
+      state.tr.setDocAttribute(STORIES_ATTR, stories)
+    );
+
+    expect(written.doc.attrs).not.toBe(state.doc.attrs);
+    expect(documentOf(written)).toBe(documentOf(state));
   });
 });

@@ -21,9 +21,11 @@ The notes case opens 1,000 paragraphs referring to 280 footnotes and 20 endnotes
 `Markup` draws every note's story as the notes around the page draw it.
 `Demands` asks the footnote source about every block once, and `Again` asks a second time, as the next layout pass does; the source remembers what each block node holds, and in jsdom nothing has a layout to read.
 `Layout` is the median of 21 page layout passes over synthetic 20px blocks carrying those demands, with the footnote band for the document with notes and no band for the one without, which is what the editor hands over.
+`Body key` is the median of 21 keystrokes in the body, and `Note key` the median of 21 keystrokes inside a footnote, which go in as the story change the view over a note writes.
+A keystroke in a note costs what one in the body costs: both run the same plugins over the same document, and a note's is one document-attribute step rather than a step inside the text.
 Times are milliseconds, measured on the same machine as above.
 
-| Case | Import | State | Markup | Demands | Again | Layout |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| no notes | 34.8 | 13.0 | 0.0 | 0.23 | 0.02 | 0.26 |
-| 280 footnotes, 20 endnotes | 92.8 | 28.3 | 11.8 | 3.39 | 0.44 | 0.23 |
+| Case | Import | State | Markup | Demands | Again | Layout | Body key | Note key |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| no notes | 34.4 | 10.1 | 0.0 | 0.23 | 0.02 | 0.25 | 11.1 | - |
+| 280 footnotes, 20 endnotes | 90.9 | 28.8 | 15.0 | 1.10 | 0.50 | 0.22 | 21.2 | 23.3 |

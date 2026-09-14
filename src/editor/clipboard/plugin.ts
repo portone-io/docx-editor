@@ -26,10 +26,13 @@ import { documentOf } from "../editorDocument";
 import { insertPlainText } from "../plainText";
 import { moveCaretToDrop } from "../plugins/dropCaret";
 import { documentNumbering } from "../plugins/numberingDecorations";
+import { withPastedStories } from "./htmlReader";
 import {
   type CopyRoute,
+  draggedNotes,
   INTERNAL_TOKEN_ATTRIBUTE,
   internalTokenOf,
+  type NoteStories,
   rememberCopied,
 } from "./internalChannel";
 import {
@@ -136,6 +139,8 @@ export function docxClipboard(options: ClipboardOptions = {}): Plugin {
   );
   /** The definitions the last reading started, held until the edit carrying them lands */
   let started: NewLists | null = null;
+  /** The notes the last reading is putting in, held the same way */
+  let startedStories: NoteStories | null = null;
   /** Whether the drop being handled moves what it carries rather than copying it */
   let dropMove = false;
   /** Whether the serialization being written is the one the dragstart being handled asked for */
@@ -151,30 +156,33 @@ export function docxClipboard(options: ClipboardOptions = {}): Plugin {
       };
     },
     /**
-     * The definitions of the lists a paste began, registered on the document once the paste is
-     * in. A list the pasted markup started is numbered as it is read, and only the edit that
-     * lands says whether that number is worn in the end.
+     * What a paste brought beside its text, registered on the document once the paste is in: the
+     * definitions of the lists it began and the notes its references call. A list the pasted
+     * markup started is numbered as it is read, and only the edit that lands says whether that
+     * number is worn in the end.
      */
     appendTransaction(transactions, _before, after) {
       const lists = started;
+      const stories = startedStories;
       started = null;
-      if (
-        lists === null ||
-        lists.size === 0 ||
-        !transactions.some((tr) => tr.docChanged)
-      ) {
-        return null;
+      startedStories = null;
+      if (!transactions.some((tr) => tr.docChanged)) return null;
+      const tr = after.tr;
+      if (lists !== null && lists.size > 0) {
+        const worn = numIdsIn(after.doc);
+        const registered = newListsOf(after.doc.attrs[NEW_LISTS_ATTR]);
+        const missing = [...lists].filter(
+          ([numId]) => worn.has(numId) && !registered.has(numId)
+        );
+        if (missing.length > 0) {
+          tr.setDocAttribute(
+            NEW_LISTS_ATTR,
+            newListsValue(new Map([...registered, ...missing]))
+          );
+        }
       }
-      const worn = numIdsIn(after.doc);
-      const registered = newListsOf(after.doc.attrs[NEW_LISTS_ATTR]);
-      const missing = [...lists].filter(
-        ([numId]) => worn.has(numId) && !registered.has(numId)
-      );
-      if (missing.length === 0) return null;
-      return after.tr.setDocAttribute(
-        NEW_LISTS_ATTR,
-        newListsValue(new Map([...registered, ...missing]))
-      );
+      if (stories !== null) withPastedStories(tr, stories);
+      return tr.steps.length === 0 ? null : tr;
     },
     props: {
       handleDOMEvents: {
@@ -216,24 +224,34 @@ export function docxClipboard(options: ClipboardOptions = {}): Plugin {
         // The slice is kept as it stands: what the wrappers are emptied of below leaves for the
         // clipboard, and a paste back into this session is given what was copied instead
         const route: CopyRoute = draggingOut ? "drag" : "clipboard";
-        copyToken = rememberCopied(
-          route,
-          slice,
-          documentOf(view.state).session?.sessionId ?? null,
-          documentNumbering(view.state)
-        );
+        const document = documentOf(view.state);
+        copyToken = rememberCopied(route, slice, {
+          sessionId: document.session?.sessionId ?? null,
+          doc: view.state.doc,
+          numbering: documentNumbering(view.state),
+          specialNotes: document.specialNotes,
+        });
         return copiedSlice(slice);
       },
       transformPasted(slice, view, plain) {
         if (!plain) parser.setPlainText(false);
         const read = parser.takeRead();
         const content = normalizePasted(
-          read ?? { slice, newLists: NO_NEW_LISTS },
+          // A drop is handed the dragged slice itself rather than markup, so what that slice
+          // carried is looked up by the route it left on rather than by a name written into markup
+          read ?? {
+            slice,
+            newLists: NO_NEW_LISTS,
+            noteStories: draggedNotes(
+              documentOf(view.state).session?.sessionId ?? null
+            ),
+          },
           view.state,
           dropMove,
           normalizers
         );
         started = content.newLists;
+        startedStories = content.newStories ?? null;
         return content.slice;
       },
       handlePaste(view, event, slice) {

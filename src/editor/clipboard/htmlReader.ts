@@ -10,6 +10,7 @@ import {
   withListNumbering,
   withParagraphStyle,
 } from "../../docx/paraProps";
+import { setStory } from "../../docx/story";
 import {
   listsWorn,
   NEW_LISTS_ATTR,
@@ -25,6 +26,11 @@ import {
 import { styleIdOf } from "../../ooxml/props";
 import { docxSchema } from "../../schema";
 import { COPIED_STYLE_ATTRIBUTE } from "../../schema/clipboard";
+import {
+  EDITABLE_NOTE_KINDS,
+  type NoteKey,
+  storyKey,
+} from "../../schema/stories";
 import { editorClassNames } from "../../styles/classNames";
 import { numIdsIn } from "../commands/listCommands";
 import {
@@ -42,7 +48,11 @@ import {
   marksFor,
   withInlineStyle,
 } from "./inlineFormatting";
-import type { ListKinds } from "./internalChannel";
+import {
+  type ListKinds,
+  NO_NOTE_STORIES,
+  type NoteStories,
+} from "./internalChannel";
 import type { HtmlReadContext } from "./readContext";
 import { detectHtmlSource } from "./source";
 
@@ -459,7 +469,7 @@ function sliceDepth(root: ParentNode): 0 | 1 {
   return root.querySelector(BLOCK_SELECTOR) ? 0 : 1;
 }
 
-/** What a paste puts in: the content, and the definitions of the lists it started */
+/** What a paste puts in: the content, the definitions of the lists it started, and its notes */
 export interface PastedContent {
   slice: Slice;
   newLists: NewLists;
@@ -469,6 +479,16 @@ export interface PastedContent {
    * which knows what kind each is from the markup it read them out of.
    */
   listKinds?: ListKinds;
+  /**
+   * What the notes this slice's references call said where it was copied (`./internalChannel`).
+   * Absent for a slice that arrived any other way, whose references this document drops.
+   */
+  noteStories?: NoteStories;
+  /**
+   * The notes the paste puts in, under the ids its references were given (`./normalizers`).
+   * Absent until the content has been normalized against the document it is going into.
+   */
+  newStories?: NoteStories;
 }
 
 /** The content one piece of already parsed markup reads as, or null when it reads as nothing */
@@ -503,16 +523,57 @@ export function readHtmlSlice(
   return readHtml(template.content, context);
 }
 
+/** The notes the references standing in this document call */
+function notesCalledIn(doc: PMNode): Set<NoteKey> {
+  const keys = new Set<NoteKey>();
+  doc.descendants((node) => {
+    if (node.type !== docxSchema.nodes.noteReference) return true;
+    const kind = EDITABLE_NOTE_KINDS.find(
+      (candidate) => candidate === node.attrs.kind
+    );
+    const id: unknown = node.attrs.id;
+    if (kind !== undefined && typeof id === "string") {
+      keys.add(storyKey(kind, id));
+    }
+    return true;
+  });
+  return keys;
+}
+
 /**
- * The transaction a paste is put in with: the content, and the definitions of the lists it started
- * recorded on the document node so that the export writes them out and undo takes them back.
+ * The notes a paste brought, written under the ids its references were given.
+ *
+ * They go in the transaction the paste itself is in, so the export writes them out and one undo
+ * takes the text and its notes back together. A note whose reference did not land - a paste a
+ * table or a command turned into something else - would be an entry of the file nothing calls, so
+ * only the ones the document now refers to are written.
+ */
+export function withPastedStories(
+  tr: Transaction,
+  stories: NoteStories
+): Transaction {
+  if (stories.size === 0) return tr;
+  const called = notesCalledIn(tr.doc);
+  for (const [key, story] of stories) {
+    if (called.has(key)) setStory(tr, key, story);
+  }
+  return tr;
+}
+
+/**
+ * The transaction a paste is put in with: the content, the definitions of the lists it started
+ * recorded on the document node so that the export writes them out and undo takes them back, and
+ * the notes its references call.
  */
 export function withPastedContent(
   tr: Transaction,
   content: PastedContent
 ): Transaction {
-  return tr.setDocAttribute(
-    NEW_LISTS_ATTR,
-    newListsValue(listsWorn(content.newLists, numIdsIn(tr.doc)))
+  return withPastedStories(
+    tr.setDocAttribute(
+      NEW_LISTS_ATTR,
+      newListsValue(listsWorn(content.newLists, numIdsIn(tr.doc)))
+    ),
+    content.newStories ?? NO_NOTE_STORIES
   );
 }

@@ -62,12 +62,18 @@ export function documentGeometry(state: EditorState): PageGeometry {
  * section is where the document says it is, and the snapshot holds the first section's paper
  * alone. Reading it walks every block, so a caller drawing a whole document asks once and looks
  * its positions up (`page/pageLayout`) rather than calling this per block.
+ *
+ * A side story writes down no section, so its own blocks say nothing about the paper: what it is
+ * drawn on is the paper of the place it is called from, which its snapshot carries.
  */
 export function sectionGeometryAt(
   state: EditorState,
   pos: number
 ): PageGeometry {
-  return sectionAt(state.doc, pos).props.geometry;
+  const document = documentOf(state);
+  return document.sideStory
+    ? document.geometry
+    : sectionAt(state.doc, pos).props.geometry;
 }
 
 /** The document-wide interval between automatic tab stops, in points. */

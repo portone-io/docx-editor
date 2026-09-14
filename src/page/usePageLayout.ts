@@ -100,6 +100,15 @@ interface PageLayoutOptions {
    * should be laid out through. A new value lays the pages out again
    */
   bands?: ReadonlyMap<string, DemandBand>;
+  /**
+   * Whether anything drawn over the sheet besides the body is composing, such as the view over a
+   * note being edited.
+   *
+   * A measurement moves the room a band is kept in, and what is drawn in that room is drawn again
+   * wherever it lands, which would take an open composition down with it. So the frame is taken
+   * again until that composition is over, the way it is for the body's own.
+   */
+  composing?: () => boolean;
 }
 
 const NO_ROOM: readonly ReservedRoom[] = [];
@@ -166,6 +175,7 @@ export function usePageLayout({
   revision,
   sections,
   bands,
+  composing,
 }: PageLayoutOptions): PageOverlay | null {
   const [overlay, setOverlay] = useState<PageOverlay | null>(null);
   const papers =
@@ -258,7 +268,7 @@ export function usePageLayout({
       };
       setOverlay((previous) => (sameOverlay(previous, next) ? previous : next));
     },
-    () => view?.composing === true
+    () => view?.composing === true || composing?.() === true
   );
 
   // When the text changes, the block heights change with it

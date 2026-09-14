@@ -454,6 +454,9 @@ const NOTE_KINDS: readonly ["footnote", "endnote"];
 // @public (undocumented)
 type NoteKind = (typeof NOTE_KINDS)[number];
 
+// @public
+export function openFootnote(id: string): Command;
+
 // Warning: (ae-forgotten-export) The symbol "ALIGNS" needs to be exported by the entry point index.d.ts
 //
 // @public (undocumented)

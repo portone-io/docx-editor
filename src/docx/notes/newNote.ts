@@ -10,6 +10,7 @@ import { elementXml } from "../../ooxml/element";
 import { wName } from "../../ooxml/names";
 import { docxSchema } from "../../schema";
 import {
+  NOTE_KINDS,
   type NoteKind,
   type StoryKey,
   storiesOf,
@@ -41,6 +42,18 @@ const NOTE_MARKUP: Readonly<Record<NoteKind, NoteMarkup>> = {
     numberElement: "endnoteRef",
   },
 };
+
+/**
+ * The elements that stand for a note's own number inside its entry, which is what Word draws the
+ * number from and what a note that keeps its number keeps (`editor/notes/noteSurface`).
+ *
+ * One per note kind, read off the kinds rather than restated, so a kind added to `NOTE_KINDS`
+ * cannot arrive without the element its number is written as: the table above is keyed by the
+ * kind, and a missing row is a compile error.
+ */
+export const NOTE_NUMBER_ELEMENTS: readonly string[] = NOTE_KINDS.map(
+  (kind) => NOTE_MARKUP[kind].numberElement
+);
 
 /**
  * The run properties a note's number is written with: the document's own style for it where the

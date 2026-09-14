@@ -9,7 +9,24 @@ import {
   type EditorState,
   TextSelection,
 } from "prosemirror-state";
+import type { EditorView } from "prosemirror-view";
 import { expect } from "vitest";
+
+/**
+ * Announces an opening composition to the view the way a browser does.
+ *
+ * Only what the editor's own plugins answer is asked for, not what ProseMirror does behind them:
+ * everything past that belongs to a browser holding an open composition, and jsdom has neither
+ * the composition nor a DOM selection to read it from. The real gesture belongs in the
+ * real-browser suite.
+ */
+export function openComposition(view: EditorView): void {
+  const event = new CompositionEvent("compositionstart", { bubbles: true });
+  view.someProp(
+    "handleDOMEvents",
+    (handlers) => handlers.compositionstart?.(view, event) ?? false
+  );
+}
 
 /** The position just inside the first text node reading exactly this */
 export function posOfText(doc: PMNode, needle: string): number {

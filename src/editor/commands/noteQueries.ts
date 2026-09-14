@@ -22,6 +22,8 @@ export interface NoteRow {
   readonly label: string;
   /** The note's story, the same node for as long as it says the same thing (`schema/stories`) */
   readonly story: PMNode;
+  /** Where the first reference to it stands, which is the place in the text it is called from */
+  readonly referencePos: number;
 }
 
 function stringAttr(value: unknown): string | null {
@@ -68,7 +70,7 @@ function deriveNotes(doc: PMNode): NoteProjection {
     const label = stringAttr(node.attrs.label) ?? "?";
     notes.push({ kind, id, label, text, referencePos: pos });
     if (story !== null) {
-      const row: NoteRow = { key, kind, label, story };
+      const row: NoteRow = { key, kind, label, story, referencePos: pos };
       if (kind === "footnote") footnotes.set(key, row);
       else endnotes.push(row);
     }

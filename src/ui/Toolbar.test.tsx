@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
 import { unzipSync } from "fflate";
-import { TextSelection } from "prosemirror-state";
+import { AllSelection, TextSelection } from "prosemirror-state";
+import type { EditorView } from "prosemirror-view";
 import { act, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   decode,
   makeDocx,
+  makeNotesDocx,
   makeNumberedDocx,
   makeStyledDocx,
 } from "../__testing__/docx";
@@ -16,10 +18,31 @@ import {
   type DocxEditorHandle,
   type DocxEditorMode,
 } from "../DocxEditor";
+import { importDocx } from "../docx/importDocx";
+import { storyOf } from "../docx/story";
 import { IMAGE_FILE_ACCEPT } from "../editor/commands";
 import { lockSelection } from "../editor/commands/lockCommands";
+import {
+  createEditorView,
+  editorStateForSession,
+} from "../editor/createEditor";
+import { documentOf, storyDocument } from "../editor/editorDocument";
+import {
+  footnoteExtensions,
+  footnoteHost,
+} from "../editor/notes/footnoteSurface";
+import {
+  createStoryView,
+  EVERY_CAPABILITY,
+  NO_CAPABILITY,
+  type StoryView,
+  type SurfaceCapabilities,
+} from "../editor/stories/storyView";
+import { storyKey } from "../schema/stories";
 import { editorClassNames } from "../styles/classNames";
+import { DEFAULT_FONT_FALLBACKS } from "../styles/fontStack";
 import type { DocxEditorPresets } from "./presets";
+import { Toolbar } from "./Toolbar";
 
 declare global {
   var IS_REACT_ACT_ENVIRONMENT: boolean;
@@ -1265,5 +1288,189 @@ describe("the paragraph controls over a locked cell", () => {
 
     expect(documentXml(handle)).toContain('<w:ind w:left="720"/>');
     unmount();
+  });
+});
+
+/**
+ * The toolbar acting on a note rather than on the body.
+ *
+ * Every control is drawn from where the caret is and dispatched there, while undo and redo stay on
+ * the document, which holds the one history a story edit lands in (`editor/stories`).
+ */
+describe("the toolbar over a footnote being edited", () => {
+  const FOOTNOTE = storyKey("footnote", "2");
+
+  function openMain(): EditorView {
+    return createEditorView({
+      mount: document.createElement("div"),
+      state: editorStateForSession(importDocx(makeNotesDocx())),
+      onStateChange: () => {},
+    });
+  }
+
+  function openStory(main: EditorView): StoryView {
+    const story = createStoryView({
+      mount: document.createElement("div"),
+      host: footnoteHost(main, () => {}),
+      key: FOOTNOTE,
+      document: storyDocument(
+        documentOf(main.state),
+        documentOf(main.state).geometry
+      ),
+      fontFallbacks: DEFAULT_FONT_FALLBACKS,
+      extensions: footnoteExtensions(main, "2", () => "1"),
+    });
+    story.view.dispatch(
+      story.view.state.tr.setSelection(new AllSelection(story.view.state.doc))
+    );
+    return story;
+  }
+
+  function show(
+    main: EditorView,
+    story: StoryView | null,
+    takes: SurfaceCapabilities = NO_CAPABILITY
+  ): () => void {
+    return render(
+      <Toolbar
+        main={{ view: main, state: main.state }}
+        active={
+          story === null
+            ? {
+                view: main,
+                state: main.state,
+                surface: "body",
+                takes: EVERY_CAPABILITY,
+              }
+            : {
+                view: story.view,
+                state: story.view.state,
+                surface: "story",
+                key: FOOTNOTE,
+                takes,
+              }
+        }
+        zoom={1}
+        onZoomChange={() => {}}
+        onToggleComments={() => {}}
+      />
+    );
+  }
+
+  it("formats text in the focused footnote and keeps undo on the main history", () => {
+    const main = openMain();
+    const story = openStory(main);
+    const bodyBefore = main.state.doc.textContent;
+    let unmount = show(main, story);
+    expect(button("Undo").disabled).toBe(true);
+
+    click("Bold");
+
+    expect(storyOf(main.state.doc, FOOTNOTE)?.textContent).toBe(
+      "Footnote bodySecond line"
+    );
+    expect(
+      JSON.stringify(storyOf(main.state.doc, FOOTNOTE)?.toJSON())
+    ).toContain("<w:b/>");
+    expect(main.state.doc.textContent).toBe(bodyBefore);
+
+    // The edit went into the document's own history, which is the one the undo button reads
+    unmount();
+    unmount = show(main, story);
+    expect(button("Undo").disabled).toBe(false);
+
+    unmount();
+    story.destroy();
+    main.destroy();
+  });
+
+  it("takes an edit back without taking the focus out of the footnote", () => {
+    const main = openMain();
+    const story = openStory(main);
+    story.view.dispatch(story.view.state.tr.insertText("!", 2));
+    const focused: string[] = [];
+    main.focus = () => focused.push("body");
+    story.view.focus = () => focused.push("footnote");
+    const unmount = show(main, story);
+
+    click("Undo");
+
+    // The body taking the focus is what closes an open footnote (`DocxEditor`), so the caret has
+    // to stay where the reader left it
+    expect(focused).toEqual(["footnote"]);
+    expect(storyOf(main.state.doc, FOOTNOTE)?.textContent).toBe(
+      "Footnote bodySecond line"
+    );
+
+    unmount();
+    story.destroy();
+    main.destroy();
+  });
+
+  it("leaves those controls on for a story that says it takes what they put in", () => {
+    const main = openMain();
+    const story = openStory(main);
+    story.view.dispatch(
+      story.view.state.tr.setSelection(
+        TextSelection.create(story.view.state.doc, 2, 6)
+      )
+    );
+
+    const unmount = show(main, story, EVERY_CAPABILITY);
+
+    // What a story takes is the story's own to declare, so a kind of story whose part carries a
+    // link or an image is offered them without a line of this component changing
+    for (const label of [
+      "Insert table",
+      "Insert image",
+      "Link",
+      "Show comments",
+    ]) {
+      expect(button(label).disabled, label).toBe(false);
+    }
+    // The list buttons stay off for a reason of their own: a story has nowhere to write a list
+    // definition, whatever it takes (`editor/stories/storyState`)
+    expect(button("Numbered list").disabled).toBe(true);
+
+    unmount();
+    story.destroy();
+    main.destroy();
+  });
+
+  it("turns off table, image, link, comment, and list insertion inside a footnote", () => {
+    const shut = [
+      "Insert table",
+      "Insert image",
+      "Link",
+      "Show comments",
+      "Numbered list",
+      "Bulleted list",
+    ];
+    const main = openMain();
+    const story = openStory(main);
+
+    // Every one of them but the link, which needs a stretch to hang off, is open in the body,
+    // which is what makes the check below say something
+    const inBody = show(main, null);
+    expect(shut.filter((label) => !button(label).disabled)).toEqual([
+      "Insert table",
+      "Insert image",
+      "Show comments",
+      "Numbered list",
+      "Bulleted list",
+    ]);
+    inBody();
+
+    const inNote = show(main, story);
+    for (const label of shut) {
+      expect(button(label).disabled, label).toBe(true);
+    }
+    // Character and paragraph formatting is what a note takes (5.3 of the notes plan)
+    expect(button("Bold").disabled).toBe(false);
+    expect(button("Alignment").disabled).toBe(false);
+    inNote();
+
+    story.destroy();
+    main.destroy();
   });
 });

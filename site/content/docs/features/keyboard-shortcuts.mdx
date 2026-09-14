@@ -14,12 +14,14 @@ description: The keys the editor binds, and how an application can take one over
 | `Mod+Shift+X` | Toggles strikethrough. |
 | `Mod+Shift+V` | Pastes the clipboard's plain text, ignoring accompanying HTML and images. |
 | `Mod+K` | Opens the link panel over the selection. With nothing to link it does nothing, and the browser keeps its own binding. |
+| `Mod+Alt+F` | Inserts a footnote at the caret and moves the caret into it. |
+| `Backspace` | At the start of a footnote holding nothing but its number it deletes the footnote and its reference. |
 | `Mod+Z` | Undo. |
 | `Mod+Shift+Z`, `Mod+Y` | Redo. |
 | `Tab` | Inside a table it moves to the next cell; at the last cell it leaves the editor instead of adding a row. In a list paragraph it increases the level; in an ordinary paragraph it inserts a document tab. |
 | `Shift+Tab` | Moves to the previous cell, or decreases the list level. |
 | `ArrowLeft`, `ArrowRight` | Moves the caret across a laid-out tab as one step. Holding `Shift` extends the selection instead. |
-| `Escape` | Closes an open panel, menu, or link card and hands focus back to the paper. It also hides tooltips until the pointer or focus moves. |
+| `Escape` | Closes an open panel, menu, or link card and hands focus back to the paper. In a footnote it returns the caret to just after its reference. It also hides tooltips until the pointer or focus moves. |
 
 Keys not listed fall through to ProseMirror's base keymap.
 A keymap passed through the [`plugins`](/docs/editor-api/plugins-and-presets#plugins) prop sees

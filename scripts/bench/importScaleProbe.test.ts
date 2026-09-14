@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { unzipSync, zipSync } from "fflate";
+import type { Node as PMNode } from "prosemirror-model";
 import { TextSelection } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 import { describe, it } from "vitest";
@@ -13,6 +14,7 @@ import {
 import { exportDocx } from "../../src/docx/exportDocx";
 import { importDocx } from "../../src/docx/importDocx";
 import { sectionsOf } from "../../src/docx/sections";
+import { setFootnoteBody } from "../../src/editor/commands/footnoteCommands";
 import { noteProjection } from "../../src/editor/commands/noteQueries";
 import { editorStateForSession } from "../../src/editor/createEditor";
 import { noteNodeSpecs } from "../../src/editor/notes/noteSurface";
@@ -167,7 +169,17 @@ const NOTE_KEYS = [
   "demands",
   "demandsAgain",
   "layout",
+  "bodyKey",
+  "noteKey",
 ] as const;
+
+/** The same story with one more character in it, which is what a keystroke inside a note makes */
+function typedInto(story: PMNode): PMNode {
+  const first = story.firstChild;
+  if (first === null) return story;
+  const typed = first.copy(first.content.addToEnd(story.type.schema.text("x")));
+  return story.copy(story.content.replaceChild(0, typed));
+}
 
 type NoteTimings = Record<(typeof NOTE_KEYS)[number], number>;
 
@@ -241,6 +253,24 @@ function measureNotes(withNotes: boolean): NoteTimings {
           ],
         ]);
   const layout = median(() => pageLayout({ blocks, sections, bands }));
+
+  // One keystroke in the body against one inside a footnote. A note's goes in as a story change
+  // written by the note's own body command, which is the path the view over a note takes
+  // (`editor/stories`), so the two are the same document seen from the two surfaces
+  const bodyKey = median(() => {
+    state.apply(state.tr.insertText("x", 1));
+  });
+  const first = [...footnotes.values()][0];
+  const noteKey =
+    first === undefined
+      ? 0
+      : median(() => {
+          const id = first.key.slice("footnote:".length);
+          setFootnoteBody(id, typedInto(first.story))(state, (tr) => {
+            state.apply(tr);
+          });
+        });
+
   return {
     import: t1 - t0,
     state: t2 - t1,
@@ -248,6 +278,8 @@ function measureNotes(withNotes: boolean): NoteTimings {
     demands: t5 - t4,
     demandsAgain,
     layout,
+    bodyKey,
+    noteKey,
   };
 }
 

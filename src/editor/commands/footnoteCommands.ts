@@ -20,6 +20,11 @@ import { guardedCommand } from "../../schema/guards";
 import type { NoteKind } from "../../schema/stories";
 import { isWrapperType } from "../../schema/wrappers";
 import { documentOf } from "../editorDocument";
+import {
+  noteReferenceAt,
+  openNoteCommand,
+  requestNote,
+} from "../plugins/noteNavigation";
 
 /** The wrappers the content just before this position stands inside, which a reference put there stands inside too */
 function wrappersBefore(doc: PMNode, pos: number): readonly Mark[] {
@@ -43,32 +48,21 @@ function insertNoteTransaction(
     docxSchema.marks.run.create({ rPr: noteNumberRunProps(kind, formatting) }),
     ...wrappersBefore(state.doc, at),
   ]);
-  return setStory(
-    state.tr.insert(at, reference),
-    storyKey(kind, id),
-    newNoteStory(kind, formatting)
+  const key = storyKey(kind, id);
+  // The note just put in is the one the reader is about to write, so whatever draws the notes is
+  // told to open it (`editor/plugins/noteNavigation`)
+  return requestNote(
+    setStory(
+      state.tr.insert(at, reference),
+      key,
+      newNoteStory(kind, formatting)
+    ),
+    key
   );
 }
 
 function insertNoteCommand(kind: NoteKind): Command {
   return guardedCommand((state) => insertNoteTransaction(state, kind));
-}
-
-/** Where the first reference to this note stands, and null where the document holds none */
-function referenceAt(doc: PMNode, kind: NoteKind, id: string): number | null {
-  let at: number | null = null;
-  doc.descendants((node, pos) => {
-    if (at !== null) return false;
-    if (
-      node.type === docxSchema.nodes.noteReference &&
-      node.attrs.kind === kind &&
-      node.attrs.id === id
-    ) {
-      at = pos;
-    }
-    return at === null;
-  });
-  return at;
 }
 
 /**
@@ -85,22 +79,29 @@ function noteBodyTransaction(
   const key = storyKey(kind, id);
   if (body.type !== docxSchema.nodes.doc) return null;
   if (documentOf(state).specialNotes.has(key)) return null;
-  const at = referenceAt(state.doc, kind, id);
-  const reference = at === null ? null : state.doc.nodeAt(at);
-  if (at === null || reference === null) return null;
+  const found = noteReferenceAt(state.doc, kind, id);
+  if (found === null) return null;
   if (sameStory(storyOf(state.doc, key), body)) return null;
   // The reference is written again, attr for attr, so the edit reaches the place the note is
   // called from: a story stands on the document node, where no lock and no protection over that
   // text would otherwise see it
   return setStory(state.tr, key, body).setNodeMarkup(
-    at,
+    found.pos,
     null,
-    reference.attrs,
-    reference.marks
+    found.node.attrs,
+    found.node.marks
   );
 }
 
-function noteBodyCommand(kind: NoteKind, id: string, body: PMNode): Command {
+/**
+ * What one note of this kind says, written into the document, which is the one way an editing
+ * view's edit reaches it (`editor/notes/noteSurface`).
+ */
+export function noteBodyCommand(
+  kind: NoteKind,
+  id: string,
+  body: PMNode
+): Command {
   return guardedCommand((state) => noteBodyTransaction(state, kind, id, body));
 }
 
@@ -127,4 +128,15 @@ export function canInsertFootnote(state: EditorState): boolean {
  */
 export function setFootnoteBody(id: string, body: PMNode): Command {
   return noteBodyCommand("footnote", id, body);
+}
+
+/**
+ * Puts the caret just after a footnote's reference and opens the footnote for editing, which is
+ * what a press on its number runs (`editor/plugins/noteNavigation`).
+ *
+ * It applies wherever the document refers to that footnote and answers the same under every mode:
+ * opening a note is reading it. A footnote opened where the body is shut takes no typing.
+ */
+export function openFootnote(id: string): Command {
+  return openNoteCommand("footnote", id);
 }

@@ -16,12 +16,23 @@
  * about the copy that only the editor it was copied from can answer: a number says nothing about
  * whether it counted or bulleted, and the definition that said so is the source document's. It is
  * read here because this is where both ends are the same session.
+ *
+ * The note each reference in it calls is kept the same way, and for a stronger reason: a cut takes
+ * a footnote away together with its last reference (`editor/plugins/noteLifecycle`), so by the time
+ * the paste happens the document no longer holds what the copy was pointing at.
  */
 
 import type { Node as PMNode, Slice } from "prosemirror-model";
 import type { ListKind } from "../../numbering/listTemplate";
 import type { Numbering } from "../../numbering/parseNumbering";
 import { docxSchema } from "../../schema";
+import {
+  EDITABLE_NOTE_KINDS,
+  type NoteKey,
+  type StoryKey,
+  storyKey,
+  storyNodeOf,
+} from "../../schema/stories";
 import { listKindOf, listRefOf } from "../commands/listCommands";
 
 /** Where the copied HTML carries the name of the slice this editor kept */
@@ -31,6 +42,11 @@ export const INTERNAL_TOKEN_ATTRIBUTE = "data-docx-clip";
 export type ListKinds = ReadonlyMap<number, ListKind>;
 
 export const NO_LIST_KINDS: ListKinds = new Map();
+
+/** The story of each note the slice refers to, as the document copied from held it */
+export type NoteStories = ReadonlyMap<NoteKey, PMNode>;
+
+export const NO_NOTE_STORIES: NoteStories = new Map();
 
 /**
  * The two ways a copy leaves the editor.
@@ -47,12 +63,24 @@ interface Copied {
   readonly sessionId: string;
   readonly slice: Slice;
   readonly listKinds: ListKinds;
+  readonly noteStories: NoteStories;
 }
 
-/** What one name stands for: the slice that was copied, and what its list numbers meant there */
+/** What one name stands for: the slice that was copied, and what it named where it was copied */
 export interface RecalledCopy {
   readonly slice: Slice;
   readonly listKinds: ListKinds;
+  readonly noteStories: NoteStories;
+}
+
+/** The document a copy is made from, which is the only one that can answer what it carries */
+export interface CopySource {
+  /** Null for a state built without a document, which has no session to bind a name to */
+  readonly sessionId: string | null;
+  readonly doc: PMNode;
+  readonly numbering: Numbering;
+  /** The notes laying a part out rather than saying something, which are never copied */
+  readonly specialNotes: ReadonlySet<StoryKey>;
 }
 
 /**
@@ -84,18 +112,27 @@ function nextToken(): string {
 export function rememberCopied(
   route: CopyRoute,
   slice: Slice,
-  sessionId: string | null,
-  numbering: Numbering
+  source: CopySource
 ): string | null {
+  const { sessionId } = source;
   if (sessionId === null) return null;
   const token = nextToken();
   copied.set(route, {
     token,
     sessionId,
     slice,
-    listKinds: listKindsIn(slice, numbering),
+    listKinds: listKindsIn(slice, source.numbering),
+    noteStories: noteStoriesIn(slice, source),
   });
   return token;
+}
+
+function recalled(copy: Copied): RecalledCopy {
+  return {
+    slice: copy.slice,
+    listKinds: copy.listKinds,
+    noteStories: copy.noteStories,
+  };
 }
 
 /** The copy that name stands for, and only when the session asking is the one that copied it */
@@ -107,9 +144,24 @@ export function recallCopied(
   const found = [...copied.values()].find(
     (copy) => copy.token === token && copy.sessionId === sessionId
   );
-  return found === undefined
-    ? null
-    : { slice: found.slice, listKinds: found.listKinds };
+  return found === undefined ? null : recalled(found);
+}
+
+/**
+ * The notes the last drag out of this editor carried.
+ *
+ * A drop is handed the slice itself rather than markup (`prosemirror-view`), so it carries no name
+ * to look a copy up by; the drag is the one route whose last copy is the copy being dropped. The
+ * session must still be the one that dragged, since a drop from another editor arrives as the
+ * markup its own reader answers for.
+ */
+export function draggedNotes(sessionId: string | null): NoteStories {
+  const found = copied.get("drag");
+  return found === undefined ||
+    sessionId === null ||
+    found.sessionId !== sessionId
+    ? NO_NOTE_STORIES
+    : found.noteStories;
 }
 
 /** What the numbering of the source document says each list the slice names is */
@@ -126,6 +178,35 @@ function listKindsIn(slice: Slice, numbering: Numbering): ListKinds {
   };
   slice.content.forEach(read);
   return kinds.size === 0 ? NO_LIST_KINDS : kinds;
+}
+
+/**
+ * The story of every note the slice calls, which is what a paste of it has to put back.
+ *
+ * Only the kinds an edit may add are kept: a reference to any other kind is dropped by the paste
+ * (`./normalizers`), and so is one calling a note that lays a part out rather than saying
+ * something, or one the file arrived with no note behind.
+ */
+function noteStoriesIn(slice: Slice, source: CopySource): NoteStories {
+  const stories = new Map<NoteKey, PMNode>();
+  const read = (node: PMNode): void => {
+    if (node.type === docxSchema.nodes.noteReference) {
+      const kind = EDITABLE_NOTE_KINDS.find(
+        (candidate) => candidate === node.attrs.kind
+      );
+      const id: unknown = node.attrs.id;
+      if (kind === undefined || typeof id !== "string") return;
+      const key = storyKey(kind, id);
+      const story = source.specialNotes.has(key)
+        ? null
+        : storyNodeOf(source.doc, key);
+      if (story !== null) stories.set(key, story);
+      return;
+    }
+    node.forEach(read);
+  };
+  slice.content.forEach(read);
+  return stories.size === 0 ? NO_NOTE_STORIES : stories;
 }
 
 /**

@@ -64,6 +64,7 @@ import {
 } from "../editor/documentStyles";
 import { canInsertTable } from "../editor/insertTable";
 import { openLinkPanel } from "../editor/plugins/linkPanel";
+import type { ActiveSurface } from "../editor/stories/storyView";
 import type { ListKind } from "../numbering/listTemplate";
 import { editorClassNames } from "../styles/classNames";
 import type { FontFallbacks } from "../styles/fontStack";
@@ -316,7 +317,15 @@ function ParagraphLayoutGroup({
   );
 }
 
-function ListGroup({ state, run }: { state: EditorState; run: RunCommand }) {
+function ListGroup({
+  state,
+  run,
+  disabled,
+}: {
+  state: EditorState;
+  run: RunCommand;
+  disabled: boolean;
+}) {
   const kind = activeListKind(state);
   return (
     <div className={editorClassNames.toolbarGroup}>
@@ -327,7 +336,7 @@ function ListGroup({ state, run }: { state: EditorState; run: RunCommand }) {
           icon={toggle.icon}
           pressed={kind === toggle.kind}
           // A document without numbering.xml cannot start a new list
-          disabled={!toggle.command(state)}
+          disabled={disabled || !toggle.command(state)}
           onRun={() => run(toggle.command)}
         />
       ))}
@@ -351,9 +360,24 @@ function IndentGroup({ state, run }: { state: EditorState; run: RunCommand }) {
   );
 }
 
-export interface ToolbarProps {
+/** One editing surface the toolbar can act on: the document's own, or a story's */
+export interface ToolbarSurface {
   view: EditorView;
   state: EditorState;
+}
+
+export interface ToolbarProps {
+  /**
+   * The document itself, which undo and redo always read: a story edit is written into the
+   * document as one change, so the document's history is the one both surfaces share
+   * (`editor/stories`).
+   */
+  main: ToolbarSurface;
+  /**
+   * Where the caret is. Everything but undo and redo is asked of it and dispatched to it, so the
+   * formatting controls act on the note being edited rather than on the text behind it.
+   */
+  active: ActiveSurface;
   fontFallbacks?: FontFallbacks;
   /** Optional values offered by toolbar pickers. */
   presets?: DocxEditorPresets;
@@ -364,8 +388,8 @@ export interface ToolbarProps {
 }
 
 export function Toolbar({
-  view,
-  state,
+  main,
+  active,
   fontFallbacks,
   presets,
   onToggleComments,
@@ -373,7 +397,10 @@ export function Toolbar({
   zoom,
   onZoomChange,
 }: ToolbarProps): ReactElement {
+  const { view, state, takes } = active;
   const run = commandRunner(view);
+  // The document's own history is taken back where the caret stands, not where the edit lands
+  const runOnMain = commandRunner(main.view, view);
   const bar = useRef<HTMLDivElement | null>(null);
   const keys = useLinearWalk({
     container: bar,
@@ -408,7 +435,7 @@ export function Toolbar({
       onKeyDown={onKeyDown}
       {...hushedAttribute(hushed)}
     >
-      <HistoryGroup state={state} run={run} />
+      <HistoryGroup state={main.state} run={runOnMain} />
       <ZoomSelect zoom={zoom} onZoomChange={onZoomChange} />
       <Separator />
       <div className={editorClassNames.toolbarGroup}>
@@ -447,7 +474,7 @@ export function Toolbar({
         run={run}
       />
       <Separator />
-      <ListGroup state={state} run={run} />
+      <ListGroup state={state} run={run} disabled={!takes.has("list")} />
       <IndentGroup state={state} run={run} />
       <Separator />
       <CellStyleGroup
@@ -462,25 +489,29 @@ export function Toolbar({
           label="Insert table"
           icon={Table}
           panel="dialog"
-          disabled={!canInsertTable(state)}
+          disabled={!takes.has("table") || !canInsertTable(state)}
         >
           {({ close, takeFocus }) => (
             <TableSizePicker run={run} close={close} takeFocus={takeFocus} />
           )}
         </Popover>
-        <InsertImageButton view={view} state={state} />
+        <InsertImageButton
+          view={view}
+          state={state}
+          disabled={!takes.has("image")}
+        />
         {/* Cmd+K shares this panel, so it anchors to the selection rather than the button. */}
         <ToolbarButton
           label="Link"
           icon={Link}
-          disabled={!openLinkPanel(state)}
+          disabled={!takes.has("link") || !openLinkPanel(state)}
           onRun={() => run(openLinkPanel)}
         />
         <ToolbarButton
           label={commentsOpen ? "Hide comments" : "Show comments"}
           icon={MessagesSquare}
           pressed={commentsOpen}
-          disabled={!onToggleComments}
+          disabled={!takes.has("comment") || !onToggleComments}
           onRun={() => onToggleComments?.()}
         />
       </div>

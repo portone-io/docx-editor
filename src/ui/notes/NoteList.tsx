@@ -9,6 +9,7 @@
 import type { CSSProperties, ReactElement } from "react";
 import type { NoteRow } from "../../editor/commands/noteQueries";
 import type { PagePixels } from "../../page/pageLayout";
+import { noteName } from "../../schema/stories";
 import { editorClassNames } from "../../styles/classNames";
 import type { FontFallbacks } from "../../styles/fontStack";
 import { NOTE_SEPARATOR_HEIGHT, noteSeparatorWidth } from "./noteSeparator";
@@ -61,6 +62,7 @@ export function NoteList({
           noteKey={row.key}
           story={row.story}
           label={row.label}
+          name={noteName(row.kind, row.label)}
           fontFallbacks={fontFallbacks}
         />
       ))}
