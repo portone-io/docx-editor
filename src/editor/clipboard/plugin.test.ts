@@ -40,7 +40,7 @@ import {
   editorStateForSession,
 } from "../createEditor";
 import { documentOf, storyDocument } from "../editorDocument";
-import { footnoteExtensions, footnoteHost } from "../notes/footnoteSurface";
+import { noteExtensions, noteHost } from "../notes/noteSurface";
 import { createStoryView } from "../stories/storyView";
 import { defineClipboardEvent } from "./__testing__/clipboardEvent";
 
@@ -382,14 +382,14 @@ describe("copying out of the editor", () => {
     });
     const story = createStoryView({
       mount: document.createElement("div"),
-      host: footnoteHost(main, () => {}),
+      host: noteHost(main, () => {}),
       key: storyKey("footnote", "2"),
       document: storyDocument(
         documentOf(main.state),
         documentOf(main.state).geometry
       ),
       fontFallbacks: DEFAULT_FONT_FALLBACKS,
-      extensions: footnoteExtensions(main, "2", () => "1"),
+      extensions: noteExtensions(main, storyKey("footnote", "2"), () => "1"),
     });
     story.view.dispatch(
       story.view.state.tr.setSelection(new AllSelection(story.view.state.doc))
@@ -737,6 +737,46 @@ function storyOfFootnote(state: EditorState, id: string): string {
   return storyText(storyNodeOf(state.doc, storyKey("footnote", id)));
 }
 
+describe("pasting an endnote reference", () => {
+  /** The second paragraph of the formatted fixture calls the second footnote and the endnote */
+  function selectSecondParagraph(view: EditorView): void {
+    const first = view.state.doc.firstChild?.nodeSize ?? 0;
+    const second = view.state.doc.child(1).nodeSize;
+    view.dispatch(
+      view.state.tr.setSelection(
+        TextSelection.create(view.state.doc, first + 1, first + second - 1)
+      )
+    );
+  }
+
+  it("pastes a copied endnote reference with a copy of its endnote", () => {
+    const { view, session } = openEditor(makeFormattedNotesDocx());
+    const said = storyText(
+      storyNodeOf(view.state.doc, storyKey("endnote", "3"))
+    );
+    selectSecondParagraph(view);
+    const copied = copyOf(view);
+
+    caretAtEnd(view);
+    paste(view, copied);
+
+    const endnotes = documentNotes(view.state).filter(
+      (note) => note.kind === "endnote"
+    );
+    expect(endnotes.map(({ id, label, text }) => [id, label, text])).toEqual([
+      ["3", "1", said],
+      ["4", "2", said],
+    ]);
+    // The copy is written as an entry of its own rather than as the original a second time
+    const part = decode(
+      unzipSync(exportDocx(view.state.doc, session))["word/endnotes.xml"]
+    );
+    expect(part).toContain('<w:endnote w:id="4">');
+    expect(part.match(/ Italic endnote/g)).toHaveLength(2);
+    view.destroy();
+  });
+});
+
 describe("pasting a footnote reference", () => {
   it("pastes a cut footnote back with its footnote after the cut deleted it", () => {
     const { view } = openEditor(makeFormattedNotesDocx());
@@ -797,12 +837,14 @@ describe("pasting a footnote reference", () => {
     caretAt(view, 1);
     paste(view, copied);
 
-    // The copy stands first, so it is the first footnote, and the endnote reference did not come
+    // The copy stands first, so its notes are the first of each kind and the originals are counted
+    // on from there
     expect(notesOf(view.state)).toEqual([
       ["6", "1", said],
+      ["4", "1", " Italic endnote"],
       ["2", "2", storyOfFootnote(view.state, "2")],
       ["5", "3", said],
-      ["3", "1", " Italic endnote"],
+      ["3", "2", " Italic endnote"],
     ]);
     view.destroy();
   });

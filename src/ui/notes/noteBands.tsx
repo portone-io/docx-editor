@@ -25,21 +25,22 @@ import {
   FOOTNOTE_BAND,
   FOOTNOTE_BAND_ORDER,
 } from "../../page/demands/footnoteDemands";
-import type { PagePixels } from "../../page/pageLayout";
+import type { PagePixels, TrailingRows } from "../../page/pageLayout";
 import type { PageOverlay } from "../../page/usePageLayout";
 import type { StoryKey } from "../../schema/stories";
+import { editorClassNames } from "../../styles/classNames";
 import {
   DEFAULT_FONT_FALLBACKS,
   type FontFallbacks,
 } from "../../styles/fontStack";
 import { documentDefaultsVariables } from "../../styles/inlineStyle";
-import { FootnoteAreas } from "./FootnoteAreas";
+import { endnoteAreasOf, footnoteAreasOf, NoteAreas } from "./NoteAreas";
 import { NoteList } from "./NoteList";
 import { useNoteHeights } from "./noteHeights";
 import { NOTE_SEPARATOR_HEIGHT } from "./noteSeparator";
 import type { NoteHeightReport, RowEditing } from "./StoryRow";
 
-const NO_FOOTNOTES: ReadonlyMap<StoryKey, NoteRow> = new Map();
+const NO_ROWS: ReadonlyMap<StoryKey, NoteRow> = new Map();
 const NO_NOTE_ROWS: readonly NoteRow[] = [];
 
 /** What a document's notes ask of the page layout, and what is needed to draw them */
@@ -50,18 +51,25 @@ export interface NoteBands {
    */
   readonly bands: ReadonlyMap<string, DemandBand> | undefined;
   /**
-   * The footnotes the document refers to, by story key, in first-reference order.
+   * The endnotes as rows laid after the last block of the document, or undefined where it refers
+   * to none. A new value lays the pages out again, so it changes only when a height does
+   */
+  readonly trailing: TrailingRows | undefined;
+  /**
+   * Every note the document refers to, by story key, in first-reference order.
    *
    * Which one a caret stands in is the mounting component's to hold, so this is the one half of
    * the notes it reads; everything else about how they are drawn stays in `drawn`.
    */
-  readonly footnotes: ReadonlyMap<StoryKey, NoteRow>;
+  readonly rows: ReadonlyMap<StoryKey, NoteRow>;
   /** Held for `NotesAroundPage`; nothing else reads it */
   readonly drawn: DrawnNotes;
 }
 
 /** What `NotesAroundPage` draws with, kept opaque so a caller cannot take the two halves apart */
 interface DrawnNotes {
+  /** The footnotes, which are the notes drawn at the foot of the page their reference stands on */
+  readonly footnotes: ReadonlyMap<StoryKey, NoteRow>;
   readonly endnotes: readonly NoteRow[];
   readonly anyNotes: boolean;
   readonly heights: ReadonlyMap<StoryKey, number>;
@@ -84,7 +92,7 @@ export function useNoteBands({
   fontFallbacks,
 }: NoteBandsOptions): NoteBands {
   const notes = state === null ? null : noteProjection.read(state);
-  const footnotes = notes?.footnotes ?? NO_FOOTNOTES;
+  const footnotes = notes?.footnotes ?? NO_ROWS;
   const hasFootnotes = footnotes.size > 0;
   const [heights, onHeight] = useNoteHeights(of);
   const bands = useMemo(
@@ -104,6 +112,23 @@ export function useNoteBands({
     [hasFootnotes, heights]
   );
 
+  // The endnotes stand after the last paragraph rather than beside the place that calls them, so
+  // they are rows the layout lays last rather than a band a page keeps at its foot
+  const endnotes = notes?.endnotes ?? NO_NOTE_ROWS;
+  const trailing = useMemo<TrailingRows | undefined>(
+    () =>
+      endnotes.length === 0
+        ? undefined
+        : {
+            overhead: NOTE_SEPARATOR_HEIGHT,
+            rows: endnotes.map((row) => ({
+              id: row.key,
+              height: heights.get(row.key) ?? 0,
+            })),
+          },
+    [endnotes, heights]
+  );
+
   const snapshot = state === null ? null : documentOf(state);
   const noteFontFallbacks = fontFallbacks ?? DEFAULT_FONT_FALLBACKS;
   // The sheet sets its text from variables on its own box, which the notes drawn beside it are
@@ -121,9 +146,11 @@ export function useNoteBands({
 
   return {
     bands,
-    footnotes,
+    trailing,
+    rows: notes?.rows ?? NO_ROWS,
     drawn: {
-      endnotes: notes?.endnotes ?? NO_NOTE_ROWS,
+      footnotes,
+      endnotes,
       anyNotes: notes !== null,
       heights,
       onHeight,
@@ -135,65 +162,86 @@ export function useNoteBands({
 
 export interface NotesAroundPageProps {
   readonly notes: NoteBands;
-  /** Where the pages stand, or null while none are drawn */
+  /**
+   * Where the pages stand, or null while none are measured, which is what decides where the notes
+   * go: a page keeps room for them only once it has been laid out
+   */
   readonly overlay: PageOverlay | null;
-  /** The paper the first section is drawn on, which the list after the last page is as wide as */
+  /** The paper the first section is drawn on, which the list under the sheet is as wide as */
   readonly page: PagePixels;
-  /** Whether the pages are drawn at all, which is what decides where the footnotes go */
-  readonly pageGuides: boolean;
   readonly zoom: number;
-  /** The footnote the caret is in, which is the one row an editing view stands over */
+  /** The note the caret is in, which is the one row an editing view stands over */
   readonly open?: StoryKey | null;
-  /** What mounts that view. Null while no footnote is open */
+  /** What mounts that view. Null while no note is open */
   readonly editing?: RowEditing | null;
-  /** Whether the open footnote stands where nothing may be edited */
+  /** Whether the open note stands where nothing may be edited */
   readonly readOnly?: boolean;
   /** A value that differs every time the main document changes, which the open row syncs on */
   readonly revision?: unknown;
-  /** Called for a press on a footnote no view stands over yet */
+  /** Called for a press on a note no view stands over yet */
   readonly onOpen?: (key: StoryKey, at: { left: number; top: number }) => void;
+  /** Called for a press on the number a note is drawn by, which is the way back to its reference */
+  readonly onReturn?: (key: StoryKey) => void;
 }
 
 /**
- * The notes around the paper: each footnote over the room its page keeps, and the notes listed
- * after the last page. With no pages drawn there is no room to stand in, so the footnotes join
- * that list ahead of the endnotes instead.
+ * The notes around the paper: each footnote over the room its page keeps, and the endnotes over
+ * the room kept after the last paragraph.
+ *
+ * Until a page has been measured there is no room to stand in - the guides may be off, or the
+ * first frame may not have been laid out yet - and a note drawn nowhere is a note a reader cannot
+ * read, so both kinds are listed under the sheet until there is. Only a note standing in its own
+ * room is edited in place.
  */
 export function NotesAroundPage({
   notes,
   overlay,
   page,
-  pageGuides,
   zoom,
   open,
   editing,
   readOnly,
   revision,
   onOpen,
+  onReturn,
 }: NotesAroundPageProps): ReactElement | null {
-  const { endnotes, anyNotes, heights, onHeight } = notes.drawn;
-  const { footnotes } = notes;
+  const { footnotes, endnotes, anyNotes, heights, onHeight } = notes.drawn;
+  const drawing = {
+    heights,
+    onHeight,
+    fontFallbacks: notes.drawn.fontFallbacks,
+    textStyle: notes.drawn.textStyle,
+    zoom,
+    open,
+    editing,
+    readOnly,
+    revision,
+    onOpen,
+    onReturn,
+  };
   return (
     <>
       {overlay !== null && footnotes.size > 0 && (
-        <FootnoteAreas
+        <NoteAreas
           overlay={overlay}
-          footnotes={footnotes}
-          heights={heights}
-          onHeight={onHeight}
-          fontFallbacks={notes.drawn.fontFallbacks}
-          textStyle={notes.drawn.textStyle}
-          zoom={zoom}
-          open={open}
-          editing={editing}
-          readOnly={readOnly}
-          revision={revision}
-          onOpen={onOpen}
+          areas={footnoteAreasOf(overlay)}
+          areaClassName={editorClassNames.footnoteArea}
+          rows={footnotes}
+          {...drawing}
         />
       )}
-      {anyNotes && (
+      {overlay !== null && endnotes.length > 0 && (
+        <NoteAreas
+          overlay={overlay}
+          areas={endnoteAreasOf(overlay)}
+          areaClassName={editorClassNames.endnoteArea}
+          rows={notes.rows}
+          {...drawing}
+        />
+      )}
+      {anyNotes && overlay === null && (
         <NoteList
-          footnotes={pageGuides ? NO_NOTE_ROWS : [...footnotes.values()]}
+          footnotes={[...footnotes.values()]}
           endnotes={endnotes}
           page={page}
           fontFallbacks={notes.drawn.fontFallbacks}

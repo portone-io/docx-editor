@@ -44,7 +44,9 @@ test("the demo starts at page one, draws its footnote on the paper, and keeps it
   await expect(
     page.getByRole("region", { name: /^Footnotes on page \d+$/ })
   ).toContainText("A footnote appears at the bottom of its page in Word.");
-  await expect(page.getByRole("region", { name: "Endnotes" })).toContainText(
+  await expect(
+    page.getByRole("region", { name: /^Endnotes on page \d+$/ })
+  ).toContainText(
     "An endnote is collected at the end of a document or section in Word."
   );
 
@@ -176,26 +178,39 @@ test("copies a selection inside a footnote area with none of the document's own 
   expect(html).not.toMatch(/data-(rpr|rattrs|fmt|ppr|pattrs|src|xml)=/);
 });
 
-test("lists endnotes after the last page with their formatting", async ({
+test("draws the endnotes after the last paragraph, on the paper", async ({
   page,
 }) => {
   await openHarness(page, "notes");
 
   const sheetBox = await boxOf(page.locator(`.${editorClassNames.sheet}`));
-  const list = page.getByRole("region", { name: "Endnotes" });
-  const listBox = await boxOf(list);
-  expect(listBox.y).toBeGreaterThanOrEqual(sheetBox.y + sheetBox.height);
-  expect(Math.abs(listBox.x - sheetBox.x)).toBeLessThan(1);
-  expect(Math.abs(listBox.width - sheetBox.width)).toBeLessThan(1);
+  const area = page.getByRole("region", { name: /^Endnotes on page \d+$/ });
+  const areaBox = await boxOf(area);
+  // On the paper rather than under it, and below every line of the body
+  expect(areaBox.y + areaBox.height).toBeLessThanOrEqual(
+    sheetBox.y + sheetBox.height + 1
+  );
+  const lastLineBottom = await page
+    .locator(`.${editorClassNames.sheet} > p`)
+    .evaluateAll((paragraphs) =>
+      Math.max(
+        ...paragraphs.map(
+          (paragraph) => paragraph.getBoundingClientRect().bottom
+        )
+      )
+    );
+  expect(areaBox.y).toBeGreaterThanOrEqual(lastLineBottom - 1);
 
-  await expect(list.locator(`sup.${editorClassNames.noteMark}`)).toHaveText(
+  await expect(area.locator(`sup.${editorClassNames.noteMark}`)).toHaveText(
     "1"
   );
-  await expect(list.getByText("An endnote in italics.")).toHaveCSS(
+  await expect(area.getByText("An endnote in italics.")).toHaveCSS(
     "font-style",
     "italic"
   );
-  await expect(list).not.toContainText("bold words");
+  await expect(area).not.toContainText("bold words");
+  const rule = await boxOf(area.locator(`.${editorClassNames.noteSeparator}`));
+  expect(rule.width).toBeLessThan(areaBox.width / 2);
 });
 
 test("a link the document underlines itself is drawn with one line", async ({

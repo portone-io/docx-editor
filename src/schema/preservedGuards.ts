@@ -1,15 +1,14 @@
 /**
  * The guards over what a document is opened with and the editor only preserves: the fragments a
- * file falls apart without, the reference standing where a note no edit may touch is called, and
- * the paragraph that ends a section.
+ * file falls apart without, and the paragraph that ends a section.
  *
  * The first of those is the two ends of a bookmark range, the two ends of a permission or move
  * range, and the pieces of a field, which say what they say only in the order they stand in. None
  * of it is content the editor writes, so nothing in it can put such a thing back once it is gone,
  * and a document that lost one of a bookmark's two ends cannot be written back as a file at all
- * (`docx/exportDocx` refuses it). What the first two guards hold is therefore the whole list of
- * the nodes they answer for, in the order the document carries them; a section break, which an
- * edit may legitimately move from one paragraph to another, is held by its number instead.
+ * (`docx/exportDocx` refuses it). What that guard holds is therefore the whole list of the nodes
+ * it answers for, in the order the document carries them; a section break, which an edit may
+ * legitimately move from one paragraph to another, is held by its number instead.
  */
 
 import type { Node as PMNode } from "prosemirror-model";
@@ -38,7 +37,6 @@ import {
   transactionReaches,
 } from "./editGuard";
 import { visitPreservedFragments } from "./preservedFragments";
-import { EDITABLE_NOTE_KINDS } from "./stories";
 
 /** Everything about one preserved node that has to read the same after a change as before it */
 type Signature = (node: PMNode) => string;
@@ -227,24 +225,6 @@ export const preservedGuard: ChangeGuard = {
     return shut;
   },
 };
-
-/**
- * A reference to a note of a kind no edit may add or delete (`./stories`). A reference to one of
- * the editable kinds may go and may be copied, and `editor/plugins/noteLifecycle` settles the note
- * it calls.
- */
-function isProtectedNoteReference(node: PMNode): boolean {
-  return (
-    node.type.name === "noteReference" &&
-    !EDITABLE_NOTE_KINDS.some((kind) => kind === node.attrs.kind)
-  );
-}
-
-export const noteGuard = preservedNodeGuard(
-  "note",
-  isProtectedNoteReference,
-  (node) => JSON.stringify(node.attrs)
-);
 
 /**
  * Whether this paragraph's own properties end a section.

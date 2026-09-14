@@ -120,6 +120,19 @@ export interface StoryRowProps {
   readonly readOnly?: boolean;
   /** Called for a press on a row no view stands over yet, with where on the screen it landed */
   readonly onPress?: (at: { left: number; top: number }) => void;
+  /**
+   * Called for a press on the number the note is drawn by, which is the way back to the text that
+   * calls it rather than a place to put the caret
+   */
+  readonly onReturn?: () => void;
+}
+
+/** Whether a press landed on the number the note is drawn by rather than on what a reader wrote */
+function pressedTheNumber(target: EventTarget | null): boolean {
+  return (
+    target instanceof Element &&
+    target.closest(`.${editorClassNames.noteMark}`) !== null
+  );
 }
 
 export const StoryRow = memo(function StoryRow({
@@ -136,6 +149,7 @@ export const StoryRow = memo(function StoryRow({
   revision,
   readOnly = false,
   onPress,
+  onReturn,
 }: StoryRowProps): ReactElement {
   const box = useRef<HTMLDivElement | null>(null);
   const scale = useRef(zoom);
@@ -209,13 +223,19 @@ export const StoryRow = memo(function StoryRow({
       aria-readonly={editing && readOnly ? true : undefined}
       style={hidden ? { visibility: "hidden" } : undefined}
       // The press is answered by the view the row is about to mount, which places the caret where
-      // it landed; letting the browser select the markup first would leave that selection behind
+      // it landed; letting the browser select the markup first would leave that selection behind.
+      // A press on the number is the way back to the text instead, which the view over an open row
+      // answers for itself (`editor/notes/noteSurface`), so the two states do the same thing
       onMouseDown={
-        editing || !onPress
+        editing || (!onPress && !onReturn)
           ? undefined
           : (event) => {
               event.preventDefault();
-              onPress({ left: event.clientX, top: event.clientY });
+              if (onReturn && pressedTheNumber(event.target)) {
+                onReturn();
+                return;
+              }
+              onPress?.({ left: event.clientX, top: event.clientY });
             }
       }
     />

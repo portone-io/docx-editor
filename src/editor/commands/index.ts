@@ -106,17 +106,6 @@ export type {
   FidelitySeverity,
 } from "./fidelityQueries";
 export { documentFidelity } from "./fidelityQueries";
-/**
- * Putting a footnote in, opening one for editing, and writing what one says. An edit deleting the
- * last reference to a footnote deletes the footnote, and one copying a reference gives the copy a
- * footnote of its own, so neither needs a command. Endnotes have none.
- */
-export {
-  canInsertFootnote,
-  insertFootnote,
-  openFootnote,
-  setFootnoteBody,
-} from "./footnoteCommands";
 export type {
   ActiveFontFamily,
   ActiveFontSize,
@@ -186,6 +175,21 @@ export {
   selectionTouchesLocked,
   unlockSelection,
 } from "./lockCommands";
+/**
+ * Putting a note in, opening one for editing, and writing what one says, a command apiece for
+ * footnotes and endnotes. An edit deleting the last reference to a note deletes the note, and one
+ * copying a reference gives the copy a note of its own, so neither needs a command.
+ */
+export {
+  canInsertEndnote,
+  canInsertFootnote,
+  insertEndnote,
+  insertFootnote,
+  openEndnote,
+  openFootnote,
+  setEndnoteBody,
+  setFootnoteBody,
+} from "./noteCommands";
 export type { DocumentNote } from "./noteQueries";
 export { documentNotes } from "./noteQueries";
 export type {

@@ -1,11 +1,15 @@
 /**
- * Writes an edited, added, or removed footnote back into the Footnotes part, one entry per story
+ * Writes an edited, added, or removed note back into the part of its kind, one entry per story
  * (`docx/storyParts`).
  *
- * A Footnotes part this writer creates opens with the separator and continuation-separator entries
- * Word lays the line above the notes out with (§17.11.1, §17.11.23). `settings.xml` is left alone:
- * the `w:footnote` references there are optional (`CT_FtnDocProps`), and a Google Docs export
- * writes none.
+ * The two parts differ in nothing but the names they are written under, so both are laid out by
+ * one description read off the kind: a `w:footnotes` part holds a `w:footnote` apiece and a
+ * `w:endnotes` part a `w:endnote` (§17.11.15, §17.11.16).
+ *
+ * A part this writer creates opens with the separator and continuation-separator entries Word lays
+ * the line above the notes out with (§17.11.1, §17.11.23). `settings.xml` is left alone: the
+ * `w:footnote` and `w:endnote` references there are optional (`CT_FtnDocProps`, `CT_EdnDocProps`),
+ * and a Google Docs export writes none.
  */
 
 import type { Node as PMNode } from "prosemirror-model";
@@ -17,8 +21,12 @@ import type { PartPlanner } from "../partPlan";
 import type { SessionStore } from "../session";
 import { type StoryEntriesPart, storyEntriesPlanner } from "../storyParts";
 
-const FOOTNOTES_CONTENT_TYPE =
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml";
+const NOTE_CONTENT_TYPES: Readonly<Record<NoteKind, string>> = {
+  footnote:
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml",
+  endnote:
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.endnotes+xml",
+};
 
 /** The special entries a new notes part opens with, each under the id Word gives it */
 const SEPARATORS: readonly { readonly type: string; readonly id: number }[] = [
@@ -112,18 +120,28 @@ function referenceIds(doc: PMNode, kind: NoteKind): ReadonlySet<string> {
   return ids;
 }
 
-export const FOOTNOTES_PART: StoryEntriesPart = {
-  name: "footnotes",
-  kind: "footnote",
-  relType: `${R_NS}/footnotes`,
-  contentType: FOOTNOTES_CONTENT_TYPE,
-  stem: "footnotes",
-  root: "footnotes",
-  entry: "footnote",
-  referencedIds: (doc) => referenceIds(doc, "footnote"),
-  frozenEntries: (session) => frozenNotes(session, "footnote"),
-  prelude: (taken) => separatorsXml("footnote", taken),
-};
+/** The part one kind of note is written into, which every name it takes is the kind's own plural */
+function notesPart(kind: NoteKind): StoryEntriesPart {
+  const plural = `${kind}s`;
+  return {
+    name: plural,
+    kind,
+    relType: `${R_NS}/${plural}`,
+    contentType: NOTE_CONTENT_TYPES[kind],
+    stem: plural,
+    root: plural,
+    entry: kind,
+    referencedIds: (doc) => referenceIds(doc, kind),
+    frozenEntries: (session) => frozenNotes(session, kind),
+    prelude: (taken) => separatorsXml(kind, taken),
+  };
+}
+
+export const FOOTNOTES_PART: StoryEntriesPart = notesPart("footnote");
+
+export const ENDNOTES_PART: StoryEntriesPart = notesPart("endnote");
 
 export const footnotesPlanner: PartPlanner =
   storyEntriesPlanner(FOOTNOTES_PART);
+
+export const endnotesPlanner: PartPlanner = storyEntriesPlanner(ENDNOTES_PART);

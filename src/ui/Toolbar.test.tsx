@@ -27,10 +27,7 @@ import {
   editorStateForSession,
 } from "../editor/createEditor";
 import { documentOf, storyDocument } from "../editor/editorDocument";
-import {
-  footnoteExtensions,
-  footnoteHost,
-} from "../editor/notes/footnoteSurface";
+import { noteExtensions, noteHost } from "../editor/notes/noteSurface";
 import {
   createStoryView,
   EVERY_CAPABILITY,
@@ -1311,14 +1308,14 @@ describe("the toolbar over a footnote being edited", () => {
   function openStory(main: EditorView): StoryView {
     const story = createStoryView({
       mount: document.createElement("div"),
-      host: footnoteHost(main, () => {}),
+      host: noteHost(main, () => {}),
       key: FOOTNOTE,
       document: storyDocument(
         documentOf(main.state),
         documentOf(main.state).geometry
       ),
       fontFallbacks: DEFAULT_FONT_FALLBACKS,
-      extensions: footnoteExtensions(main, "2", () => "1"),
+      extensions: noteExtensions(main, storyKey("footnote", "2"), () => "1"),
     });
     story.view.dispatch(
       story.view.state.tr.setSelection(new AllSelection(story.view.state.doc))

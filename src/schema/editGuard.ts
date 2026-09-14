@@ -44,12 +44,7 @@ export type EditIntent =
  * against the places it puts that guard to the test, and a place naming a guard that no longer
  * stands has to be a mistake the compiler catches rather than an annotation answering for nothing.
  */
-export type EditGuardName =
-  | "protection"
-  | "lock"
-  | "preserved"
-  | "note"
-  | "section";
+export type EditGuardName = "protection" | "lock" | "preserved" | "section";
 
 /** What every guard answers, whichever of the two judgements it is written as */
 interface GuardCommon {

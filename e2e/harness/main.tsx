@@ -273,8 +273,8 @@ function install(view: EditorView): void {
     rightClick: () => rightClick(view),
     tableRows: () => tableRows(view),
     lockedText: () => lockedText(view),
-    noteText: (id) =>
-      storyText(storyOf(view.state.doc, storyKey("footnote", id))),
+    noteText: (kind, id) =>
+      storyText(storyOf(view.state.doc, storyKey(kind, id))),
   };
 
   window.docxHarness = harness;

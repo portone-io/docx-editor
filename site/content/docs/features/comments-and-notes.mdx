@@ -28,39 +28,48 @@ A comment body keeps its formatting through an edit; the built-in composer write
 ## Footnotes and endnotes
 
 A footnote is drawn at the foot of the page that holds its reference, under a separator line and
-above the footer, and endnotes are listed with their formatting after the last page.
+above the footer, and the endnotes are drawn after the last paragraph of the document, under a
+separator line of their own, onto further pages where they do not fit.
 What a note is drawn without is listed under
 [Pages and sections](/docs/features/pages-and-sections#limitations).
-With page guides turned off, footnotes are listed there too, ahead of the endnotes.
+With page guides turned off, both are listed under the document instead, the footnotes ahead of the
+endnotes.
 Notes are numbered in the document's own format, starting number, and section restarts; a restart
 on every page is counted straight through.
-### Editing a footnote
 
-Click a footnote's number, or the footnote itself at the foot of the page, to put the caret in it;
-`Escape` puts the caret back just after the number, and clicking the document leaves as well.
-Insert a footnote at the caret with **Insert footnote** on the right-click menu, over body text
-and inside a table cell alike, or with `Mod+Alt+F`; either puts the caret in the new footnote.
+### Editing a note
 
-A footnote takes character and paragraph formatting: bold, italic, underline, strikethrough, color,
+Click a note's number, or the note itself where it is drawn, to put the caret in it.
+An endnote stands at the end of the document, so clicking its number is also what takes a reader
+there.
+Clicking the number a note opens with puts the caret back just after the reference that calls it
+and scrolls there; `Escape` does the same, and clicking the document leaves as well.
+Insert a note at the caret with **Insert footnote** and **Insert endnote** on the right-click menu,
+over body text and inside a table cell alike, or with `Mod+Alt+F` and `Mod+Alt+D` (`Mod+Alt+E` on
+macOS, which keeps Command+Option+D for itself); either puts the caret in the new note.
+
+A note takes character and paragraph formatting: bold, italic, underline, strikethrough, color,
 highlight, font, size, paragraph style, alignment, spacing, indentation, and tabs.
-Tables, images, links, comments, lists, page breaks, and further footnotes cannot be added inside
-one, and a paste into a footnote drops images, links, and footnote references; whatever a
-document's own footnote already holds is kept and its text stays editable.
-Footnotes are edited on the page, so with page guides turned off the listed footnotes are read-only.
+Tables, images, links, comments, lists, page breaks, and further notes cannot be added inside one,
+and a paste into a note drops images, links, and note references; whatever a document's own note
+already holds is kept and its text stays editable.
+Notes are edited where they are drawn on the page, so with page guides turned off the listed notes
+are read-only.
 
-Everything typed in a footnote goes into the document's own history, so one `Mod+Z` takes it back
-from anywhere.
-Deleting a footnote reference deletes its footnote, and undo brings both back; `Backspace` at the
-start of a footnote holding nothing but its number deletes the footnote and its number and returns
-the caret to where the number stood.
-Selecting a footnote's text and deleting it leaves the number standing, since the number is the
-footnote's own rather than text written in it, and one undo brings the text back with it.
-A footnote left empty is kept.
+Everything typed in a note goes into the document's own history, so one `Mod+Z` takes it back from
+anywhere.
+Deleting a note's reference deletes the note, and undo brings both back; `Backspace` at the start of
+a note holding nothing but its number deletes the note and its number and returns the caret to where
+the number stood.
+Selecting a note's text and deleting it leaves the number standing, since the number is the note's
+own rather than text written in it, and one undo brings the text back with it.
+A note left empty is kept.
 
-Notes cannot be edited in comment-only or read-only mode, where the footnote a reader opens takes no
-typing, and endnotes cannot be edited in any mode.
-A selection that runs across an endnote reference cannot be replaced, so typing or deleting over it
-leaves the text as it stands.
+Notes cannot be edited in comment-only or read-only mode, where the note a reader opens takes no
+typing.
+
+A document that asks for its endnotes at the end of each section gets them at the end of the
+document.
 
 [Comments and notes](/docs/editor-api/comments-and-notes) in the Editor API lists the commands and
 queries behind these controls.

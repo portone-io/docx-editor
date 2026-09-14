@@ -129,37 +129,30 @@ function ran(state: EditorState, command: Command): EditorState {
 }
 
 /**
- * A bookmark marker and an endnote reference are preserved rather than edited, so a command that
- * would sweep one away is refused when it is dispatched. The answer has to say so beforehand.
+ * A bookmark marker is preserved rather than edited, so a command that would sweep one away is
+ * refused when it is dispatched. The answer has to say so beforehand. A note reference is not one
+ * of them: it may go, and the note it calls goes with it.
  */
 describe("a command that would sweep away a preserved marker", () => {
-  it("reports false for deleteSelection across an endnote reference", () => {
-    const opened = createEditorState(
-      importDocx(
-        makeNotesDocx(
-          `<w:p>${run("Text")}<w:r><w:endnoteReference w:id="3"/></w:r>${run(" more")}</w:p>`
-        )
-      ).doc
-    );
-    const state = across(opened, "noteReference");
+  it.each([
+    ["footnote", "2"],
+    ["endnote", "3"],
+  ])(
+    "reports true for deleteSelection across a %s reference, which may go",
+    (kind, id) => {
+      const opened = createEditorState(
+        importDocx(
+          makeNotesDocx(
+            `<w:p>${run("Text")}<w:r><w:${kind}Reference w:id="${id}"/></w:r>${run(" more")}</w:p>`
+          )
+        ).doc
+      );
+      const state = across(opened, "noteReference");
 
-    expect(canRunCommand(deleteSelection, state)).toBe(false);
-    expect(ran(state, deleteSelection).doc.eq(state.doc)).toBe(true);
-  });
-
-  it("reports true for deleteSelection across a footnote reference, which may go", () => {
-    const opened = createEditorState(
-      importDocx(
-        makeNotesDocx(
-          `<w:p>${run("Text")}<w:r><w:footnoteReference w:id="2"/></w:r>${run(" more")}</w:p>`
-        )
-      ).doc
-    );
-    const state = across(opened, "noteReference");
-
-    expect(canRunCommand(deleteSelection, state)).toBe(true);
-    expect(ran(state, deleteSelection).doc.textContent).toBe("Texmore");
-  });
+      expect(canRunCommand(deleteSelection, state)).toBe(true);
+      expect(ran(state, deleteSelection).doc.textContent).toBe("Texmore");
+    }
+  );
 
   it("reports false for deleteSelection across a bookmark marker", () => {
     const opened = createEditorState(importDocx(makeDocx(BOOKMARK_P)).doc);

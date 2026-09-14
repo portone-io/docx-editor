@@ -237,16 +237,13 @@ export const rekeyNumbering: SliceNormalizer = (slice, context) => {
  * What each kind of node anchors outside the paragraph it stands in, and whether this one still
  * anchors it once it is pasted.
  *
- * A reference to a note of a kind no writer puts back together is one of them: nothing here can
- * write that note a second time. A footnote reference is not, since its note travels with the copy
- * and is put in beside it (`duplicateNotes`).
+ * A note reference is not one of them, whichever kind of note it calls: its note travels with the
+ * copy and is put in beside it (`duplicateNotes`).
  */
 const ANCHORS: Readonly<Record<string, (node: PMNode) => boolean>> = {
   commentStart: () => true,
   commentEnd: () => true,
   commentReference: () => true,
-  noteReference: (node) =>
-    !EDITABLE_NOTE_KINDS.some((kind) => kind === node.attrs.kind),
 };
 
 /**
@@ -303,12 +300,11 @@ function preservedName(node: PMNode): string | null {
 /**
  * Takes the anchors off what is pasted.
  *
- * A comment marker, a bookmark and an endnote reference all point at something written elsewhere
- * in the package: the comment, the bookmark's other end, the note's body. A copy of the marker
- * alone points at the same thing a second time, which is a duplicate identifier the file may not
- * hold and a range the reader cannot close. Nothing here duplicates what they point at, so the
- * anchor goes and the text it stood in stays, which is what Word does with a note it has no body
- * for.
+ * A comment marker and a bookmark both point at something written elsewhere in the package: the
+ * comment, the bookmark's other end. A copy of the marker alone points at the same thing a second
+ * time, which is a duplicate identifier the file may not hold and a range the reader cannot close.
+ * Nothing here duplicates what they point at, so the anchor goes and the text it stood in stays,
+ * which is what Word does with a note it has no body for.
  *
  * A move drop duplicates nothing: the source goes as the drop lands, so the one anchor there was
  * travels with the text it opened. Taking it off would delete a marker the document has no way to
@@ -338,9 +334,8 @@ export const detachAnchors: SliceNormalizer = (slice, { move }) =>
  * about what it said. It goes the way the other anchors do.
  *
  * Which kinds of note this answers for is not its own to choose: `EDITABLE_NOTE_KINDS`
- * (`schema/stories`) is the one value that says so, and the copy and the paste read it three
- * places over - `ANCHORS` above has already dropped a reference of any other kind, and a copy
- * remembers the stories of the editable kinds alone (`./internalChannel`, `./htmlReader`).
+ * (`schema/stories`) is the one value that says so, and a copy remembers the stories of those
+ * kinds alone (`./internalChannel`, `./htmlReader`).
  */
 export const duplicateNotes: SliceNormalizer = (
   slice,

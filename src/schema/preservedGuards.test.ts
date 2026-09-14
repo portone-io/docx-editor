@@ -354,24 +354,16 @@ describe("a guard over the markers a document was opened with", () => {
     );
   });
 
-  it("refuses a step that plants a second endnote reference", () => {
-    const state = noted();
-    const { from } = referenceRange(state.doc, "endnote");
-    const reference = state.doc.nodeAt(from);
-    if (reference === null) throw new Error("no endnote reference");
+  it.each(["footnote", "endnote"] as const)(
+    "lets a step delete a %s reference",
+    (kind) => {
+      const state = noted();
+      const { from, to } = referenceRange(state.doc, kind);
 
-    expect(transactionAllowed(state.tr.insert(1, reference), state)).toBe(
-      false
-    );
-  });
-
-  it("lets a step delete a footnote reference", () => {
-    const state = noted();
-    const { from, to } = referenceRange(state.doc, "footnote");
-
-    expect(transactionAllowed(state.tr.delete(from, to), state)).toBe(true);
-    expect(editShut(state, { kind: "replace", from, to })).toBe(false);
-  });
+      expect(transactionAllowed(state.tr.delete(from, to), state)).toBe(true);
+      expect(editShut(state, { kind: "replace", from, to })).toBe(false);
+    }
+  );
 
   /**
    * The whole list of markers is compared by walking the document, and the point of the guard is
@@ -439,13 +431,6 @@ describe("a guard over the markers a document was opened with", () => {
     );
     // A mark laid over a marker leaves it standing, so it is nobody's business here
     expect(editShut(withBookmark, { kind: "mark", ...marker })).toBe(false);
-
-    const withNote = noted();
-    const reference = referenceRange(withNote.doc, "endnote");
-    expect(editShut(withNote, { kind: "replace", ...reference })).toBe(true);
-    expect(editShut(withNote, { kind: "insert", at: reference.to })).toBe(
-      false
-    );
   });
 });
 

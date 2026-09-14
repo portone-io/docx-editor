@@ -153,10 +153,12 @@ export const editorClassNames = {
   commentIconActions: `${PREFIX}-comment-icon-actions`,
   commentComposer: `${PREFIX}-comment-composer`,
   commentInput: `${PREFIX}-comment-input`,
-  /** Everything drawn over the paper at the foot of the pages, which only its areas take the mouse in */
-  footnoteAreas: `${PREFIX}-footnote-areas`,
+  /** Everything drawn over the paper in the room the pages keep for notes, which only its areas take the mouse in */
+  noteAreas: `${PREFIX}-note-areas`,
   /** The footnotes at the foot of one page: a short rule, then each footnote */
   footnoteArea: `${PREFIX}-footnote-area`,
+  /** The endnotes drawn after the last paragraph, one box per page they run onto */
+  endnoteArea: `${PREFIX}-endnote-area`,
   /** The short rule that sets notes apart from the text above them */
   noteSeparator: `${PREFIX}-note-separator`,
   /** One note, drawn from its story */

@@ -30,7 +30,7 @@ import {
 import type { SurfaceCapabilities } from "../editor/stories/storyView";
 import { editsShut } from "../schema/protectionState";
 import { editorClassNames } from "../styles/classNames";
-import { footnoteItem } from "./footnoteItem";
+import { noteItems } from "./noteItems";
 import { usePanelAtPoint } from "./panelPlacement";
 import { commandRunner, type RunCommand } from "./runCommand";
 import { modifierLabels } from "./shortcutLabels";
@@ -210,15 +210,16 @@ export function TextMenu({
       run: () => run(openCommentComposer),
     },
   ];
-  const footnote = footnoteItem(takes);
-  if (footnote !== null && bodyOpen) {
-    anchored.push({
-      label: footnote.label,
-      icon: footnote.icon,
-      hint: footnote.hint,
-      enabled: footnote.command(state),
-      run: () => run(footnote.command),
-    });
+  if (bodyOpen) {
+    for (const note of noteItems(takes)) {
+      anchored.push({
+        label: note.label,
+        icon: note.icon,
+        hint: note.hint,
+        enabled: note.command(state),
+        run: () => run(note.command),
+      });
+    }
   }
   groups.push(anchored);
   if (allowLocking && bodyOpen) {

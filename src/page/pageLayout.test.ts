@@ -1324,3 +1324,135 @@ describe("the paper size in editor.css", () => {
     withinTwips(margin * PX_PER_CM, A4_PAGE_PIXELS.marginTop, 1);
   });
 });
+
+describe("the rows laid after the last block", () => {
+  /** Rows of these heights, set under a rule 20 tall */
+  function rows(...heights: readonly number[]) {
+    return {
+      overhead: 20,
+      rows: heights.map((height, index) => ({ id: `n${index}`, height })),
+    };
+  }
+
+  function laidOut(
+    list: MeasuredBlock[],
+    trailing: ReturnType<typeof rows>,
+    bands?: ReadonlyMap<string, DemandBand>
+  ) {
+    return pageLayout({ blocks: list, sections: ONE_SECTION, bands, trailing });
+  }
+
+  it("lays every page out as before when no row is given", () => {
+    const plain = layout(blocks(900, 300, 700));
+
+    expect(
+      pageLayout({
+        blocks: blocks(900, 300, 700),
+        sections: ONE_SECTION,
+        trailing: { overhead: 20, rows: [] },
+      })
+    ).toEqual(plain);
+    expect(plain.trailing).toEqual([]);
+  });
+
+  it("lays trailing rows under the last block on the page it ends on", () => {
+    const result = laidOut(blocks(300, 200), rows(100, 150));
+
+    expect(result.splits).toEqual([]);
+    // Under the 500 the two blocks come to, the rule above the first row
+    expect(result.trailing).toEqual([
+      { page: 1, top: 500, ids: ["n0", "n1"], height: 270 },
+    ]);
+  });
+
+  it("lays trailing rows onto pages of their own once the last page is full", () => {
+    const result = laidOut(blocks(800), rows(100, 300, 400));
+
+    // 800 of text, the rule and the first row reach 920; the second row runs past 1000
+    expect(result.trailing).toEqual([
+      { page: 1, top: 800, ids: ["n0"], height: 120 },
+      { page: 2, top: 1200, ids: ["n1", "n2"], height: 700 },
+    ]);
+    expect(result.splits.map(({ page, y }) => [page, y])).toEqual([[2, 1000]]);
+    // The sheet is stretched to hold the page the rows opened
+    expect(result.bodyHeight).toBe(2200);
+    expect(result.pages.map(({ page }) => page)).toEqual([1, 2]);
+  });
+
+  it("stands the rows above the room the page keeps at its foot", () => {
+    const band: ReadonlyMap<string, DemandBand> = new Map([
+      ["foot", { order: 0, overhead: 0, heights: new Map([["a", 300]]) }],
+    ]);
+    const result = laidOut(
+      blocks({
+        height: 400,
+        demands: [{ offset: 100, id: "a", band: "foot" }],
+      }),
+      rows(200),
+      band
+    );
+
+    // The page ends at 700 above the 300 it keeps, and the rows stop short of that
+    expect(result.reserved).toEqual([
+      { page: 1, band: "foot", ids: ["a"], top: 700, height: 300 },
+    ]);
+    expect(result.trailing).toEqual([
+      { page: 1, top: 400, ids: ["n0"], height: 220 },
+    ]);
+    expect(result.splits).toEqual([]);
+  });
+
+  /**
+   * A demand the last page could not keep is carried past the last block onto a page of its own,
+   * and a trailing row laid on that page can crowd it off again. Nothing may be carried with no
+   * page left to keep it: the footnote would be reserved nowhere and drawn nowhere.
+   */
+  it("keeps a demand a trailing row crowds off the page it was carried to", () => {
+    const band: ReadonlyMap<string, DemandBand> = new Map([
+      ["foot", { order: 0, overhead: 0, heights: new Map([["a", 300]]) }],
+    ]);
+    const result = laidOut(
+      blocks({
+        height: 950,
+        demands: [{ offset: 10, id: "a", band: "foot" }],
+      }),
+      rows(800),
+      band
+    );
+
+    // The row took the page the footnote had been carried to, so the footnote is carried once more
+    // rather than kept nowhere
+    expect(result.reserved.map(({ page, ids }) => [page, ids])).toEqual([
+      [3, ["a"]],
+    ]);
+    expect(result.reserved.at(-1)?.height).toBe(300);
+    expect(result.trailing.map(({ page }) => page)).toEqual([2]);
+  });
+
+  it("gives a row taller than the page a page of its own and no more", () => {
+    const result = laidOut(blocks(100), rows(1500, 100));
+
+    // The tall row takes a page of its own rather than being parted, and the row after it opens
+    // the next page rather than standing in what it overflowed
+    expect(result.trailing).toEqual([
+      { page: 2, top: 1200, ids: ["n0"], height: 1520 },
+      { page: 3, top: 2400, ids: ["n1"], height: 100 },
+    ]);
+    expect(result.splits.map(({ page }) => page)).toEqual([2, 3]);
+  });
+
+  it("opens the pages of the last section, which is where their header comes from", () => {
+    const result = pageLayout({
+      blocks: blocks(300, 300),
+      sections: TWO_SECTIONS,
+      trailing: { overhead: 0, rows: [{ id: "n0", height: 1500 }] },
+    });
+
+    // The second block opens the landscape section, so the row after it lands on that paper
+    const last = result.pages.at(-1);
+    expect(last?.pos).toBe(10);
+    expect(result.trailing.map(({ page, ids }) => [page, ids])).toEqual([
+      [2, ["n0"]],
+    ]);
+  });
+});

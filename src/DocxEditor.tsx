@@ -31,16 +31,15 @@ import { type ExportProblem, exportProblems } from "./docx/invariants";
 import { sectionIn, sectionsOf } from "./docx/sections";
 import type { SessionStore } from "./docx/session";
 import type { CommentAuthor } from "./editor/commands/commentCommands";
-import { openFootnote } from "./editor/commands/footnoteCommands";
 import { activeLinkSpan } from "./editor/commands/linkCommands";
 import { createEditorView, editorStateForSession } from "./editor/createEditor";
 import { sectionGeometryAt } from "./editor/documentStyles";
 import { storyDocument } from "./editor/editorDocument";
 import {
-  footnoteExtensions,
-  footnoteHost,
-  footnoteIdOf,
-} from "./editor/notes/footnoteSurface";
+  noteExtensions,
+  noteHost,
+  returnToReference,
+} from "./editor/notes/noteSurface";
 import {
   closeCommentComposer,
   isCommentComposerOpen,
@@ -48,7 +47,10 @@ import {
 import { commentProjection } from "./editor/plugins/commentDecorations";
 import { setProtection } from "./editor/plugins/documentProtection";
 import { isLinkPanelOpen } from "./editor/plugins/linkPanel";
-import { requestedNote } from "./editor/plugins/noteNavigation";
+import {
+  openNoteCommand,
+  requestedNote,
+} from "./editor/plugins/noteNavigation";
 import { tableMenuAnchor } from "./editor/plugins/tableContextMenu";
 import { textMenuAnchor } from "./editor/plugins/textContextMenu";
 import { DocxImportError, type DocxImportErrorCode } from "./ooxml/errors";
@@ -134,24 +136,24 @@ function runOn(view: EditorView, command: Command): void {
 }
 
 /**
- * What the footnote surface hands the view over one footnote, which is the whole of what this
- * component knows about a kind of story (`editor/notes/footnoteSurface`).
+ * What the note surface hands the view over one note, which is the whole of what this component
+ * knows about a kind of story (`editor/notes/noteSurface`).
+ *
+ * One binding answers for a footnote and an endnote alike: where each is drawn is the drawing
+ * side's question, and what an edit in one does is the same.
  */
-const FOOTNOTE_SURFACE: StorySurfaceBinding = {
-  hostOf: footnoteHost,
-  extensionsOf: (main, row) => {
-    const id = footnoteIdOf(row.key);
-    return id === null ? null : footnoteExtensions(main, id, () => row.label);
-  },
+const NOTE_SURFACE: StorySurfaceBinding = {
+  hostOf: noteHost,
+  extensionsOf: (main, row) => noteExtensions(main, row.key, () => row.label),
   // The paper a note wraps at is the paper of the section its reference stands in, which a story
   // holds no section of its own to say (`editor/documentStyles`)
   documentFor: (main, snapshot, row) =>
     storyDocument(snapshot, sectionGeometryAt(main, row.referencePos)),
   requestedIn: requestedNote,
-  openIn: (main, row) => {
-    const id = footnoteIdOf(row.key);
-    if (id !== null) runOn(main, openFootnote(id));
-  },
+  // The kind's own public command is what a consumer calls; here the kind is a value the row
+  // carries, so the factory behind the two takes it
+  openIn: (main, row) => runOn(main, openNoteCommand(row.kind, row.id)),
+  returnFrom: (main, row) => returnToReference(main, row.key),
 };
 
 /** What a mode hands the reader, which is everything the component reads off the kind */
@@ -582,13 +584,13 @@ function DocxEditorSurface(
     fontFallbacks: mountedFontFallbacks,
   });
 
-  // Which footnote the caret is in and what the view over it is built from, in one place
+  // Which note the caret is in and what the view over it is built from, in one place
   // (`ui/notes/useStorySurface`): a second kind of story is another binding rather than more of
   // this component
   const surface = useStorySurface({
     main: live,
-    rows: notes.footnotes,
-    binding: FOOTNOTE_SURFACE,
+    rows: notes.rows,
+    binding: NOTE_SURFACE,
   });
 
   const overlay = usePageLayout({
@@ -598,6 +600,7 @@ function DocxEditorSurface(
     revision: live?.state.doc,
     sections: sectionPapers,
     bands: notes.bands,
+    trailing: notes.trailing,
     // A page laid out again draws the row the open note stands in wherever it now lands, which
     // would take its composition down with it
     composing: surface.composing,
@@ -715,13 +718,13 @@ function DocxEditorSurface(
               notes={notes}
               overlay={overlay}
               page={page}
-              pageGuides={showPageGuides}
               zoom={effectiveZoom}
               open={surface.open}
               editing={surface.editing}
               readOnly={surface.readOnly}
               revision={live?.state}
               onOpen={surface.onOpen}
+              onReturn={surface.onReturn}
             />
           </div>
           {!commentsOpen && commentsPanel}

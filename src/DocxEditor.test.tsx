@@ -370,11 +370,11 @@ describe("DocxEditor", () => {
     expect(host.querySelector('section[aria-label="Document notes"]')).toBe(
       null
     );
-    // The endnote is its story drawn as a paragraph of the document, its own mark as its label
-    const endnote = host.querySelector(
-      `section[aria-label="Endnotes"] .${editorClassNames.noteRow} p.${editorClassNames.paragraph}`
+    // Each note is its story drawn as a paragraph of the document, its own mark as its label
+    const endnote = host.querySelectorAll(
+      `section[aria-label="Footnotes and endnotes"] .${editorClassNames.noteRow} p.${editorClassNames.paragraph}`
     );
-    expect(endnote?.textContent).toBe("1Endnote body");
+    expect(endnote[endnote.length - 1]?.textContent).toBe("1Endnote body");
     unmount();
   });
 

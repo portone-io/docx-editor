@@ -51,6 +51,8 @@ export interface StorySurfaceBinding {
   requestedIn(main: EditorState): { readonly key: StoryKey } | null;
   /** Puts the caret in this row's story, which is what opens it */
   openIn(main: EditorView, row: NoteRow): void;
+  /** Hands the caret back to the text this row's story is called from, which is what closes it */
+  returnFrom(main: EditorView, row: NoteRow): void;
 }
 
 export interface StorySurfaceOptions {
@@ -75,6 +77,8 @@ export interface StorySurface {
   composing(): boolean;
   /** Opens the story of this row, with the caret where the press landed */
   onOpen(key: StoryKey, at: { left: number; top: number }): void;
+  /** Hands the caret back to the text this row's story is called from */
+  onReturn(key: StoryKey): void;
 }
 
 export function useStorySurface({
@@ -183,6 +187,12 @@ export function useStorySurface({
       if (main === null || pressed === undefined) return;
       held.current = { key, caret: { kind: "point", ...at } };
       binding.openIn(main.view, pressed);
+    },
+    onReturn(key) {
+      const pressed = rows.get(key);
+      if (main === null || pressed === undefined) return;
+      // The body taking the focus back is what closes the story, open or not
+      binding.returnFrom(main.view, pressed);
     },
   };
 }

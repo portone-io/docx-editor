@@ -1,9 +1,10 @@
 /**
- * The rule notes are set under, wherever they are drawn: at the foot of a page (`./FootnoteAreas`)
- * and at the head of the list after the last page (`./NoteList`).
+ * The rule notes are set under, wherever they are drawn: in the room a page keeps for them
+ * (`./NoteAreas`) and at the head of the list under the sheet (`./NoteList`).
  *
  * Its height is also what the page layout is told a page adds once when it holds any footnote
- * (`DemandBand.overhead`), so the room a page keeps and the notes drawn in it are the same size.
+ * (`DemandBand.overhead`), and what the endnotes are given once where they begin
+ * (`TrailingRows.overhead`), so the room kept and the notes drawn in it are the same size.
  */
 
 /** The height a page's notes are set under, the rule drawn across the middle of it */

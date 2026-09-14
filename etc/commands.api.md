@@ -138,6 +138,9 @@ export function canFormatText(state: EditorState): boolean;
 export function canIncreaseIndent(state: EditorState): boolean;
 
 // @public
+export function canInsertEndnote(state: EditorState): boolean;
+
+// @public
 export function canInsertFootnote(state: EditorState): boolean;
 
 // @public
@@ -381,6 +384,9 @@ export const increaseIndent: Command;
 export const increaseListLevel: Command;
 
 // @public
+export const insertEndnote: Command;
+
+// @public
 export const insertFootnote: Command;
 
 // @public
@@ -455,6 +461,9 @@ const NOTE_KINDS: readonly ["footnote", "endnote"];
 type NoteKind = (typeof NOTE_KINDS)[number];
 
 // @public
+export function openEndnote(id: string): Command;
+
+// @public
 export function openFootnote(id: string): Command;
 
 // Warning: (ae-forgotten-export) The symbol "ALIGNS" needs to be exported by the entry point index.d.ts
@@ -507,6 +516,9 @@ export function setCommentBody(id: string, body: Node_2): Command;
 
 // @public
 export function setCommentResolved(id: string, resolved: boolean): Command;
+
+// @public
+export function setEndnoteBody(id: string, body: Node_2): Command;
 
 // @public
 export function setFontFamily(name: string | null): Command;

@@ -1,6 +1,6 @@
 ---
 title: Comments and notes
-description: Write, edit, resolve and read comment threads, insert and edit footnotes, and read the document's footnotes and endnotes.
+description: Write, edit, resolve and read comment threads, and insert, edit and read footnotes and endnotes.
 ---
 
 Everything on this page comes from `@portone/docx-editor/commands`.
@@ -102,30 +102,37 @@ first-reference order, each a read-only `DocumentNote` with `kind` (`"footnote"`
 file asks for a dagger or an asterisk of its own; the mark itself stands in the document beside
 the reference, so such a note is named by its kind alone on the page.
 
+Each kind of note has its own four commands, so a caller reads what it puts in off the name it
+calls.
+
 | Command | What it does |
 | --- | --- |
 | `insertFootnote` | Puts a footnote reference at the end of the selection, calling a new footnote that holds no text yet, and opens that footnote for editing. |
 | `canInsertFootnote(state)` | Whether a footnote can go in at the end of the selection. |
 | `openFootnote(id)` | Puts the caret just after the footnote's reference and opens the footnote for editing, which is what clicking its number runs. |
 | `setFootnoteBody(id, body)` | Replaces a footnote's body with a `doc` node of `docxSchema`, as `setCommentBody` does for a comment. |
+| `insertEndnote` | The same for an endnote, which is drawn after the last paragraph rather than at the foot of a page. |
+| `canInsertEndnote(state)` | Whether an endnote can go in at the end of the selection. |
+| `openEndnote(id)` | Puts the caret just after the endnote's reference, opens the endnote, and scrolls to it at the end of the document. |
+| `setEndnoteBody(id, body)` | Replaces an endnote's body with a `doc` node of `docxSchema`. |
 
-A new footnote is written in the document's `FootnoteText` paragraph style with its number in the
-`FootnoteReference` character style where the document defines them, and in superscript where it
-does not.
-`insertFootnote` and `setFootnoteBody` do not apply under the `readOnly` and `comment` modes or
-where the reference stands in locked content.
-`setFootnoteBody` also answers `false` for an id no reference in the text names, for a separator
-entry, and for a body that says what the footnote already says.
-It writes the body you hand it as it stands: the built-in footnote view keeps the mark a footnote's
-number is drawn from when an edit inside the note takes it away, while this command adds none, so a
-body that does not open with that mark opens in Word without the footnote's number.
+A new note is written in the document's `FootnoteText` or `EndnoteText` paragraph style with its
+number in the `FootnoteReference` or `EndnoteReference` character style where the document defines
+them, and in superscript where it does not.
+The insert and body commands do not apply under the `readOnly` and `comment` modes or where the
+reference stands in locked content.
+A body command also answers `false` for an id no reference in the text names, for a separator
+entry, and for a body that says what the note already says.
+It writes the body you hand it as it stands: the built-in note view keeps the mark a note's number
+is drawn from when an edit inside the note takes it away, while these commands add none, so a body
+that does not open with that mark opens in Word without the note's number.
 
-`openFootnote` answers `false` only for an id no reference in the text names and for a separator
-entry: opening a footnote is reading it, so it applies under every mode, and the footnote it opens
-takes no typing where the body is shut.
-It is what the built-in editor runs when a reader clicks a footnote's number, so a surface of your
-own can put the caret in a footnote from a control of its own.
+`openFootnote` and `openEndnote` answer `false` only for an id no reference in the text names and
+for a separator entry: opening a note is reading it, so it applies under every mode, and the note it
+opens takes no typing where the body is shut.
+They are what the built-in editor runs when a reader clicks a note's number, so a surface of your
+own can put the caret in a note from a control of its own; clicking the number the open note itself
+begins with runs the way back, which puts the caret just after the reference and scrolls there.
 
-A transaction that deletes the last reference to a footnote deletes the footnote with it, so one undo
-brings both back; one that copies a reference gives the copy a new id and a copy of the footnote.
-Endnotes have no commands, and an endnote reference cannot be deleted or copied.
+A transaction that deletes the last reference to a note deletes the note with it, so one undo brings
+both back; one that copies a reference gives the copy a new id and a copy of the note.
