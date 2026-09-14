@@ -63,7 +63,8 @@ export async function proposeRelease(
       "The working tree has uncommitted changes; commit or stash them first"
     );
   await signedIn(sh);
-  await sh("git", ["fetch", "origin", base]);
+  // The push lease also needs release/next refreshed, including remote deletion.
+  await sh("git", ["fetch", "origin", "--prune"]);
   const pending = (
     await sh("git", ["ls-tree", "--name-only", `origin/${base}`, ".changeset/"])
   )

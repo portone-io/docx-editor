@@ -16,6 +16,7 @@ Changesets accumulate on `main` until someone cuts a release:
    Everything on `main` ships with it: a fix cannot go out alone while unreleased work sits ahead of it.
 
 The command needs a signed-in `gh` and refuses a working tree with uncommitted changes or a `main` with no changeset pending.
+It refreshes and prunes origin's remote-tracking branches before preparing the release, so a previous release branch's update or deletion does not leave a stale push lease.
 The changelog writer looks each pull request up on GitHub, so the command passes the `gh` token along; set `GITHUB_TOKEN` to use another.
 
 ## What the workflow checks before publishing

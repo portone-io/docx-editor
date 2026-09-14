@@ -108,7 +108,7 @@ test("the release pull request is cut from origin/main and opened by the person 
   assert.deepEqual(shell.lines(), [
     "git status --porcelain --untracked-files=no",
     "gh auth status",
-    "git fetch origin main",
+    "git fetch origin --prune",
     "git ls-tree --name-only origin/main .changeset/",
     "git rev-parse --abbrev-ref HEAD",
     "git checkout -B release/next origin/main",
