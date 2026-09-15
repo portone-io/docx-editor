@@ -16,7 +16,7 @@
   "dependencies": {
     "@portone/docx-editor": "workspace:*",
     "@portone/docx-editor-demo": "workspace:*",
-    "fumadocs-core": "16.15.4",
+    "fumadocs-core": "16.15.8",
     "fumadocs-mdx": "15.4.0",
     "fumadocs-ui": "16.15.8",
     "lucide-react": "^1.16.0",
