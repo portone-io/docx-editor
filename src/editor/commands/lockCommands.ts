@@ -12,12 +12,12 @@ import {
 import { namesNothing, newControlId } from "../../docx/sdt";
 import { lockedControlPrefix, withContentLock } from "../../docx/sdtProps";
 import { docxSchema } from "../../schema";
+import { controlAttrsOf } from "../../schema/controlAttrs";
 import { guardedCommand, openStretches } from "../../schema/guards";
 import {
   type ControlSpan,
   carriesLock,
   controlSpans,
-  lockAttrsOf,
   selectionShut,
   type Textblock,
   unlockAllowed,
@@ -165,14 +165,14 @@ interface LockedContainer {
  * it is and a control a group alone shuts offers nothing to lift.
  */
 function unlockedContainerAttrs(node: PMNode): Attrs | null {
-  const names = lockAttrsOf(node);
-  if (!names || node.attrs[names.contents] !== true) return null;
+  const names = controlAttrsOf(node);
+  if (!names || node.attrs[names.contentsLocked] !== true) return null;
   const prefix = prefixOf(node.attrs);
   return {
     ...node.attrs,
     sdtPrefix: prefix === null ? null : withContentLock(prefix, false),
-    [names.contents]: false,
-    [names.deletion]: false,
+    [names.contentsLocked]: false,
+    [names.deletionLocked]: false,
   };
 }
 

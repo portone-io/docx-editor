@@ -38,6 +38,7 @@ import { commentComposer } from "./plugins/commentComposer";
 import { commentDecorations } from "./plugins/commentDecorations";
 import { commentRestoration } from "./plugins/commentRestoration";
 import { compositionSelection } from "./plugins/compositionSelection";
+import { controlLifecycle } from "./plugins/controlLifecycle";
 import {
   displayDerivation,
   withDerivedDisplay,
@@ -160,6 +161,9 @@ export function createEditorState(
       // It stands ahead of the numbering, which then labels what it settled
       noteLifecycle(),
       noteNumbering(),
+      // A control that says it goes once its contents are edited goes here, after the edit that
+      // triggered it and in the same history entry (`plugins/controlLifecycle`)
+      controlLifecycle(),
       // What the notes under the page are, worked out from the document the same way
       noteProjection.plugin,
       noteNavigation(),

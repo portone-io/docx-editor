@@ -61,6 +61,45 @@ The control is one block of the story, so a control nobody edited goes back out 
 
 Both shapes read the prefix, what the control states about being edited and deleted, and the copy rule out of `docx/sdt`, so what the four levels - block, inline, cell, row - disagree about is the node, never the vocabulary.
 
+## Editing at the edges of a block control
+
+A control names a settled part of a contract, so the join a keystroke builds at its edge may not carry blocks into it or out of it.
+That is what an edit meeting the edge is judged by.
+
+- A join at the edge is refused: the keystroke does nothing and the selection stays where it stood.
+- A selection running from outside a control into it, or the reverse, is refused whole rather than trimmed to the edge, whatever replaces it: typing, a deletion, a paste.
+  Trimming would move the boundary the file drew, and doing nothing is the reading that never carries text into or out of a control behind the user's back.
+- A selection covering a control from end to end crosses no edge.
+  Taking the control away with everything it held is the deletion clause's question (§17.5.2.23), not this rule's.
+- A control left holding a single empty paragraph is removed whole instead, the caret landing where the control stood.
+  `w:sdtContent` may hold nothing at all, but Word's own empty control is a paragraph of placeholder text rather than an empty one, so the editor never makes a control with nothing inside it.
+  Removing it is judged by the deletion clause like any other whole deletion (§17.5.2.23 `w:lock`), so a `sdtLocked` control refuses it.
+
+The rule is about what a keystroke does on its own, not about what the user asks for.
+Text moved out of a control by cutting it and pasting it elsewhere, or by dragging it there, is the user saying where it goes, and is left alone.
+
+Observed 2026-09-16.
+
+## Two properties an edit acts on rather than preserves
+
+Everything else a `w:sdtPr` carries rides back out inside the prefix. These two cannot:
+
+- `w:temporary` (§17.5.2.43) states that the control "shall be removed from the WordprocessingML document when the its contents are modified".
+  The first edit inside one therefore takes the wrapper away and leaves the blocks, the runs or the cell it stood around exactly where they were.
+- `w:showingPlcHdr` (§17.5.2.39) states that what stands inside is placeholder text rather than contents, and that the state "shall be resumed (showing placeholder text) upon opening this document".
+  A file exported with the flag still set over text the user typed would show that text as a placeholder in Word, so the first edit inside drops the flag.
+  The placeholder text itself is edited like any other text: nothing selects or replaces it on the user's behalf, and no grey drawing is offered for it.
+
+Both are read in `docx/sdt` beside the locks, so the block, the inline mark and a wrapped cell hear the same thing.
+`editor/plugins/controlLifecycle` appends the wrapper change to the edit that caused it, so one undo takes the edit and the wrapper back together, and it runs over a side story as well, so a control inside a footnote settles as one in the body does.
+
+Two silences are settled here.
+A control that carries `w:temporary` and a lock against deletion (§17.5.2.23) keeps its wrapper: the lock states that it may not be removed and nothing says which of the two gives way, so the lock wins, the way every silence in this note is settled.
+The lock speaks about removing the control and about nothing else, so such a control still drops `w:showingPlcHdr`.
+And a change that leaves nothing but a comment is no modification of the contents: a commenter is given the body alone to write against and the file they return is verified against the one they were sent, so a wrapper lifted beside a comment would fail that verification over a change the commenter never made.
+
+Observed 2026-09-16.
+
 ## The id is what keeps a lock from fragmenting
 
 `w:id` (§17.5.2.18) "shall be persisted through multiple sessions (i.e. shall not be changed once specified)".

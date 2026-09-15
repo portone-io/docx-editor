@@ -225,6 +225,7 @@ This is `preserved-markup.docx` with `word/document.xml` replaced. It is the onl
 - A control holding a table, and a control standing inside a table cell, which are the two ways a control and a table meet.
 - The three kinds kept whole instead: a `w:text` control and a `w:date` control, whose content the specification restrains to a single run, and a control whose `w:sdtContent` is empty. Its fidelity snapshot is those three placeholders and is meant to be read in a diff.
 - One control carrying `w:lock w:val="sdtContentLocked"` and one carrying `sdtLocked`, so that both clauses of a lock are read off a block control.
+- One control carrying `w:temporary` and one carrying `w:showingPlcHdr`, which are the two properties an edit inside a control acts on rather than preserves ([Content controls](../spec/notes/contentControls.md)).
 - Every control carrying a `w:id` of its own, which the export must keep unique, and at least six body paragraphs holding text outside any control, which is what the export battery in `src/docx/exportSchemaValidation.test.ts` reserves.
 
 ### `preserved-markup.docx`

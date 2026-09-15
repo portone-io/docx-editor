@@ -28,6 +28,7 @@ import type {
   Selection,
   Transaction,
 } from "prosemirror-state";
+import { controlEdgeGuard } from "./controlEdges";
 import { changesOnlyDisplayAttrs, displayOnly } from "./displayDerivation";
 import {
   type ChangeGuard,
@@ -104,6 +105,7 @@ const protectionGuard: ChangeGuard = {
 export const EDIT_GUARDS: readonly EditGuard[] = [
   protectionGuard,
   lockGuard,
+  controlEdgeGuard,
   preservedGuard,
   sectionGuard,
 ];

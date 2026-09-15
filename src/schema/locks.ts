@@ -25,6 +25,7 @@ import {
   ReplaceStep,
   type Step,
 } from "prosemirror-transform";
+import { controlAttrsOf, controlFactsOf } from "./controlAttrs";
 import type { EditIntent, StepGuard } from "./editGuard";
 import { docxSchema } from "./index";
 import { wrappersOf } from "./wrappers";
@@ -44,6 +45,19 @@ export const unlockAllowed = new PluginKey<boolean>("docxEditorUnlockAllowed");
  * refusal would take the whole history behind it down as well.
  */
 export const historyReplay = new PluginKey<boolean>("docxEditorHistoryReplay");
+
+/**
+ * The pass the one transaction that settles a control carries
+ * (`editor/plugins/controlLifecycle`).
+ *
+ * A `w:temporary` control is removed when its contents are edited (§17.5.2.43) and a
+ * `w:showingPlcHdr` one stops claiming to hold placeholder text, neither of which a user asks for
+ * and neither of which a lock or a control's edge would let through. The transaction carrying this
+ * holds nothing but those two writes, and what a lock does say about them - that a control locked
+ * against deletion keeps its wrapper - is settled there rather than by a refusal here
+ * (`spec/notes/contentControls.md`).
+ */
+export const controlLifted = new PluginKey<boolean>("docxEditorControlLifted");
 
 /** What one control states about editing and deleting it, as the schema records it */
 interface Locks {
@@ -126,56 +140,15 @@ function marksShut(marks: readonly Mark[]): boolean {
   );
 }
 
-/** The attributes one kind of container writes what its control states in (`schema`) */
-export interface LockAttrNames {
-  contents: string;
-  deletion: string;
-  group: string;
-}
-
-/** A cell a control wraps carries them under names of its own, beside the cell's own attrs */
-const CELL_ATTRS: LockAttrNames = {
-  contents: "sdtContentsLocked",
-  deletion: "sdtDeletionLocked",
-  group: "sdtGroup",
-};
-
-/** A block-level control is the control, so it carries them under the wrapper's own names */
-const BLOCK_ATTRS: LockAttrNames = {
-  contents: "contentsLocked",
-  deletion: "deletionLocked",
-  group: "group",
-};
-
-/**
- * Which attributes the control standing at this node writes what it states in, and null where no
- * control stands there.
- *
- * These are the two containers a control stands around whole: a cell the file wrapped
- * (`docx/importTable`), which carries the control's opening XML beside its own attributes, and a
- * block-level control, which is the wrapper itself (`docx/importSdtBlock`). A cell no control
- * wrapped carries none of this, and counting it as a control would end the walk out of the tree at
- * the first cell and open every lock standing around the table.
- * A cell is found by its table role, so a schema built beside this one
- * (`table/__testing__/tables`) is read as well.
- */
-export function lockAttrsOf(
-  node: PMNode | null | undefined
-): LockAttrNames | null {
-  if (!node) return null;
-  if (node.type.name === docxSchema.nodes.sdtBlock.name) return BLOCK_ATTRS;
-  if (node.type.spec.tableRole !== "cell") return null;
-  return typeof node.attrs.sdtPrefix === "string" ? CELL_ATTRS : null;
-}
-
 /** What the control this container stands for states. Nothing at all for anything else */
 function containerLocks(node: PMNode | null | undefined): Locks {
-  const names = lockAttrsOf(node);
+  const names = controlAttrsOf(node);
   if (!node || !names) return OPEN;
+  const facts = controlFactsOf(names, node.attrs);
   return {
-    contents: node.attrs[names.contents] === true,
-    deletion: node.attrs[names.deletion] === true,
-    group: node.attrs[names.group] === true,
+    contents: facts.contentsLocked,
+    deletion: facts.deletionLocked,
+    group: facts.group,
   };
 }
 
@@ -266,7 +239,7 @@ function lockedContainerContent(
   let passed = inner;
   for (let depth = $pos.depth; depth > 0; depth -= 1) {
     const node = $pos.node(depth);
-    if (lockAttrsOf(node) === null) continue;
+    if (controlAttrsOf(node) === null) continue;
     if (shutsContents(containerLocks(node), passed)) {
       const from = $pos.before(depth) + 1;
       return { from, to: from + node.content.size };
@@ -380,7 +353,7 @@ function rangeShut(doc: PMNode, range: EditedRange): boolean {
   let shut = false;
   doc.nodesBetween(range.from, range.to, (node, pos) => {
     if (shut) return false;
-    if (lockAttrsOf(node) !== null) {
+    if (controlAttrsOf(node) !== null) {
       const locks = containerLocks(node);
       if (coversWhole(range, { from: pos, to: pos + node.nodeSize })) {
         // The stretch stands outside the container, so nothing inside it supersedes a group
@@ -534,11 +507,11 @@ function clearsContainerLock(step: Step, doc: PMNode): boolean {
   if (step instanceof AttrStep) {
     if (step.value === true) return false;
     const at = doc.nodeAt(step.pos);
-    const names = lockAttrsOf(at);
+    const names = controlAttrsOf(at);
     if (!names) return false;
     const locks = containerLocks(at);
-    if (step.attr === names.contents) return locks.contents;
-    if (step.attr === names.deletion) return locks.deletion;
+    if (step.attr === names.contentsLocked) return locks.contents;
+    if (step.attr === names.deletionLocked) return locks.deletion;
     if (step.attr === names.group) return locks.group;
     return false;
   }
@@ -599,7 +572,7 @@ function intentShut(doc: PMNode, intent: EditIntent): boolean {
  */
 export const lockGuard: StepGuard = {
   name: "lock",
-  liftedBy: [unlockAllowed, historyReplay],
+  liftedBy: [unlockAllowed, historyReplay, controlLifted],
   step: (step, before) => stepAllowed(step, before),
   shuts: (intent, state) => intentShut(state.doc, intent),
 };

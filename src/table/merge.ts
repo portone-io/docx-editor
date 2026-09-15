@@ -19,6 +19,12 @@ import {
   widthNumber,
   withWidthNumber,
 } from "../model/format";
+import {
+  CELL_CONTROL_ATTRS,
+  controlAttrs,
+  controlFactsOf,
+  NO_CONTROL,
+} from "../schema/controlAttrs";
 import { guardedCommand } from "../schema/guards";
 import { inheritCellAttrs, type TableRect } from "./format";
 import { cellWidthForGridCol, gridSpanWidth, tableGridCols } from "./widths";
@@ -193,14 +199,13 @@ function writeSplitFormats(
         ...cell.attrs,
         ...inheritCellAttrs(source, {
           tcW: cellWidthForGridCol(gridCols, col, width, colspan),
-          sdtPrefix: isOriginalSpot ? source.attrs.sdtPrefix : null,
-          sdtContentsLocked: isOriginalSpot
-            ? source.attrs.sdtContentsLocked
-            : false,
-          sdtDeletionLocked: isOriginalSpot
-            ? source.attrs.sdtDeletionLocked
-            : false,
-          sdtGroup: isOriginalSpot ? source.attrs.sdtGroup : false,
+          // Only the cell the merge started at keeps the control the source cell sat inside
+          ...controlAttrs(
+            CELL_CONTROL_ATTRS,
+            isOriginalSpot
+              ? controlFactsOf(CELL_CONTROL_ATTRS, source.attrs)
+              : NO_CONTROL
+          ),
         }),
       });
     }

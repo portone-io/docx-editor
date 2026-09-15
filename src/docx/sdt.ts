@@ -22,21 +22,15 @@ import {
   renderElement,
   setChild,
 } from "../ooxml/props";
-import { wAttr } from "../ooxml/units";
+import { isOnElement, wAttr } from "../ooxml/units";
 import { attrString, elementChildren, serializeXml, W_NS } from "../ooxml/xml";
+import type { ControlFlags } from "../schema/controlAttrs";
 
 /**
- * What a control's `w:sdtPr` says about editing and deleting it, which is all the editor reads off
- * a control besides the XML it goes back out as.
+ * What a control's `w:sdtPr` states, which is all the editor reads off a control besides the XML
+ * it goes back out as. The carriers write it under names of their own (`schema/controlAttrs`).
  */
-export interface SdtFacts {
-  /** Whether its `w:lock` says the contents may not be edited */
-  contentsLocked: boolean;
-  /** Whether its `w:lock` says it may not be deleted, not even whole */
-  deletionLocked: boolean;
-  /** Whether it is a `w:group` */
-  group: boolean;
-}
+export type SdtFacts = ControlFlags;
 
 /** The opening of a content control taken apart, the content it wraps, and what it says */
 export interface SdtWrapper extends SdtFacts {
@@ -59,6 +53,15 @@ function qualifiedName(el: Element): string {
 }
 
 const GROUP = `{${W_NS}}group`;
+const TEMPORARY = `{${W_NS}}temporary`;
+const SHOWING_PLACEHOLDER = `{${W_NS}}showingPlcHdr`;
+
+/** Whether this boolean property of the control states on (§17.17.4) */
+function states(children: readonly Element[], qualified: string): boolean {
+  return isOnElement(
+    children.find((child) => qualifiedName(child) === qualified) ?? null
+  );
+}
 
 /**
  * Everything the editor judges a control by, read out of its properties in one place so that the
@@ -67,6 +70,11 @@ const GROUP = `{${W_NS}}group`;
  * `w:group` (§17.5.2.17) shuts the contents whatever the `w:lock` says, so it is carried beside
  * the two clauses rather than folded into them: the lock is the editor's to lift and the group is
  * not (`spec/notes/contentControls.md`).
+ *
+ * `w:temporary` and `w:showingPlcHdr` are the two the editor cannot answer by preserving the
+ * prefix: the first says the wrapper goes once its contents are edited, the second says what
+ * stands inside is placeholder text and is to be shown as such again when the file is opened.
+ * Both are read here so that the block, the mark and the wrapped cell hear the same thing.
  */
 function sdtFacts(sdtPr: Element): SdtFacts {
   const children = elementChildren(sdtPr);
@@ -76,6 +84,8 @@ function sdtFacts(sdtPr: Element): SdtFacts {
     contentsLocked: val !== null && CONTENTS_LOCKED.includes(val),
     deletionLocked: val !== null && DELETION_LOCKED.includes(val),
     group: children.some((child) => qualifiedName(child) === GROUP),
+    temporary: states(children, TEMPORARY),
+    showingPlaceholder: states(children, SHOWING_PLACEHOLDER),
   };
 }
 
