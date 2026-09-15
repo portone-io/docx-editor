@@ -25,15 +25,24 @@ import {
 import { wAttr } from "../ooxml/units";
 import { attrString, elementChildren, serializeXml, W_NS } from "../ooxml/xml";
 
-/** The opening of a content control taken apart, and the content it wraps */
-export interface SdtWrapper {
+/**
+ * What a control's `w:sdtPr` says about editing and deleting it, which is all the editor reads off
+ * a control besides the XML it goes back out as.
+ */
+export interface SdtFacts {
+  /** Whether its `w:lock` says the contents may not be edited */
+  contentsLocked: boolean;
+  /** Whether its `w:lock` says it may not be deleted, not even whole */
+  deletionLocked: boolean;
+  /** Whether it is a `w:group` */
+  group: boolean;
+}
+
+/** The opening of a content control taken apart, the content it wraps, and what it says */
+export interface SdtWrapper extends SdtFacts {
   /** The `<w:sdt>` opening tag followed by everything that stood ahead of `<w:sdtContent>` */
   prefix: string;
   content: Element;
-  /** Whether the control says its contents may not be edited */
-  contentsLocked: boolean;
-  /** Whether the control says it may not be deleted, not even whole */
-  deletionLocked: boolean;
 }
 
 /**
@@ -44,11 +53,30 @@ export interface SdtWrapper {
 const CONTENTS_LOCKED = ["contentLocked", "sdtContentLocked"];
 const DELETION_LOCKED = ["sdtLocked", "sdtContentLocked"];
 
-function lockValue(sdtPr: Element): string | null {
-  const lock = elementChildren(sdtPr).find(
-    (child) => child.localName === "lock"
-  );
-  return lock ? wAttr(lock, "val") : null;
+/** The element name with its namespace, which is how a `w:` child is told from a `w14:` one */
+function qualifiedName(el: Element): string {
+  return `{${el.namespaceURI ?? ""}}${el.localName}`;
+}
+
+const GROUP = `{${W_NS}}group`;
+
+/**
+ * Everything the editor judges a control by, read out of its properties in one place so that the
+ * inline mark, the wrapped cell and the block container are all given the same reading.
+ *
+ * `w:group` (§17.5.2.17) shuts the contents whatever the `w:lock` says, so it is carried beside
+ * the two clauses rather than folded into them: the lock is the editor's to lift and the group is
+ * not (`spec/notes/contentControls.md`).
+ */
+function sdtFacts(sdtPr: Element): SdtFacts {
+  const children = elementChildren(sdtPr);
+  const lock = children.find((child) => child.localName === "lock");
+  const val = lock ? wAttr(lock, "val") : null;
+  return {
+    contentsLocked: val !== null && CONTENTS_LOCKED.includes(val),
+    deletionLocked: val !== null && DELETION_LOCKED.includes(val),
+    group: children.some((child) => qualifiedName(child) === GROUP),
+  };
 }
 
 /** Takes a `w:sdt` apart into the wrapper to put back on export and the content to read. null for a shape we do not write ourselves */
@@ -69,12 +97,10 @@ export function readSdtWrapper(el: Element): SdtWrapper | null {
   if (!sdtPr) return null;
 
   const attrs = attrString(el);
-  const val = lockValue(sdtPr);
   return {
     prefix: openTagXml(wName("sdt"), attrs) + head.map(serializeXml).join(""),
     content,
-    contentsLocked: val !== null && CONTENTS_LOCKED.includes(val),
-    deletionLocked: val !== null && DELETION_LOCKED.includes(val),
+    ...sdtFacts(sdtPr),
   };
 }
 
@@ -107,7 +133,7 @@ export function modelsBlockContent(el: Element): boolean {
   );
   if (!sdtPr) return true;
   return !elementChildren(sdtPr).some((child) =>
-    RESTRAINED_TYPES.includes(`{${child.namespaceURI ?? ""}}${child.localName}`)
+    RESTRAINED_TYPES.includes(qualifiedName(child))
   );
 }
 
@@ -156,6 +182,23 @@ export type SdtPrEdit = readonly [name: string, xml: string | null];
 /** What a control carries when it says nothing but which control it is and whether it is shut */
 const NAMES_NOTHING: readonly string[] = ["id", "lock"];
 
+/** A control's opening XML taken apart: the `w:sdt` itself and the `w:sdtPr` it carries */
+interface PrefixProps {
+  sdt: Props;
+  sdtPr: Props;
+}
+
+/**
+ * The opening XML a control goes back out as, taken apart for reading or for rewriting. null for a
+ * shape that cannot be made out, which leaves every caller to back out rather than guess.
+ */
+function prefixProps(prefix: string): PrefixProps | null {
+  const sdt = parseProps(`${prefix}</w:sdt>`);
+  const child = sdt && propsChild(sdt.children, "sdtPr");
+  const sdtPr = child ? parseProps(child.xml) : null;
+  return sdt && sdtPr ? { sdt, sdtPr } : null;
+}
+
 /**
  * Whether the control says nothing about itself beyond its id and its lock: no alias or tag, no
  * `w:dataBinding`, no type of its own.
@@ -163,12 +206,13 @@ const NAMES_NOTHING: readonly string[] = ["id", "lock"];
  * Word named keeps the stretch it was given, or the name would come to cover other text.
  */
 export function namesNothing(prefix: string): boolean {
-  const sdt = parseProps(`${prefix}</w:sdt>`);
-  if (!sdt || sdt.attrs !== null) return false;
-  const sdtPr = propsChild(sdt.children, "sdtPr");
-  const props = sdtPr ? parseProps(sdtPr.xml) : null;
-  if (!props || sdt.children.length !== 1) return false;
-  return props.children.every((child) => NAMES_NOTHING.includes(child.name));
+  const props = prefixProps(prefix);
+  if (!props || props.sdt.attrs !== null || props.sdt.children.length !== 1) {
+    return false;
+  }
+  return props.sdtPr.children.every((child) =>
+    NAMES_NOTHING.includes(child.name)
+  );
 }
 
 /**
@@ -180,10 +224,9 @@ export function editSdtPrefix(
   prefix: string,
   edits: readonly SdtPrEdit[]
 ): string | null {
-  const sdt = parseProps(`${prefix}</w:sdt>`);
-  const sdtPr = sdt && propsChild(sdt.children, "sdtPr");
-  const props = sdtPr ? parseProps(sdtPr.xml) : null;
-  if (!sdt || !props) return null;
+  const read = prefixProps(prefix);
+  if (!read) return null;
+  const { sdt, sdtPr: props } = read;
 
   // A `w:sdtPr` left with nothing inside it is still written, because a control without one is
   // not one we read back

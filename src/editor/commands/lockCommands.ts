@@ -8,7 +8,6 @@ import {
   type Command,
   type EditorState,
   TextSelection,
-  type Transaction,
 } from "prosemirror-state";
 import { namesNothing, newControlId } from "../../docx/sdt";
 import { lockedControlPrefix, withContentLock } from "../../docx/sdtProps";
@@ -18,7 +17,7 @@ import {
   type ControlSpan,
   carriesLock,
   controlSpans,
-  isLockedCell,
+  lockAttrsOf,
   selectionShut,
   type Textblock,
   unlockAllowed,
@@ -150,10 +149,31 @@ interface LockEdit extends Stretch {
   replaces?: Mark;
 }
 
-/** A locked cell the selection reaches, and where it stands */
-interface LockedCell {
+/** A locked container the selection reaches, and what lifting its lock would write */
+interface LockedContainer {
   pos: number;
-  node: PMNode;
+  attrs: Attrs;
+}
+
+/**
+ * What lifting the lock off this container would write, and null where it has no lock to lift.
+ *
+ * The two clauses are written under names of the container's own (`schema/locks`), and the opening
+ * XML the control goes back out as is rewritten alongside them, so that what the file says and
+ * what the editor shows stay the same thing. An opening we cannot rewrite loses its control.
+ * What the container states beyond its lock is not the lock's to move, so a `w:group` stays where
+ * it is and a control a group alone shuts offers nothing to lift.
+ */
+function unlockedContainerAttrs(node: PMNode): Attrs | null {
+  const names = lockAttrsOf(node);
+  if (!names || node.attrs[names.contents] !== true) return null;
+  const prefix = prefixOf(node.attrs);
+  return {
+    ...node.attrs,
+    sdtPrefix: prefix === null ? null : withContentLock(prefix, false),
+    [names.contents]: false,
+    [names.deletion]: false,
+  };
 }
 
 /**
@@ -251,11 +271,12 @@ interface Lockable {
   edits: readonly LockEdit[];
 }
 
-/** What the selection reaches that is already locked */
+/** What the selection reaches that is already locked, and that lifting the lock would open */
 interface Locked {
   /** The locked controls, each as the whole stretch it covers */
   spans: readonly ControlSpan[];
-  cells: readonly LockedCell[];
+  /** The locked containers - a wrapped cell, a block control - each where it stands */
+  containers: readonly LockedContainer[];
 }
 
 /**
@@ -268,12 +289,17 @@ interface Locked {
  * A control the document locked against deletion alone leaves its contents open, so it reads as
  * text to lock rather than as a lock in reach: lifting that one clause by itself is not a state
  * this answer can name. The guard still refuses taking such a control away.
+ *
+ * `shut` is what a `w:group` reads as: its contents refuse every edit on terms the editor cannot
+ * write or lift (`spec/notes/contentControls.md`), so there is neither text to lock nor a lock to
+ * take off. It is told apart from `none` so that a menu can say why it offers nothing.
  */
-export type SelectionLock = "none" | "lockable" | "locked" | "mixed";
+export type SelectionLock = "none" | "shut" | "lockable" | "locked" | "mixed";
 
 /** The same answer carrying what each state would take, which is what the two commands run on */
 type SelectionLockDetail =
   | { kind: "none" }
+  | { kind: "shut" }
   | ({ kind: "lockable" } & Lockable)
   | ({ kind: "locked" } & Locked)
   | ({ kind: "mixed" } & Lockable & Locked);
@@ -318,13 +344,14 @@ function selectionLockDetail(state: EditorState): SelectionLockDetail {
   const locking = !selection.empty && selection instanceof TextSelection;
   const edits: LockEdit[] = [];
   const spans: ControlSpan[] = [];
-  // A merged cell is pointed at from every spot it covers, so each cell is counted once
-  const cells = new Map<number, PMNode>();
+  // A merged cell is pointed at from every spot it covers, so each container is counted once
+  const containers = new Map<number, Attrs>();
 
   for (const range of selection.ranges) {
     const reach = { from: range.$from.pos, to: range.$to.pos };
     state.doc.nodesBetween(reach.from, reach.to, (node, pos) => {
-      if (isLockedCell(node)) cells.set(pos, node);
+      const opened = unlockedContainerAttrs(node);
+      if (opened) containers.set(pos, opened);
       if (!node.isTextblock) return true;
       const block: Textblock = { node, start: pos + 1 };
       const controls = controlSpans(block);
@@ -345,11 +372,14 @@ function selectionLockDetail(state: EditorState): SelectionLockDetail {
 
   const locked: Locked = {
     spans,
-    cells: Array.from(cells, ([pos, node]) => ({ pos, node })),
+    containers: Array.from(containers, ([pos, attrs]) => ({ pos, attrs })),
   };
-  const anyLocked = spans.length > 0 || locked.cells.length > 0;
+  const anyLocked = spans.length > 0 || locked.containers.length > 0;
   if (edits.length === 0) {
-    return anyLocked ? { kind: "locked", ...locked } : { kind: "none" };
+    if (anyLocked) return { kind: "locked", ...locked };
+    return selectionShut(selection, state.doc)
+      ? { kind: "shut" }
+      : { kind: "none" };
   }
   return anyLocked
     ? { kind: "mixed", edits, ...locked }
@@ -369,12 +399,13 @@ function lockEditsOf(lock: SelectionLockDetail): readonly LockEdit[] {
     case "mixed":
       return lock.edits;
     case "none":
+    case "shut":
     case "locked":
       return [];
   }
 }
 
-const NOTHING_LOCKED: Locked = { spans: [], cells: [] };
+const NOTHING_LOCKED: Locked = { spans: [], containers: [] };
 
 /** What lifting a lock would open. Nothing where the selection reaches no lock */
 function lockedOf(lock: SelectionLockDetail): Locked {
@@ -383,6 +414,7 @@ function lockedOf(lock: SelectionLockDetail): Locked {
     case "mixed":
       return lock;
     case "none":
+    case "shut":
     case "lockable":
       return NOTHING_LOCKED;
   }
@@ -406,21 +438,6 @@ export const lockSelection: Command = guardedCommand((state) => {
 });
 
 /**
- * Lifts the lock off a cell, leaving the control that wrapped it in the file standing.
- * An opening we cannot rewrite loses its control, so that what the file says and what the editor
- * shows stay the same thing.
- */
-function unlockCell(tr: Transaction, cell: LockedCell): void {
-  const prefix = prefixOf(cell.node.attrs);
-  tr.setNodeMarkup(cell.pos, null, {
-    ...cell.node.attrs,
-    sdtPrefix: prefix === null ? null : withContentLock(prefix, false),
-    sdtContentsLocked: false,
-    sdtDeletionLocked: false,
-  });
-}
-
-/**
  * Lifts the lock off every control the selection reaches, over that control's whole stretch.
  *
  * The transaction carries the pass that lets it reach past the very locks it lifts, which is the
@@ -428,8 +445,8 @@ function unlockCell(tr: Transaction, cell: LockedCell): void {
  * under a protection that shuts the body (`schema/guards`).
  */
 export const unlockSelection: Command = guardedCommand((state) => {
-  const { spans, cells } = lockedOf(selectionLockDetail(state));
-  if (spans.length === 0 && cells.length === 0) return null;
+  const { spans, containers } = lockedOf(selectionLockDetail(state));
+  if (spans.length === 0 && containers.length === 0) return null;
   const tr = state.tr.setMeta(unlockAllowed, true);
   for (const span of spans) {
     const opened = withLock(span.mark, false);
@@ -439,7 +456,10 @@ export const unlockSelection: Command = guardedCommand((state) => {
     // A control we cannot rewrite goes away instead, which beats a lock that cannot be lifted
     if (opened) tr.addMark(span.from, span.to, opened);
   }
-  for (const cell of cells) unlockCell(tr, cell);
+  // The control that wrapped the container in the file stays standing; only its lock comes off
+  for (const container of containers) {
+    tr.setNodeMarkup(container.pos, null, container.attrs);
+  }
   return tr;
 });
 

@@ -117,6 +117,8 @@ function lockItem(lock: SelectionLock, run: RunCommand): MenuItem {
   };
   switch (lock) {
     case "none":
+    // Contents a control shuts on its own terms offer neither a lock nor a lift
+    case "shut":
       return { ...locking, enabled: false };
     case "lockable":
       return { ...locking, enabled: true };

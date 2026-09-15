@@ -13,6 +13,7 @@ import { runCommand } from "../__testing__/editing";
 import { toCellFormat } from "../model/format";
 import { cellStyle } from "../styles/inlineStyle";
 import {
+  CELL_CONTROL_PREFIX,
   cell,
   cellWithText,
   dxa,
@@ -173,7 +174,13 @@ describe("cell alignment and padding", () => {
 
   it("reports and performs no layout formatting inside a locked cell", () => {
     const doc = tableDoc([
-      row(cell("locked", { sdtContentsLocked: true, sdtDeletionLocked: true })),
+      row(
+        cell("locked", {
+          sdtPrefix: CELL_CONTROL_PREFIX,
+          sdtContentsLocked: true,
+          sdtDeletionLocked: true,
+        })
+      ),
     ]);
     const state = stateWithCursorIn(doc, "locked");
     expect(setCellVerticalAlign("center")(state)).toBe(false);
@@ -257,6 +264,7 @@ describe("the border color", () => {
       row(
         cell("locked", {
           tcPr: ownBorder,
+          sdtPrefix: CELL_CONTROL_PREFIX,
           sdtContentsLocked: true,
           sdtDeletionLocked: true,
         }),
