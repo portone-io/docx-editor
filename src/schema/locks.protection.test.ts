@@ -44,6 +44,11 @@ const LOCKED_CELL =
   `<w:tr><w:sdt>${lockedPr}<w:sdtContent>${cell("Locked")}</w:sdtContent></w:sdt>` +
   `${cell("Open")}</w:tr></w:tbl>`;
 
+/** A block-level control that shuts both clauses, around one paragraph of its own */
+const LOCKED_BLOCK =
+  `<w:sdt>${lockedPr}<w:sdtContent><w:p>${run("Held")}</w:p>` +
+  "</w:sdtContent></w:sdt>";
+
 function opened(
   protection: EditingProtection = "none",
   body = COMMENTED
@@ -212,6 +217,21 @@ describe("the display-only pass", () => {
       .setMeta(displayOnly, true);
 
     expect(node.attrs.sdtContentsLocked).toBe(true);
+    expect(transactionAllowed(whole, state)).toBe(false);
+    expect(transactionAllowed(oneAttr, state)).toBe(false);
+  });
+
+  it("refuses the claim to a step that lifts a block control's lock", () => {
+    const state = opened("none", COMMENTED + LOCKED_BLOCK);
+    const { pos, node } = blockHolding(state.doc, "sdtBlock", "Held");
+    const whole = state.tr
+      .setNodeMarkup(pos, null, { ...node.attrs, contentsLocked: false })
+      .setMeta(displayOnly, true);
+    const oneAttr = state.tr
+      .setNodeAttribute(pos, "deletionLocked", false)
+      .setMeta(displayOnly, true);
+
+    expect(node.attrs.contentsLocked).toBe(true);
     expect(transactionAllowed(whole, state)).toBe(false);
     expect(transactionAllowed(oneAttr, state)).toBe(false);
   });

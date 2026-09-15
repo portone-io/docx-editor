@@ -597,7 +597,7 @@ export type RunToggle = "bold" | "italic" | "underline" | "strike";
 export function selectComment(id: string): Command;
 
 // @public
-export type SelectionLock = "none" | "lockable" | "locked" | "mixed";
+export type SelectionLock = "none" | "shut" | "lockable" | "locked" | "mixed";
 
 // @public
 export function selectionLock(state: EditorState): SelectionLock;

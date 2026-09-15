@@ -64,6 +64,8 @@ interface CellControl {
   contentsLocked: boolean;
   /** Whether it says the control around the cell may not be deleted */
   deletionLocked: boolean;
+  /** Whether the control is a `w:group` */
+  group: boolean;
 }
 
 interface RawCell {
@@ -165,6 +167,7 @@ function readSdtCell(el: Element): SdtCell | null {
       prefix: wrapper.prefix,
       contentsLocked: wrapper.contentsLocked,
       deletionLocked: wrapper.deletionLocked,
+      group: wrapper.group,
     },
   };
 }
@@ -425,6 +428,7 @@ function buildCell(
       sdtPrefix: draft.control?.prefix ?? null,
       sdtContentsLocked: draft.control?.contentsLocked ?? false,
       sdtDeletionLocked: draft.control?.deletionLocked ?? false,
+      sdtGroup: draft.control?.group ?? false,
       trailingXml: draft.trailingXml,
     },
     blocks

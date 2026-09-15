@@ -70,7 +70,7 @@ function droppingSectionBreak(value: unknown): unknown {
 /**
  * Everything a new cell inherits.
  *
- * The content control around a cell (`sdtPrefix`, and the two locks that come out of it) is
+ * The content control around a cell (`sdtPrefix`, and what comes out of it) is
  * deliberately left out: a new cell must not quietly come into the document carrying a copy of
  * somebody else's control, let alone that control's lock.
  */
