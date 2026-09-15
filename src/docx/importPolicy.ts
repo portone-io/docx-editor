@@ -14,7 +14,7 @@
  *
  * A level is a content model of `wml.xsd` rather than an element name, because the same name means
  * different things in different places: `sdt` is a control the paragraph reader unwraps, a cell
- * wrapper under `tr`, a block placeholder under the body, and a row wrapper nothing reads. Keys are
+ * wrapper under `tr`, a block container under the body, and a row wrapper nothing reads. Keys are
  * Clark names (`{namespace}localName`) so that `m:oMath` and `w:sdt` sit in one map.
  */
 
@@ -61,7 +61,15 @@ export type ElementPolicy = { readonly tier: "model" } | PreservationRule;
 export type DemotionPolicy = { readonly tier: "demote" };
 
 /** The levels a reader walks. Each is a content model of its own in `wml.xsd` */
-export type ContentLevel = "body" | "tbl" | "tr" | "tc" | "p" | "wrapper" | "r";
+export type ContentLevel =
+  | "body"
+  | "sdtContent"
+  | "tbl"
+  | "tr"
+  | "tc"
+  | "p"
+  | "wrapper"
+  | "r";
 
 const MODEL: ElementPolicy = { tier: "model" };
 const HIDDEN_MARKER: PreservationRule = {
@@ -207,26 +215,49 @@ const WRAPPER_LEVEL: ReadonlyMap<string, ElementPolicy> = new Map([
   ...MATH.map((name): [string, ElementPolicy] => [name, INLINE_CHIP]),
 ]);
 
+/**
+ * `EG_ContentBlockContent`: what a body, a cell and a control's content all take.
+ *
+ * A `w:sdt` here is a block content control, which `docx/importSdtBlock` reads as a container of
+ * these same children. A control the reader turns down - a type whose content the specification
+ * restrains, or one holding something this level has no node for - falls to the level's own
+ * narrowest preservation, which is the block placeholder it used to be read as outright.
+ */
 const BLOCK_CHILDREN: readonly (readonly [readonly string[], ElementPolicy])[] =
   [
-    [["p", "tbl"], MODEL],
+    [["p", "tbl", "sdt"], MODEL],
     [RANGE_MARKERS, HIDDEN_MARKER],
     [COMMENT_RANGE_MARKERS, HIDDEN_MARKER],
     [PERMISSION_MARKERS, HIDDEN_MARKER],
     [["proofErr"], IGNORABLE],
     [REVISION_CONTAINERS, BLOCK_CHIP],
-    [["sdt", "customXml", "altChunk"], BLOCK_CHIP],
+    [["customXml"], BLOCK_CHIP],
   ];
+
+/** `EG_BlockLevelElts` is `EG_ContentBlockContent` with `w:altChunk` beside it */
+const BLOCK_LEVEL_ELTS: readonly (readonly [
+  readonly string[],
+  ElementPolicy,
+])[] = [...BLOCK_CHILDREN, [["altChunk"], BLOCK_CHIP]];
 
 /** `CT_Body`: `EG_BlockLevelElts` and the section the body closes with */
 const BODY_LEVEL: ReadonlyMap<string, ElementPolicy> = new Map([
-  ...rules([...BLOCK_CHILDREN, [["sectPr"], BLOCK_CHIP]]),
+  ...rules([...BLOCK_LEVEL_ELTS, [["sectPr"], BLOCK_CHIP]]),
   ...MATH.map((name): [string, ElementPolicy] => [name, BLOCK_CHIP]),
 ]);
 
 /** `CT_Tc`: its properties and the same block content the body takes */
 const CELL_LEVEL: ReadonlyMap<string, ElementPolicy> = new Map([
-  ...rules([...BLOCK_CHILDREN, [["tcPr"], MODEL]]),
+  ...rules([...BLOCK_LEVEL_ELTS, [["tcPr"], MODEL]]),
+  ...MATH.map((name): [string, ElementPolicy] => [name, BLOCK_CHIP]),
+]);
+
+/**
+ * `CT_SdtContentBlock`: `EG_ContentBlockContent`, which is what a body takes without `w:altChunk`
+ * and without the closing section (§17.5.2.34).
+ */
+const SDT_CONTENT_LEVEL: ReadonlyMap<string, ElementPolicy> = new Map([
+  ...rules(BLOCK_CHILDREN),
   ...MATH.map((name): [string, ElementPolicy] => [name, BLOCK_CHIP]),
 ]);
 
@@ -260,6 +291,7 @@ export const WML_POLICY: Readonly<
   p: PARAGRAPH_LEVEL,
   wrapper: WRAPPER_LEVEL,
   body: BODY_LEVEL,
+  sdtContent: SDT_CONTENT_LEVEL,
   tc: CELL_LEVEL,
   tbl: TABLE_LEVEL,
   tr: ROW_LEVEL,
@@ -280,6 +312,7 @@ const LEVEL_PRESERVATION: Readonly<Record<PreservingLevel, PreservationRule>> =
     p: INLINE_CHIP,
     wrapper: INLINE_CHIP,
     body: BLOCK_CHIP,
+    sdtContent: BLOCK_CHIP,
     tc: BLOCK_CHIP,
   };
 

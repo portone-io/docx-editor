@@ -14,8 +14,14 @@ import {
 import { createEditorState } from "../editor/createEditor";
 import { docxSchema } from "../schema";
 import { exportDocx } from "./exportDocx";
+import { NO_EXPORT_REFS } from "./exportRefs";
 import { importDocx } from "./importDocx";
-import { serializeTable } from "./serializeTable";
+import { serializeBlock } from "./serializeBlock";
+import { serializeTable as serializeTableWith } from "./serializeTable";
+
+/** The table as an export writes one: the block writer it hands in is `serializeBlock` */
+const serializeTable = (table: PMNode) =>
+  serializeTableWith(table, NO_EXPORT_REFS, serializeBlock);
 
 const grid = (...cols: number[]) =>
   `<w:tblGrid>${cols.map((w) => `<w:gridCol w:w="${w}"/>`).join("")}</w:tblGrid>`;

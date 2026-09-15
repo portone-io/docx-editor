@@ -185,7 +185,8 @@ export const dropSourceIdentity: SliceNormalizer = (slice, { move }) =>
         }
         if (
           node.type !== docxSchema.nodes.paragraph &&
-          node.type !== docxSchema.nodes.table
+          node.type !== docxSchema.nodes.table &&
+          node.type !== docxSchema.nodes.sdtBlock
         ) {
           return node;
         }

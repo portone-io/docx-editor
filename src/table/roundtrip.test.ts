@@ -21,12 +21,14 @@ import {
 } from "../__testing__/docx";
 import { runCommand } from "../__testing__/editing";
 import { exportDocx } from "../docx/exportDocx";
+import { NO_EXPORT_REFS } from "../docx/exportRefs";
 import { importDocx } from "../docx/importDocx";
 import {
   A4_PORTRAIT,
   bodyWidth,
   type PageGeometry,
 } from "../docx/pageGeometry";
+import { serializeBlock } from "../docx/serializeBlock";
 import { serializeTable } from "../docx/serializeTable";
 import type { SessionStore } from "../docx/session";
 import { createEditorState } from "../editor/createEditor";
@@ -418,9 +420,17 @@ describe("exporting a table whose cell borders and fill were edited", () => {
 
   it(`${UNMERGED}: nothing but the edited cell's own XML changes`, () => {
     const { doc } = importDocx(readFixture(UNMERGED));
-    const before = serializeTable(firstTable(doc).table);
+    const before = serializeTable(
+      firstTable(doc).table,
+      NO_EXPORT_REFS,
+      serializeBlock
+    );
     const edited = runCommand(stateInCell(doc, 1, 1), setCellBorders("all"));
-    const after = serializeTable(firstTable(edited.doc).table);
+    const after = serializeTable(
+      firstTable(edited.doc).table,
+      NO_EXPORT_REFS,
+      serializeBlock
+    );
     const { start, beforeEnd, afterEnd } = divergence(before, after);
 
     expect(after).not.toBe(before);

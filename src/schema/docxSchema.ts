@@ -649,6 +649,72 @@ export const docxSchema = new Schema({
       ],
     },
     /**
+     * The blocks a block-level content control (`w:sdt` under the body, a cell, or another
+     * control) holds, as a container of its own.
+     *
+     * How deeply controls are nested is what the tree says here, where the inline mark has to
+     * carry it as `depth`, since several marks stand on one and the same text.
+     */
+    sdtBlock: {
+      group: "block modelled",
+      content: "block+",
+      // A control may be deleted whole when its lock allows it, so it has to be selectable; it is
+      // not isolating, because an isolating node is one a deletion cannot reach across at all
+      selectable: true,
+      attrs: {
+        /**
+         * The fragment of the session this control was opened from, as a table names its own.
+         * null for one opened inside a cell or inside another control, which was never a fragment
+         * of its own.
+         */
+        srcId: { default: null },
+        /** The opening XML of the `<w:sdt>`, the same string the inline mark and a wrapped cell carry */
+        sdtPrefix: { default: null },
+        /** Which control of the document this is, counted as the file was opened (`docx/wrappers`) */
+        key: { default: 0 },
+        /** The two clauses of the control's lock, as the inline mark carries them */
+        contentsLocked: { default: false },
+        deletionLocked: { default: false },
+      },
+      toDOM(node) {
+        const locked = node.attrs.contentsLocked === true;
+        return [
+          "div",
+          {
+            class: locked
+              ? `${editorClassNames.sdtBlock} ${editorClassNames.sdtLocked}`
+              : editorClassNames.sdtBlock,
+            "data-src": text(node.attrs.srcId),
+            "data-sdt-prefix": text(node.attrs.sdtPrefix),
+            "data-key": numberText(node.attrs.key),
+            "data-sdt-contents-locked": locked ? "1" : undefined,
+            "data-sdt-deletion-locked":
+              node.attrs.deletionLocked === true ? "1" : undefined,
+          },
+          0,
+        ];
+      },
+      parseDOM: [
+        {
+          tag: `div.${editorClassNames.sdtBlock}`,
+          getAttrs: (dom) => {
+            const prefix = rawXml(dom, "data-sdt-prefix", SDT_PREFIX);
+            // With no opening tag to put back there is no control left to write out
+            if (prefix === null || prefix === false) return false;
+            return {
+              srcId: srcIdOf(dom),
+              sdtPrefix: prefix,
+              key: parseInt10(dom.getAttribute("data-key"), 0),
+              contentsLocked:
+                dom.getAttribute("data-sdt-contents-locked") === "1",
+              deletionLocked:
+                dom.getAttribute("data-sdt-deletion-locked") === "1",
+            };
+          },
+        },
+      ],
+    },
+    /**
      * The one node a block the editor has no model for stands as, wherever it stood: under the
      * body, or inside a table cell.
      *
