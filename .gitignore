@@ -11,4 +11,5 @@ site/.source/
 site/next-env.d.ts
 site/public/demo.docx
 site/.vercel/
-.claude/
+.claude/*
+!.claude/skills/
