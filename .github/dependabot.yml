@@ -8,6 +8,12 @@ updates:
     # holding new versions back leaves that window to someone else.
     cooldown:
       default-days: 7
+    # fumadocs-ui pins fumadocs-core to one exact version, so a release that
+    # moves only one of them cannot be installed. They are updated together.
+    groups:
+      fumadocs:
+        patterns:
+          - "fumadocs*"
   # Keeps the commit-pinned actions in .github/workflows/ moving.
   - package-ecosystem: "github-actions"
     directory: "/"

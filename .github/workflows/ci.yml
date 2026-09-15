@@ -30,6 +30,9 @@ jobs:
       - uses: $/.github/actions/xmllint
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
+      # Only the site build resolves the documentation site's own dependencies
+      # against each other, so a mismatched pair among them fails here.
+      - run: pnpm build:site
 
   package:
     runs-on: ubuntu-latest
