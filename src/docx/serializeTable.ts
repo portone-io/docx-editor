@@ -28,9 +28,10 @@ import {
   setChild,
 } from "../ooxml/props";
 import { ST_MeasurementOrPercent, ST_TwipsMeasure } from "../ooxml/simpleTypes";
-import { type ExportRefs, NO_EXPORT_REFS } from "./exportRefs";
-import { rawAttrsOf, serializeParagraph } from "./serializeParagraph";
-import { serializePreservedBlock } from "./serializePreserved";
+import type { ExportRefs } from "./exportRefs";
+import { sdtXml } from "./sdt";
+import { rawAttrsOf } from "./serializeParagraph";
+import type { BlockWriter } from "./serializeSdtBlock";
 
 /** Splits the original formatting fragment up by child. With no fragment, we start from an empty one */
 function propsOf(xml: unknown, tag: string): Props {
@@ -182,16 +183,6 @@ function cellPropsXml(cell: PMNode, role: CellRole): string {
 }
 
 /**
- * One block of a cell. A cell takes exactly the blocks the body takes, and each of them is
- * written the same way it is written there.
- */
-function cellBlockXml(block: PMNode, refs: ExportRefs): string {
-  if (block.type.name === "paragraph") return serializeParagraph(block, refs);
-  if (block.type.name === "table") return serializeTable(block, refs);
-  return serializePreservedBlock(block, refs);
-}
-
-/**
  * The markers a table, a row or a cell carries, or nothing where it carries none.
  *
  * `w:tbl` and `w:tr` have no node to keep such an element in (`docx/importPolicy`), so it rides on
@@ -211,15 +202,20 @@ function markerXml(node: PMNode, attr: "leadingXml" | "trailingXml"): string {
 function wrapInSdt(xml: string, cell: PMNode, role: CellRole): string {
   const prefix: unknown = cell.attrs.sdtPrefix;
   if (role !== "start" || typeof prefix !== "string") return xml;
-  return `${prefix}<w:sdtContent>${xml}</w:sdtContent></w:sdt>`;
+  return sdtXml(prefix, xml);
 }
 
-function cellXml(cell: PMNode, role: CellRole, refs: ExportRefs): string {
+function cellXml(
+  cell: PMNode,
+  role: CellRole,
+  refs: ExportRefs,
+  writeBlock: BlockWriter
+): string {
   // A continuing cell only holds the spot, so it carries a single empty paragraph
   const body =
     role === "continue"
       ? elementXml(wName("p"), [])
-      : cell.children.map((block) => cellBlockXml(block, refs)).join("");
+      : cell.children.map((block) => writeBlock(block, refs)).join("");
   const xml =
     openTagXml(wName("tc"), rawAttrsOf(cell.attrs.tcAttrs)) +
     cellPropsXml(cell, role) +
@@ -279,9 +275,14 @@ function placeRow(row: PMNode, covering: Covering[]): Placed[] {
   return placed;
 }
 
-function rowXml(row: PMNode, covering: Covering[], refs: ExportRefs): string {
+function rowXml(
+  row: PMNode,
+  covering: Covering[],
+  refs: ExportRefs,
+  writeBlock: BlockWriter
+): string {
   const cells = placeRow(row, covering)
-    .map((placed) => cellXml(placed.cell, placed.role, refs))
+    .map((placed) => cellXml(placed.cell, placed.role, refs, writeBlock))
     .join("");
   const tblPrEx: unknown = row.attrs.tblPrEx;
   const trPr: unknown = row.attrs.trPr;
@@ -298,13 +299,19 @@ function rowXml(row: PMNode, covering: Covering[], refs: ExportRefs): string {
   );
 }
 
+/**
+ * A cell takes exactly the blocks the body takes, so the caller hands over the writer for its own
+ * level: a table may stand inside a content control as a control may stand inside a table, and
+ * neither writer may import the other.
+ */
 export function serializeTable(
   table: PMNode,
-  refs: ExportRefs = NO_EXPORT_REFS
+  refs: ExportRefs,
+  writeBlock: BlockWriter
 ): string {
   const covering: Covering[] = [];
   const rows = table.children
-    .map((row) => rowXml(row, covering, refs))
+    .map((row) => rowXml(row, covering, refs, writeBlock))
     .join("");
   // A merge left over unconsumed means the grid is out of alignment, so we do not let it pass quietly
   if (covering.some((entry) => entry.rowsLeft > 0)) {

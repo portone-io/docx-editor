@@ -90,13 +90,13 @@ export function buildPreservedInline(
  * One block kept as it came, standing where it stood.
  *
  * A body block is one of the fragments the session holds, so it names that fragment and the bytes
- * it arrived as go back out untouched. A block inside a cell was never a fragment of its own, so
- * it carries its XML along with it.
+ * it arrived as go back out untouched. A block inside a cell or inside a content control was never
+ * a fragment of its own, so it carries its XML along with it.
  */
 export function buildPreservedBlock(
   el: Element,
   srcId: string | null,
-  level: "body" | "tc"
+  level: "body" | "tc" | "sdtContent"
 ): PMNode {
   const rule = preservationOf(policyFor(el, level), level);
   return docxSchema.nodes.rawBlock.create({

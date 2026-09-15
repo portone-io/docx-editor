@@ -39,6 +39,8 @@ export const editorClassNames = {
   cellLocked: `${PREFIX}-tc-locked`,
   /** A stretch of text sitting inside a content control (`w:sdt`) */
   sdt: `${PREFIX}-sdt`,
+  /** The blocks a block-level content control (`w:sdt` under the body or a cell) holds */
+  sdtBlock: `${PREFIX}-sdt-block`,
   /** Attached alongside it when the control says its contents may not be edited */
   sdtLocked: `${PREFIX}-sdt-locked`,
   /** A stretch of text inside a hyperlink (`w:hyperlink`) */

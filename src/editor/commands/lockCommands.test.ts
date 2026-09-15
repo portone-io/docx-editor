@@ -8,8 +8,10 @@ import {
 import { CellSelection } from "prosemirror-tables";
 import { describe, expect, it } from "vitest";
 import { makeDocx, makeStyledDocx } from "../../__testing__/docx";
+import { NO_EXPORT_REFS } from "../../docx/exportRefs";
 import { importDocx } from "../../docx/importDocx";
 import { buildParagraph } from "../../docx/importParagraph";
+import { serializeBlock } from "../../docx/serializeBlock";
 import { serializeParagraph } from "../../docx/serializeParagraph";
 import { serializeTable } from "../../docx/serializeTable";
 import { parseXml, W_NS } from "../../ooxml/xml";
@@ -751,7 +753,9 @@ describe("a cell Word locked", () => {
     );
     expect(documentHasLocked(next.doc)).toBe(false);
     // The control is still the one Word wrote, so it goes back out around the cell
-    expect(serializeTable(next.doc.child(0))).toContain(
+    expect(
+      serializeTable(next.doc.child(0), NO_EXPORT_REFS, serializeBlock)
+    ).toContain(
       '<w:sdt><w:sdtPr><w:id w:val="7"/></w:sdtPr><w:sdtContent><w:tc>'
     );
   });

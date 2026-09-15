@@ -89,6 +89,17 @@ export const NODE_ATTR_ROLES: AttrTable = {
     sdtDeletionLocked: { role: "source", class: "derived" },
     trailingXml: { role: "source", class: "preserved" },
   },
+  sdtBlock: {
+    srcId: { role: "session", class: "identity" },
+    sdtPrefix: { role: "source", class: "preserved" },
+    // Which control this is, counted as the document was opened. Export reads it to tell one
+    // control from another (`docx/identities`) and never works it out again
+    key: { role: "session", class: "identity" },
+    // Read from `sdtPrefix` rather than from the file, and compared for the same reason a cell's
+    // are: leaving a lock out would let a step that unlocks a control pass as a re-derivation
+    contentsLocked: { role: "source", class: "derived" },
+    deletionLocked: { role: "source", class: "derived" },
+  },
   rawBlock: {
     xml: { role: "source", class: "preserved" },
     srcId: { role: "session", class: "identity" },

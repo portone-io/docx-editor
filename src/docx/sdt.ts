@@ -13,7 +13,8 @@
  */
 
 import { elementXml, openTagXml } from "../ooxml/element";
-import { wName } from "../ooxml/names";
+import { DocxExportError } from "../ooxml/errors";
+import { NAMESPACES, wName } from "../ooxml/names";
 import {
   type Props,
   parseProps,
@@ -22,7 +23,7 @@ import {
   setChild,
 } from "../ooxml/props";
 import { wAttr } from "../ooxml/units";
-import { attrString, elementChildren, serializeXml } from "../ooxml/xml";
+import { attrString, elementChildren, serializeXml, W_NS } from "../ooxml/xml";
 
 /** The opening of a content control taken apart, and the content it wraps */
 export interface SdtWrapper {
@@ -75,6 +76,63 @@ export function readSdtWrapper(el: Element): SdtWrapper | null {
     contentsLocked: val !== null && CONTENTS_LOCKED.includes(val),
     deletionLocked: val !== null && DELETION_LOCKED.includes(val),
   };
+}
+
+/**
+ * The control types whose content the specification restrains to a single run: `w:text`
+ * (§17.5.2.44), `w:picture` (§17.5.2.24), `w:date` (§17.5.2.7), `w:comboBox` (§17.5.2.5),
+ * `w:dropDownList` (§17.5.2.15), and `w14:checkbox`, which the 2010 extension gives the same
+ * shape. A container taking any run of blocks would let a single Enter break that restraint.
+ */
+const RESTRAINED_TYPES: readonly string[] = [
+  `{${W_NS}}text`,
+  `{${W_NS}}picture`,
+  `{${W_NS}}date`,
+  `{${W_NS}}comboBox`,
+  `{${W_NS}}dropDownList`,
+  `{${NAMESPACES.w14}}checkbox`,
+];
+
+/**
+ * Whether this control's content may be read as a container of blocks, which is read off the
+ * `w:sdtPr` alone so that a control kept whole never has its prefix serialized.
+ *
+ * Every other type - `w:richText`, which is also what a control naming no type is, `w:group`, the
+ * gallery and field types, and the extension types a closed `CT_SdtPr` can only carry as ignorable
+ * markup - says what the control means rather than what it may hold.
+ */
+export function modelsBlockContent(el: Element): boolean {
+  const sdtPr = elementChildren(el).find(
+    (child) => child.localName === "sdtPr"
+  );
+  if (!sdtPr) return true;
+  return !elementChildren(sdtPr).some((child) =>
+    RESTRAINED_TYPES.includes(`{${child.namespaceURI ?? ""}}${child.localName}`)
+  );
+}
+
+/**
+ * The `w:sdtContent` this editor writes itself, and the control it closes after it.
+ *
+ * `readSdtWrapper` takes back apart exactly this shape, so the two stand together: a control whose
+ * content tag carried an attribute, or did not stand last, is one this never writes.
+ */
+export const SDT_CLOSING_XML = "</w:sdtContent></w:sdt>";
+
+/** The control's opening tag as it arrived, up to the content tag. A wrapper that lost it cannot go out */
+export function sdtOpeningXml(prefix: unknown): string {
+  if (typeof prefix !== "string") {
+    throw new DocxExportError(
+      "lost-original",
+      "a content control has lost the opening XML it goes back out as"
+    );
+  }
+  return `${prefix}<w:sdtContent>`;
+}
+
+/** One whole control: the opening it arrived with, around content this writer owns */
+export function sdtXml(prefix: unknown, content: string): string {
+  return sdtOpeningXml(prefix) + content + SDT_CLOSING_XML;
 }
 
 /**

@@ -213,6 +213,12 @@ const CLIPBOARD_NODES: Readonly<Record<DocxNodeName, ClipboardNodeSpec>> = {
     // own and a nested table all say what they hold on the one line this cell stands on
     toClipboardText: (_node, children) => oneLine(children.join(" ")),
   },
+  // A control is drawn through: what it holds is content a paste should keep, while its opening
+  // XML names a `w:id` and may name a `w:dataBinding`, neither of which may travel in a copy
+  sdtBlock: {
+    toClipboardDOM: () => ["div", 0],
+    toClipboardText: (_node, children) => children.join("\n"),
+  },
   rawBlock: WRITES_NOTHING,
   hardBreak: {
     toClipboardDOM: () => ["br"],
