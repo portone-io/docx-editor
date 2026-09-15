@@ -2,6 +2,7 @@
 import { EditorState } from "prosemirror-state";
 import { describe, expect, it } from "vitest";
 import {
+  CELL_CONTROL_PREFIX,
   cell,
   firstTable,
   row,
@@ -74,7 +75,14 @@ describe("buildResizeRowTransaction", () => {
   });
 
   it("does not resize a row containing a content-locked cell", () => {
-    const before = tableDoc([row(cell("Locked", { sdtContentsLocked: true }))]);
+    const before = tableDoc([
+      row(
+        cell("Locked", {
+          sdtPrefix: CELL_CONTROL_PREFIX,
+          sdtContentsLocked: true,
+        })
+      ),
+    ]);
     expect(resizeFirstRow(before, 24)).toBeNull();
   });
 });

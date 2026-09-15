@@ -208,12 +208,14 @@ describe("reading a class", () => {
     expect(attrsOfClass(docxSchema.marks.sdt, "derived")).toEqual([
       "contentsLocked",
       "deletionLocked",
+      "group",
     ]);
     expect(attrsOfClass(docxSchema.nodes.tableCell, "derived")).toEqual([
       "colwidth",
       "format",
       "sdtContentsLocked",
       "sdtDeletionLocked",
+      "sdtGroup",
     ]);
   });
 });

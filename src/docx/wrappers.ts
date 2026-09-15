@@ -95,6 +95,7 @@ const SDT: WrapperKind = {
         key: nextKey(SDT.mark, el),
         contentsLocked: wrapper.contentsLocked,
         deletionLocked: wrapper.deletionLocked,
+        group: wrapper.group,
       }),
       content: wrapper.content,
     };

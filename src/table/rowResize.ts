@@ -2,7 +2,7 @@ import type { Node as PMNode } from "prosemirror-model";
 import type { EditorState, Transaction } from "prosemirror-state";
 import { editRowHeight } from "../docx/tableFormatting";
 import { toRowFormat } from "../model/format";
-import { isLockedCell } from "../schema/locks";
+import { isLockedContainer } from "../schema/locks";
 
 export const MIN_ROW_HEIGHT_PT = 6;
 
@@ -50,7 +50,7 @@ export function buildResizeRowTransaction(
     return null;
   }
   const row = table.child(resize.row);
-  if (row.children.some(isLockedCell)) return null;
+  if (row.children.some(isLockedContainer)) return null;
   const edited = editRowHeight(
     typeof row.attrs.trPr === "string" ? row.attrs.trPr : null,
     resize.heightPt

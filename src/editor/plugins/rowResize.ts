@@ -2,7 +2,7 @@ import type { Node as PMNode } from "prosemirror-model";
 import { Plugin, PluginKey } from "prosemirror-state";
 import { TableMap } from "prosemirror-tables";
 import { Decoration, DecorationSet, type EditorView } from "prosemirror-view";
-import { isLockedCell } from "../../schema/locks";
+import { isLockedContainer } from "../../schema/locks";
 import { editorClassNames } from "../../styles/classNames";
 import { pageScaleAround } from "../../styles/visualScale";
 import {
@@ -75,7 +75,7 @@ function edgeUnder(view: EditorView, event: MouseEvent): RowEdgeTarget | null {
   const hit = rowEdgeAt(event.clientY, td.getBoundingClientRect(), spot);
   if (!hit || hit.row < 0 || hit.row >= spot.table.childCount) return null;
   const row = spot.table.child(hit.row);
-  if (row.children.some(isLockedCell)) return null;
+  if (row.children.some(isLockedContainer)) return null;
   const rowPos = rowPositionAt(spot.tablePos, spot.table, hit.row);
   const rowDom = view.nodeDOM(rowPos);
   if (!(rowDom instanceof HTMLTableRowElement)) return null;

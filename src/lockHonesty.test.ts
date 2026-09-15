@@ -72,6 +72,14 @@ const control = (inner: string, pr = lockedPr) =>
 
 const cellXml = (inner: string) => `<w:tc><w:p>${inner}</w:p></w:tc>`;
 
+const blockXml = (text: string) => `<w:p>${runXml(text)}</w:p>`;
+
+/** A control that names `w:group`, whose contents are shut whatever its lock says (§17.5.2.17) */
+const groupPr = '<w:sdtPr><w:id w:val="7"/><w:group/></w:sdtPr>';
+
+/** A control stating no lock at all, which is what supersedes the group it stands in */
+const openPr = '<w:sdtPr><w:id w:val="8"/></w:sdtPr>';
+
 /**
  * The shapes a lock comes in, in both the places it can stand and over each of the values whose
  * two clauses differ.
@@ -102,7 +110,13 @@ const BODY =
   cellXml(runXml("PlainCell")) +
   "</w:tr>" +
   `<w:tr>${cellXml(runXml("Under1"))}${cellXml(runXml("Under2"))}${cellXml(runXml("Under3"))}</w:tr>` +
-  "</w:tbl>";
+  "</w:tbl>" +
+  // The same values again where the control is a block of the body rather than a mark or a cell,
+  // and a group holding a control of its own, which supersedes what the group shuts
+  control(blockXml("BlockShut")) +
+  control(blockXml("BlockKept"), lockPr("sdtLocked")) +
+  control(blockXml("BlockGroup"), groupPr) +
+  control(control(blockXml("InGroup"), openPr), groupPr);
 
 /**
  * A paragraph a bookmark range is anchored inside, which the editor preserves and never edits.
@@ -374,6 +388,28 @@ const PLACES: readonly Place[] = [
     name: "a block of cells one of which is locked against deletion alone",
     guards: ["protection", "lock"],
     state: (protection) => cellsSelected("KeptCell", "PlainCell", protection),
+  },
+  {
+    name: "a caret inside a locked block control",
+    guards: ["protection", "lock"],
+    state: (protection) => caretIn("BlockShut", protection),
+  },
+  {
+    // The clause shuts deletion alone, so the contents stand open and nothing here is refused
+    name: "a caret inside a block control locked against deletion alone",
+    guards: ["protection"],
+    state: (protection) => caretIn("BlockKept", protection),
+  },
+  {
+    name: "a caret inside a block control a w:group shuts",
+    guards: ["protection", "lock"],
+    state: (protection) => caretIn("BlockGroup", protection),
+  },
+  {
+    // A control inside a group supersedes what the group shuts, so its text is ordinary text
+    name: "a caret inside a control a w:group holds",
+    guards: ["protection"],
+    state: (protection) => caretIn("InGroup", protection),
   },
   {
     name: "a selection running across a bookmark marker",

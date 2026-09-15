@@ -46,6 +46,7 @@ export function buildSdtBlock(
       key: nextKey(docxSchema.marks.sdt.name, el),
       contentsLocked: wrapper.contentsLocked,
       deletionLocked: wrapper.deletionLocked,
+      group: wrapper.group,
     },
     children.map(readBlock)
   );

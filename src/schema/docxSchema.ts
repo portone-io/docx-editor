@@ -579,6 +579,8 @@ export const docxSchema = new Schema({
          */
         sdtContentsLocked: { default: false },
         sdtDeletionLocked: { default: false },
+        /** Whether that control is a `w:group`, as the sdt mark carries it */
+        sdtGroup: { default: false },
         /** The markers that stood between this cell and the next one, under the row */
         trailingXml: { default: null },
       },
@@ -587,13 +589,15 @@ export const docxSchema = new Schema({
         const colspan = spanCount(node.attrs.colspan);
         const rowspan = spanCount(node.attrs.rowspan);
         const colwidth = toColWidth(node.attrs.colwidth);
-        const locked = node.attrs.sdtContentsLocked === true;
+        const contentsLocked = node.attrs.sdtContentsLocked === true;
+        const group = node.attrs.sdtGroup === true;
         return [
           "td",
           {
-            class: locked
-              ? `${editorClassNames.tableCell} ${editorClassNames.cellLocked}`
-              : editorClassNames.tableCell,
+            class:
+              contentsLocked || group
+                ? `${editorClassNames.tableCell} ${editorClassNames.cellLocked}`
+                : editorClassNames.tableCell,
             style: cellStyle(format),
             colspan: colspan > 1 ? `${colspan}` : undefined,
             rowspan: rowspan > 1 ? `${rowspan}` : undefined,
@@ -603,9 +607,10 @@ export const docxSchema = new Schema({
             "data-tcw": formatJson(toTableWidth(node.attrs.tcW)),
             "data-fmt": formatJson(format),
             "data-sdt-prefix": text(node.attrs.sdtPrefix),
-            "data-sdt-contents-locked": locked ? "1" : undefined,
+            "data-sdt-contents-locked": contentsLocked ? "1" : undefined,
             "data-sdt-deletion-locked":
               node.attrs.sdtDeletionLocked === true ? "1" : undefined,
+            "data-sdt-group": group ? "1" : undefined,
             "data-trailing": text(node.attrs.trailingXml),
           },
           0,
@@ -642,6 +647,7 @@ export const docxSchema = new Schema({
                 dom.getAttribute("data-sdt-contents-locked") === "1",
               sdtDeletionLocked:
                 dom.getAttribute("data-sdt-deletion-locked") === "1",
+              sdtGroup: dom.getAttribute("data-sdt-group") === "1",
               trailingXml,
             };
           },
@@ -675,21 +681,26 @@ export const docxSchema = new Schema({
         /** The two clauses of the control's lock, as the inline mark carries them */
         contentsLocked: { default: false },
         deletionLocked: { default: false },
+        /** Whether the control is a `w:group`, as the inline mark carries it */
+        group: { default: false },
       },
       toDOM(node) {
-        const locked = node.attrs.contentsLocked === true;
+        const contentsLocked = node.attrs.contentsLocked === true;
+        const group = node.attrs.group === true;
         return [
           "div",
           {
-            class: locked
-              ? `${editorClassNames.sdtBlock} ${editorClassNames.sdtLocked}`
-              : editorClassNames.sdtBlock,
+            class:
+              contentsLocked || group
+                ? `${editorClassNames.sdtBlock} ${editorClassNames.sdtLocked}`
+                : editorClassNames.sdtBlock,
             "data-src": text(node.attrs.srcId),
             "data-sdt-prefix": text(node.attrs.sdtPrefix),
             "data-key": numberText(node.attrs.key),
-            "data-sdt-contents-locked": locked ? "1" : undefined,
+            "data-sdt-contents-locked": contentsLocked ? "1" : undefined,
             "data-sdt-deletion-locked":
               node.attrs.deletionLocked === true ? "1" : undefined,
+            "data-sdt-group": group ? "1" : undefined,
           },
           0,
         ];
@@ -709,6 +720,7 @@ export const docxSchema = new Schema({
                 dom.getAttribute("data-sdt-contents-locked") === "1",
               deletionLocked:
                 dom.getAttribute("data-sdt-deletion-locked") === "1",
+              group: dom.getAttribute("data-sdt-group") === "1",
             };
           },
         },
@@ -1135,21 +1147,29 @@ export const docxSchema = new Schema({
          */
         contentsLocked: { default: false },
         deletionLocked: { default: false },
+        /**
+         * Whether the control is a `w:group`, which shuts its contents without a `w:lock` saying
+         * so and which the editor never writes (`spec/notes/contentControls.md`).
+         */
+        group: { default: false },
       },
       toDOM(mark) {
-        const locked = mark.attrs.contentsLocked === true;
+        const contentsLocked = mark.attrs.contentsLocked === true;
+        const group = mark.attrs.group === true;
         return [
           "span",
           {
-            class: locked
-              ? `${editorClassNames.sdt} ${editorClassNames.sdtLocked}`
-              : editorClassNames.sdt,
+            class:
+              contentsLocked || group
+                ? `${editorClassNames.sdt} ${editorClassNames.sdtLocked}`
+                : editorClassNames.sdt,
             "data-sdt-prefix": text(mark.attrs.sdtPrefix),
             "data-key": numberText(mark.attrs.key),
             "data-depth": numberText(mark.attrs.depth),
-            "data-sdt-contents-locked": locked ? "1" : undefined,
+            "data-sdt-contents-locked": contentsLocked ? "1" : undefined,
             "data-sdt-deletion-locked":
               mark.attrs.deletionLocked === true ? "1" : undefined,
+            "data-sdt-group": group ? "1" : undefined,
           },
           0,
         ];
@@ -1169,6 +1189,7 @@ export const docxSchema = new Schema({
                 dom.getAttribute("data-sdt-contents-locked") === "1",
               deletionLocked:
                 dom.getAttribute("data-sdt-deletion-locked") === "1",
+              group: dom.getAttribute("data-sdt-group") === "1",
             };
           },
         },

@@ -1,5 +1,6 @@
 /**
- * Evaluates OOXML content and deletion locks for inline controls and whole table cells.
+ * Evaluates OOXML content and deletion locks for inline controls and for the containers a control
+ * stands around whole: a table cell, and a block-level control.
  *
  * `lockGuard` is what `./guards` registers all of this as, and it is the only way in: a caller
  * asking about a lock asks the one guard list, which asks the locks along with every other rule an
@@ -44,15 +45,31 @@ export const unlockAllowed = new PluginKey<boolean>("docxEditorUnlockAllowed");
  */
 export const historyReplay = new PluginKey<boolean>("docxEditorHistoryReplay");
 
-/** The two clauses a control's lock settles, as the schema records them */
+/** What one control states about editing and deleting it, as the schema records it */
 interface Locks {
-  /** Whether the contents may not be edited */
+  /** Whether its `w:lock` says the contents may not be edited */
   contents: boolean;
-  /** Whether the control may not be deleted, not even whole */
+  /** Whether its `w:lock` says it may not be deleted, not even whole */
   deletion: boolean;
+  /** Whether it is a `w:group`, which shuts its contents on terms of its own */
+  group: boolean;
 }
 
-const OPEN: Locks = { contents: false, deletion: false };
+const OPEN: Locks = { contents: false, deletion: false, group: false };
+
+/**
+ * Whether this control shuts what stands inside it, where `inner` says whether another control
+ * stands between that spot and this one: a `w:group` is superseded by one and a `w:lock` is not
+ * (`spec/notes/contentControls.md`).
+ */
+function shutsContents(locks: Locks, inner: boolean): boolean {
+  return locks.contents || (locks.group && !inner);
+}
+
+/** Whether this control shuts its contents with nothing inside it to supersede that */
+function shutsAlone(locks: Locks): boolean {
+  return shutsContents(locks, false);
+}
 
 interface StepRange {
   from: number;
@@ -69,54 +86,115 @@ function sdtMarksOf(node: PMNode | null | undefined): readonly Mark[] {
   return node ? wrappersOf(node, docxSchema.marks.sdt) : [];
 }
 
-/** What the control this mark stands for shuts (`schema`) */
+/** What the control this mark stands for states (`schema`) */
 function markLocks(mark: Mark): Locks {
   return {
     contents: mark.attrs.contentsLocked === true,
     deletion: mark.attrs.deletionLocked === true,
+    group: mark.attrs.group === true,
   };
 }
 
 /**
  * The control shutting the contents this inline node is part of. Null when it sits in no control,
- * or in one whose contents stand open, a control locked against deletion alone included.
+ * or in none that shuts, a control locked against deletion alone included.
+ *
+ * This is about the node rather than about a spot inside it, so nothing here supersedes a group.
  */
 export function lockedMarkOf(node: PMNode | null | undefined): Mark | null {
-  return sdtMarksOf(node).find((mark) => markLocks(mark).contents) ?? null;
+  return sdtMarksOf(node).find((mark) => shutsAlone(markLocks(mark))) ?? null;
 }
 
-/** The two cell attributes the clauses of a wrapped cell's lock are written in (`schema`) */
-const CELL_CONTENTS_ATTR = "sdtContentsLocked";
-const CELL_DELETION_ATTR = "sdtDeletionLocked";
-
-function isCell(node: PMNode | null | undefined): boolean {
-  return node?.type.spec.tableRole === "cell";
+/**
+ * Every control a spot stands inside, outermost first.
+ *
+ * Only a spot with the very same control on both sides is inside it. At either edge the other side
+ * belongs to a different control or to none, and since the mark is not inclusive what goes in
+ * there falls outside the control.
+ */
+function controlsAcross($pos: ResolvedPos): readonly Mark[] {
+  const after = sdtMarksOf($pos.nodeAfter);
+  return sdtMarksOf($pos.nodeBefore).filter((mark) =>
+    after.some((other) => other.eq(mark))
+  );
 }
 
-/** What the control around this cell shuts. Nothing at all for anything that is not a cell */
-function cellLocks(node: PMNode | null | undefined): Locks {
-  if (!node || !isCell(node)) return OPEN;
+/** Whether any of the controls a spot stands inside shuts it, the innermost one standing last */
+function marksShut(marks: readonly Mark[]): boolean {
+  return marks.some((mark, index) =>
+    shutsContents(markLocks(mark), index < marks.length - 1)
+  );
+}
+
+/** The attributes one kind of container writes what its control states in (`schema`) */
+export interface LockAttrNames {
+  contents: string;
+  deletion: string;
+  group: string;
+}
+
+/** A cell a control wraps carries them under names of its own, beside the cell's own attrs */
+const CELL_ATTRS: LockAttrNames = {
+  contents: "sdtContentsLocked",
+  deletion: "sdtDeletionLocked",
+  group: "sdtGroup",
+};
+
+/** A block-level control is the control, so it carries them under the wrapper's own names */
+const BLOCK_ATTRS: LockAttrNames = {
+  contents: "contentsLocked",
+  deletion: "deletionLocked",
+  group: "group",
+};
+
+/**
+ * Which attributes the control standing at this node writes what it states in, and null where no
+ * control stands there.
+ *
+ * These are the two containers a control stands around whole: a cell the file wrapped
+ * (`docx/importTable`), which carries the control's opening XML beside its own attributes, and a
+ * block-level control, which is the wrapper itself (`docx/importSdtBlock`). A cell no control
+ * wrapped carries none of this, and counting it as a control would end the walk out of the tree at
+ * the first cell and open every lock standing around the table.
+ * A cell is found by its table role, so a schema built beside this one
+ * (`table/__testing__/tables`) is read as well.
+ */
+export function lockAttrsOf(
+  node: PMNode | null | undefined
+): LockAttrNames | null {
+  if (!node) return null;
+  if (node.type.name === docxSchema.nodes.sdtBlock.name) return BLOCK_ATTRS;
+  if (node.type.spec.tableRole !== "cell") return null;
+  return typeof node.attrs.sdtPrefix === "string" ? CELL_ATTRS : null;
+}
+
+/** What the control this container stands for states. Nothing at all for anything else */
+function containerLocks(node: PMNode | null | undefined): Locks {
+  const names = lockAttrsOf(node);
+  if (!node || !names) return OPEN;
   return {
-    contents: node.attrs[CELL_CONTENTS_ATTR] === true,
-    deletion: node.attrs[CELL_DELETION_ATTR] === true,
+    contents: node.attrs[names.contents] === true,
+    deletion: node.attrs[names.deletion] === true,
+    group: node.attrs[names.group] === true,
   };
 }
 
-/** Whether the control around this cell shuts its contents (`sdtContentsLocked` in `schema`) */
-export function isLockedCell(node: PMNode | null | undefined): boolean {
-  return cellLocks(node).contents;
+/** Whether the control this container stands for shuts its contents (`schema`) */
+export function isLockedContainer(node: PMNode | null | undefined): boolean {
+  return shutsAlone(containerLocks(node));
 }
 
 /**
  * Whether this node carries a lock of either clause, an inline one wearing a control's mark and a
- * wrapped cell alike.
+ * container standing for one alike.
  * This is the question about the document holding a lock at all rather than about editing a spot,
- * so a control locked against deletion alone counts (`editor/commands/lockCommands`).
+ * so a control locked against deletion alone counts (`editor/commands/lockCommands`). A `w:group`
+ * is not a lock and does not: it shuts its contents, and there is nothing in it to lift.
  */
 export function carriesLock(node: PMNode): boolean {
   const marks = node.isInline ? sdtMarksOf(node) : [];
   if (marks.length === 0) {
-    const locks = cellLocks(node);
+    const locks = containerLocks(node);
     return locks.contents || locks.deletion;
   }
   return marks.some((mark) => {
@@ -173,42 +251,63 @@ export function controlSpans(block: Textblock): ControlSpan[] {
   return spans;
 }
 
-/** What a locked cell holds, as the stretch a step has to reach to change it. Null outside every locked cell */
-function lockedCellContent($pos: ResolvedPos): StepRange | null {
+/**
+ * What the container shutting this position holds, as the stretch a step has to reach to change
+ * it. Null where no container around the position shuts it.
+ *
+ * `inner` says whether a control already stands between the position and the containers around it.
+ * The walk runs outward and remembers every container it passes, since a container that does not
+ * shut is still a control standing inside the next one out.
+ */
+function lockedContainerContent(
+  $pos: ResolvedPos,
+  inner: boolean
+): StepRange | null {
+  let passed = inner;
   for (let depth = $pos.depth; depth > 0; depth -= 1) {
     const node = $pos.node(depth);
-    if (!isLockedCell(node)) continue;
-    const from = $pos.before(depth) + 1;
-    return { from, to: from + node.content.size };
+    if (lockAttrsOf(node) === null) continue;
+    if (shutsContents(containerLocks(node), passed)) {
+      const from = $pos.before(depth) + 1;
+      return { from, to: from + node.content.size };
+    }
+    passed = true;
   }
   return null;
 }
 
+/** The same, for a spot whose own controls - the inline marks it stands inside - count as well */
+function lockedContentAt(doc: PMNode, pos: number): StepRange | null {
+  const $pos = doc.resolve(pos);
+  return lockedContainerContent($pos, controlsAcross($pos).length > 0);
+}
+
 /**
- * Whether what stands at this position sits inside a cell a control shuts.
+ * Whether what stands at this position sits inside a container a control shuts.
  *
  * This is what the block intent is answered by, which is how a paragraph edit leaves its locked
  * paragraphs out (`editor/paragraphEdits`), and it is deliberately not `rangeTouchesLocked` over
  * the paragraph: a paragraph merely holding a locked control keeps its own alignment and indent.
+ * An inline control the paragraph holds stands inside the paragraph rather than around it, so it
+ * supersedes nothing here.
  */
-function insideLockedCell(doc: PMNode, pos: number): boolean {
-  return lockedCellContent(doc.resolve(pos)) !== null;
+function insideLockedContainer(doc: PMNode, pos: number): boolean {
+  return lockedContainerContent(doc.resolve(pos), false) !== null;
 }
 
 /**
- * Whether this stretch reaches what a locked cell holds.
+ * Whether this stretch reaches what a locked container holds.
  *
  * A stretch that only runs up to where the content begins or ends leaves that content alone: that
- * is the shape of a change to the cell itself rather than to its contents, which is how a column
- * is given a new width. A stretch of no length at all, an insertion, is inside as soon as it
- * stands within the content.
- * A stretch covering the whole cell reaches none of this, since it stands outside the content on
- * both sides: taking the cell away whole is the deletion clause's question instead.
+ * is the shape of a change to the container itself rather than to its contents, which is how a
+ * column is given a new width. A stretch of no length at all, an insertion, is inside as soon as
+ * it stands within the content.
+ * A stretch covering the whole container reaches none of this, since it stands outside the content
+ * on both sides: taking the container away whole is the deletion clause's question instead.
  */
-function reachesLockedCell(doc: PMNode, range: StepRange): boolean {
+function reachesLockedContainer(doc: PMNode, range: StepRange): boolean {
   const content =
-    lockedCellContent(doc.resolve(range.from)) ??
-    lockedCellContent(doc.resolve(range.to));
+    lockedContentAt(doc, range.from) ?? lockedContentAt(doc, range.to);
   if (!content) return false;
   if (range.from === range.to) return true;
   return range.from < content.to && range.to > content.from;
@@ -234,45 +333,72 @@ function overlaps(range: StepRange, span: StepRange): boolean {
 }
 
 /**
- * Whether the lock on one control refuses this step, which is the two-question judgement.
+ * Whether one control refuses this step, which is the two-question judgement.
  *
  * Covering the control whole and taking it away is the control being deleted as one, and the
  * deletion clause is the whole of the answer: the contents going with it is what a deletion is.
  * Anything else - a partial overlap, a mark laid over the control, or an insertion, which has no
  * length and so covers nothing whole - reaches into the contents, and the contents clause answers.
  */
-function shuts(locks: Locks, range: EditedRange, span: StepRange): boolean {
+function shuts(
+  locks: Locks,
+  range: EditedRange,
+  span: StepRange,
+  inner: boolean
+): boolean {
   return range.takesAway && coversWhole(range, span)
     ? locks.deletion
-    : locks.contents && overlaps(range, span);
+    : shutsContents(locks, inner) && overlaps(range, span);
+}
+
+/** Whether a control inside this one holds the whole stretch, which is what supersedes a group */
+function supersededSpan(
+  spans: readonly ControlSpan[],
+  span: ControlSpan,
+  range: StepRange
+): boolean {
+  return spans.some(
+    (inner) =>
+      inner !== span && coversWhole(span, inner) && coversWhole(inner, range)
+  );
 }
 
 /**
  * Whether any control this stretch meets refuses the step, each control judged by how much of it
  * the stretch covers.
  *
- * A wrapped cell is met here as the one whole thing it is, which is the shape a row or column
- * deletion writes and the only shape either clause answers for. A stretch that merely runs into
- * the cell reaches its contents or nothing at all, and that is `reachesLockedCell`'s question: the
- * two ends of the cell are what a change to the cell itself covers, a new column width above all.
+ * A container a control stands around is met here as the one whole thing it is, which is the shape
+ * a row or column deletion writes, and the shape a block control is taken away in. A stretch that
+ * merely runs into the container reaches its contents or nothing at all, and that is
+ * `reachesLockedContainer`'s question: the two ends of a cell are what a change to the cell itself
+ * covers, a new column width above all.
+ * The outermost container the stretch covers whole is the one that answers, since the walk stops
+ * at the first refusal; a stretch it lets through is then judged again against everything inside.
  */
 function rangeShut(doc: PMNode, range: EditedRange): boolean {
-  if (reachesLockedCell(doc, range)) return true;
+  if (reachesLockedContainer(doc, range)) return true;
   let shut = false;
   doc.nodesBetween(range.from, range.to, (node, pos) => {
     if (shut) return false;
-    if (isCell(node)) {
-      const locks = cellLocks(node);
+    if (lockAttrsOf(node) !== null) {
+      const locks = containerLocks(node);
       if (coversWhole(range, { from: pos, to: pos + node.nodeSize })) {
-        if (range.takesAway ? locks.deletion : locks.contents) shut = true;
+        // The stretch stands outside the container, so nothing inside it supersedes a group
+        if (range.takesAway ? locks.deletion : shutsAlone(locks)) shut = true;
       }
-      // What the cell holds is judged on its own, each control by its own lock
+      // What the container holds is judged on its own, each control by its own terms
       return !shut;
     }
     if (!node.isTextblock) return true;
+    const spans = controlSpans({ node, start: pos + 1 });
     // Never assigned, so a later textblock finding nothing cannot take an earlier refusal back
-    shut ||= controlSpans({ node, start: pos + 1 }).some((span) =>
-      shuts(markLocks(span.mark), range, span)
+    shut ||= spans.some((span) =>
+      shuts(
+        markLocks(span.mark),
+        range,
+        span,
+        supersededSpan(spans, span, range)
+      )
     );
     return false;
   });
@@ -281,7 +407,7 @@ function rangeShut(doc: PMNode, range: EditedRange): boolean {
 
 /**
  * Whether this stretch reaches contents a lock shuts: text inside a control that shuts its
- * contents, or what a locked cell holds, the cell itself included.
+ * contents, or what a locked container holds, the container itself included.
  *
  * This is the question about editing what stands there rather than about taking it away, so every
  * control the stretch meets answers with its contents clause. It is what the mark intent is
@@ -292,18 +418,16 @@ function rangeTouchesLocked(doc: PMNode, from: number, to: number): boolean {
 }
 
 /**
- * Whether something inserted at this spot would land inside a locked control or a locked cell.
- *
- * Only a spot with the very same control on both sides is inside one. At either edge the other
- * side belongs to a different control or to none, and since the mark is not inclusive what goes
- * in there falls outside the control.
+ * Whether something inserted at this spot would land inside a locked control, whether it stands as
+ * a mark or as a container.
  */
 function insertionInsideLocked(doc: PMNode, pos: number): boolean {
   const $pos = doc.resolve(pos);
-  if (lockedCellContent($pos)) return true;
-  const before = lockedMarkOf($pos.nodeBefore);
-  const after = lockedMarkOf($pos.nodeAfter);
-  return before !== null && after !== null && before.eq(after);
+  const inside = controlsAcross($pos);
+  return (
+    marksShut(inside) ||
+    lockedContainerContent($pos, inside.length > 0) !== null
+  );
 }
 
 /** Whether a lock shuts editing what stands in this stretch, where it stands */
@@ -370,9 +494,9 @@ function rangeAllowed(doc: PMNode, range: EditedRange): boolean {
 /** Whether this node would carry a lock into wherever the slice it stands in lands */
 function plantedLock(node: PMNode): boolean {
   if (node.isInline) return lockedMarkOf(node) !== null;
-  // A locked cell with nothing inside it is the carrier of a change to the cell's own attributes
-  // (`setNodeMarkup`), which puts no content anywhere
-  return isLockedCell(node) && node.content.size > 0;
+  // A locked container with nothing inside it is the carrier of a change to the container's own
+  // attributes (`setNodeMarkup`), which puts no content anywhere
+  return isLockedContainer(node) && node.content.size > 0;
 }
 
 function lockedInside(content: Fragment): boolean {
@@ -399,30 +523,38 @@ function plantsLocked(step: Step): boolean {
 }
 
 /**
- * Whether the step puts one of a cell's own locks down.
+ * Whether the step puts down one of the things a container's control states.
  *
  * What a cell records about itself is not its contents and stays open, which is what lets a column
- * holding a locked cell still be given a new width. The two locks are the one thing it records
- * that a step of that very shape may not touch, so that lifting a lock stays the business of the
- * command that carries the pass for it.
+ * holding a locked cell still be given a new width. What the control states is the one thing a
+ * container records that a step of that very shape may not touch, so that lifting a lock stays the
+ * business of the command that carries the pass for it, and a `w:group` cannot be put down at all.
  */
-function clearsCellLock(step: Step, doc: PMNode): boolean {
+function clearsContainerLock(step: Step, doc: PMNode): boolean {
   if (step instanceof AttrStep) {
     if (step.value === true) return false;
-    const locks = cellLocks(doc.nodeAt(step.pos));
-    if (step.attr === CELL_CONTENTS_ATTR) return locks.contents;
-    if (step.attr === CELL_DELETION_ATTR) return locks.deletion;
+    const at = doc.nodeAt(step.pos);
+    const names = lockAttrsOf(at);
+    if (!names) return false;
+    const locks = containerLocks(at);
+    if (step.attr === names.contents) return locks.contents;
+    if (step.attr === names.deletion) return locks.deletion;
+    if (step.attr === names.group) return locks.group;
     return false;
   }
   if (!(step instanceof ReplaceAroundStep)) return false;
-  // The shape `setNodeMarkup` writes: the cell standing here is replaced by one built afresh
-  const was = cellLocks(doc.nodeAt(step.from));
-  const now = cellLocks(step.slice.content.firstChild);
-  return (was.contents && !now.contents) || (was.deletion && !now.deletion);
+  // The shape `setNodeMarkup` writes: the container standing here is replaced by one built afresh
+  const was = containerLocks(doc.nodeAt(step.from));
+  const now = containerLocks(step.slice.content.firstChild);
+  return (
+    (was.contents && !now.contents) ||
+    (was.deletion && !now.deletion) ||
+    (was.group && !now.group)
+  );
 }
 
 function stepAllowed(step: Step, doc: PMNode): boolean {
-  if (plantsLocked(step) || clearsCellLock(step, doc)) return false;
+  if (plantsLocked(step) || clearsContainerLock(step, doc)) return false;
   const ranges = editedRanges(step);
   if (ranges) return ranges.every((range) => rangeAllowed(doc, range));
   // A step that rewrites one node where it stands. Nothing in the package writes one today - a
@@ -433,7 +565,7 @@ function stepAllowed(step: Step, doc: PMNode): boolean {
     step instanceof RemoveNodeMarkStep
   ) {
     return (
-      lockedCellContent(doc.resolve(step.pos)) === null &&
+      lockedContainerContent(doc.resolve(step.pos), false) === null &&
       lockedMarkOf(doc.nodeAt(step.pos)) === null
     );
   }
@@ -447,7 +579,7 @@ function intentShut(doc: PMNode, intent: EditIntent): boolean {
     case "insert":
       return insertionInsideLocked(doc, intent.at);
     case "block":
-      return insideLockedCell(doc, intent.at);
+      return insideLockedContainer(doc, intent.at);
     case "mark":
       return markShut(doc, intent.from, intent.to);
     case "replace":
