@@ -13,6 +13,12 @@ import {
 } from "../ooxml/xml";
 import { docxSchema } from "../schema";
 import {
+  CELL_CONTROL_ATTRS,
+  type ControlFacts,
+  controlAttrs,
+  NO_CONTROL,
+} from "../schema/controlAttrs";
+import {
   type FormattingContext,
   layerTableFormat,
   NO_FORMATTING,
@@ -56,17 +62,8 @@ import {
 
 type VerticalMerge = "restart" | "continue" | null;
 
-/** The content control around a cell, as the cell carries it on (`sdtPrefix` in `schema`) */
-interface CellControl {
-  /** The `<w:sdt>` opening tag followed by everything that stood ahead of `<w:sdtContent>` */
-  prefix: string;
-  /** Whether it says the cell may not be edited */
-  contentsLocked: boolean;
-  /** Whether it says the control around the cell may not be deleted */
-  deletionLocked: boolean;
-  /** Whether the control is a `w:group` */
-  group: boolean;
-}
+/** The content control around a cell, as the cell carries it on (`schema/controlAttrs`) */
+type CellControl = ControlFacts;
 
 interface RawCell {
   el: Element;
@@ -168,6 +165,8 @@ function readSdtCell(el: Element): SdtCell | null {
       contentsLocked: wrapper.contentsLocked,
       deletionLocked: wrapper.deletionLocked,
       group: wrapper.group,
+      temporary: wrapper.temporary,
+      showingPlaceholder: wrapper.showingPlaceholder,
     },
   };
 }
@@ -425,10 +424,7 @@ function buildCell(
       tcPr: tcPr ? serializeXml(tcPr) : null,
       tcW: readTableWidth(tcPr, "tcW"),
       format: readCellFormat(tcPr, defaults),
-      sdtPrefix: draft.control?.prefix ?? null,
-      sdtContentsLocked: draft.control?.contentsLocked ?? false,
-      sdtDeletionLocked: draft.control?.deletionLocked ?? false,
-      sdtGroup: draft.control?.group ?? false,
+      ...controlAttrs(CELL_CONTROL_ATTRS, draft.control ?? NO_CONTROL),
       trailingXml: draft.trailingXml,
     },
     blocks

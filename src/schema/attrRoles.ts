@@ -88,6 +88,8 @@ export const NODE_ATTR_ROLES: AttrTable = {
     sdtContentsLocked: { role: "source", class: "derived" },
     sdtDeletionLocked: { role: "source", class: "derived" },
     sdtGroup: { role: "source", class: "derived" },
+    sdtTemporary: { role: "source", class: "derived" },
+    sdtShowingPlaceholder: { role: "source", class: "derived" },
     trailingXml: { role: "source", class: "preserved" },
   },
   sdtBlock: {
@@ -101,6 +103,10 @@ export const NODE_ATTR_ROLES: AttrTable = {
     contentsLocked: { role: "source", class: "derived" },
     deletionLocked: { role: "source", class: "derived" },
     group: { role: "source", class: "derived" },
+    // What the control says about outliving an edit, read off `sdtPrefix` as the locks are.
+    // A step clears them beside the prefix they were read from, so a comparison has to see them
+    temporary: { role: "source", class: "derived" },
+    showingPlaceholder: { role: "source", class: "derived" },
   },
   rawBlock: {
     xml: { role: "source", class: "preserved" },
@@ -191,6 +197,8 @@ export const MARK_ATTR_ROLES: AttrTable = {
     contentsLocked: { role: "source", class: "derived" },
     deletionLocked: { role: "source", class: "derived" },
     group: { role: "source", class: "derived" },
+    temporary: { role: "source", class: "derived" },
+    showingPlaceholder: { role: "source", class: "derived" },
   },
   link: {
     linkPrefix: { role: "source", class: "preserved" },

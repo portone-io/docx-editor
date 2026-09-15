@@ -12,6 +12,12 @@ import { type Node as PMNode, Schema } from "prosemirror-model";
 import { EditorState, TextSelection } from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
 import type { TableWidth } from "../../model/format";
+import {
+  CELL_CONTROL_ATTRS,
+  controlAttrSpecs,
+  controlAttrs,
+  NO_CONTROL,
+} from "../../schema/controlAttrs";
 
 export const schema = new Schema({
   nodes: {
@@ -63,10 +69,7 @@ export const schema = new Schema({
         tcPr: { default: null },
         tcW: { default: null },
         format: { default: null },
-        sdtPrefix: { default: null },
-        sdtContentsLocked: { default: false },
-        sdtDeletionLocked: { default: false },
-        sdtGroup: { default: false },
+        ...controlAttrSpecs(CELL_CONTROL_ATTRS),
         trailingXml: { default: null },
       },
       toDOM: () => ["td", 0],
@@ -86,6 +89,8 @@ export interface CellAttrs {
   sdtContentsLocked?: boolean;
   sdtDeletionLocked?: boolean;
   sdtGroup?: boolean;
+  sdtTemporary?: boolean;
+  sdtShowingPlaceholder?: boolean;
   trailingXml?: string | null;
 }
 
@@ -112,10 +117,7 @@ export function cell(text: string, attrs: CellAttrs = {}): PMNode {
       tcPr: null,
       tcW: null,
       format: null,
-      sdtPrefix: null,
-      sdtContentsLocked: false,
-      sdtDeletionLocked: false,
-      sdtGroup: false,
+      ...controlAttrs(CELL_CONTROL_ATTRS, NO_CONTROL),
       trailingXml: null,
       ...attrs,
     },

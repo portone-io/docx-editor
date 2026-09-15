@@ -432,6 +432,8 @@ describe("onlyCommentsChangedBy", () => {
      */
     const LOCKED: Readonly<Record<string, readonly string[]>> = {
       "kitchen-sink.docx": ["Settled"],
+      // The block-level control whose `w:lock` shuts its contents, which a comment anchor reaches
+      "content-controls.docx": ["The contents of this control may not be "],
     };
 
     const SWEEP_TIMEOUT_MS = 120_000;

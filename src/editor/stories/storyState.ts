@@ -6,6 +6,8 @@
  * own, so the ones that answer for a whole document stay out - the history, which the main
  * document keeps for both (`./storyView`), the note and comment plugins, whose subjects a story
  * does not hold, and the page decorations, since a story is drawn wherever its host puts it.
+ * The control lifecycle is among the ones that stay: a story reaches the main state as a document
+ * attribute (`schema/stories`), so a control inside a footnote settles here or nowhere.
  *
  * The snapshot handed in is the main document's, which is what makes a run resolve here as it
  * would in the body. Its caller narrows the two values a story answers differently: a story has
@@ -23,6 +25,7 @@ import type { SliceNormalizer } from "../clipboard/normalizers";
 import { docxClipboard } from "../clipboard/plugin";
 import { type EditorDocument, editorDocument } from "../editorDocument";
 import { compositionSelection } from "../plugins/compositionSelection";
+import { controlLifecycle } from "../plugins/controlLifecycle";
 import {
   displayDerivation,
   withDerivedDisplay,
@@ -109,6 +112,7 @@ export function storyEditorState({
       tabPointer(),
       tabLayout(),
       tabCaret(),
+      controlLifecycle(),
       displayDerivation(),
       numberingMarkers(),
     ],
