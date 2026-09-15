@@ -50,6 +50,16 @@ import {
   rowStyle,
   tableStyle,
 } from "../styles/inlineStyle";
+import {
+  CELL_CONTROL_ATTRS,
+  controlAttrSpecs,
+  controlAttrs,
+  controlFactsOf,
+  controlFlagsFromDom,
+  controlFlagsToDom,
+  OWN_CONTROL_ATTRS,
+  SDT_BLOCK_NODE,
+} from "./controlAttrs";
 import { imageNodeSpec, runMarkSpec } from "./rendering";
 import { noteName, type StoryJson } from "./stories";
 import { WRAPPER_ATTRS, WRAPPER_GROUP } from "./wrappers";
@@ -570,17 +580,13 @@ export const docxSchema = new Schema({
         /** The cell width read out of tcPr */
         tcW: { default: null },
         format: { default: null },
-        /** The opening XML of the `<w:sdt>` content control this cell sat inside */
-        sdtPrefix: { default: null },
         /**
-         * The two clauses of that control's lock, which mean the same as `contentsLocked` and
-         * `deletionLocked` on the sdt mark. Both only ever stand alongside an `sdtPrefix`, since
-         * the lock lives inside that very XML.
+         * What the content control this cell sat inside states, under names of its own so that it
+         * stands beside the cell's (`./controlAttrs`). The lock's two clauses mean the same as
+         * `contentsLocked` and `deletionLocked` on the sdt mark, and all of them only ever stand
+         * alongside an `sdtPrefix`, since the control's own XML is where they are read from.
          */
-        sdtContentsLocked: { default: false },
-        sdtDeletionLocked: { default: false },
-        /** Whether that control is a `w:group`, as the sdt mark carries it */
-        sdtGroup: { default: false },
+        ...controlAttrSpecs(CELL_CONTROL_ATTRS),
         /** The markers that stood between this cell and the next one, under the row */
         trailingXml: { default: null },
       },
@@ -589,13 +595,12 @@ export const docxSchema = new Schema({
         const colspan = spanCount(node.attrs.colspan);
         const rowspan = spanCount(node.attrs.rowspan);
         const colwidth = toColWidth(node.attrs.colwidth);
-        const contentsLocked = node.attrs.sdtContentsLocked === true;
-        const group = node.attrs.sdtGroup === true;
+        const control = controlFactsOf(CELL_CONTROL_ATTRS, node.attrs);
         return [
           "td",
           {
             class:
-              contentsLocked || group
+              control.contentsLocked || control.group
                 ? `${editorClassNames.tableCell} ${editorClassNames.cellLocked}`
                 : editorClassNames.tableCell,
             style: cellStyle(format),
@@ -606,11 +611,8 @@ export const docxSchema = new Schema({
             "data-tcpr": text(node.attrs.tcPr),
             "data-tcw": formatJson(toTableWidth(node.attrs.tcW)),
             "data-fmt": formatJson(format),
-            "data-sdt-prefix": text(node.attrs.sdtPrefix),
-            "data-sdt-contents-locked": contentsLocked ? "1" : undefined,
-            "data-sdt-deletion-locked":
-              node.attrs.sdtDeletionLocked === true ? "1" : undefined,
-            "data-sdt-group": group ? "1" : undefined,
+            "data-sdt-prefix": text(control.prefix),
+            ...controlFlagsToDom(control),
             "data-trailing": text(node.attrs.trailingXml),
           },
           0,
@@ -642,12 +644,10 @@ export const docxSchema = new Schema({
               tcPr,
               tcW: toTableWidth(parseJson(dom.getAttribute("data-tcw"))),
               format: toCellFormat(parseJson(dom.getAttribute("data-fmt"))),
-              sdtPrefix,
-              sdtContentsLocked:
-                dom.getAttribute("data-sdt-contents-locked") === "1",
-              sdtDeletionLocked:
-                dom.getAttribute("data-sdt-deletion-locked") === "1",
-              sdtGroup: dom.getAttribute("data-sdt-group") === "1",
+              ...controlAttrs(CELL_CONTROL_ATTRS, {
+                prefix: sdtPrefix,
+                ...controlFlagsFromDom(dom),
+              }),
               trailingXml,
             };
           },
@@ -661,7 +661,7 @@ export const docxSchema = new Schema({
      * How deeply controls are nested is what the tree says here, where the inline mark has to
      * carry it as `depth`, since several marks stand on one and the same text.
      */
-    sdtBlock: {
+    [SDT_BLOCK_NODE]: {
       group: "block modelled",
       content: "block+",
       // A control may be deleted whole when its lock allows it, so it has to be selectable; it is
@@ -674,33 +674,29 @@ export const docxSchema = new Schema({
          * of its own.
          */
         srcId: { default: null },
-        /** The opening XML of the `<w:sdt>`, the same string the inline mark and a wrapped cell carry */
-        sdtPrefix: { default: null },
         /** Which control of the document this is, counted as the file was opened (`docx/wrappers`) */
         key: { default: 0 },
-        /** The two clauses of the control's lock, as the inline mark carries them */
-        contentsLocked: { default: false },
-        deletionLocked: { default: false },
-        /** Whether the control is a `w:group`, as the inline mark carries it */
-        group: { default: false },
+        /**
+         * What the control states, under the same names the inline mark carries them by
+         * (`./controlAttrs`): the opening XML of the `<w:sdt>`, the two clauses of its lock,
+         * whether it is a `w:group`, and what it says about outliving an edit of its contents
+         * (`editor/plugins/controlLifecycle`).
+         */
+        ...controlAttrSpecs(OWN_CONTROL_ATTRS),
       },
       toDOM(node) {
-        const contentsLocked = node.attrs.contentsLocked === true;
-        const group = node.attrs.group === true;
+        const control = controlFactsOf(OWN_CONTROL_ATTRS, node.attrs);
         return [
           "div",
           {
             class:
-              contentsLocked || group
+              control.contentsLocked || control.group
                 ? `${editorClassNames.sdtBlock} ${editorClassNames.sdtLocked}`
                 : editorClassNames.sdtBlock,
             "data-src": text(node.attrs.srcId),
-            "data-sdt-prefix": text(node.attrs.sdtPrefix),
+            "data-sdt-prefix": text(control.prefix),
             "data-key": numberText(node.attrs.key),
-            "data-sdt-contents-locked": contentsLocked ? "1" : undefined,
-            "data-sdt-deletion-locked":
-              node.attrs.deletionLocked === true ? "1" : undefined,
-            "data-sdt-group": group ? "1" : undefined,
+            ...controlFlagsToDom(control),
           },
           0,
         ];
@@ -714,13 +710,11 @@ export const docxSchema = new Schema({
             if (prefix === null || prefix === false) return false;
             return {
               srcId: srcIdOf(dom),
-              sdtPrefix: prefix,
               key: parseInt10(dom.getAttribute("data-key"), 0),
-              contentsLocked:
-                dom.getAttribute("data-sdt-contents-locked") === "1",
-              deletionLocked:
-                dom.getAttribute("data-sdt-deletion-locked") === "1",
-              group: dom.getAttribute("data-sdt-group") === "1",
+              ...controlAttrs(OWN_CONTROL_ATTRS, {
+                prefix,
+                ...controlFlagsFromDom(dom),
+              }),
             };
           },
         },
@@ -1134,42 +1128,33 @@ export const docxSchema = new Schema({
       // which stands inside which is what `depth` says (`./wrappers`)
       excludes: "",
       attrs: {
-        /** The opening XML of the `<w:sdt>`, the same string a wrapped cell carries */
-        sdtPrefix: { default: null },
         ...WRAPPER_ATTRS,
         /**
-         * The two clauses of the control's lock: whether its contents may not be edited, and
-         * whether the control itself may not be deleted, not even whole. The `w:lock` inside
-         * sdtPrefix is where both come from, and reading it once on import saves parsing that
-         * string again on every draw.
-         * The two are independent: a control may be un-editable yet removable, or editable yet
-         * not removable.
+         * What the control states, under the names a block-level control carries them by too
+         * (`./controlAttrs`): the opening XML of the `<w:sdt>`, which a wrapped cell carries as
+         * well; the two clauses of its lock, which are independent, so a control may be
+         * un-editable yet removable or editable yet not removable; whether it is a `w:group`,
+         * which shuts its contents without a `w:lock` saying so and which the editor never writes
+         * (`spec/notes/contentControls.md`); and `w:temporary` (§17.5.2.43) and `w:showingPlcHdr`
+         * (§17.5.2.39), which `editor/plugins/controlLifecycle` acts on.
+         * All of them are read off the prefix on import, which saves parsing that string again on
+         * every draw.
          */
-        contentsLocked: { default: false },
-        deletionLocked: { default: false },
-        /**
-         * Whether the control is a `w:group`, which shuts its contents without a `w:lock` saying
-         * so and which the editor never writes (`spec/notes/contentControls.md`).
-         */
-        group: { default: false },
+        ...controlAttrSpecs(OWN_CONTROL_ATTRS),
       },
       toDOM(mark) {
-        const contentsLocked = mark.attrs.contentsLocked === true;
-        const group = mark.attrs.group === true;
+        const control = controlFactsOf(OWN_CONTROL_ATTRS, mark.attrs);
         return [
           "span",
           {
             class:
-              contentsLocked || group
+              control.contentsLocked || control.group
                 ? `${editorClassNames.sdt} ${editorClassNames.sdtLocked}`
                 : editorClassNames.sdt,
-            "data-sdt-prefix": text(mark.attrs.sdtPrefix),
+            "data-sdt-prefix": text(control.prefix),
             "data-key": numberText(mark.attrs.key),
             "data-depth": numberText(mark.attrs.depth),
-            "data-sdt-contents-locked": contentsLocked ? "1" : undefined,
-            "data-sdt-deletion-locked":
-              mark.attrs.deletionLocked === true ? "1" : undefined,
-            "data-sdt-group": group ? "1" : undefined,
+            ...controlFlagsToDom(control),
           },
           0,
         ];
@@ -1182,14 +1167,12 @@ export const docxSchema = new Schema({
             // With no opening tag to put back there is no control left to write out
             if (prefix === null || prefix === false) return false;
             return {
-              sdtPrefix: prefix,
               key: parseInt10(dom.getAttribute("data-key"), 0),
               depth: parseInt10(dom.getAttribute("data-depth"), 0),
-              contentsLocked:
-                dom.getAttribute("data-sdt-contents-locked") === "1",
-              deletionLocked:
-                dom.getAttribute("data-sdt-deletion-locked") === "1",
-              group: dom.getAttribute("data-sdt-group") === "1",
+              ...controlAttrs(OWN_CONTROL_ATTRS, {
+                prefix,
+                ...controlFlagsFromDom(dom),
+              }),
             };
           },
         },

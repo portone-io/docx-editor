@@ -24,6 +24,7 @@ describe("the guard list, reached through a guard's own module first", () => {
     expect(EDIT_GUARDS.map((guard) => guard.name)).toEqual([
       "protection",
       "lock",
+      "controlEdge",
       "preserved",
       "section",
     ]);

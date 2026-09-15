@@ -90,6 +90,17 @@ function blockStart(view: EditorView, blockIndex: number): number {
   return at;
 }
 
+/**
+ * The first position text can be typed at inside this block.
+ *
+ * A paragraph holds text itself, so that is the position just inside it. A block-level content
+ * control holds blocks, so the caret goes into the first of them.
+ */
+function textStart(view: EditorView, blockIndex: number): number {
+  const inside = view.state.doc.resolve(blockStart(view, blockIndex) + 1);
+  return TextSelection.near(inside, 1).from;
+}
+
 function blocks(view: EditorView): BlockReport[] {
   const found: BlockReport[] = [];
   view.state.doc.forEach((node, pos, index) => {
@@ -252,7 +263,7 @@ function install(view: EditorView): void {
     }),
     blockHeight: (blockIndex) => blockHeight(view, blockIndex),
     caretAt: (blockIndex, offset) => {
-      const at = blockStart(view, blockIndex) + 1 + offset;
+      const at = textStart(view, blockIndex) + offset;
       view.dispatch(
         view.state.tr.setSelection(TextSelection.create(view.state.doc, at))
       );
@@ -260,7 +271,7 @@ function install(view: EditorView): void {
       return at;
     },
     selectText: (blockIndex, offset, length) => {
-      const from = blockStart(view, blockIndex) + 1 + offset;
+      const from = textStart(view, blockIndex) + offset;
       view.dispatch(
         view.state.tr.setSelection(
           TextSelection.create(view.state.doc, from, from + length)
