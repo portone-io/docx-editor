@@ -43,9 +43,8 @@ function shapes(node: PMNode): string[] {
 
 describe("what the schema draws, the schema reads back", () => {
   /**
-   * A root that binds WordprocessingML as its default namespace still has to bind `w` beside it,
-   * since that is the prefix everything written back out is spelled under; one that binds the
-   * namespace to another prefix alone is refused when it is opened (`docx/importDocx`).
+   * A root binding WordprocessingML as its default namespace is spelled under `w` as the package
+   * is opened (`docx/packagePrefixes`), so what it writes back is the part its `w:` twin writes.
    */
   it("keeps formatting imported under a default WordprocessingML namespace", () => {
     const parts = unzipSync(
@@ -54,7 +53,8 @@ describe("what the schema draws, the schema reads back", () => {
       )
     );
     const path = "word/document.xml";
-    const xml = new TextDecoder().decode(parts[path]);
+    const twin = parts[path];
+    const xml = new TextDecoder().decode(twin);
     // Default namespaces apply to elements only; WordprocessingML attributes retain w:.
     const renamed = xml
       .replace("xmlns:w=", "xmlns=")
@@ -73,7 +73,7 @@ describe("what the schema draws, the schema reads back", () => {
     const reparsed = parser.parse(host, { preserveWhitespace: true });
     expect(reparsed.eq(doc)).toBe(true);
     expect(
-      bytesEqual(unzipSync(exportDocx(reparsed, session))[path], parts[path])
+      bytesEqual(unzipSync(exportDocx(reparsed, session))[path], twin)
     ).toBe(true);
   });
 

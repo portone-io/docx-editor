@@ -7,6 +7,8 @@ description: What the editor keeps untouched, and how it behaves while you edit 
 
 Untouched package parts and document blocks go back out unchanged, and an element the editor has
 no model for is kept where it stood while the paragraph around it stays editable.
+A file that spelled the namespaces under other prefixes goes back out respelled, so its bytes
+differ where its content does not.
 An unsupported block, or a table whose structure cannot be modelled, stands as a placeholder.
 A section break is kept as well; [Pages and sections](/docs/features/pages-and-sections#sections)
 covers what it means while you edit.

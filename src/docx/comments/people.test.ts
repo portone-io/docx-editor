@@ -276,38 +276,59 @@ describe("the people part", () => {
     expect(authorIdsOf(output)).toEqual([null, "u_grace"]);
   });
 
-  it("writes the new author under the prefix the root binds to the w15 namespace", () => {
-    const opened = importDocx(
-      commentedDocx(`<p15:people xmlns:p15="${W15_NS}"></p15:people>`)
-    );
-    const state = applied(
-      selecting(createEditorState(opened.doc), "beta"),
-      addComment({ text: "Note", author: "Grace", authorId: "u_grace" })
-    );
-    const output = exportDocx(state.doc, opened.session);
-    expect(decode(unzipSync(output)["word/people.xml"])).toBe(
-      `<p15:people xmlns:p15="${W15_NS}">` +
-        '<p15:person p15:author="Grace">' +
-        `<p15:presenceInfo p15:providerId="${COMMENT_AUTHOR_PROVIDER}" p15:userId="u_grace"/>` +
-        "</p15:person></p15:people>"
-    );
-    expect(authorIdsOf(output)).toEqual([null, "u_grace"]);
+  /**
+   * A part that spelled the namespace its own way is rewritten to the prefix this editor writes as
+   * the package is opened (`docx/packagePrefixes`), so the author written into it is spelled the
+   * way the part now reads, whichever way the file wrote it.
+   */
+  it("spells a people part that bound the namespace another way under w15", () => {
+    for (const root of [
+      `<p15:people xmlns:p15="${W15_NS}"></p15:people>`,
+      `<people xmlns="${W15_NS}"/>`,
+    ]) {
+      const opened = importDocx(commentedDocx(root));
+      const state = applied(
+        selecting(createEditorState(opened.doc), "beta"),
+        addComment({ text: "Note", author: "Grace", authorId: "u_grace" })
+      );
+      const output = exportDocx(state.doc, opened.session);
+      expect(decode(unzipSync(output)["word/people.xml"])).toBe(
+        peopleXml(person("Grace", COMMENT_AUTHOR_PROVIDER, "u_grace"))
+      );
+      expect(authorIdsOf(output)).toEqual([null, "u_grace"]);
+    }
   });
 
-  it("writes the new author with no prefix under a default-namespace root", () => {
-    const opened = importDocx(commentedDocx(`<people xmlns="${W15_NS}"/>`));
-    const state = applied(
-      selecting(createEditorState(opened.doc), "beta"),
-      addComment({ text: "Note", author: "Grace", authorId: "u_grace" })
-    );
-    const output = exportDocx(state.doc, opened.session);
-    expect(decode(unzipSync(output)["word/people.xml"])).toBe(
-      `<people xmlns="${W15_NS}">` +
-        '<person author="Grace">' +
-        `<presenceInfo providerId="${COMMENT_AUTHOR_PROVIDER}" userId="u_grace"/>` +
-        "</person></people>"
-    );
-    expect(authorIdsOf(output)).toEqual([null, "u_grace"]);
+  /**
+   * A part that also bound `w15` elsewhere is one the open leaves as it arrived
+   * (`docx/packagePrefixes`), so the prefix the writer spells is still the part's own.
+   */
+  it("writes the new author under the prefix a part left as it arrived binds", () => {
+    for (const [root, written] of [
+      [
+        `<p15:people xmlns:p15="${W15_NS}" xmlns:w15="urn:junk"></p15:people>`,
+        `<p15:people xmlns:p15="${W15_NS}" xmlns:w15="urn:junk">` +
+          '<p15:person p15:author="Grace">' +
+          `<p15:presenceInfo p15:providerId="${COMMENT_AUTHOR_PROVIDER}" p15:userId="u_grace"/>` +
+          "</p15:person></p15:people>",
+      ],
+      [
+        `<people xmlns="${W15_NS}" xmlns:w15="urn:junk"/>`,
+        `<people xmlns="${W15_NS}" xmlns:w15="urn:junk">` +
+          '<person author="Grace">' +
+          `<presenceInfo providerId="${COMMENT_AUTHOR_PROVIDER}" userId="u_grace"/>` +
+          "</person></people>",
+      ],
+    ]) {
+      const opened = importDocx(commentedDocx(root));
+      const state = applied(
+        selecting(createEditorState(opened.doc), "beta"),
+        addComment({ text: "Note", author: "Grace", authorId: "u_grace" })
+      );
+      const output = exportDocx(state.doc, opened.session);
+      expect(decode(unzipSync(output)["word/people.xml"])).toBe(written);
+      expect(authorIdsOf(output)).toEqual([null, "u_grace"]);
+    }
   });
 
   it("records nothing for a name the document already writes a comment under", () => {

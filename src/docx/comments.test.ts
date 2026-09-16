@@ -504,14 +504,14 @@ describe("WordprocessingML comments", () => {
   });
 
   /**
-   * A comments part is free to bind WordprocessingML to a prefix of its own, and every piece this
-   * editor writes into it is spelled `w:`, so the binding goes on the part's root rather than on
-   * each piece. Without it the part holds a prefix nothing bound and does not read back at all.
+   * A comments part is free to bind WordprocessingML to a prefix of its own, and the package is
+   * spelled under the prefixes this editor writes as it is opened (`docx/packagePrefixes`), so the
+   * entry the file brought and the body written into it read as one part.
    *
-   * The entry itself keeps the tag it arrived under: what it says is rewritten, and who wrote it
-   * is on the opening tag, which nobody rewrites.
+   * The entry itself keeps the tag it arrived under, rewritten: what it says is written again, and
+   * who wrote it stands on the opening tag, which nobody rewrites.
    */
-  it("declares the prefix a rewritten body is written under on the part root", () => {
+  it("spells a comments part that bound the namespace to a prefix of its own under w", () => {
     const parts = unzipSync(makeCommentedDocx());
     parts["word/comments.xml"] = encoder.encode(
       '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
@@ -528,8 +528,8 @@ describe("WordprocessingML comments", () => {
     const output = exportDocx(state.doc, opened.session);
     const commentsXml = decode(unzipSync(output)["word/comments.xml"]);
 
-    expect(commentsXml).toContain(`<c:comments xmlns:c="${W_NS}" xmlns:w=`);
-    expect(commentsXml).toContain('<c:comment c:id="4" c:author="Ada"><w:p>');
+    expect(commentsXml).toContain(`<w:comments xmlns:w="${W_NS}">`);
+    expect(commentsXml).toContain('<w:comment w:id="4" w:author="Ada"><w:p>');
     expect(commentsXml).not.toContain("<w:p xmlns:w=");
     expect(
       documentComments(createEditorState(importDocx(output).doc))[0]?.text

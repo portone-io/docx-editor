@@ -356,7 +356,9 @@ export function headerFooterText(
  * the part's root binds it rather than each block declaring it again. A part that already binds it
  * - which every one Word writes does - is left exactly as it stands.
  */
-const HEADER_MARKUP: RootDeclarations = { namespaces: { w: NAMESPACES.w } };
+export const HEADER_MARKUP: RootDeclarations = {
+  namespaces: { w: NAMESPACES.w },
+};
 
 /** A header or footer part holds its one story, so that story alone is the scope of the identity pass */
 function writtenPart(

@@ -385,7 +385,9 @@ export function storyEntriesProblems(
 }
 
 /** What a rewritten or created part declares: every entry this writer puts out is spelled under `w` */
-const ENTRY_MARKUP: RootDeclarations = { namespaces: { w: NAMESPACES.w } };
+export const ENTRY_MARKUP: RootDeclarations = {
+  namespaces: { w: NAMESPACES.w },
+};
 
 const XML_DECLARATION =
   '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';

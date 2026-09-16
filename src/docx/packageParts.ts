@@ -154,6 +154,36 @@ export function declaredXmlParts(
   );
 }
 
+const MARKUP_NAME = /\.(?:xml|rels)$/i;
+
+/**
+ * Which of these parts hold markup: the ones named as XML or as relationships, and the ones the
+ * content types declare as XML under a name of their own. Media bytes are neither.
+ *
+ * The open respells the namespaces of these parts and the export reads back the ones it wrote, so
+ * a part one of them took for markup and the other did not would be spelled one way and checked
+ * another.
+ */
+export function markupParts(
+  paths: Iterable<string>,
+  contentTypes?: Uint8Array
+): ReadonlySet<string> {
+  const named = new Set<string>();
+  const rest: string[] = [];
+  for (const path of paths) {
+    if (MARKUP_NAME.test(path)) named.add(path);
+    else rest.push(path);
+  }
+  if (contentTypes === undefined || rest.length === 0) return named;
+  try {
+    for (const path of declaredXmlParts(contentTypes, rest)) named.add(path);
+  } catch {
+    // A content types part that cannot be read declares nothing here; what needs it read - the
+    // writer adding a part - refuses over it itself
+  }
+  return named;
+}
+
 export function contentTypeWriter(
   parts: ReadonlyMap<string, Uint8Array>
 ): ContentTypeWriter {

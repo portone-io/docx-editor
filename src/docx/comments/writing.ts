@@ -180,7 +180,7 @@ function extensionsXml(
       root: EXTENSIONS_ROOT,
       replaceChildren: pieces.join(""),
     }),
-    { namespaces: { w15: NAMESPACES.w15 } }
+    EXTENSIONS_MARKUP
   );
 }
 
@@ -307,7 +307,9 @@ function renderedComment(
  * What a part carrying comments this editor wrote has to declare. Every entry it writes is spelled
  * under `w`, so the root binds it rather than each entry declaring it again.
  */
-const COMMENT_MARKUP: RootDeclarations = { namespaces: { w: NAMESPACES.w } };
+export const COMMENT_MARKUP: RootDeclarations = {
+  namespaces: { w: NAMESPACES.w },
+};
 
 /**
  * The same, for a part carrying a thread key: the key is a `w14:paraId`, and a reader that does
@@ -316,6 +318,11 @@ const COMMENT_MARKUP: RootDeclarations = { namespaces: { w: NAMESPACES.w } };
 const THREAD_MARKUP: RootDeclarations = {
   namespaces: { w: NAMESPACES.w, w14: NAMESPACES.w14, mc: NAMESPACES.mc },
   ignorable: ["w14"],
+};
+
+/** What a part carrying the thread an entry belongs to has to declare, its keys being `w15` ones */
+export const EXTENSIONS_MARKUP: RootDeclarations = {
+  namespaces: { w15: NAMESPACES.w15 },
 };
 
 export function currentCommentBodies(

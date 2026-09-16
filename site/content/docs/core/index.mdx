@@ -24,6 +24,14 @@ explains how.
 The session must not be constructed or modified; `documentNumbering(session)` and
 `documentPartPath(session)` read from it.
 
+A file that spells WordprocessingML under another prefix, or as its default namespace, opens: the
+parts are rewritten to the prefixes the editor writes before anything is read, and nothing of the
+document's content is changed by that.
+Such a package exports bytes that differ from the bytes that arrived, where a package already
+spelling those prefixes exports byte for byte.
+A main part that binds `w` itself to another namespace cannot be respelled and is still refused
+with `unsupported-content`.
+
 ## What a document loses
 
 Markup the editor cannot model is carried through the round trip, but some of it is invisible on

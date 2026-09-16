@@ -57,7 +57,15 @@ export function wName(local: string): string {
   return qualify(W_PREFIX, local);
 }
 
+/** The attribute name a namespace declaration stands under, on its own for the default one */
+export const XMLNS = "xmlns";
+
+/** The name a declaration of one prefix is written under (`xmlnsName("w")` -> `xmlns:w`) */
+export function xmlnsName(prefix: string): string {
+  return `${XMLNS}:${prefix}`;
+}
+
 /** The declaration a part root carries for one prefix, ready to write inside an opening tag */
 export function xmlnsDecl(prefix: KnownPrefix): string {
-  return `xmlns:${prefix}="${NAMESPACES[prefix]}"`;
+  return `${xmlnsName(prefix)}="${NAMESPACES[prefix]}"`;
 }

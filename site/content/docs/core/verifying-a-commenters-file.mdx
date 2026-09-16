@@ -26,6 +26,9 @@ The comparison checks the whole package within the [limits below](#how-files-are
 - XML comments and processing instructions outside those entries are unchanged; layout whitespace
   may differ.
 
+Both files are read through `importDocx` first, so a package that spelled the namespaces under
+other prefixes is compared respelled on both sides and the verdict is unaffected.
+
 `editableComments` in the options says whose comments may have changed: `"own"` (the default) is
 this author's and the unattributed ones, `"all"` is every comment.
 
@@ -64,7 +67,9 @@ order, `100%` against `5000`, split runs) are accepted.
 The comparison does not cover markup inside `w:tblGrid` beyond the column widths, the size a
 picture's own transform states, or table properties the model no longer needs.
 It also cannot detect changes inside cells that continue a vertical merge.
-Where integrity must hold to the byte, compare the parts yourself.
+Where integrity must hold to the byte, compare the parts yourself, after opening both files
+through the editor: a returned file whose original spelled the namespaces under other prefixes
+carries every markup part respelled, so a comparison against the original bytes differs throughout.
 
 Run the verifier on a package at least as new as the editor that wrote the file.
 Unreadable bytes throw `DocxImportError`.
