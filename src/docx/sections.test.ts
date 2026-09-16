@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { unzipSync } from "fflate";
+import type { Node as PMNode } from "prosemirror-model";
 import { EditorState } from "prosemirror-state";
 import { describe, expect, it } from "vitest";
 import {
@@ -56,6 +57,45 @@ function documentXmlOf(bytes: Uint8Array): string {
   return decode(unzipSync(bytes)["word/document.xml"]);
 }
 
+/** Where the paragraph holding exactly this text stands, at any depth, and its last position */
+function paragraphAt(doc: PMNode, text: string): { pos: number; to: number } {
+  const found: { pos: number; to: number }[] = [];
+  doc.descendants((node, pos) => {
+    if (node.type.name === "paragraph" && node.textContent === text) {
+      found.push({ pos, to: pos + node.nodeSize - 1 });
+    }
+    return found.length === 0;
+  });
+  const first = found[0];
+  if (first === undefined) throw new Error(`no paragraph reading "${text}"`);
+  return first;
+}
+
+/**
+ * The sections every position of the document reaches, asserting the sections tile the document
+ * with no gap and no overlap and that each position is answered by the section holding it
+ */
+function sectionsReachedIn(
+  doc: PMNode,
+  sections: ReturnType<typeof sectionsOf>
+) {
+  expect(sections[0].from).toBe(0);
+  expect(sections[sections.length - 1].to).toBe(doc.content.size);
+  sections.slice(1).forEach((section, i) => {
+    expect(section.from).toBe(sections[i].to + 1);
+  });
+  const reached = new Set<number>();
+  for (let pos = 0; pos <= doc.content.size; pos += 1) {
+    const section = sectionIn(sections, pos);
+    const holding = sections.filter(
+      (candidate) => candidate.from <= pos && pos <= candidate.to
+    );
+    expect(holding).toEqual([section]);
+    reached.add(section.index);
+  }
+  return reached;
+}
+
 describe("the sections a document is written in", () => {
   it("reads one section per pPr sectPr plus the body sectPr", () => {
     const sections = sectionsOf(opened(TWO_SECTIONS).doc);
@@ -101,6 +141,7 @@ describe("the sections a document is written in", () => {
         "<w:p><w:r><w:t>inside</w:t></w:r></w:p>" +
         `<w:p><w:pPr>${LETTER_SECT_PR}</w:pPr>` +
         "<w:r><w:t>ends the section</w:t></w:r></w:p>" +
+        "<w:p><w:r><w:t>past the break</w:t></w:r></w:p>" +
         "</w:sdtContent></w:sdt>" +
         "<w:p><w:r><w:t>after the control</w:t></w:r></w:p>" +
         A4_LANDSCAPE_SECT_PR
@@ -114,13 +155,17 @@ describe("the sections a document is written in", () => {
     // The anchor names the paragraph inside the control, where the break is written
     const anchor = sections[0].anchor;
     if (anchor.kind !== "paragraph") throw new Error("no paragraph anchor");
-    expect(doc.resolve(anchor.pos + 1).parent.textContent).toBe(
-      "ends the section"
-    );
-    // The section reaches to the end of the control, and the block after it opens the next one
-    expect(sections[0].to).toBe(control.nodeSize - 1);
-    expect(sections[1].from).toBe(control.nodeSize);
+    const ends = paragraphAt(doc, "ends the section");
+    expect(anchor.pos).toBe(ends.pos);
+    // The section ends at that paragraph, not at the control holding it
+    expect(sections[0].to).toBe(ends.to);
+    expect(sections[0].to).toBeLessThan(control.nodeSize - 1);
+    expect(sections[1].from).toBe(sections[0].to + 1);
     expect(sectionAt(doc, anchor.pos + 1).index).toBe(0);
+    // The paragraph standing after the break inside the same control is already the next section
+    expect(
+      sectionAt(doc, paragraphAt(doc, "past the break").pos + 1).index
+    ).toBe(1);
     expect(sectionAt(doc, control.nodeSize + 1).index).toBe(1);
   });
 
@@ -139,15 +184,53 @@ describe("the sections a document is written in", () => {
     expect(sections[0].anchor).toEqual({ kind: "body" });
   });
 
-  /** Two breaks in one control collapse onto the first, and every position still reaches a section */
-  it("reads only the first of two breaks a control holds", () => {
+  /** Both breaks are read, and every position still reaches exactly one section */
+  it("reads both breaks a control holds", () => {
     const { doc } = opened(
       "<w:p><w:r><w:t>before</w:t></w:r></w:p>" +
         `<w:sdt><w:sdtPr><w:id w:val="9"/></w:sdtPr><w:sdtContent>` +
         `<w:p><w:pPr>${LETTER_SECT_PR}</w:pPr>` +
         "<w:r><w:t>ends the first</w:t></w:r></w:p>" +
         `<w:p><w:pPr>${LETTER_SECT_PR}</w:pPr>` +
-        "<w:r><w:t>would end another</w:t></w:r></w:p>" +
+        "<w:r><w:t>ends the second</w:t></w:r></w:p>" +
+        "</w:sdtContent></w:sdt>" +
+        "<w:p><w:r><w:t>after</w:t></w:r></w:p>" +
+        A4_LANDSCAPE_SECT_PR
+    );
+    const sections = sectionsOf(doc);
+
+    expect(sections).toHaveLength(3);
+    expect(sections[0].props.geometry).toEqual(LETTER);
+    expect(sections[1].props.geometry).toEqual(LETTER);
+    expect(sections.map((section) => section.anchor)).toEqual([
+      { kind: "paragraph", pos: paragraphAt(doc, "ends the first").pos },
+      { kind: "paragraph", pos: paragraphAt(doc, "ends the second").pos },
+      { kind: "body" },
+    ]);
+
+    // The second section is ended by the paragraph straight after the first's, so it covers that
+    // paragraph and nothing else
+    const second = paragraphAt(doc, "ends the second");
+    expect(sections[1].from).toBe(second.pos);
+    expect(sections[1].to).toBe(second.to);
+
+    // Every position reaches exactly one section, and every section is reached
+    for (const section of sections) {
+      expect(section.from).toBeLessThanOrEqual(section.to);
+    }
+    expect(sectionsReachedIn(doc, sections)).toEqual(new Set([0, 1, 2]));
+  });
+
+  /** `eachStoryParagraph` reaches a control inside a control, so a break written there is read */
+  it("reads a break written inside a control nested in a control", () => {
+    const { doc } = opened(
+      `<w:sdt><w:sdtPr><w:id w:val="10"/></w:sdtPr><w:sdtContent>` +
+        "<w:p><w:r><w:t>outer</w:t></w:r></w:p>" +
+        `<w:sdt><w:sdtPr><w:id w:val="11"/></w:sdtPr><w:sdtContent>` +
+        `<w:p><w:pPr>${LETTER_SECT_PR}</w:pPr>` +
+        "<w:r><w:t>ends the section</w:t></w:r></w:p>" +
+        "<w:p><w:r><w:t>past the break</w:t></w:r></w:p>" +
+        "</w:sdtContent></w:sdt>" +
         "</w:sdtContent></w:sdt>" +
         "<w:p><w:r><w:t>after</w:t></w:r></w:p>" +
         A4_LANDSCAPE_SECT_PR
@@ -155,25 +238,13 @@ describe("the sections a document is written in", () => {
     const sections = sectionsOf(doc);
 
     expect(sections).toHaveLength(2);
-    expect(sections[0].props.geometry).toEqual(LETTER);
-    const anchor = sections[0].anchor;
-    if (anchor.kind !== "paragraph") throw new Error("no paragraph anchor");
-    expect(doc.resolve(anchor.pos + 1).parent.textContent).toBe(
-      "ends the first"
-    );
-
-    // Every position reaches exactly one section, and every section is reached
-    for (const section of sections) {
-      expect(section.from).toBeLessThanOrEqual(section.to);
-    }
-    const reached = new Set<number>();
-    for (let pos = 0; pos <= doc.content.size; pos += 1) {
-      const section = sectionIn(sections, pos);
-      expect(pos).toBeGreaterThanOrEqual(section.from);
-      expect(pos).toBeLessThanOrEqual(section.to);
-      reached.add(section.index);
-    }
-    expect(reached).toEqual(new Set([0, 1]));
+    const ends = paragraphAt(doc, "ends the section");
+    expect(doc.resolve(ends.pos).parent.type.name).toBe("sdtBlock");
+    expect(sections[0].to).toBe(ends.to);
+    expect(
+      sectionAt(doc, paragraphAt(doc, "past the break").pos + 1).index
+    ).toBe(1);
+    expect(sectionsReachedIn(doc, sections)).toEqual(new Set([0, 1]));
   });
 
   /**
@@ -190,6 +261,25 @@ describe("the sections a document is written in", () => {
     );
 
     expect(sectionsOf(doc)).toHaveLength(1);
+  });
+
+  it("reads no section off a paragraph inside a table cell inside a content control", () => {
+    const { doc } = opened(
+      `<w:sdt><w:sdtPr><w:id w:val="12"/></w:sdtPr><w:sdtContent>` +
+        "<w:tbl><w:tr><w:tc>" +
+        `<w:p><w:pPr>${LETTER_SECT_PR}</w:pPr>` +
+        "<w:r><w:t>in a cell</w:t></w:r></w:p>" +
+        "</w:tc></w:tr></w:tbl>" +
+        "</w:sdtContent></w:sdt>" +
+        A4_LANDSCAPE_SECT_PR
+    );
+    expect(doc.child(0).type.name).toBe("sdtBlock");
+    expect(doc.child(0).child(0).type.name).toBe("table");
+
+    const sections = sectionsOf(doc);
+    expect(sections.map((section) => section.anchor)).toEqual([
+      { kind: "body" },
+    ]);
   });
 
   /** The one committed package holding a section break written inside a control */

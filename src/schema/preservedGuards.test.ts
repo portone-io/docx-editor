@@ -578,11 +578,8 @@ describe("a guard over the sections a document was opened with", () => {
     ).toBe(false);
   });
 
-  /**
-   * A block ends at most one section, so the second break a control holds lays none down. The
-   * markup is still the guard's, which is what keeps it from being joined away unsaid.
-   */
-  it("guards the second break a control holds, which lays down no section", () => {
+  /** Every break a control holds ends a section of its own, and each is the guard's */
+  it("guards the second break a control holds", () => {
     const state = createEditorState(
       importDocx(
         makeDocx(
@@ -598,7 +595,8 @@ describe("a guard over the sections a document was opened with", () => {
     const controlPos = state.doc.content.size - control.nodeSize;
     const secondAt = controlPos + 1 + control.child(0).nodeSize;
 
-    expect(sectionsOf(state.doc)).toHaveLength(2);
+    // Both breaks and the body's own: the second paragraph of the control ends a section too
+    expect(sectionsOf(state.doc)).toHaveLength(3);
     expect(
       transactionAllowed(
         state.tr.delete(secondAt, secondAt + control.child(1).nodeSize),

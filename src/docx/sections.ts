@@ -340,22 +340,31 @@ export function setSectionChild(
   return gap + renderElement(written);
 }
 
+interface SectionBreakAt {
+  pos: number;
+  to: number;
+  xml: string;
+}
+
 /**
- * The section break a top-level block lays down, and where the paragraph carrying it stands.
+ * Every section break a top-level block lays down, in document order, each with the position of
+ * the paragraph carrying it and the last position that paragraph covers.
  *
- * The first is the only one read, because a block ends at most one section. Which paragraphs a
- * block stands for, and why a block holding two breaks is the shape this has to answer for, are
- * in `spec/notes/sections.md`.
+ * `eachStoryParagraph` reaches the paragraphs of a content control at any depth and refuses to
+ * walk into a table, so which paragraphs a block stands for is decided there alone;
+ * `spec/notes/sections.md` records why a cell's paragraph ends no section.
  */
-function firstSectionBreak(
-  block: PMNode,
-  pos: number
-): { pos: number; xml: string } | null {
-  let found: { pos: number; xml: string } | null = null;
+function sectionBreaksOf(block: PMNode, pos: number): SectionBreakAt[] {
+  const found: SectionBreakAt[] = [];
   eachStoryParagraph(block, pos, (paragraph, paragraphPos) => {
-    if (found !== null) return;
     const brk = sectionBreakOf(pPrText(paragraph));
-    if (brk !== null) found = { pos: paragraphPos, xml: brk };
+    if (brk !== null) {
+      found.push({
+        pos: paragraphPos,
+        to: paragraphPos + paragraph.nodeSize - 1,
+        xml: brk,
+      });
+    }
   });
   return found;
 }
@@ -367,28 +376,27 @@ function firstSectionBreak(
  * down. Sections are keyed by document position rather than by the index of a top-level block,
  * because the paragraph that ends one may stand inside a block-level content control.
  *
- * A section ends where the top-level block holding its last paragraph ends, which is what
- * `spec/notes/sections.md` reads off §17.6.18 for a break written inside a control. A document
- * whose final block ends a section leaves the last section covering that one position alone.
+ * A section ends at the last position of the paragraph carrying its break (§17.6.17), wherever
+ * that paragraph stands, so a block holding several breaks ends several sections and a section
+ * whose break stands on the paragraph after another's covers that one paragraph alone.
  */
 export function sectionsOf(doc: PMNode): readonly DocumentSection[] {
   const sections: DocumentSection[] = [];
   let from = 0;
   doc.forEach((child, offset) => {
-    const brk = firstSectionBreak(child, offset);
-    if (brk === null) return;
-    const end = offset + child.nodeSize;
-    sections.push({
-      index: sections.length,
-      from,
-      to: end - 1,
-      anchor: { kind: "paragraph", pos: brk.pos },
-      props: parseSectionProperties(brk.xml) ?? {
-        ...DEFAULT_SECTION,
-        xml: brk.xml,
-      },
-    });
-    from = end;
+    for (const brk of sectionBreaksOf(child, offset)) {
+      sections.push({
+        index: sections.length,
+        from,
+        to: brk.to,
+        anchor: { kind: "paragraph", pos: brk.pos },
+        props: parseSectionProperties(brk.xml) ?? {
+          ...DEFAULT_SECTION,
+          xml: brk.xml,
+        },
+      });
+      from = brk.to + 1;
+    }
   });
   const body: unknown = doc.attrs.sectPr;
   const xml = typeof body === "string" ? body : null;
