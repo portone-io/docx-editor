@@ -4,6 +4,7 @@ import { sameSource } from "../schema/sourceEquality";
 import { type ExportRefs, NO_EXPORT_REFS } from "./exportRefs";
 import { serializeParagraph } from "./serializeParagraph";
 import { serializePreservedBlock } from "./serializePreserved";
+import { serializeSdtBlock } from "./serializeSdtBlock";
 import { serializeTable } from "./serializeTable";
 import { originalBlock } from "./session";
 
@@ -12,7 +13,12 @@ export function serializeBlock(
   refs: ExportRefs = NO_EXPORT_REFS
 ): string {
   if (node.type.name === "paragraph") return serializeParagraph(node, refs);
-  if (node.type.name === "table") return serializeTable(node, refs);
+  if (node.type.name === "table") {
+    return serializeTable(node, refs, serializeBlock);
+  }
+  if (node.type.name === "sdtBlock") {
+    return serializeSdtBlock(node, refs, serializeBlock);
+  }
   if (node.type.isInGroup("preserved")) {
     return serializePreservedBlock(node, refs);
   }

@@ -13,19 +13,21 @@ Every element the readers may meet carries one of six tiers.
 | `ignorable` | A trace the producer regenerates: invisible, and an edit may drop it. |
 | `runContent` | A `CT_R` child kept verbatim inside its run, wearing the run's formatting. |
 | `inline` | A paragraph child kept verbatim beside the runs. |
-| `block` | A body or cell child kept verbatim as a block placeholder. |
+| `block` | A body, cell or control child kept verbatim as a block placeholder. |
 
 Beside the tier, a rule says how the element is drawn (`hidden`, `text`, `break`, `chip`) and whether the deletion guard answers for it.
 
 ## Demotion is a structure failure, not a vocabulary
 
-The tiers are grouped by the content model each level has in `wml.xsd`, one sub-table per level: `body`, `tbl`, `tr`, `tc`, `p`, `wrapper`, `r`. An element a sub-table does not name falls to the narrowest preservation that level has a node for. A run child stays inside its run, a paragraph child beside the runs, a block stays a block, so an element nobody modelled costs that element and nothing around it, whatever depth it was met at.
+The tiers are grouped by the content model each level has in `wml.xsd`, one sub-table per level: `body`, `sdtContent`, `tbl`, `tr`, `tc`, `p`, `wrapper`, `r`. An element a sub-table does not name falls to the narrowest preservation that level has a node for. A run child stays inside its run, a paragraph child beside the runs, a block stays a block, so an element nobody modelled costs that element and nothing around it, whatever depth it was met at.
 
 Two levels are the exception. `tbl` holds rows and `tr` holds cells, and neither has a node a stranger could be kept in, so an element they do not name stands the whole table down as one placeholder and the fidelity report says so with `table-demoted`.
 
 What those two levels do name as `marker` or `ignorable` is invisible, so it needs no node of its own: it is carried on the child before it - a row's on the cell it followed, a table's on the row - and written back in the same spot. The one case that still stands the table down is a marker following a cell that only continues a vertical merge, since that cell is created fresh on export and would have nothing to carry it.
 
-The level rather than the element name is what the sub-tables are keyed by, because the same name means different things in different places. `w:sdt` is a content control a paragraph reader unwraps, a wrapper around one cell under `w:tr`, a block placeholder under `w:body`, and a row wrapper nothing reads under `w:tbl`. Keys are Clark names (`{namespace}localName`) so that `m:oMath`, which is not WordprocessingML at all, sits in the same map.
+The level rather than the element name is what the sub-tables are keyed by, because the same name means different things in different places. `w:sdt` is a content control a paragraph reader unwraps, a wrapper around one cell under `w:tr`, a container of blocks under `w:body` and inside a cell, and a row wrapper nothing reads under `w:tbl`. Keys are Clark names (`{namespace}localName`) so that `m:oMath`, which is not WordprocessingML at all, sits in the same map.
+
+A block-level control is read as a container of the same block content the level around it takes, so it has a sub-table of its own: `sdtContent`. A control whose type the specification restrains to a single run - `w:text`, `w:picture`, `w:date`, `w:comboBox`, `w:dropDownList`, `w14:checkbox` - stays the block placeholder every such control used to be, since a container taking any run of blocks would let a single Enter break that restraint. So does one whose `w:sdtContent` is absent or empty, which a container of blocks has no way to say. [Content controls](./contentControls.md) holds the rest.
 
 ## Why `w:lastRenderedPageBreak` is ignorable
 
@@ -49,6 +51,7 @@ A container that carries its content whole is not guarded. A `w:ins`, a `w:del`,
 | `p` | `CT_P`: `w:pPr` and `EG_PContent` |
 | `wrapper` | `CT_SdtContentRun` and `CT_Hyperlink`, both `EG_PContent` |
 | `body` | `CT_Body`: `EG_BlockLevelElts` and the closing `w:sectPr` |
+| `sdtContent` | `CT_SdtContentBlock`: `EG_ContentBlockContent`, which is `CT_Body` without `w:altChunk` and without the closing section |
 | `tc` | `CT_Tc`: `w:tcPr` and `EG_BlockLevelElts` |
 | `tbl` | `CT_Tbl`: `EG_RangeMarkupElements`, `w:tblPr`, `w:tblGrid`, `EG_ContentRowContent` |
 | `tr` | `CT_Row`: `w:tblPrEx`, `w:trPr`, `EG_ContentCellContent` |

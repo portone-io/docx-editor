@@ -2,7 +2,7 @@
  * The inline wrappers this editor takes apart and puts back together, one entry each.
  *
  * A wrapper is an element holding inline content that goes back out around the same content: a
- * content control (`w:sdt`, §17.5.2.17), a hyperlink (`w:hyperlink`, §17.16.22). `EG_PContent`
+ * content control (`w:sdt`, §17.5.2.31), a hyperlink (`w:hyperlink`, §17.16.22). `EG_PContent`
  * lets them nest in any order and any depth, so import reads the nesting as the file wrote it and
  * export rebuilds it from the marks (`schema/wrappers` holds the order, `docx/importParagraph`
  * reads, `docx/serializeParagraph` writes).
@@ -25,7 +25,7 @@ import { docxSchema } from "../schema";
 import type { ExportRefs } from "./exportRefs";
 import { readHyperlinkWrapper, relIdIn, withRelId } from "./hyperlink";
 import type { ImportSources } from "./importParagraph";
-import { copiedControlPrefix, newControlId, readSdtWrapper } from "./sdt";
+import { readSdtWrapper, SDT_CLOSING_XML, sdtOpeningXml } from "./sdt";
 
 /** A wrapper read off the file: the mark its content wears, and the element that content stands in */
 export interface WrapperReading {
@@ -52,11 +52,6 @@ export interface WrapperKind {
   open(mark: Mark, refs: ExportRefs): string;
   /** What closes it again */
   close(mark: Mark): string;
-  /**
-   * The same wrapper under a name of its own, for a second stretch claiming one name
-   * (`docx/identities`). Absent for a kind that names nothing a document must keep unique.
-   */
-  copy?(mark: Mark): Mark;
 }
 
 /**
@@ -68,11 +63,18 @@ export interface WrapperKind {
  */
 const counts = new WeakMap<Document, Map<string, number>>();
 
-function nextKey(kind: WrapperKind, el: Element): number {
+/**
+ * The next number for one kind of wrapper read out of this document.
+ *
+ * A block content control (`docx/importSdtBlock`) is not a mark, but it is a control, so it draws
+ * from the control count as the inline mark does: two of them then never answer `docx/identities`
+ * with one name.
+ */
+export function nextKey(kind: string, el: Element): number {
   const perDocument = counts.get(el.ownerDocument) ?? new Map<string, number>();
   counts.set(el.ownerDocument, perDocument);
-  const key = perDocument.get(kind.mark) ?? 0;
-  perDocument.set(kind.mark, key + 1);
+  const key = perDocument.get(kind) ?? 0;
+  perDocument.set(kind, key + 1);
   return key;
 }
 
@@ -90,32 +92,15 @@ const SDT: WrapperKind = {
       mark: docxSchema.marks.sdt.create({
         sdtPrefix: wrapper.prefix,
         depth,
-        key: nextKey(SDT, el),
+        key: nextKey(SDT.mark, el),
         contentsLocked: wrapper.contentsLocked,
         deletionLocked: wrapper.deletionLocked,
       }),
       content: wrapper.content,
     };
   },
-  open(mark) {
-    const prefix: unknown = mark.attrs.sdtPrefix;
-    if (typeof prefix !== "string") {
-      throw new DocxExportError(
-        "lost-original",
-        "a content control has lost the opening XML it goes back out as"
-      );
-    }
-    return `${prefix}<w:sdtContent>`;
-  },
-  close: () => "</w:sdtContent></w:sdt>",
-  copy(mark) {
-    const prefix: unknown = mark.attrs.sdtPrefix;
-    if (typeof prefix !== "string") return mark;
-    return mark.type.create({
-      ...mark.attrs,
-      sdtPrefix: copiedControlPrefix(prefix, newControlId()),
-    });
-  },
+  open: (mark) => sdtOpeningXml(mark.attrs.sdtPrefix),
+  close: () => SDT_CLOSING_XML,
 };
 
 /**
@@ -143,7 +128,7 @@ const LINK: WrapperKind = {
             ? null
             : (sources.links.get(wrapper.relId) ?? null),
         depth,
-        key: nextKey(LINK, el),
+        key: nextKey(LINK.mark, el),
       }),
       content: el,
     };
@@ -193,7 +178,7 @@ export function wrapperKindFor(el: Element): WrapperKind | undefined {
  * A kind whose mark excludes its own type records one of itself at a time, so the inner of two is
  * left whole where it stood rather than pushing the outer one off the content it wraps: that is a
  * `w:hyperlink` inside a `w:hyperlink`, which OOXML admits and Word does not write. A kind that
- * excludes nothing nests as deeply as the file does (`w:sdt`, §17.5.2.17).
+ * excludes nothing nests as deeply as the file does (`w:sdt`, §17.5.2.31).
  */
 export function wrapperFits(
   kind: WrapperKind,

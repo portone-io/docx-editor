@@ -19,7 +19,7 @@ Observed 2026-08-20 against ECMA-376 5th edition, Part 1.
 ## What we implement
 
 `docx/sdt` reads both clauses off the `w:lock` value and carries them apart, as `contentsLocked` and `deletionLocked` on the wrapper.
-They travel through the schema as two attributes of the inline `sdt` mark, and as `sdtContentsLocked` and `sdtDeletionLocked` on a cell a control wraps.
+They travel through the schema as two attributes of the inline `sdt` mark and of the `sdtBlock` node, and as `sdtContentsLocked` and `sdtDeletionLocked` on a cell a control wraps.
 
 `schema/locks` judges a step's edited range against each control it meets by how much of the control the range covers.
 A range that covers the control from end to end and takes what stands there away is the control being deleted whole, which the deletion clause answers.
@@ -32,6 +32,15 @@ That gives the four values the behavior the table above asks for, including two 
 - A `contentLocked` control may be deleted whole and no less than whole: a partial deletion, a retype or a formatting change is refused.
 
 The lock a `w:lock` states never reaches the way back out: it rides inside the prefix XML the control is preserved as, so a document carrying any of the four goes out byte for byte when nothing was edited.
+
+## A block control is a container, an inline one a mark
+
+A `w:sdt` under `w:body`, inside a `w:tc`, or inside another control's `w:sdtContent` holds blocks rather than inline content (`CT_SdtContentBlock`, §17.5.2.34), so the editor reads it as a node holding those blocks (`docx/importSdtBlock`) rather than as a mark.
+Which control stands inside which is then what the tree says, where the inline mark has to carry `depth` as an attribute of its own, since several marks stand on one and the same text.
+
+The control is one block of the story, so a control nobody edited goes back out as the bytes it arrived as and an edit anywhere inside it rewrites the control whole - the same bargain a table makes.
+
+Both shapes read the prefix, the two lock clauses and the copy rule out of `docx/sdt`, so what the four levels - block, inline, cell, row - disagree about is the node, never the vocabulary.
 
 ## The id is what keeps a lock from fragmenting
 

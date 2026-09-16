@@ -31,6 +31,7 @@ import {
 import { type FormattingContext, styledParagraph } from "./formatting";
 import { buildParagraph, type ImportSources } from "./importParagraph";
 import { buildPreservedBlock } from "./importPreserved";
+import { buildSdtBlock } from "./importSdtBlock";
 import { buildTable } from "./importTable";
 import { type BlockScan, scanBlocksIn } from "./scan";
 import { blockKey, type ImportedBlock, type SessionIdentity } from "./session";
@@ -92,22 +93,32 @@ export interface StoryDeps {
 /**
  * Moves a single block into a node.
  *
- * A paragraph always opens editable (`./importParagraph`). What is left over is a table whose rows
- * this reader could not take apart, a range marker standing between blocks, and a block this
- * reader has no reader for at all; each stands as one placeholder naming the original fragment.
+ * A paragraph always opens editable (`./importParagraph`), and a content control opens as the
+ * container of the blocks it holds (`./importSdtBlock`), which are read at `sdtContent` and name
+ * no fragment of their own: an edit anywhere inside rewrites the control whole. What is left over
+ * is a table whose rows this reader could not take apart, a control it keeps whole, a range marker
+ * standing between blocks, and a block this reader has no reader for at all; each stands as one
+ * placeholder naming the original fragment.
  */
 export function buildBlock(
   el: Element,
-  srcId: string,
+  srcId: string | null,
   sources: ImportSources,
-  context: FormattingContext
+  context: FormattingContext,
+  level: "body" | "sdtContent" = "body"
 ): PMNode {
   if (el.localName === "p") return buildParagraph(el, srcId, sources);
   if (el.localName === "tbl") {
     const table = buildTable(el, srcId, sources, context);
     if (table) return table;
   }
-  return buildPreservedBlock(el, srcId, "body");
+  if (el.localName === "sdt") {
+    const control = buildSdtBlock(el, srcId, (child) =>
+      buildBlock(child, null, sources, context, "sdtContent")
+    );
+    if (control) return control;
+  }
+  return buildPreservedBlock(el, srcId, level);
 }
 
 /**

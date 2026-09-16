@@ -29,7 +29,7 @@ import { parseAttrs } from "../ooxml/tagScan";
 import { docxSchema } from "../schema";
 import { wrappersOf } from "../schema/wrappers";
 import { withoutParagraphIds } from "./cloning";
-import { wrapperKindOf } from "./wrappers";
+import { copiedControlPrefix, newControlId } from "./sdt";
 
 export interface IdentityRule {
   readonly name: string;
@@ -114,15 +114,27 @@ function sdtMarksOf(node: PMNode): readonly Mark[] {
 }
 
 /** What tells one control apart from another, wherever in the document it turns up */
-function controlName(mark: Mark): string {
-  const key: unknown = mark.attrs.key;
-  const prefix: unknown = mark.attrs.sdtPrefix;
+function controlName(attrs: Readonly<Record<string, unknown>>): string {
+  const key: unknown = attrs.key;
+  const prefix: unknown = attrs.sdtPrefix;
   return `${typeof key === "number" ? key : 0} ${typeof prefix === "string" ? prefix : ""}`;
 }
 
-/** What its kind writes a second copy of the wrapper as (`docx/wrappers`) */
-function copiedMark(mark: Mark): Mark {
-  return wrapperKindOf(mark).copy?.(mark) ?? mark;
+/**
+ * The opening XML this control goes back out under, null while it is the first claimant of its
+ * name and while it carries no opening to rewrite. A control claiming a name already written opens
+ * as a copy of itself (`docx/sdt`), whether it stands as a mark or as a block.
+ */
+function claimedPrefix(
+  attrs: Readonly<Record<string, unknown>>,
+  written: Set<string>
+): string | null {
+  const name = controlName(attrs);
+  const claimed = written.has(name);
+  written.add(name);
+  const prefix: unknown = attrs.sdtPrefix;
+  if (!claimed || typeof prefix !== "string") return null;
+  return copiedControlPrefix(prefix, newControlId());
 }
 
 /** One stretch of inline nodes wearing the same control mark */
@@ -133,10 +145,14 @@ interface Control {
 }
 
 function claim(mark: Mark, written: Set<string>): Control {
-  const name = controlName(mark);
-  const copy = written.has(name) ? copiedMark(mark) : null;
-  written.add(name);
-  return { mark, copy };
+  const prefix = claimedPrefix(mark.attrs, written);
+  return {
+    mark,
+    copy:
+      prefix === null
+        ? null
+        : mark.type.create({ ...mark.attrs, sdtPrefix: prefix }),
+  };
 }
 
 /**
@@ -173,15 +189,26 @@ function rewriteParagraph(paragraph: PMNode, written: Set<string>): PMNode {
 /**
  * A content control cannot cross a paragraph, so splitting a paragraph in the middle of one leaves
  * that same control standing in two, and dropping unmarked text into the middle of one breaks it
- * in two within the paragraph. Each piece after the first opens as a copy with a `w:id` of its
+ * in two within the paragraph. A block control an edit left standing twice - a copy of it pasted,
+ * or the same container duplicated - is the same case one level up, and the walker reaches a
+ * control nested inside another. Each piece after the first opens as a copy with a `w:id` of its
  * own (see `docx/sdt` for what a copy must not carry along).
  */
 export const controlRule: IdentityRule = {
   name: "control",
   visit(block, written) {
-    return block.type === docxSchema.nodes.paragraph
-      ? rewriteParagraph(block, written)
-      : block;
+    if (block.type === docxSchema.nodes.paragraph) {
+      return rewriteParagraph(block, written);
+    }
+    if (block.type !== docxSchema.nodes.sdtBlock) return block;
+    const prefix = claimedPrefix(block.attrs, written);
+    return prefix === null
+      ? block
+      : block.type.create(
+          { ...block.attrs, sdtPrefix: prefix },
+          block.content,
+          block.marks
+        );
   },
 };
 

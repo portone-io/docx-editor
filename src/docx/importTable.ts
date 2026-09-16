@@ -28,6 +28,7 @@ import {
 } from "./importParagraph";
 import { policyFor } from "./importPolicy";
 import { buildPreservedBlock } from "./importPreserved";
+import { buildSdtBlock } from "./importSdtBlock";
 import { readSdtWrapper } from "./sdt";
 import {
   cellConditionsOf,
@@ -358,14 +359,17 @@ function gridWidthOf(rows: RawRow[]): number | null {
 
 /**
  * A single block inside a cell, dressed by the parts of the table the cell belongs to.
- * If it is not a paragraph, it is kept as the XML it came as, drawn by whatever
- * `./importPolicy` says is on screen of it at this level.
+ *
+ * A control opens as the container of the blocks it holds, whose paragraphs are dressed the same
+ * way the cell's own are. A block that is neither is kept as the XML it came as, drawn by whatever
+ * `./importPolicy` says is on screen of it at the level it stands at.
  */
 function buildCellBlock(
   el: Element,
   sources: ImportSources,
   context: FormattingContext,
-  placement: ParagraphPlacement
+  placement: ParagraphPlacement,
+  level: "tc" | "sdtContent" = "tc"
 ): PMNode {
   if (el.localName === "p") {
     return styledParagraph(
@@ -374,7 +378,13 @@ function buildCellBlock(
       placement
     );
   }
-  return buildPreservedBlock(el, null, "tc");
+  if (el.localName === "sdt") {
+    const control = buildSdtBlock(el, null, (child) =>
+      buildCellBlock(child, sources, context, placement, "sdtContent")
+    );
+    if (control) return control;
+  }
+  return buildPreservedBlock(el, null, level);
 }
 
 /** The block of the grid one cell covers, merges included */

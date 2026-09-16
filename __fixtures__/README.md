@@ -18,6 +18,7 @@ Tests using `fixtureNames` from [`src/__testing__/docx.ts`](../src/__testing__/d
 | `table-styles.docx` | Export-style package | Table styles that dress the header row, the closing row, the edge columns, a corner and the banded rows |
 | `list-definitions.docx` | Export-style package | Lists defined through a numbering style, counted in formats past decimal, restarting where their levels say, and drawing their markers in the formatting those levels write |
 | `sections-and-revisions.docx` | Export-style package | Two sections with a mid-body section break, a table carrying a grid revision, an inline content control, and a body-level bookmark pair |
+| `content-controls.docx` | Word-style package | Block-level content controls: nested, holding a table, standing in a cell, and the three kinds kept whole |
 | `preserved-markup.docx` | Word-style package | The markup this editor keeps whole rather than models: field characters, tracked changes, range markers, symbols, and a table a row-level marker stands down |
 | `producers/google-docs-export.docx` | Producer package | Markup Google Docs saved: revision identifiers on every run, a tracked insertion, a generated bookmark name, and measurements the schemas turn down |
 
@@ -214,6 +215,17 @@ This is `letter-page.docx` with `word/document.xml` replaced. It holds the marku
 - A 2x2 table whose `w:tblGrid` closes with a `w:tblGridChange`.
 - One inline `w:sdt` carrying a `w:id`, and one bookmark pair standing directly under `w:body`, around the table.
 - No `w14:paraId`. A copied paragraph's identifier is exercised by unit tests that build a body with `makeDocx`, and a saved document's identifiers are met in the producer lane.
+
+### `content-controls.docx`
+
+This is `preserved-markup.docx` with `word/document.xml` replaced. It is the only fixture whose controls stand at block level, so it is what holds the reading of a `w:sdt` under the body and inside a cell ([Content controls](../spec/notes/contentControls.md)). It must retain:
+
+- A rich text control holding two paragraphs, which is the plain case a container node is read for.
+- A `w:group` control holding a rich text control, so that one control nested inside another is covered and the order of the two has to come back.
+- A control holding a table, and a control standing inside a table cell, which are the two ways a control and a table meet.
+- The three kinds kept whole instead: a `w:text` control and a `w:date` control, whose content the specification restrains to a single run, and a control whose `w:sdtContent` is empty. Its fidelity snapshot is those three placeholders and is meant to be read in a diff.
+- One control carrying `w:lock w:val="sdtContentLocked"` and one carrying `sdtLocked`, so that both clauses of a lock are read off a block control.
+- Every control carrying a `w:id` of its own, which the export must keep unique, and at least six body paragraphs holding text outside any control, which is what the export battery in `src/docx/exportSchemaValidation.test.ts` reserves.
 
 ### `preserved-markup.docx`
 

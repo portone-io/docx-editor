@@ -179,6 +179,21 @@ describe("normalizing a pasted slice", () => {
     expect(blocks(normalized)[0]?.attrs.srcId).toBe(srcId);
   });
 
+  it("clears srcId on a copied block control, which is one block of the story as a table is", () => {
+    const state = stateOf(makeDocx(SOURCE));
+    const control = docxSchema.nodes.sdtBlock.create(
+      {
+        srcId: state.doc.firstChild?.attrs.srcId,
+        sdtPrefix: '<w:sdt><w:sdtPr><w:id w:val="1"/></w:sdtPr>',
+      },
+      Fragment.from(paragraph({}))
+    );
+
+    const normalized = normalizePasted(pasted(control), state, false);
+
+    expect(blocks(normalized)[0]?.attrs.srcId).toBeNull();
+  });
+
   it("keeps a preserved block holding its own XML and drops one that only names a fragment", () => {
     const state = stateOf(makeDocx(SOURCE));
     const held = docxSchema.nodes.rawBlock.create({

@@ -1,0 +1,26 @@
+[
+  {
+    "severity": "placeholder",
+    "code": "preserved-block",
+    "part": "word/document.xml",
+    "block": 10,
+    "pos": 775,
+    "element": "w:sdt"
+  },
+  {
+    "severity": "placeholder",
+    "code": "preserved-block",
+    "part": "word/document.xml",
+    "block": 11,
+    "pos": 776,
+    "element": "w:sdt"
+  },
+  {
+    "severity": "placeholder",
+    "code": "preserved-block",
+    "part": "word/document.xml",
+    "block": 12,
+    "pos": 777,
+    "element": "w:sdt"
+  }
+]

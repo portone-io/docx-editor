@@ -130,6 +130,8 @@ const LEVEL_TYPES: Readonly<Record<ContentLevel, string>> = {
   // The content of an inline control, which is `EG_PContent`, as `CT_Hyperlink` is
   wrapper: "CT_SdtContentRun",
   body: "CT_Body",
+  // The content of a block control, which is `EG_ContentBlockContent` (§17.5.2.34)
+  sdtContent: "CT_SdtContentBlock",
   tc: "CT_Tc",
   tbl: "CT_Tbl",
   tr: "CT_Row",
@@ -156,6 +158,7 @@ const DEMOTED: Readonly<Record<ContentLevel, readonly string[]>> = {
   p: [],
   wrapper: [],
   body: [],
+  sdtContent: [],
   tc: [],
   tbl: [
     "customXml",
@@ -217,13 +220,18 @@ describe("the preservation table against wml.xsd", () => {
     expect(policyFor(element("oMath", M_NS), "p").tier).toBe("inline");
   });
 
-  it.each(["r", "p", "wrapper", "body", "tc"] as const)(
+  it.each(["r", "p", "wrapper", "body", "sdtContent", "tc"] as const)(
     "%s: an unknown element falls to the narrowest preservation tier of the level",
     (level) => {
-      const narrowest = { r: "runContent", p: "inline", wrapper: "inline" };
-      expect(tierOf("notInWml", level)).toBe(
-        level === "body" || level === "tc" ? "block" : narrowest[level]
-      );
+      const narrowest = {
+        r: "runContent",
+        p: "inline",
+        wrapper: "inline",
+        body: "block",
+        sdtContent: "block",
+        tc: "block",
+      };
+      expect(tierOf("notInWml", level)).toBe(narrowest[level]);
     }
   );
 
@@ -235,12 +243,20 @@ describe("the preservation table against wml.xsd", () => {
     }
   );
 
-  it("sdt is a model at p, a block at body and tc, and a demotion at tbl", () => {
+  it("sdt is a model everywhere a node holds it, and a demotion at tbl", () => {
     expect(tierOf("sdt", "p")).toBe("model");
-    expect(tierOf("sdt", "body")).toBe("block");
-    expect(tierOf("sdt", "tc")).toBe("block");
+    expect(tierOf("sdt", "body")).toBe("model");
+    expect(tierOf("sdt", "sdtContent")).toBe("model");
+    expect(tierOf("sdt", "tc")).toBe("model");
     expect(tierOf("sdt", "tr")).toBe("model");
     expect(tierOf("sdt", "tbl")).toBe("demote");
+  });
+
+  it("a control's content takes no altChunk and no closing section", () => {
+    expect(tierOf("altChunk", "body")).toBe("block");
+    expect(tierOf("sectPr", "body")).toBe("block");
+    expect(WML_POLICY.sdtContent.has(`{${W_NS}}altChunk`)).toBe(false);
+    expect(WML_POLICY.sdtContent.has(`{${W_NS}}sectPr`)).toBe(false);
   });
 
   it("names an element by its namespace rather than by its prefix alone", () => {
