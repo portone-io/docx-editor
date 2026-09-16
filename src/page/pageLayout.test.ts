@@ -16,7 +16,7 @@ import {
   pageLayout,
   pagePixels,
   type SectionPixels,
-  sectionPaperAt,
+  sectionPaper,
   sectionPixels,
 } from "./pageLayout";
 
@@ -118,6 +118,11 @@ const CONTINUOUS_SECTIONS: readonly SectionPixels[] = [
   },
 ];
 
+/** The same two sections, the first ending at a paragraph inside the block at 0 */
+const SECTION_INSIDE_A_CONTROL: readonly SectionPixels[] = TWO_SECTIONS.map(
+  (section, index) => (index === 0 ? { ...section, untilPos: 4 } : section)
+);
+
 function layout(list: MeasuredBlock[]) {
   return pageLayout({ blocks: list, sections: ONE_SECTION });
 }
@@ -128,7 +133,13 @@ describe("pageLayout", () => {
     expect(result.pushes).toEqual([]);
     expect(result.splits).toEqual([]);
     expect(result.pages).toEqual([
-      { page: 1, bodyStart: 0, pos: 0, pageInSection: 1, crossed: false },
+      {
+        page: 1,
+        bodyStart: 0,
+        section: 0,
+        pageInSection: 1,
+        crossed: false,
+      },
     ]);
     expect(result.bodyHeight).toBe(PAGE);
   });
@@ -225,11 +236,17 @@ describe("pageLayout", () => {
   it("reports where each page starts and which block it opens with", () => {
     const result = layout(blocks(900, 300));
     expect(result.pages).toEqual([
-      { page: 1, bodyStart: 0, pos: 0, pageInSection: 1, crossed: false },
+      {
+        page: 1,
+        bodyStart: 0,
+        section: 0,
+        pageInSection: 1,
+        crossed: false,
+      },
       {
         page: 2,
         bodyStart: PAGE + STEP,
-        pos: 10,
+        section: 0,
         pageInSection: 2,
         crossed: false,
       },
@@ -244,10 +261,12 @@ describe("pageLayout", () => {
       sections: TWO_SECTIONS,
     });
 
-    expect(result.pages.map((page) => [page.pos, page.pageInSection])).toEqual([
+    expect(
+      result.pages.map((page) => [page.section, page.pageInSection])
+    ).toEqual([
       [0, 1],
-      [20, 1],
-      [20, 2],
+      [1, 1],
+      [1, 2],
     ]);
   });
 
@@ -259,10 +278,12 @@ describe("pageLayout", () => {
       sections: CONTINUOUS_SECTIONS,
     });
 
-    expect(result.pages.map((page) => [page.pos, page.pageInSection])).toEqual([
+    expect(
+      result.pages.map((page) => [page.section, page.pageInSection])
+    ).toEqual([
       [0, 1],
-      [10, 2],
-      [30, 1],
+      [0, 2],
+      [1, 1],
     ]);
   });
 
@@ -272,17 +293,33 @@ describe("pageLayout", () => {
     ).toEqual([1, 2, 3]);
   });
 
-  it("names the block a page continues, not the one after it", () => {
+  it("opens each page a block crosses onto where its text crosses", () => {
     // The one block is two pages and a half tall, so both pages after the first continue it
     const result = layout(blocks(300, 2500));
-    expect(result.pages.map((page) => page.pos)).toEqual([0, 10, 10]);
+    expect(result.pages.map((page) => page.bodyStart)).toEqual([
+      0,
+      PAGE,
+      2 * PAGE,
+    ]);
   });
 
   it("a page reached by crossing joins onto the previous page with no top margin", () => {
     const result = layout(blocks(1500));
     expect(result.pages).toEqual([
-      { page: 1, bodyStart: 0, pos: 0, pageInSection: 1, crossed: false },
-      { page: 2, bodyStart: PAGE, pos: 0, pageInSection: 2, crossed: true },
+      {
+        page: 1,
+        bodyStart: 0,
+        section: 0,
+        pageInSection: 1,
+        crossed: false,
+      },
+      {
+        page: 2,
+        bodyStart: PAGE,
+        section: 0,
+        pageInSection: 2,
+        crossed: true,
+      },
     ]);
   });
 
@@ -660,11 +697,17 @@ describe("pageLayout", () => {
       { y: PAGE, page: 2, forced: true, crossed: false },
     ]);
     expect(result.pages).toEqual([
-      { page: 1, bodyStart: 0, pos: 0, pageInSection: 1, crossed: false },
+      {
+        page: 1,
+        bodyStart: 0,
+        section: 0,
+        pageInSection: 1,
+        crossed: false,
+      },
       {
         page: 2,
         bodyStart: PAGE + STEP,
-        pos: 20,
+        section: 1,
         pageInSection: 1,
         crossed: false,
       },
@@ -730,6 +773,56 @@ describe("pageLayout", () => {
     expect(result.pages).toHaveLength(1);
   });
 
+  it("a continuous section on other paper opens a page all the same", () => {
+    const result = pageLayout({
+      blocks: blocks(300, 300, 100),
+      sections: CONTINUOUS_SECTIONS.map((section, index) =>
+        index === 1
+          ? { ...section, pixels: { ...section.pixels, pageHeight: 500 } }
+          : section
+      ),
+    });
+
+    expect(result.pushes.map((push) => push.pos)).toEqual([20]);
+    expect(result.splits).toMatchObject([{ y: PAGE, page: 2, forced: true }]);
+    expect(result.pages.map((page) => page.section)).toEqual([0, 1]);
+  });
+
+  it("a continuous section on other paper parts a control where it starts", () => {
+    // The probe that ran the second section's shorter body through the text of a page opened on
+    // the first section's taller one
+    const shorter: readonly SectionPixels[] = [
+      {
+        untilPos: 50,
+        pixels: { ...A4_PAGE_PIXELS, bodyHeight: PAGE, pageStep: STEP },
+        type: null,
+      },
+      {
+        untilPos: Number.POSITIVE_INFINITY,
+        pixels: {
+          ...A4_PAGE_PIXELS,
+          pageHeight: A4_PAGE_PIXELS.pageHeight - 500,
+          bodyHeight: 500,
+          pageStep: STEP,
+        },
+        type: "continuous",
+      },
+    ];
+    const result = pageLayout({
+      blocks: blocks({
+        height: 700,
+        candidates: [{ at: 60, offset: 600, forced: false, repeatHeight: 0 }],
+      }),
+      sections: shorter,
+    });
+
+    expect(result.cuts).toEqual([{ at: 60, height: PAGE + STEP - 600 }]);
+    expect(result.splits).toEqual([
+      { y: PAGE, page: 2, forced: true, crossed: false },
+    ]);
+    expect(result.pages.map((page) => page.section)).toEqual([0, 1]);
+  });
+
   it("a keep reaches across a continuous boundary, which opens no page to close", () => {
     const result = pageLayout({
       blocks: blocks(900, { height: 50, keepWithNext: true }, 100),
@@ -774,6 +867,49 @@ describe("pageLayout", () => {
 
     expect(result.pushes.map((push) => push.pos)).toEqual([20]);
     expect(result.pages).toHaveLength(2);
+  });
+
+  it("opens a page inside a control in the section the piece after the cut belongs to", () => {
+    // The first section ends at a paragraph the control holds, so the piece from 5 on opens the
+    // landscape section's first page though the page opens with the same block
+    const result = pageLayout({
+      blocks: blocks({
+        height: 900,
+        candidates: [
+          { at: 5, offset: 300, forced: false, kept: true, repeatHeight: 0 },
+          { at: 7, offset: 600, forced: false, repeatHeight: 0 },
+        ],
+      }),
+      sections: SECTION_INSIDE_A_CONTROL,
+    });
+
+    expect(result.cuts).toEqual([{ at: 5, height: PAGE + STEP - 300 }]);
+    expect(result.splits).toEqual([
+      { y: PAGE, page: 2, forced: true, crossed: false },
+    ]);
+    expect(
+      result.pages.map((page) => [page.section, page.pageInSection])
+    ).toEqual([
+      [0, 1],
+      [1, 1],
+    ]);
+    expect(result.bodyHeight).toBe(PAGE + STEP + LANDSCAPE_PAGE);
+  });
+
+  it("does not open the section again for the block after a control that opened it", () => {
+    const result = pageLayout({
+      blocks: blocks(
+        {
+          height: 600,
+          candidates: [{ at: 5, offset: 300, forced: false, repeatHeight: 0 }],
+        },
+        100
+      ),
+      sections: SECTION_INSIDE_A_CONTROL,
+    });
+
+    expect(result.pushes).toEqual([]);
+    expect(result.pages.map((page) => page.section)).toEqual([0, 1]);
   });
 
   it("does nothing for a page height that cannot be measured", () => {
@@ -1335,11 +1471,12 @@ describe("the paper of each section", () => {
   it("lays a block out on the first section that reaches it", () => {
     const papers = sectionPixels([first, last]);
     // The paragraph carrying a break closes its own section, so it is laid out on that paper
-    expect(sectionPaperAt(papers, 20)).toEqual(A4_PAGE_PIXELS);
-    expect(sectionPaperAt(papers, 21)).toEqual(pagePixels(LETTER_GEOMETRY));
-    // A block past every section named, and a document naming none at all, fall back
-    expect(sectionPaperAt(papers.slice(0, 1), 9999)).toEqual(A4_PAGE_PIXELS);
-    expect(sectionPaperAt([], 0)).toEqual(A4_PAGE_PIXELS);
+    const result = pageLayout({ blocks: blocks(1, 1, 1, 1), sections: papers });
+    expect(result.pages.map((page) => page.section)).toEqual([0, 1]);
+    expect(sectionPaper(papers, 1)).toEqual(pagePixels(LETTER_GEOMETRY));
+    // A section past every one named, and a document naming none at all, fall back
+    expect(sectionPaper(papers.slice(0, 1), 1)).toEqual(A4_PAGE_PIXELS);
+    expect(sectionPaper([], 0)).toEqual(A4_PAGE_PIXELS);
   });
 });
 
@@ -1535,16 +1672,16 @@ describe("the rows laid after the last block", () => {
 
   it("opens the pages of the last section, which is where their header comes from", () => {
     const result = pageLayout({
-      blocks: blocks(300, 300),
+      blocks: blocks(300, 300, 300),
       sections: TWO_SECTIONS,
       trailing: { overhead: 0, rows: [{ id: "n0", height: 1500 }] },
     });
 
-    // The second block opens the landscape section, so the row after it lands on that paper
+    // The third block opens the landscape section, so the page the row opens is that section's
     const last = result.pages.at(-1);
-    expect(last?.pos).toBe(10);
+    expect(last?.section).toBe(1);
     expect(result.trailing.map(({ page, ids }) => [page, ids])).toEqual([
-      [2, ["n0"]],
+      [3, ["n0"]],
     ]);
   });
 });

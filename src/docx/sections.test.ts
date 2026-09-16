@@ -23,7 +23,6 @@ import {
   parseSectionProperties,
   readSectionProperties,
   sectionAt,
-  sectionIn,
   sectionsOf,
   setSectionChild,
   withoutSectionBreak,
@@ -86,7 +85,7 @@ function sectionsReachedIn(
   });
   const reached = new Set<number>();
   for (let pos = 0; pos <= doc.content.size; pos += 1) {
-    const section = sectionIn(sections, pos);
+    const section = sectionAt(doc, pos);
     const holding = sections.filter(
       (candidate) => candidate.from <= pos && pos <= candidate.to
     );
@@ -295,7 +294,9 @@ describe("the sections a document is written in", () => {
     expect(sections[0].props.geometry.marginTopTwips).not.toBe(
       sections[1].props.geometry.marginTopTwips
     );
-    // Everything after the control belongs to the section the body closes
+    // The control goes on past the break, and what it holds after it belongs to the section the
+    // body closes
+    expect(doc.resolve(sections[0].to + 1).parent.type.name).toBe("sdtBlock");
     expect(sectionAt(doc, sections[0].to + 1).index).toBe(1);
   });
 
