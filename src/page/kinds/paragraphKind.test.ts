@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createEditorState } from "../../editor/createEditor";
 import { docxSchema } from "../../schema";
 import { editorAttributes } from "../../styles/classNames";
-import type { MeasureTarget } from "../blockKinds";
+import { blockKindFor, type MeasureTarget } from "../blockKinds";
 import { DEFAULT_BLOCK_KINDS } from "./index";
 import { paragraphKind } from "./paragraphKind";
 
@@ -175,6 +175,35 @@ describe("paragraphKind", () => {
     const measured = paragraphKind.measure(firstBlock(live));
     expect(measured.candidates).toEqual([]);
     expect(measured.breakAfter).toBe(true);
+  });
+
+  /**
+   * A content control holding nothing draws nothing and takes no height (`styles/editor.css`), so
+   * the fallback kind is the whole of what it needs: it offers no place to cut and nothing to
+   * carry onto the next page.
+   */
+  it("claims a control holding nothing, which measures as the nothing it draws", () => {
+    const control = docxSchema.nodes.sdtEmpty.create({
+      sdtPrefix: '<w:sdt><w:sdtPr><w:id w:val="1"/></w:sdtPr>',
+    });
+    const live = mounted(
+      docxSchema.nodes.doc.create(null, [
+        control,
+        docxSchema.nodes.paragraph.create({}, [docxSchema.text("after")]),
+      ])
+    );
+    const block = firstBlock(live);
+    rect(block.dom, 0, 0);
+
+    expect(blockKindFor(DEFAULT_BLOCK_KINDS, control)).toBe(paragraphKind);
+    expect(paragraphKind.measure(block)).toEqual({
+      candidates: [],
+      minFirstPiece: 0,
+      breakAfter: false,
+      appliedHeight: 0,
+      opened: new Map(),
+      keepWithNext: false,
+    });
   });
 
   /**

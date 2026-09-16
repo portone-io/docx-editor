@@ -149,7 +149,9 @@ function settleMark(
 
 function settleDocument(tr: Transaction, doc: PMNode, ranges: Range[]): void {
   doc.descendants((node, pos) => {
-    const names = controlAttrsOf(node);
+    // A carrier with no content has no interior an edit could reach - the two ends `edited` is
+    // asked about would come out inverted - so neither property acts
+    const names = node.content.size > 0 ? controlAttrsOf(node) : null;
     if (names) {
       const container = controlFactsOf(names, node.attrs);
       if (acts(container) && edited(ranges, pos + 1, pos + node.nodeSize - 1)) {

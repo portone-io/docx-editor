@@ -59,6 +59,7 @@ import {
   OWN_CONTROL_ATTRS,
   PREFIX_DOM_ATTR,
   SDT_BLOCK_NODE,
+  SDT_EMPTY_NODE,
   WRAPPED_CONTROL_ATTRS,
 } from "./controlAttrs";
 import { imageNodeSpec, runMarkSpec } from "./rendering";
@@ -717,6 +718,64 @@ export const docxSchema = new Schema({
       parseDOM: [
         {
           tag: `div.${editorClassNames.sdtBlock}`,
+          getAttrs: (dom) => {
+            const prefix = rawXml(dom, PREFIX_DOM_ATTR, SDT_PREFIX);
+            // With no opening tag to put back there is no control left to write out
+            if (prefix === null || prefix === false) return false;
+            return {
+              srcId: srcIdOf(dom),
+              key: parseInt10(dom.getAttribute("data-key"), 0),
+              ...controlAttrsFromDom(OWN_CONTROL_ATTRS, dom, prefix),
+            };
+          },
+        },
+      ],
+    },
+    /**
+     * A content control holding nothing at all, which is a `w:sdtContent` with no element inside
+     * it or none written at all (§17.5.2.34).
+     *
+     * It is no container: `block+` has no way to say "nothing", and a paragraph made up for it
+     * would write a blank line the file never held. So it stands as an atom that draws nothing,
+     * which is what a server's condition-failed clause is meant to look like, and what it states
+     * about itself rides back out in the same attributes the container carries.
+     */
+    [SDT_EMPTY_NODE]: {
+      group: "block modelled",
+      atom: true,
+      // Deleted whole under its deletion clause like the container, and there is nothing else a
+      // selection could reach here: the node holds no spot a caret can stand in
+      selectable: true,
+      attrs: {
+        /**
+         * The fragment of the session this control was opened from, as the container names its
+         * own. null for one opened inside a cell or inside another control.
+         */
+        srcId: { default: null },
+        /** Which control of the document this is, counted as the file was opened (`docx/wrappers`) */
+        key: { default: 0 },
+        /** What the control states, under the names the container carries them by (`./controlAttrs`) */
+        ...controlAttrSpecs(OWN_CONTROL_ATTRS),
+      },
+      toDOM(node) {
+        const control = controlFactsOf(OWN_CONTROL_ATTRS, node.attrs);
+        return [
+          "div",
+          {
+            class: controlClassName(
+              control,
+              editorClassNames.sdtEmpty,
+              editorClassNames.sdtLocked
+            ),
+            "data-src": text(node.attrs.srcId),
+            "data-key": numberText(node.attrs.key),
+            ...controlToDom(control),
+          },
+        ];
+      },
+      parseDOM: [
+        {
+          tag: `div.${editorClassNames.sdtEmpty}`,
           getAttrs: (dom) => {
             const prefix = rawXml(dom, PREFIX_DOM_ATTR, SDT_PREFIX);
             // With no opening tag to put back there is no control left to write out

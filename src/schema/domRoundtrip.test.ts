@@ -106,6 +106,29 @@ describe("what the schema draws, the schema reads back", () => {
     ).toBe("https://example.com");
   });
 
+  /**
+   * A control holding nothing draws an element with no content hole, and the fixtures hold only
+   * the shape that writes an empty `w:sdtContent`. The shape that writes no content element at
+   * all is read back here, since a node that came back as anything else would lose the opening
+   * XML it goes out as.
+   */
+  it("reads back a control that arrived with no content element", () => {
+    const { doc } = importDocx(
+      makeDocx(
+        "<w:p><w:r><w:t>beside</w:t></w:r></w:p>" +
+          '<w:sdt><w:sdtPr><w:id w:val="7"/>' +
+          '<w:lock w:val="sdtContentLocked"/></w:sdtPr></w:sdt>'
+      )
+    );
+    const host = document.createElement("div");
+    host.appendChild(serializer.serializeFragment(doc.content));
+
+    const reparsed = parser.parse(host, { preserveWhitespace: true });
+
+    expect(shapes(doc)).toContain("sdtEmpty");
+    expect(reparsed.content.eq(doc.content)).toBe(true);
+  });
+
   it("has fixtures to read", () => {
     expect(fixtureNames.length).toBeGreaterThan(0);
   });

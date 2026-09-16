@@ -24,6 +24,11 @@ import { documentNumbering, paragraphMarkers } from "./numberingDecorations";
 /** A paragraph with nothing typed into it yet */
 const EMPTY_PARAGRAPH = "<w:p/>";
 
+/** A block-level content control the file wrote with nothing inside it */
+const EMPTY_CONTROL =
+  '<w:sdt><w:sdtPr><w:id w:val="1"/><w:richText/></w:sdtPr>' +
+  "<w:sdtContent/></w:sdt>";
+
 function bodyParagraph(text: string, pPr = ""): string {
   return `<w:p>${pPr}<w:r><w:t xml:space="preserve">${text}</w:t></w:r></w:p>`;
 }
@@ -265,6 +270,23 @@ describe("taking the conversion back", () => {
 
     type(view, "x");
     expect(docxKeymap.Backspace(view.state, undefined)).toBe(false);
+  });
+
+  /**
+   * Backspace is also the key that passes the caret over a content control holding nothing
+   * (`editor/blockControlEdits`), which stands beside the caret here. Taking the conversion back
+   * comes first, so the rule the user has just seen run is the one the key answers.
+   */
+  it("Backspace takes the conversion back beside a control holding nothing", () => {
+    const { view } = open(EMPTY_CONTROL + EMPTY_PARAGRAPH);
+    caretAt(view, 1, 0);
+    type(view, "1. ");
+    expect(press(view, docxKeymap.Backspace)).toBe(true);
+    const item = paragraphAt(view, 1);
+
+    expect(item.textContent).toBe("1. ");
+    expect(listRef(item)).toBeNull();
+    expect(view.state.selection.$from.parent).toBe(item);
   });
 
   /**

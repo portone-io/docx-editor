@@ -309,6 +309,28 @@ describe("the control rule", () => {
     });
   });
 
+  /**
+   * A control holding nothing carries what it states in its own attributes rather than in a mark
+   * (`schema/controlAttrs`), and the rule reads it through the same table, so a second copy of one
+   * is renamed exactly as a second copy of a marked stretch is.
+   */
+  describe("a control holding nothing", () => {
+    const empty = (key: number) =>
+      docxSchema.nodes.sdtEmpty.create({ sdtPrefix: PREFIX, key });
+
+    it("gives the second of two standing in one document an id of its own", () => {
+      const next = withUniqueIdentities(doc(empty(0), empty(0)));
+
+      expect(next.child(0).attrs.sdtPrefix).toBe(PREFIX);
+      expect(next.child(1).attrs.sdtPrefix).toMatch(COPY);
+    });
+
+    it("leaves one standing alone exactly as it came", () => {
+      const original = doc(empty(0));
+      expect(withUniqueIdentities(original)).toBe(original);
+    });
+  });
+
   describe("controls that merely look alike", () => {
     it("are left as they came, opening XML and all", () => {
       const original = doc(

@@ -6,9 +6,12 @@
  * stands in the test itself; `content-controls.docx` is what holds them all in one package and is
  * read here for the byte identity and the edited round trip.
  */
+
+import { unzipSync } from "fflate";
 import { Fragment, type Node as PMNode } from "prosemirror-model";
 import { describe, expect, it } from "vitest";
 import {
+  decode,
   documentXmlOf,
   makeDocx,
   readFixture,
@@ -164,19 +167,142 @@ describe("a block control kept whole instead", () => {
     ).toEqual(["sdtBlock"]);
   });
 
-  it("keeps a control holding nothing, since a container cannot say nothing", () => {
-    expect(blockTypes(bodyOf(sdt("")))).toEqual(["rawBlock"]);
-    expect(
-      blockTypes(bodyOf('<w:sdt><w:sdtPr><w:id w:val="1"/></w:sdtPr></w:sdt>'))
-    ).toEqual(["rawBlock"]);
-  });
-
   it("keeps a control whose wrapper this editor could not write back", () => {
     const attributed =
       '<w:sdt><w:sdtPr><w:id w:val="1"/></w:sdtPr>' +
       `<w:sdtContent w:x="1">${P("First")}</w:sdtContent></w:sdt>`;
 
     expect(blockTypes(bodyOf(attributed))).toEqual(["rawBlock"]);
+  });
+});
+
+describe("a control holding nothing", () => {
+  it("is read as the node that draws nothing rather than as a placeholder", () => {
+    const control = onlyBlock(sdt(""));
+
+    expect(control.type.name).toBe("sdtEmpty");
+    expect(control.childCount).toBe(0);
+  });
+
+  it("carries what a container would carry: the opening tag, the source and a key", () => {
+    const control = onlyBlock(sdt("", { id: 42, lock: "sdtContentLocked" }));
+
+    expect(control.attrs.sdtPrefix).toBe(
+      '<w:sdt><w:sdtPr><w:id w:val="42"/><w:lock w:val="sdtContentLocked"/>' +
+        "<w:richText/></w:sdtPr>"
+    );
+    expect(typeof control.attrs.srcId).toBe("string");
+    expect(control.attrs).toMatchObject({
+      contentsLocked: true,
+      deletionLocked: true,
+      key: expect.any(Number),
+    });
+  });
+
+  it("counts one control apart from the next, as a container does", () => {
+    const doc = bodyOf(sdt("", { id: 1 }) + sdt(P("Held"), { id: 2 }));
+
+    expect(blockTypes(doc)).toEqual(["sdtEmpty", "sdtBlock"]);
+    expect(doc.child(0).attrs.key).not.toBe(doc.child(1).attrs.key);
+  });
+
+  /**
+   * `CT_Sdt` writes `w:sdtContent` `minOccurs="0"`, so a control may state that what it stood
+   * around is not there by leaving the element out, and §17.5.2.34 makes that element a cache of
+   * contents rather than the statement itself. The two shapes are therefore read as one node.
+   */
+  it("is read the same when the file wrote no content element at all", () => {
+    const control = onlyBlock(
+      '<w:sdt><w:sdtPr><w:id w:val="7"/><w:lock w:val="sdtLocked"/>' +
+        "</w:sdtPr></w:sdt>"
+    );
+
+    expect(control.type.name).toBe("sdtEmpty");
+    expect(control.attrs.sdtPrefix).toBe(
+      '<w:sdt><w:sdtPr><w:id w:val="7"/><w:lock w:val="sdtLocked"/></w:sdtPr>'
+    );
+    expect(control.attrs).toMatchObject({
+      contentsLocked: false,
+      deletionLocked: true,
+    });
+  });
+
+  it("carries a w:sdtEndPr written with no content element in the prefix", () => {
+    const control = onlyBlock(
+      '<w:sdt><w:sdtPr><w:id w:val="7"/></w:sdtPr>' +
+        "<w:sdtEndPr><w:rPr><w:b/></w:rPr></w:sdtEndPr></w:sdt>"
+    );
+
+    expect(control.attrs.sdtPrefix).toBe(
+      '<w:sdt><w:sdtPr><w:id w:val="7"/></w:sdtPr>' +
+        "<w:sdtEndPr><w:rPr><w:b/></w:rPr></w:sdtEndPr>"
+    );
+  });
+
+  it("is still kept whole where it carries no w:sdtPr to read", () => {
+    expect(blockTypes(bodyOf("<w:sdt/>"))).toEqual(["rawBlock"]);
+  });
+
+  it("is still kept whole where its type restrains the content to one run", () => {
+    expect(blockTypes(bodyOf(sdt("", { type: "<w:date/>" })))).toEqual([
+      "rawBlock",
+    ]);
+  });
+
+  it("goes back out as the bytes it arrived as while an edit stands beside it", () => {
+    const bytes = readFixture(FIXTURE);
+    const { doc, session } = importDocx(bytes);
+    const original = documentXmlOf(doc, session);
+    const index = firstBlockIndex(doc, "paragraph");
+
+    const out = documentXmlOf(withEditedBlock(doc, index, "Edited"), session);
+
+    expect(blockTypes(doc)).toContain("sdtEmpty");
+    expect(original).toBe(
+      decode(unzipSync(readFixture(FIXTURE))[session.mainPartPath])
+    );
+    expect(out).toContain("<w:sdtContent></w:sdtContent></w:sdt>");
+  });
+
+  /**
+   * A control nobody rewrote never reaches the writer, so this is the copy: the second one carries
+   * an id of its own (§17.5.2.18) and is built from its attrs, content tag and all.
+   */
+  it("writes the content tag itself for a control the writer built", () => {
+    const { doc, session } = importDocx(
+      makeDocx(P("Beside") + sdt("", { id: 9 }))
+    );
+    const control = doc.child(1);
+
+    const out = documentXmlOf(
+      withBlocks(doc, [doc.child(0), control, control]),
+      session
+    );
+    const copied = out.slice(out.indexOf("</w:sdt>") + "</w:sdt>".length);
+
+    expect(copied).toMatch(
+      /^<w:sdt><w:sdtPr><w:id w:val="\d+"\/><w:richText\/><\/w:sdtPr><w:sdtContent><\/w:sdtContent><\/w:sdt>/
+    );
+  });
+
+  it("writes a control that arrived with no content element as one holding nothing", () => {
+    const original = '<w:sdt><w:sdtPr><w:id w:val="9"/></w:sdtPr></w:sdt>';
+    const { doc, session } = importDocx(makeDocx(P("Beside") + original));
+    const control = doc.child(1);
+
+    const out = documentXmlOf(
+      withBlocks(doc, [doc.child(0), control, control]),
+      session
+    );
+
+    expect(out).toContain(original);
+    expect(out).toMatch(
+      /<w:sdt><w:sdtPr><w:id w:val="\d+"\/><\/w:sdtPr><w:sdtContent><\/w:sdtContent><\/w:sdt>/
+    );
+    expect(blockTypes(importDocx(exportDocx(doc, session)).doc)).toEqual([
+      "paragraph",
+      "sdtEmpty",
+    ]);
   });
 });
 

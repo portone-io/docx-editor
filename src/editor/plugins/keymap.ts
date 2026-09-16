@@ -14,7 +14,11 @@ import { toParagraphFormat } from "../../model/format";
 import { docxSchema } from "../../schema";
 import { isBlockControl } from "../../schema/controlAttrs";
 import type { NoteKind } from "../../schema/stories";
-import { removeEmptyBlockControl } from "../blockControlEdits";
+import {
+  removeEmptyBlockControl,
+  skipEmptyControlAfter,
+  skipEmptyControlBefore,
+} from "../blockControlEdits";
 import { insertLineBreak, insertPageBreak } from "../commands/breakCommands";
 import {
   toggleBold,
@@ -183,14 +187,18 @@ export const docxKeymap: Record<string, Command> = {
   "Shift-Enter": insertLineBreak,
   // Word and Google Docs both put a page break on this key, so it needs no learning
   "Mod-Enter": insertPageBreak,
-  // A control holding one empty paragraph goes whole rather than being opened up, and the
-  // paragraph keeps adjacent tables separate without changing imported documents.
+  // `undoInputRule` comes first because it answers false unless the last transaction was an input
+  // rule, and the commands after it report the key handled wherever a control stands beside the
+  // caret. Then: a control holding nothing is passed over rather than taken away, a control holding
+  // one empty paragraph goes whole rather than being opened up, and the empty paragraph after a
+  // table keeps adjacent tables separate without changing imported documents.
   Backspace: chainCommands(
+    undoInputRule,
+    skipEmptyControlBefore,
     removeEmptyBlockControl,
-    preserveTableFollowingParagraph,
-    undoInputRule
+    preserveTableFollowingParagraph
   ),
-  Delete: removeEmptyBlockControl,
+  Delete: chainCommands(skipEmptyControlAfter, removeEmptyBlockControl),
   ...historyKeymap,
   "Mod-b": toggleBold,
   "Mod-i": toggleItalic,

@@ -8,6 +8,6 @@ A `w:sdt` standing under the body or inside a table cell used to open as a place
 
 Controls nest as the file nested them, so a `w:group` around a rich text control comes back that way round, and a control inside a table cell keeps the formatting the cell dressed it with. A control that is duplicated gets an id of its own on the way out, and its data binding stays with the first copy, so two controls never edit each other.
 
-Three kinds are still preserved whole, because opening them would let an edit write a file Word reads differently: a `w:text` control, whose content may be no more than one paragraph; a `w:picture` control, whose content may be no more than one picture; and a control whose `w:sdtContent` is empty, which the editor will not fill with a blank line the document never held.
+Two kinds are still preserved whole, because opening them would let an edit write a file Word reads differently: a `w:text` control, whose content may be no more than one paragraph, and a `w:picture` control, whose content may be no more than one picture.
 
 Locks are read off a block control but not yet enforced against an edit, and a control does not yet break across a page.

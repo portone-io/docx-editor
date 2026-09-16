@@ -194,6 +194,19 @@ describe("normalizing a pasted slice", () => {
     expect(blocks(normalized)[0]?.attrs.srcId).toBeNull();
   });
 
+  it("clears srcId on a copied control holding nothing, which is one block of the story too", () => {
+    const state = stateOf(makeDocx(SOURCE));
+    const control = docxSchema.nodes.sdtEmpty.create({
+      srcId: state.doc.firstChild?.attrs.srcId,
+      sdtPrefix: '<w:sdt><w:sdtPr><w:id w:val="1"/></w:sdtPr>',
+    });
+
+    const normalized = normalizePasted(pasted(control), state, false);
+
+    expect(blocks(normalized)[0]?.type.name).toBe("sdtEmpty");
+    expect(blocks(normalized)[0]?.attrs.srcId).toBeNull();
+  });
+
   it("keeps a preserved block holding its own XML and drops one that only names a fragment", () => {
     const state = stateOf(makeDocx(SOURCE));
     const held = docxSchema.nodes.rawBlock.create({

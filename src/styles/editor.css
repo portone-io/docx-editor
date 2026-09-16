@@ -1016,6 +1016,19 @@ button.docx-editor-comment-body {
 }
 
 /*
+ * A content control that holds nothing occupies nothing on the page: the file says a clause is not
+ * there, and a box drawn for it would be a clause of its own.
+ * A shut control wears the yellow above beside this class, and an outline is painted outside the
+ * box rather than clipped by it, so a zero height alone would leave a 1px rule across the page.
+ */
+.docx-editor-sdt-empty {
+  display: block;
+  height: 0;
+  overflow: hidden;
+  outline: none;
+}
+
+/*
  * The space a block-level content control opens between two of the blocks it holds, so what
  * follows starts the next page (`page/kinds/sdtBlockKind`). The control's own outline runs down
  * both pieces of the cut and needs nothing drawn here, but the background a shut control paints

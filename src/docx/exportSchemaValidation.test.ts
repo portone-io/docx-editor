@@ -640,6 +640,43 @@ describe("the exported package against the OOXML schemas", () => {
   });
 
   /**
+   * A control holding nothing goes out with a `w:sdtContent` the writer opens and closes at once,
+   * whether the file wrote an empty one or none at all. Every child of `CT_SdtContentBlock` is
+   * optional, so the validator is what says the shape is one the standard recognises.
+   */
+  it("a control holding nothing that the writer rebuilt validates", () => {
+    const opened = importDocx(
+      makeDocx(
+        "<w:p><w:r><w:t>beside</w:t></w:r></w:p>" +
+          '<w:sdt><w:sdtPr><w:id w:val="7"/></w:sdtPr>' +
+          "<w:sdtContent></w:sdtContent></w:sdt>" +
+          '<w:sdt><w:sdtPr><w:id w:val="8"/></w:sdtPr></w:sdt>'
+      )
+    );
+    const { doc, session } = opened;
+    // A copy claims no source of its own, so both go out through the writer rather than as bytes
+    const copied = withBlocks(doc, [
+      doc.child(0),
+      doc.child(1),
+      doc.child(1),
+      doc.child(2),
+      doc.child(2),
+    ]);
+
+    const written = exportDocx(copied, session);
+
+    expect(
+      decode(unzipSync(written)[session.mainPartPath]).split(
+        "<w:sdtContent></w:sdtContent>"
+      )
+    ).toHaveLength(4);
+    expectPartsValidate(
+      "a control holding nothing",
+      wordprocessingParts(written)
+    );
+  });
+
+  /**
    * What the internal clipboard channel puts in is the very nodes that were copied, normalized
    * against the document receiving them (`editor/clipboard/normalizers`). The part the validator
    * reads therefore holds one block the export handed back untouched and one it wrote from the
