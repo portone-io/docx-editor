@@ -1,5 +1,67 @@
 # @portone/docx-editor
 
+## 0.6.3
+
+### Patch Changes
+
+- [#158](https://github.com/portone-io/docx-editor/pull/158) [`c946c8c`](https://github.com/portone-io/docx-editor/commit/c946c8cf82ccd4765a3897e676b64cd5ef4fe5fa) Thanks [@Deea222](https://github.com/Deea222)! - Open a block-level content control as the blocks it holds.
+  
+  A `w:sdt` standing under the body or inside a table cell used to open as a placeholder: a box saying the content was preserved, with the paragraphs and tables inside it neither readable on the page nor editable. It now opens as the content it wraps, so the text of a clause held in a rich text control reads and edits like any other text, and a control holding a table holds a table. The control's own opening XML - its id, its lock, its type, its data binding - is kept whole and written back untouched, and a control nobody edited still goes out as the bytes it arrived as.
+  
+  Controls nest as the file nested them, so a `w:group` around a rich text control comes back that way round, and a control inside a table cell keeps the formatting the cell dressed it with. A control that is duplicated gets an id of its own on the way out, and its data binding stays with the first copy, so two controls never edit each other.
+  
+  Two kinds are still preserved whole, because opening them would let an edit write a file Word reads differently: a `w:text` control, whose content may be no more than one paragraph, and a `w:picture` control, whose content may be no more than one picture.
+  
+  Locks are read off a block control but not yet enforced against an edit, and a control does not yet break across a page.
+
+- [#160](https://github.com/portone-io/docx-editor/pull/160) [`e62e154`](https://github.com/portone-io/docx-editor/commit/e62e154e616400b702e4516544bb2176e22f3036) Thanks [@Deea222](https://github.com/Deea222)! - Hold the edge of a block-level content control, and act on the two properties that say a control does not outlive an edit.
+  
+  Backspace at the start of a control's first block and Delete at the end of its last one no longer carry a paragraph out of the control or pull the block after it in; they do nothing, and the caret stays where it was. A selection running from outside a control into it, or the other way round, is refused rather than closed by moving text across the boundary. A control left holding a single empty paragraph is removed whole instead, unless its lock says it may not be deleted.
+  
+  A control carrying `w:temporary` now loses its wrapper on the first edit inside it, as the specification requires, and one carrying `w:showingPlcHdr` stops claiming that what it holds is placeholder text, so a document exported after typing into it no longer shows that text as a placeholder in Word. Both go into the history with the edit that caused them, so one undo takes them back together, and a comment left on a document changes neither.
+  
+  Placeholder text itself is not selected or replaced when a control stops claiming it holds a placeholder, so it is edited and deleted like any other text.
+
+- [#164](https://github.com/portone-io/docx-editor/pull/164) [`3054980`](https://github.com/portone-io/docx-editor/commit/30549809ae6675f22523a0b83b36e4e40d8422ff) Thanks [@Deea222](https://github.com/Deea222)! - Let a kept run inside a block-level content control go when no page can hold it.
+  
+  Paragraphs inside a control that ask to be kept with the next one (`w:keepNext`) closed the boundaries between them for good, so a kept run longer than a page had nowhere to part and the control ran off the sheet. Such a boundary is now closed only while a page could hold what is kept together, and let go whole where none can, which is how a run of kept paragraphs outside a control has always been treated.
+
+- [#159](https://github.com/portone-io/docx-editor/pull/159) [`6a41b2b`](https://github.com/portone-io/docx-editor/commit/6a41b2ba2d1aa954946f6ca14bf96b8fe0008df8) Thanks [@Deea222](https://github.com/Deea222)! - Enforce the lock a block-level content control carries, and refuse edits inside a group control.
+  
+  A `w:sdt` standing under the body or inside a table cell was drawn as locked when its `w:lock` said so, and was then editable and deletable anyway. Its lock is now honored the way a wrapped cell's already was: where the control locks its contents, typing, formatting and deleting inside it are refused, a partial deletion that crosses its edge is refused with them, and so is an edit made in a table the control holds. A control locked against deletion is kept even when the selection covers it from end to end, while a `contentLocked` control may still be deleted whole and no less than whole. Unlocking from the editor now reaches a block control too, leaving the control itself standing under the id the file gave it.
+  
+  A control that names `w:group` refuses edits to its contents even though it states no lock, which is what the specification asks of a group (§17.5.2.17). Its own paragraphs are refused, while a control standing inside it - a text control, a cell, or another block-level control - stays editable, and the group itself may still be deleted whole. There is no lock on such a control to lift, so the editor offers none, and `selectionLock` answers the new `shut` for a selection standing there rather than `none`.
+  
+  A lock reaches every control standing inside the one that carries it, so text inside an open control held by a locked cell, by a locked block control or by a locked text control is refused as well.
+
+- [#162](https://github.com/portone-io/docx-editor/pull/162) [`c3e5b75`](https://github.com/portone-io/docx-editor/commit/c3e5b75e301454b6950e9c1f78f0562aac5cf14b) Thanks [@Deea222](https://github.com/Deea222)! - Break a block-level content control across pages, read the sections written inside one, and draw the header text it holds.
+  
+  A `w:sdt` opened as a container was measured as one unbreakable block, so a control longer than a page ran off the sheet, a page break written inside it only started a page after the whole control, and a table inside one lost the row-by-row pagination it has everywhere else. A control now pages as the blocks it holds do: a page opens between any two of them, a page break cuts where it stands, a held table keeps its rows and repeated headers, and a control inside a control is parted the same way one level down. A paragraph inside a control that asks for a page of its own now gets one at every level of nesting, a keep (`w:keepNext`) holds between two blocks a control holds as well as between the control and the block after it, and a held table still asks the page it starts on for its repeated headers and one body row. The control is drawn as one box around everything it holds, so a piece of it on a continued page still reads as standing inside the control.
+  
+  A paragraph inside a control may end a section, since a control holds what the body holds (§17.5.2.34). Such a paragraph's `w:sectPr` was written back untouched but drawn as nothing: the paper, the margins, the headers and the footers of everything up to it were read off the next section instead. The break is now read, so the section it closes gets its own paper, its own header and footer stories, and note numbering restarting there where the section says so. A `w:sectPr` written inside a table cell is preserved rather than read, which is what Word makes of one.
+  
+  Text modelled inside a control in a header or footer part now appears in the on-page header and footer preview, along with the page numbers its fields print, and the preview follows the alignment of the first paragraph even where a control stands around it.
+
+- [#168](https://github.com/portone-io/docx-editor/pull/168) [`7c654c9`](https://github.com/portone-io/docx-editor/commit/7c654c98aff8e33580fd009005fb8213832ed885) Thanks [@Deea222](https://github.com/Deea222)! - End a section at the paragraph inside a content control that carries its break, and read every break a control holds.
+  
+  A section break written on a paragraph inside a block-level `w:sdt` now ends its section at that paragraph, as it does for a paragraph outside a control, and every break a control holds is read.
+  What the control holds after a break starts the next section's page, on that section's paper and under its header and footer, as Word parts the control across the next sheets, while the control stays one control in the document.
+  Footnote and endnote numbering that restarts per section, and the width a table is fitted to, follow the section the paragraph is in.
+
+- [#167](https://github.com/portone-io/docx-editor/pull/167) [`8442ce6`](https://github.com/portone-io/docx-editor/commit/8442ce6956fdce772d38b60191c5b7dec3e8f48c) Thanks [@Deea222](https://github.com/Deea222)! - Draw nothing for a content control with nothing inside it.
+  
+  A `w:sdt` whose `w:sdtContent` was empty, or which wrote no content element at all, used to open as a grey box saying the content was preserved. A server that answers a failed condition by leaving a tagged control empty therefore drew a box for the clause that is not there, and the reader could neither open it nor take it away. Such a control now opens as a node of its own that holds nothing and takes no room on the page, so the clause reads as the nothing the file says it is.
+  
+  Everything the control states about itself is kept: its tag, its id, its lock and its data binding all ride back out untouched, and a control nobody edited goes out as the bytes it arrived as. Backspace and Delete beside it pass over it, so it goes only when it is selected whole, and then only if its lock does not say otherwise; a copy of one gets an id of its own the way every other control does.
+
+- [#161](https://github.com/portone-io/docx-editor/pull/161) [`1865d19`](https://github.com/portone-io/docx-editor/commit/1865d19f5c881d1a195b5603b8172bb8bd7391a7) Thanks [@Deea222](https://github.com/Deea222)! - Open a table whose row stands inside a content control, instead of standing the whole table down.
+  
+  A `w:sdt` around a `w:tr` used to be markup nothing read, so one such control cost every row, cell, merge and paragraph of the table it stood in: the table opened as an uneditable placeholder. The control is now read onto the row it wraps, exactly as a control around a cell has always been read onto the cell, so the table is editable and the wrapper goes back around the same row on export. A table nobody edited still goes out byte for byte, and an edit in another row rewrites the table with the control back where it stood.
+  
+  The lock such a control carries is honored on the row: typing anywhere in a locked row is refused, so is a paragraph or formatting command inside it and a change to its height, while a row beside it is edited as ever. A row deletion is the control being taken away whole, which a lock against deletion refuses; a column deletion reaches into what the control holds, which a lock over its contents refuses. A `w:group` shuts a row's contents without a lock, lifting a lock reaches a row, and a row inserted beside a wrapped one carries no control, so no second control claims the first one's `w:id`.
+  
+  A control the row cannot carry back out still keeps the table whole: one holding more than the single row the specification describes, one holding another control instead of a row, and one around a row that only continues a vertical merge, since such a row is rebuilt on export rather than written from the document.
+
 ## 0.6.2
 
 ### Patch Changes
