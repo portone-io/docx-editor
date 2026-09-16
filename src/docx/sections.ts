@@ -413,23 +413,11 @@ export function sectionsOf(doc: PMNode): readonly DocumentSection[] {
   return sections;
 }
 
-/**
- * The same, against a table already read.
- *
- * Reading the table walks every block of the document, so anything asking about more than one
- * position - the pages of a preview, one per section - reads it once and asks here.
- */
-export function sectionIn(
-  sections: readonly DocumentSection[],
-  pos: number
-): DocumentSection {
+/** The section the block at this position belongs to */
+export function sectionAt(doc: PMNode, pos: number): DocumentSection {
+  const sections = sectionsOf(doc);
   return (
     sections.find((section) => pos <= section.to) ??
     sections[sections.length - 1]
   );
-}
-
-/** The section the block at this position belongs to */
-export function sectionAt(doc: PMNode, pos: number): DocumentSection {
-  return sectionIn(sectionsOf(doc), pos);
 }

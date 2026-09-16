@@ -3,22 +3,24 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  makeControlSectionHeadersFootersDocx,
   makeHeadersFootersDocx,
   makeTwoSectionHeadersFootersDocx,
 } from "../__testing__/docx";
 import { type HeadersFooters, variantsFor } from "../docx/headersFooters";
 import { importDocx } from "../docx/importDocx";
-import { sectionIn, sectionsOf } from "../docx/sections";
+import { sectionsOf } from "../docx/sections";
 import { storyNodeOf } from "../schema/stories";
 import { editorClassNames } from "../styles/classNames";
 import { PageGuides } from "./PageGuides";
+import { pageLayout, sectionPixels } from "./pageLayout";
 import type { PageFace, PageOverlay } from "./usePageLayout";
 
 /** One page of a document written in a single section, where the two counts are the same number */
 function face(page: number, top: number): PageFace {
   return {
     page,
-    pos: 0,
+    section: 0,
     pageInSection: page,
     headerTop: top,
     footerTop: top + 920,
@@ -116,10 +118,9 @@ describe("page header and footer guides", () => {
     expect(headers(drawn)).toEqual(["First header", "Even header"]);
   });
 
-  it("asks the section the block each page opens with belongs to", () => {
+  it("asks the section each page opens in", () => {
     const { doc, session } = importDocx(makeTwoSectionHeadersFootersDocx());
-    const sections = sectionsOf(doc);
-    const shown = sections.map((section) =>
+    const shown = sectionsOf(doc).map((section) =>
       variantsFor(section, session.headerFooterStories, (key) =>
         storyNodeOf(doc, key)
       )
@@ -127,20 +128,66 @@ describe("page header and footer guides", () => {
     // The second paragraph opens the body's section, which is the one that declares w:titlePg
     const secondSection: PageFace = {
       ...face(2, 1040),
-      pos: doc.child(0).nodeSize,
+      section: 1,
       pageInSection: 1,
     };
     const drawn = render(
       <PageGuides
         overlay={{ ...overlay, pages: [face(1, 40), secondSection] }}
-        headersFootersFor={(page) =>
-          shown[sectionIn(sections, page.pos).index] ?? null
-        }
+        headersFootersFor={(page) => shown[page.section] ?? null}
       />
     );
 
     // The first section draws its own default story, and the second draws the first-page story
     // of its own first page even though that page is the document's second
+    expect(headers(drawn)).toEqual(["Even header", "First header"]);
+  });
+
+  it("draws the next section's header on a page opened inside a control", () => {
+    const { doc, session } = importDocx(makeControlSectionHeadersFootersDocx());
+    const sections = sectionsOf(doc);
+    const shown = sections.map((section) =>
+      variantsFor(section, session.headerFooterStories, (key) =>
+        storyNodeOf(doc, key)
+      )
+    );
+    const control = doc.child(0);
+    const second = 1 + (control.firstChild?.nodeSize ?? 0);
+    // Both paragraphs stand in one block, parted where the first section ends
+    const layout = pageLayout({
+      blocks: [
+        {
+          pos: 0,
+          gap: 0,
+          height: 200,
+          breakBefore: false,
+          breakAfter: false,
+          candidates: [
+            { at: second, offset: 100, forced: false, repeatHeight: 0 },
+          ],
+          minFirstPiece: 100,
+          keepWithNext: false,
+        },
+      ],
+      sections: sectionPixels(sections),
+    });
+    const drawn = render(
+      <PageGuides
+        overlay={{
+          ...overlay,
+          pages: layout.pages.map((start) => ({
+            ...face(start.page, 40 + (start.page - 1) * 1000),
+            section: start.section,
+            pageInSection: start.pageInSection,
+          })),
+        }}
+        headersFootersFor={(page) => shown[page.section] ?? null}
+      />
+    );
+
+    expect(control.type.name).toBe("sdtBlock");
+    expect(layout.pages.map((page) => page.section)).toEqual([0, 1]);
+    // The page opening with the control's second paragraph is the body section's first page
     expect(headers(drawn)).toEqual(["Even header", "First header"]);
   });
 

@@ -29,7 +29,7 @@ import { exportDocx } from "./docx/exportDocx";
 import { type HeadersFooters, variantsFor } from "./docx/headersFooters";
 import { type DocxBytes, type DocxSource, importDocx } from "./docx/importDocx";
 import { type ExportProblem, exportProblems } from "./docx/invariants";
-import { sectionIn, sectionsOf } from "./docx/sections";
+import { sectionsOf } from "./docx/sections";
 import type { SessionStore } from "./docx/session";
 import type { CommentAuthor } from "./editor/commands/commentCommands";
 import { activeLinkSpan } from "./editor/commands/linkCommands";
@@ -626,7 +626,7 @@ function DocxEditorSurface(
       )
     );
     return (face: PageFace): HeadersFooters | null =>
-      shown[sectionIn(sections, face.pos).index] ?? null;
+      shown[face.section] ?? null;
   }, [doc, session, sections]);
 
   if (opened?.status === "rejected") {

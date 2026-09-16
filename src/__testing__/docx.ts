@@ -471,6 +471,25 @@ export function makeTwoSectionHeadersFootersDocx(): Uint8Array {
 }
 
 /**
+ * The same two sections with both paragraphs held by one block-level content control, so the
+ * first section ends at a paragraph inside the control and the second starts inside it too
+ */
+export function makeControlSectionHeadersFootersDocx(): Uint8Array {
+  const encoder = new TextEncoder();
+  const parts = unzipSync(makeTwoSectionHeadersFootersDocx());
+  const document = decode(parts["word/document.xml"]);
+  const opens = document.indexOf("<w:p><w:pPr><w:sectPr");
+  const closes =
+    document.indexOf("Second section</w:t></w:r></w:p>") +
+    "Second section</w:t></w:r></w:p>".length;
+  parts["word/document.xml"] = encoder.encode(
+    `${document.slice(0, opens)}<w:sdt><w:sdtPr><w:id w:val="7"/></w:sdtPr><w:sdtContent>` +
+      `${document.slice(opens, closes)}</w:sdtContent></w:sdt>${document.slice(closes)}`
+  );
+  return zipSync(parts);
+}
+
+/**
  * A 1x1 fully transparent PNG, the smallest image a document can carry.
  * Written as base64 because that is the form both a data URL and this literal need
  */

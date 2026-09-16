@@ -27,7 +27,7 @@ import {
   type PageReservation,
   pageLayout,
   type SectionPixels,
-  sectionPaperAt,
+  sectionPaper,
   type TrailingPlacement,
   type TrailingRows,
 } from "./pageLayout";
@@ -73,8 +73,8 @@ export interface TrailingRoom {
 /** The paper area of one visual page, used to place its header and footer stories. */
 export interface PageFace {
   page: number;
-  /** The position of the block this page opens with, which says which section it belongs to */
-  pos: number;
+  /** The index of the section this page opens in, which its header and footer come from */
+  section: number;
   /**
    * The place this page takes within that section, counted from 1 again at every section, which is
    * what its header and footer variant is chosen by (`docx/headersFooters`)
@@ -250,8 +250,7 @@ export function usePageLayout({
       const laidOn = new Map<number, TrailingPlacement>(
         layout.trailing.map((placement) => [placement.page, placement])
       );
-      /** The paper of the page that block opens, which is the paper of its own section */
-      const paperOf = (pos: number) => sectionPaperAt(papers, pos);
+      const paperOf = (section: number) => sectionPaper(papers, section);
       // One sheet is drawn at one width, the first section's (`styles/editor.css`), so where a
       // page stands across it is that paper's while how tall it stands is its own section's
       const sheet = paperOf(0);
@@ -281,13 +280,14 @@ export function usePageLayout({
             split.y +
             (split.crossed
               ? 0
-              : paperOf(layout.pages[split.page - 2]?.pos ?? 0).marginBottom),
+              : paperOf(layout.pages[split.page - 2]?.section ?? 0)
+                  .marginBottom),
           height: split.crossed ? 0 : PAGE_SPLIT_PX,
           crossed: split.crossed,
         })),
         // A page crossed into has no margin, so the place it was split at is its top corner
         pages: layout.pages.map((start) => {
-          const paper = paperOf(start.pos);
+          const paper = paperOf(start.section);
           const paperTop =
             measured.contentTop +
             start.bodyStart -
@@ -296,7 +296,7 @@ export function usePageLayout({
             measured.contentTop + start.bodyStart + paper.bodyHeight;
           return {
             page: start.page,
-            pos: start.pos,
+            section: start.section,
             pageInSection: start.pageInSection,
             headerTop: paperTop + paper.marginTop / 2,
             footerTop: paperTop + paper.pageHeight - paper.marginBottom / 2,

@@ -85,7 +85,7 @@ function face(
 ): PageFace {
   return {
     page,
-    pos: 0,
+    section: 0,
     pageInSection: page,
     headerTop: 0,
     footerTop: 0,
