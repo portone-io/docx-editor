@@ -40,10 +40,16 @@ A table's `w:tblGridChange` is preserved as it came.
 
 ## Content controls
 
-Edit or lock supported text and table-cell content controls; a control nested inside another
-control or a hyperlink is editable text and goes back out nested as it came.
-A control the editor could not take apart is shown as a box.
-[Locked content](/docs/editor-api/modes-and-locks#locked-content) covers locking a control.
+A content control around text, a table cell, a table row, or whole paragraphs and tables opens as
+the content it wraps and goes back out inside the same control, nested as it came.
+A lock the control carries is honored;
+[Locked content](/docs/editor-api/modes-and-locks#locked-content) covers locks and group controls.
+Backspace and Delete stop at the edge of a control around paragraphs or tables, and a control left
+holding one empty paragraph is removed whole by either key.
+A temporary control is removed by the first edit inside it, and placeholder text is edited like any
+other text.
+A control the editor could not take apart is shown as a box: a plain text, picture, date picker,
+combo box, drop-down list, or check box control around whole blocks, or an empty control.
 
 ## Other markup
 
