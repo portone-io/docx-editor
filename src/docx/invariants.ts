@@ -26,6 +26,10 @@ import type {
   ExportProblemStory,
 } from "../ooxml/errors";
 import {
+  type RootDeclarations,
+  rootBindingConflict,
+} from "../ooxml/partSplice";
+import {
   attributeByLocalName,
   parseXml,
   W_NS,
@@ -54,13 +58,19 @@ import {
   peoplePart,
 } from "./comments/parts";
 import { unrecordedAuthors } from "./comments/people";
-import { currentCommentBodies } from "./comments/writing";
+import {
+  COMMENT_MARKUP,
+  currentCommentBodies,
+  EXTENSIONS_MARKUP,
+} from "./comments/writing";
 import type { ExportOptions } from "./exportDocx";
+import { HEADER_MARKUP } from "./headersFooters";
 import { identityProblems, identityProblemsInStories } from "./identities";
 import { insertedImageSrcs } from "./media";
 import { canDefineNewList, newNumIds, startedLists } from "./newLists";
 import { firstNoteReferences } from "./notes/references";
-import { CONTENT_TYPES_PATH } from "./packageParts";
+import { NUMBERING_MARKUP } from "./numberingPlanner";
+import { CONTENT_TYPES_PATH, readPart, relatedPartPath } from "./packageParts";
 import { STORY_ENTRIES_PARTS, STORY_WRITINGS } from "./partPlanners";
 import { lostOriginal } from "./serializePreserved";
 import {
@@ -70,6 +80,7 @@ import {
   sessionOf,
 } from "./session";
 import {
+  ENTRY_MARKUP,
   rewrittenStories,
   type StoryEntry,
   storyChangesOf,
@@ -567,6 +578,88 @@ const notePartRoots: ExportInvariant = {
     ),
 };
 
+/** A part the export rewrites around the root it arrived with, and what that write declares on it */
+interface RewrittenPart {
+  readonly path: string;
+  readonly xml: string;
+  readonly declarations: RootDeclarations;
+}
+
+/** Every part beside the body a writer rewrites, each read as it stands in the session */
+function rewrittenParts(
+  doc: PMNode,
+  session: SessionStore
+): readonly RewrittenPart[] {
+  const parts: RewrittenPart[] = [];
+  const add = (
+    path: string | null,
+    xml: string | null,
+    declarations: RootDeclarations
+  ): void => {
+    if (path !== null && xml !== null) parts.push({ path, xml, declarations });
+  };
+  for (const { key } of rewrittenStories(STORY_WRITINGS, doc, session)) {
+    const { kind, id } = splitStoryKey(key);
+    if (kind === "header" || kind === "footer") {
+      add(id, readPart(session.parts, id), HEADER_MARKUP);
+    }
+  }
+  for (const part of STORY_ENTRIES_PARTS) {
+    const changed = storyChangesOf(doc, session, part.kind).some(
+      ({ change }) => change !== "kept"
+    );
+    const path = changed
+      ? relatedPartPath(session.parts, session.mainPartPath, part.relType)
+      : null;
+    add(path, readPart(session.parts, path), ENTRY_MARKUP);
+  }
+  const { xml, extendedXml, extendedPartPath } = session.comments;
+  if (commentsChanged(doc, session)) {
+    add(commentsPart.pathIn(session), xml, COMMENT_MARKUP);
+  }
+  if (
+    extensionsChanged(doc, session) &&
+    (commentReferencesIn(doc).size > 0 || extendedPartPath !== null)
+  ) {
+    add(commentsExtendedPart.pathIn(session), extendedXml, EXTENSIONS_MARKUP);
+  }
+  if (startedLists(doc, session).defined.size > 0) {
+    const path = session.numberingPartPath;
+    add(path, readPart(session.parts, path), NUMBERING_MARKUP);
+  }
+  return parts;
+}
+
+/**
+ * A part is rewritten around the root it arrived with, and the write declares on that root every
+ * prefix the markup it puts in is spelled under. A root binding one of those prefixes to a
+ * namespace of its own means the opposite of what the write would say by it, so the write refuses
+ * the part - and a package can arrive holding one, since the open hands back a part it cannot
+ * respell as it stands (`docx/packagePrefixes`).
+ *
+ * The main part is not among these: the import turns down one whose root leaves `w` bound
+ * elsewhere. Nor is a part the export writes from nothing, which binds what the writer spells
+ * because the writer wrote its root.
+ */
+const partRootBindings: ExportInvariant = {
+  name: "partRootBindings",
+  check: ({ doc, session }) =>
+    rewrittenParts(doc, session).flatMap(
+      ({ path, xml, declarations }): ExportProblem[] => {
+        const prefix = rootBindingConflict(xml, declarations);
+        return prefix === null
+          ? []
+          : [
+              {
+                code: "unsupported-content",
+                message: `${path} binds ${prefix} to a namespace the writer cannot use`,
+                reason: { kind: "conflicting-part-prefix", path, prefix },
+              },
+            ];
+      }
+    ),
+};
+
 /** The note a reason is about, and null for one about the body, the package, or another story */
 function noteKeyIn(reason: ExportProblemReason): NoteKey | null {
   const story = "story" in reason ? reason.story : null;
@@ -616,6 +709,7 @@ const EXPORT_INVARIANTS: readonly ExportInvariant[] = [
   mediaContentTypes,
   commentPartRoots,
   notePartRoots,
+  partRootBindings,
 ];
 
 /** The body, then every side story a part writer rewrites, which is what the writer puts out */

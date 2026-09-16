@@ -19,6 +19,7 @@ import {
   qualify,
   W_PREFIX,
   wName,
+  xmlnsName,
 } from "./names";
 import { escapeXml, localPart } from "./xml";
 
@@ -55,7 +56,7 @@ export function elementXml(
  * the prefix itself.
  */
 export function xmlnsAttr(prefix: KnownPrefix): XmlAttr {
-  return [`xmlns:${prefix}`, NAMESPACES[prefix]];
+  return [xmlnsName(prefix), NAMESPACES[prefix]];
 }
 
 /**

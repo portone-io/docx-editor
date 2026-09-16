@@ -1,20 +1,28 @@
 // @vitest-environment jsdom
 import { unzipSync, zipSync } from "fflate";
-import type { Node as PMNode } from "prosemirror-model";
+import { Fragment, type Node as PMNode } from "prosemirror-model";
 import { describe, expect, it } from "vitest";
 import {
   bytesEqual,
   decode,
   importErrorCode,
   makeDocx,
+  makeNotesDocx,
   makeStyledDocx,
   readFixture,
 } from "../__testing__/docx";
+import {
+  documentComments,
+  setCommentBody,
+} from "../editor/commands/commentCommands";
+import { createEditorState } from "../editor/createEditor";
 import { toParagraphFormat, toRunFormat } from "../model/format";
 import { STRICT_OFFICE_DOCUMENT_REL, STRICT_W_NS } from "../ooxml/conformance";
 import { W_NS } from "../ooxml/xml";
+import { docxSchema } from "../schema";
 import { exportDocx } from "./exportDocx";
 import { importDocx } from "./importDocx";
+import { storyOf } from "./story";
 
 const encode = (text: string) => new TextEncoder().encode(text);
 
@@ -120,13 +128,6 @@ describe("refusing to open", () => {
     );
   });
 
-  it("refuses a main part that binds the namespace to another prefix with unsupported-content", () => {
-    const otherPrefix = makeDocx("<p:p/>", undefined, { prefix: "p" });
-    expect(importErrorCode(() => importDocx(otherPrefix))).toBe(
-      "unsupported-content"
-    );
-  });
-
   it("refuses a foreign main root even when it declares the writing prefix", () => {
     const bytes = makePackage({
       "_rels/.rels": PACKAGE_RELS,
@@ -137,12 +138,29 @@ describe("refusing to open", () => {
     );
   });
 
-  it("refuses a main part that binds the namespace as the default one", () => {
-    const defaultNamespace = makePackage({
+  it("refuses a main part that binds the writing prefix to another namespace", () => {
+    const boundElsewhere = makePackage({
       "_rels/.rels": PACKAGE_RELS,
-      "word/document.xml": `<document xmlns="${W_NS}"><body><p/></body></document>`,
+      "word/document.xml":
+        '<w:document xmlns:w="urn:other"><w:body><w:p/></w:body></w:document>',
     });
-    expect(importErrorCode(() => importDocx(defaultNamespace))).toBe(
+    expect(importErrorCode(() => importDocx(boundElsewhere))).toBe(
+      "unsupported-content"
+    );
+  });
+
+  /**
+   * The rewrite hands back a part it cannot spell unambiguously rather than turning it down, so
+   * what refuses this one is the check that refused it before the rewrite existed.
+   */
+  it("refuses a main part the rewrite cannot spell under w", () => {
+    const takenElsewhere = makePackage({
+      "_rels/.rels": PACKAGE_RELS,
+      "word/document.xml":
+        `<ns0:document xmlns:ns0="${W_NS}" xmlns:w="urn:junk">` +
+        "<ns0:body><ns0:p/></ns0:body></ns0:document>",
+    });
+    expect(importErrorCode(() => importDocx(takenElsewhere))).toBe(
       "unsupported-content"
     );
   });
@@ -165,6 +183,221 @@ describe("refusing to open", () => {
     expect(importErrorCode(() => importDocx(withProcessingInstruction))).toBe(
       "unsupported-content"
     );
+  });
+});
+
+const REL_BASE =
+  "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+
+/**
+ * The same package as Python's `xml.etree` writes one: every WordprocessingML name under `ns0`,
+ * the declaration that binds it with them, and nothing else about the file touched.
+ */
+function underForeignPrefix(bytes: Uint8Array): Uint8Array {
+  const parts = unzipSync(bytes);
+  for (const [path, part] of Object.entries(parts)) {
+    if (!path.endsWith(".xml")) continue;
+    parts[path] = encode(
+      decode(part)
+        .replaceAll('xmlns:w="', 'xmlns:ns0="')
+        .replaceAll("<w:", "<ns0:")
+        .replaceAll("</w:", "</ns0:")
+        .replaceAll(" w:", " ns0:")
+    );
+  }
+  return zipSync(parts);
+}
+
+const STORIED_BODY =
+  '<w:p><w:commentRangeStart w:id="4"/>' +
+  '<w:r><w:t xml:space="preserve">Alpha</w:t></w:r>' +
+  '<w:commentRangeEnd w:id="4"/>' +
+  '<w:r><w:commentReference w:id="4"/></w:r>' +
+  '<w:r><w:footnoteReference w:id="2"/></w:r></w:p>' +
+  '<w:p><w:r><w:t xml:space="preserve">Beta</w:t></w:r></w:p>' +
+  `<w:sectPr xmlns:r="${REL_BASE}">` +
+  '<w:headerReference w:type="default" r:id="rId7"/></w:sectPr>';
+
+/** A package carrying a story of every kind a part of its own is read out of */
+function makeStoriedDocx(): Uint8Array {
+  const parts = unzipSync(makeNotesDocx(STORIED_BODY));
+  parts["word/_rels/document.xml.rels"] = encode(
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      `<Relationship Id="rId4" Target="footnotes.xml" Type="${REL_BASE}/footnotes"/>` +
+      `<Relationship Id="rId5" Target="endnotes.xml" Type="${REL_BASE}/endnotes"/>` +
+      `<Relationship Id="rId6" Target="comments.xml" Type="${REL_BASE}/comments"/>` +
+      `<Relationship Id="rId7" Target="header1.xml" Type="${REL_BASE}/header"/>` +
+      "</Relationships>"
+  );
+  parts["word/comments.xml"] = encode(
+    `<w:comments ${W_NS_DECL}>` +
+      '<w:comment w:id="4" w:author="Ada" w:initials="AL" w:date="2026-08-22T01:02:03Z">' +
+      '<w:p><w:r><w:t xml:space="preserve">Check this</w:t></w:r></w:p>' +
+      "</w:comment></w:comments>"
+  );
+  parts["word/header1.xml"] = encode(
+    `<w:hdr ${W_NS_DECL}><w:p><w:r>` +
+      '<w:t xml:space="preserve">Header</w:t></w:r></w:p></w:hdr>'
+  );
+  parts["[Content_Types].xml"] = encode(
+    decode(parts["[Content_Types].xml"]).replace(
+      "</Types>",
+      '<Override PartName="/word/comments.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml"/>' +
+        '<Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>' +
+        "</Types>"
+    )
+  );
+  return zipSync(parts);
+}
+
+/**
+ * The opened document with the session's own id taken out of it, which is the only thing two
+ * openings of one file disagree about
+ */
+function documentShape(opened: {
+  doc: PMNode;
+  session: { sessionId: string };
+}): unknown {
+  return JSON.parse(
+    JSON.stringify(opened.doc.toJSON()).replaceAll(
+      opened.session.sessionId,
+      "session"
+    )
+  );
+}
+
+/** Every markup part of the package, as its text */
+function markupParts(bytes: Uint8Array): string[] {
+  return Object.entries(unzipSync(bytes))
+    .filter(([path]) => path.endsWith(".xml"))
+    .map(([, part]) => decode(part));
+}
+
+describe("a document written under other prefixes", () => {
+  it("opens one that binds the namespace to a prefix of its own", () => {
+    const { doc } = importDocx(makeDocx("<p:p/>", undefined, { prefix: "p" }));
+    expect(doc.childCount).toBe(1);
+    expect(doc.child(0).type.name).toBe("paragraph");
+  });
+
+  it("opens one that binds the namespace as its default", () => {
+    const defaultNamespace = makePackage({
+      "_rels/.rels": PACKAGE_RELS,
+      "word/document.xml":
+        `<document xmlns="${W_NS}"><body><p><r>` +
+        "<t>Alpha</t></r></p></body></document>",
+    });
+    expect(importDocx(defaultNamespace).doc.textContent).toBe("Alpha");
+  });
+
+  /**
+   * A part this editor never reads is rewritten by what it holds, so it meets the same rule as the
+   * main part; nothing about it may decide whether the package opens.
+   */
+  it("opens one holding a part no unambiguous rewrite exists for", () => {
+    const parts = unzipSync(makeDocx("<w:p><w:r><w:t>Alpha</w:t></w:r></w:p>"));
+    parts["customXml/item1.xml"] = encode(
+      `<ns0:root xmlns:ns0="${W_NS}" xmlns:w="urn:junk"><ns0:v/></ns0:root>`
+    );
+    const opened = importDocx(zipSync(parts));
+    const exported = unzipSync(exportDocx(opened.doc, opened.session));
+
+    expect(opened.doc.textContent).toBe("Alpha");
+    expect(
+      bytesEqual(exported["customXml/item1.xml"], parts["customXml/item1.xml"])
+    ).toBe(true);
+  });
+
+  it("reads it as the document its w twin reads as", () => {
+    const twin = makeStoriedDocx();
+    expect(documentShape(importDocx(underForeignPrefix(twin)))).toEqual(
+      documentShape(importDocx(twin))
+    );
+  });
+
+  it("writes it back spelled the way the writer writes, and reads that back the same", () => {
+    const opened = importDocx(underForeignPrefix(makeStoriedDocx()));
+    const exported = exportDocx(opened.doc, opened.session);
+
+    for (const part of markupParts(exported)) {
+      expect(part).not.toMatch(/ns\d+:/);
+    }
+    expect(decode(unzipSync(exported)[opened.session.mainPartPath])).toContain(
+      "<w:p"
+    );
+    expect(documentShape(importDocx(exported))).toEqual(documentShape(opened));
+  });
+
+  /**
+   * The rewritten text is what the session holds as the bytes the file arrived as, so the export
+   * has nothing left to normalize: the package it writes is the one it would write again.
+   */
+  it("exports the same bytes the second time round", () => {
+    const opened = importDocx(underForeignPrefix(makeStoriedDocx()));
+    const first = exportDocx(opened.doc, opened.session);
+    const reopened = importDocx(first);
+
+    expect(bytesEqual(first, exportDocx(reopened.doc, reopened.session))).toBe(
+      true
+    );
+  });
+
+  it("opens every side story of one, and leaves their parts alone through a body edit", () => {
+    const twin = makeStoriedDocx();
+    const opened = importDocx(underForeignPrefix(twin));
+    const state = createEditorState(opened.doc);
+
+    expect(documentComments(state)[0]?.text).toBe("Check this");
+    expect(storyOf(opened.doc, "footnote:2")?.textContent).toContain(
+      "Footnote body"
+    );
+    expect(storyOf(opened.doc, "header:word/header1.xml")?.textContent).toBe(
+      "Header"
+    );
+
+    const second = opened.doc.child(1);
+    const edited = opened.doc.copy(
+      opened.doc.content.replaceChild(
+        1,
+        second.copy(Fragment.from(docxSchema.text("Gamma")))
+      )
+    );
+    const written = unzipSync(exportDocx(edited, opened.session));
+    const normalized = unzipSync(twin);
+    for (const path of [
+      "word/comments.xml",
+      "word/footnotes.xml",
+      "word/header1.xml",
+    ]) {
+      expect(bytesEqual(written[path], normalized[path]), path).toBe(true);
+    }
+  });
+
+  it("writes an edited comment beside the entries the file brought", () => {
+    const opened = importDocx(underForeignPrefix(makeStoriedDocx()));
+    const body = storyOf(opened.doc, "comment:4");
+    if (body === null) throw new Error("no comment story");
+
+    let edited = createEditorState(opened.doc);
+    expect(
+      setCommentBody(
+        "4",
+        body.copy(
+          body.content.replaceChild(
+            0,
+            body.child(0).copy(Fragment.from(docxSchema.text("Rewritten")))
+          )
+        )
+      )(edited, (transaction) => {
+        edited = edited.apply(transaction);
+      })
+    ).toBe(true);
+
+    const comments = decode(
+      unzipSync(exportDocx(edited.doc, opened.session))["word/comments.xml"]
+    );
+    expect(comments).toContain("Rewritten");
+    expect(comments).not.toMatch(/ns\d+:/);
   });
 });
 

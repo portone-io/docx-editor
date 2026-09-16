@@ -13,6 +13,7 @@
  * leaves ProseMirror to settle the content one level plainer. Demotion, not contamination.
  */
 
+import { XMLNS, xmlnsName } from "./names";
 import {
   elementChildren,
   namespaceDecls,
@@ -100,7 +101,7 @@ function isNamed(el: Element, names: readonly string[]): boolean {
   if (!names.includes(el.localName)) return false;
   // Import cuts fragments away from their part's namespace declarations. A binding supplied
   // only by our wrapper is unknown, not evidence that the element is in a foreign namespace.
-  const declaration = el.prefix === null ? "xmlns" : `xmlns:${el.prefix}`;
+  const declaration = el.prefix === null ? XMLNS : xmlnsName(el.prefix);
   for (
     let scope: Element = el;
     scope.parentElement !== null;
@@ -148,7 +149,7 @@ function rebindsReservedPrefix(el: Element): boolean {
   // ancestor's binding, and text resembling a declaration is not a namespace declaration.
   return (
     Array.from(el.attributes).some((attr) => {
-      if (attr.prefix !== "xmlns") return false;
+      if (attr.prefix !== XMLNS) return false;
       const reserved = RESERVED_PREFIXES.get(attr.localName);
       return reserved !== undefined && reserved !== attr.value;
     }) || elementChildren(el).some(rebindsReservedPrefix)

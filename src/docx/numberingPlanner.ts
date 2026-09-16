@@ -11,7 +11,10 @@
 import { addListDefinitions } from "../numbering/writeNumbering";
 import { elementXml, xmlnsAttr } from "../ooxml/element";
 import { NAMESPACES, wName } from "../ooxml/names";
-import { ensureRootDeclarations } from "../ooxml/partSplice";
+import {
+  ensureRootDeclarations,
+  type RootDeclarations,
+} from "../ooxml/partSplice";
 import { decodeUtf8, encodeUtf8 } from "../ooxml/xml";
 import {
   NUMBERING_CONTENT_TYPE,
@@ -22,6 +25,11 @@ import {
 import { availablePartPath } from "./packageParts";
 import type { PartPlanner } from "./partPlan";
 import { directoryOf } from "./relationships";
+
+/** What a numbering part takes a definition: every list this writer splices in is spelled under `w` */
+export const NUMBERING_MARKUP: RootDeclarations = {
+  namespaces: { w: NAMESPACES.w },
+};
 
 /** A numbering part holding nothing, whose root declares the one prefix everything spliced into it is written under */
 function emptyNumberingPart(): string {
@@ -64,7 +72,7 @@ export const numberingPlanner: PartPlanner = {
     const { text, hadBom } = decodeUtf8(original.bytes);
     const rewritten = ensureRootDeclarations(
       addListDefinitions(text, defined),
-      { namespaces: { w: NAMESPACES.w } }
+      NUMBERING_MARKUP
     );
     return new Map([[original.path, encodeUtf8(rewritten, hadBom)]]);
   },

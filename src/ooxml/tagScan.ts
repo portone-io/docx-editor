@@ -133,26 +133,67 @@ function decodeReferences(value: string): string | null {
 const ATTRIBUTE = /(\s*)([^\s=/><"']+)\s*=\s*(?:"([^"<]*)"|'([^'<]*)')/y;
 
 /**
- * The attribute text of an opening tag as pairs, references decoded, each name spelled as it was
- * written. null for a shape a parser would refuse: an unquoted value, a missing name, one name
- * given twice, or a reference nothing declares.
+ * Where one attribute stands inside the attribute text of a tag.
+ *
+ * The spans are what a rewriter that has to leave the rest of the tag alone works from: the quote
+ * a value was written in, the spacing around the `=`, and the spelling of a reference inside the
+ * value all stand between the spans and are copied rather than written again.
  */
-export function parseAttrs(raw: string): XmlAttr[] | null {
-  const attrs: XmlAttr[] = [];
-  const names = new Set<string>();
+export interface AttrSpan {
+  nameStart: number;
+  nameEnd: number;
+  /** The first character inside the quotes, which equals `valueEnd` for an empty value */
+  valueStart: number;
+  valueEnd: number;
+  /** The quote the value was written in, `"` or `'` */
+  quote: string;
+}
+
+/**
+ * The attributes of an opening tag as the spans they occupy, in the order they were written.
+ * null for a shape a parser would refuse: an unquoted value, a missing name, or text between the
+ * attributes that is not whitespace.
+ */
+export function attrSpans(raw: string): AttrSpan[] | null {
+  const spans: AttrSpan[] = [];
   let at = 0;
   for (;;) {
     ATTRIBUTE.lastIndex = at;
     const matched = ATTRIBUTE.exec(raw);
-    if (!matched) return raw.slice(at).trim() === "" ? attrs : null;
-    const [, separator, name, doubled, singled] = matched;
+    if (!matched) return raw.slice(at).trim() === "" ? spans : null;
+    const [whole, separator, name, doubled, singled] = matched;
     // Two attributes have to stand apart, and the first one starts the text
     if (at > 0 && separator === "") return null;
-    if (names.has(name)) return null;
-    names.add(name);
-    const value = decodeReferences(doubled ?? singled);
-    if (value === null) return null;
-    attrs.push([name, value]);
+    const nameStart = at + separator.length;
+    const valueEnd = at + whole.length - 1;
+    spans.push({
+      nameStart,
+      nameEnd: nameStart + name.length,
+      valueStart: valueEnd - (doubled ?? singled).length,
+      valueEnd,
+      quote: doubled === undefined ? "'" : '"',
+    });
     at = ATTRIBUTE.lastIndex;
   }
+}
+
+/**
+ * The attribute text of an opening tag as pairs, references decoded, each name spelled as it was
+ * written. null for a shape a parser would refuse: one `attrSpans` turns down, one name given
+ * twice, or a reference nothing declares.
+ */
+export function parseAttrs(raw: string): XmlAttr[] | null {
+  const spans = attrSpans(raw);
+  if (spans === null) return null;
+  const attrs: XmlAttr[] = [];
+  const names = new Set<string>();
+  for (const span of spans) {
+    const name = raw.slice(span.nameStart, span.nameEnd);
+    if (names.has(name)) return null;
+    names.add(name);
+    const value = decodeReferences(raw.slice(span.valueStart, span.valueEnd));
+    if (value === null) return null;
+    attrs.push([name, value]);
+  }
+  return attrs;
 }

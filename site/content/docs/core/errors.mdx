@@ -30,7 +30,7 @@ try {
 | `missing-body` | The main part has no body. |
 | `malformed-xml` | The XML cannot be parsed, declares a DTD, or is inconsistent. |
 | `unsupported-conformance` | The package is ECMA-376 Strict; the editor reads and writes Transitional. |
-| `unsupported-content` | The document holds markup that could not be written back unchanged, including a main part that does not bind the `w` prefix to the Transitional namespace. |
+| `unsupported-content` | The document holds markup that could not be written back unchanged, including a main part whose root does not bind the `w` prefix to the Transitional namespace. |
 
 `not-a-docx` and `too-large` are usually the person's to fix; the others describe the file.
 
@@ -62,6 +62,7 @@ The `message` is an English one-liner for a developer and may be reworded; switc
 | `unmatched-bookmark` | `malformed-xml` | The bookmark `id` whose partner is gone, and which `marker` is left standing. |
 | `repeated-bookmark-start` | `malformed-xml` | A bookmark `id` started twice. |
 | `unwritable-part-root` | `malformed-xml` | The `part` whose root element the writer cannot rewrite around. |
+| `conflicting-part-prefix` | `unsupported-content` | The `path` of a part a change is written into, and the `prefix` its root binds to a namespace of its own. |
 | `vertical-merge-past-table` | `invalid-table` | A vertical merge reaching past the last row of its table. |
 | `lost-preserved-xml` | `lost-original` | The `node` written from its original XML alone, which it no longer holds. |
 | `preserved-from-another-document` | `lost-original` | A placeholder pasted in from another open document, and the `sessionId` it was opened in. |
@@ -71,11 +72,12 @@ The `message` is an English one-liner for a developer and may be reworded; switc
 | `story-id-not-a-number` | `unsupported-content` | The `story` added under an id no entry can be identified by. |
 | `missing-content-types` | `missing-content-types` | The `part` the writer would add to a package with no content types part to declare it in. |
 
-Every reason but `unwritable-part-root` and `missing-content-types` carries a `story`: the side
-story the content stands in, or `null` for the body. A `story` has a `kind` (`comment`, `footnote`,
-`endnote`, `header` or `footer`) and an `id`: a note's number, a comment's id, or a header or
-footer part's path. A `part` is `media`, `numbering`, `comments`, `commentsExtended`, `people`,
-`footnotes` or `endnotes`.
+Every reason but `unwritable-part-root`, `conflicting-part-prefix` and `missing-content-types`
+carries a `story`: the side story the content stands in, or `null` for the body. A `story` has a
+`kind` (`comment`, `footnote`, `endnote`, `header` or `footer`) and an `id`: a note's number, a
+comment's id, or a header or footer part's path. A `part` is `media`, `numbering`, `comments`,
+`commentsExtended`, `people`, `footnotes` or `endnotes`. A `path` is where the part sits in the
+package.
 
 That is enough to say what a person has to put back:
 
@@ -104,9 +106,9 @@ refers to; `reason.story` then says which story to open.
 `exportDocx` throws the first entry of the same list, and the `DocxExportError` carries that entry
 as `problem`, so a `catch` reads the same `reason` and `pos` without asking again.
 An empty list does not guarantee that writing will succeed: a `DocxExportError` the list did not
-predict is thrown under the same codes with no `problem`, for a part root that binds a prefix the
-writer needs, such as `w`, to another namespace (`unsupported-content`), for a plugin that wrote an
-invalid node or attr, or for a bug in the editor.
+predict is thrown under the same codes with no `problem`, for a main part that binds the
+relationship prefix `r` to another namespace while a link is written (`unsupported-content`), for a
+plugin that wrote an invalid node or attr, or for a bug in the editor.
 Both functions need an XML parser, and are refused with the import code `no-xml-parser` without
 one.
 An export failure leaves the editor state untouched.

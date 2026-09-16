@@ -14,7 +14,7 @@ import type { FidelityCollector } from "./fidelity";
 import {
   CONTENT_TYPES_PATH,
   type ContentTypeWriter,
-  declaredXmlParts,
+  markupParts,
 } from "./packageParts";
 import { type RelationshipWriter, relsPathOf } from "./relationships";
 import type { SessionStore } from "./session";
@@ -80,8 +80,6 @@ export function runPartPlanners(
   return parts;
 }
 
-const XML_PART = /\.(?:xml|rels)$/i;
-
 /**
  * Every rewritten XML part has to read back as XML, and a refusal names the part.
  *
@@ -92,13 +90,9 @@ export function assertPartsParse(
   replacements: ReadonlyMap<string, Uint8Array>,
   contentTypes?: Uint8Array
 ): void {
-  const paths = [...replacements.keys()];
-  const declared =
-    contentTypes && paths.some((path) => !XML_PART.test(path))
-      ? declaredXmlParts(contentTypes, paths)
-      : new Set<string>();
+  const markup = markupParts(replacements.keys(), contentTypes);
   for (const [path, bytes] of replacements) {
-    if (!XML_PART.test(path) && !declared.has(path)) continue;
+    if (!markup.has(path)) continue;
     try {
       parseXml(decodeUtf8(bytes).text);
     } catch (cause) {

@@ -12,7 +12,7 @@
 import { childOrderOf } from "./childOrder";
 import { attrsText, type XmlAttr } from "./element";
 import { DocxExportError } from "./errors";
-import type { KnownPrefix } from "./names";
+import { type KnownPrefix, xmlnsName } from "./names";
 import { parseAttrs, readTag, rootTagAt, type Tag } from "./tagScan";
 import { localPart } from "./xml";
 
@@ -220,14 +220,47 @@ export interface RootDeclarations {
 
 const IGNORABLE = /\smc:Ignorable\s*=\s*(["'])([^"']*)\1/;
 
+/** The first of these prefixes the root already binds to another namespace, and null for none */
+function conflictingPrefix(
+  declared: ReadonlyMap<string, string>,
+  { namespaces }: RootDeclarations
+): string | null {
+  for (const [prefix, namespace] of Object.entries(namespaces)) {
+    if (namespace === undefined) continue;
+    const existing = declared.get(xmlnsName(prefix));
+    if (existing !== undefined && existing !== namespace) return prefix;
+  }
+  return null;
+}
+
+/**
+ * Which prefix `ensureRootDeclarations` would refuse this part over, and null for a part it would
+ * write into, so an invariant can ask before anything is written what the write would answer.
+ */
+export function rootBindingConflict(
+  xml: string,
+  declarations: RootDeclarations
+): string | null {
+  const at = rootTagAt(xml);
+  const tag = at === -1 ? null : readTag(xml, at);
+  if (tag === null || tag.kind === "close") return null;
+  const attrs = parseAttrs(
+    xml.slice(tag.nameEnd, tag.end - (tag.kind === "empty" ? 2 : 1))
+  );
+  return attrs === null
+    ? null
+    : conflictingPrefix(new Map(attrs), declarations);
+}
+
 /**
  * The opening tag with the declarations it lacks written on the end of it. What it declares
  * already stands as it was written, quoting and spacing included.
  */
 function withDeclarations(
   openTag: string,
-  { namespaces, ignorable }: RootDeclarations
+  declarations: RootDeclarations
 ): string {
+  const { namespaces, ignorable } = declarations;
   const tag = readTag(openTag, 0);
   const closeLength = tag?.kind === "empty" ? 2 : 1;
   const attrs =
@@ -241,18 +274,18 @@ function withDeclarations(
     );
   }
   const declared = new Map(attrs);
+  const conflict = conflictingPrefix(declared, declarations);
+  if (conflict !== null) {
+    throw new DocxExportError(
+      "unsupported-content",
+      `the part root binds ${conflict} to a namespace the writer cannot use`
+    );
+  }
   const additions: XmlAttr[] = [];
   for (const [prefix, namespace] of Object.entries(namespaces)) {
     if (namespace === undefined) continue;
-    const name = `xmlns:${prefix}`;
-    const existing = declared.get(name);
-    if (existing !== undefined && existing !== namespace) {
-      throw new DocxExportError(
-        "unsupported-content",
-        `the part root binds ${prefix} to a namespace the writer cannot use`
-      );
-    }
-    if (existing === undefined) additions.push([name, namespace]);
+    const name = xmlnsName(prefix);
+    if (!declared.has(name)) additions.push([name, namespace]);
   }
   const ignoring = IGNORABLE.exec(openTag);
   let tokens: string[] | null = null;

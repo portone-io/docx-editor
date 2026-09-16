@@ -1,5 +1,13 @@
 import { DocxImportError } from "./errors";
-import { isKnownPrefix, NAMESPACES, R_NS, W_NS, W_PREFIX } from "./names";
+import {
+  isKnownPrefix,
+  NAMESPACES,
+  R_NS,
+  W_NS,
+  W_PREFIX,
+  XMLNS,
+  xmlnsName,
+} from "./names";
 
 export { R_NS, W_NS };
 
@@ -46,16 +54,38 @@ export function escapeXml(value: string): string {
   return FORBIDDEN.test(escaped) ? escaped.replace(ALL_FORBIDDEN, "") : escaped;
 }
 
+function hasBom(bytes: Uint8Array): boolean {
+  return (
+    bytes.length >= 3 &&
+    bytes[0] === 0xef &&
+    bytes[1] === 0xbb &&
+    bytes[2] === 0xbf
+  );
+}
+
 export function decodeUtf8(bytes: Uint8Array): {
   text: string;
   hadBom: boolean;
 } {
-  const hadBom =
-    bytes.length >= 3 &&
-    bytes[0] === 0xef &&
-    bytes[1] === 0xbb &&
-    bytes[2] === 0xbf;
-  return { text: new TextDecoder("utf-8").decode(bytes), hadBom };
+  return {
+    text: new TextDecoder("utf-8").decode(bytes),
+    hadBom: hasBom(bytes),
+  };
+}
+
+/**
+ * The same, and null for bytes no UTF-8 decoder reads: a byte it cannot read decodes to U+FFFD,
+ * and writing that text back would put the replacement character in the file in its place.
+ */
+export function decodeUtf8Strictly(
+  bytes: Uint8Array
+): { text: string; hadBom: boolean } | null {
+  try {
+    const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    return { text, hadBom: hasBom(bytes) };
+  } catch {
+    return null;
+  }
 }
 
 export function encodeUtf8(text: string, withBom: boolean): Uint8Array {
@@ -187,13 +217,13 @@ export function namespaceDecls(xml: string): string {
   }
   // `xml` and `xmlns` are names that cannot be redeclared. Declaring them makes parsing fail
   prefixes.delete("xml");
-  prefixes.delete("xmlns");
+  prefixes.delete(XMLNS);
   return Array.from(prefixes)
     .map((prefix) => {
       const namespace = isKnownPrefix(prefix)
         ? NAMESPACES[prefix]
         : `urn:docx-editor:${prefix}`;
-      return `xmlns:${prefix}="${namespace}"`;
+      return `${xmlnsName(prefix)}="${namespace}"`;
     })
     .join(" ");
 }

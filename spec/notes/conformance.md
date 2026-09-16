@@ -24,7 +24,11 @@ Reading follows from that: an element or attribute that arrived in a file is loo
 
 Writing cannot: a prefix has to be spelled out, and this editor spells `w`.
 Markup it writes is spliced into a part the document brought, so the binding has to be in scope where the markup lands.
-Rather than declaring the prefix on every element written, the root of each part written binds it, and a main part whose root does not bind `w` to the Transitional namespace is refused when the file is opened.
-That refusal is about what can be written back, not about what the standard allows, so it carries the code for markup this editor cannot write rather than the conformance one.
+Rather than declaring the prefix on every element written, the root of each part written binds it.
+A part that arrived binding WordprocessingML, the relationship namespace, or another namespace this editor spells to a prefix of its own - or as its default namespace - is rewritten to those prefixes when the file is opened, tag and attribute names only, so the text the writer splices into and the markup it writes are spelled alike.
+The rewrite refuses nothing of its own.
+A part it cannot respell without leaving one prefix saying two things is left exactly as it arrived instead.
+What turns such a part down is what turned it down before there was a rewrite: a main part whose root does not bind `w` to the Transitional namespace is refused when the file is opened, and a write that needs a prefix the part bound elsewhere is refused then, because replacing that binding could change what the preserved markup means.
+Those refusals are about what can be written back, not about what the standard allows, so they carry the code for markup this editor cannot write rather than the conformance one.
 
-Root declarations are checked by URI as well as by name. A conflicting binding is refused on a write that needs that prefix, because replacing it could change preserved markup. When links are written, the final main-part check also rejects an `r:id` shadowed by a declaration below the root. An untouched package is not rewritten to normalize its namespaces.
+Root declarations are checked by URI as well as by name. When links are written, the final main-part check also rejects an `r:id` shadowed by a declaration below the root. A package already spelling those prefixes is not rewritten at all: the normalization returns the part as it arrived, so an untouched document still exports byte for byte.

@@ -283,6 +283,15 @@ export type ExportProblemReason =
     readonly kind: "unwritable-part-root";
     readonly part: ExportPartName;
 }
+/**
+* A part a change is written into binds a prefix the writer spells to a namespace of its own, so
+* the declaration the write adds would contradict the part (`unsupported-content`)
+*/
+| {
+    readonly kind: "conflicting-part-prefix";
+    readonly path: string;
+    readonly prefix: string;
+}
 /** A cell's vertical merge covers rows its table does not have (`invalid-table`) */
 | {
     readonly kind: "vertical-merge-past-table";

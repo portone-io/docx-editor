@@ -685,6 +685,52 @@ describe("comment part roots", () => {
   });
 });
 
+describe("a part the writer cannot declare its prefixes on", () => {
+  /**
+   * The open hands back a part that spells WordprocessingML one way and binds `w` another
+   * (`docx/packagePrefixes`), so the package holds a story part no edit can be written into. The
+   * writer refuses it while splicing, which a caller can only meet as a failed download.
+   */
+  it("names the part an edited story could not be written into, and the export throws it", () => {
+    const parts = unzipSync(makeHeadersFootersDocx());
+    parts["word/header1.xml"] = new TextEncoder().encode(
+      `<ns0:hdr xmlns:ns0="${W_NS}" xmlns:w="urn:junk">` +
+        "<ns0:p><ns0:r><ns0:t>Head</ns0:t></ns0:r></ns0:p></ns0:hdr>"
+    );
+    const opened = importDocx(zipSync(parts));
+    const edited = withStory(
+      opened.doc,
+      storyKey("header", "word/header1.xml"),
+      storyFromText("Rewritten header")
+    );
+
+    expect(refusedWith(edited, opened)).toEqual([
+      {
+        code: "unsupported-content",
+        message:
+          "word/header1.xml binds w to a namespace the writer cannot use",
+        reason: {
+          kind: "conflicting-part-prefix",
+          path: "word/header1.xml",
+          prefix: "w",
+        },
+      },
+    ]);
+  });
+
+  it("leaves such a part alone while nothing is written into it", () => {
+    const parts = unzipSync(makeHeadersFootersDocx());
+    parts["word/header1.xml"] = new TextEncoder().encode(
+      `<ns0:hdr xmlns:ns0="${W_NS}" xmlns:w="urn:junk">` +
+        "<ns0:p><ns0:r><ns0:t>Head</ns0:t></ns0:r></ns0:p></ns0:hdr>"
+    );
+    const opened = importDocx(zipSync(parts));
+
+    expect(exportProblems(opened.doc, opened.session)).toEqual([]);
+    expect(() => exportDocx(opened.doc, opened.session)).not.toThrow();
+  });
+});
+
 describe("unique identities in a header", () => {
   it("a preserved block standing twice in an edited header is an unsupported-content problem with no position", () => {
     const parts = unzipSync(makeHeadersFootersDocx());

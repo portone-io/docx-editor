@@ -55,6 +55,7 @@ import {
   specialNotesOf,
 } from "./notes/reading";
 import { readPart, relatedPartPath } from "./packageParts";
+import { normalizePackagePrefixes } from "./packagePrefixes";
 import { A4_PORTRAIT } from "./pageGeometry";
 import { readRelationships } from "./relationships";
 import { type BlockScan, scanBody } from "./scan";
@@ -109,7 +110,8 @@ function findMainPartPath(parts: Map<string, Uint8Array>): string {
 
 /**
  * Turns down a main part this editor could read but never write back into: one written in the
- * Strict vocabulary, or one whose root does not bind `w` to the Transitional namespace.
+ * Strict vocabulary, one that is no WordprocessingML document at all, and one whose root does not
+ * bind `w` to the namespace everything written is spelled under, whatever left it not binding it.
  * Strict is asked first so that its namespace is refused under the conformance code.
  */
 function assertWritableMainPart(root: Element): void {
@@ -125,6 +127,9 @@ function assertWritableMainPart(root: Element): void {
       "the main part is not a Transitional WordprocessingML document"
     );
   }
+  // `docx/packagePrefixes` has spelled the namespaces it knows under the prefixes the writer uses,
+  // so what reaches this unspelled is a part it handed back: one binding `w` to something of its
+  // own, one whose bytes no UTF-8 decoder reads, one whose markup it could not read
   if (!bindsWritingPrefix(root)) {
     throw new DocxImportError(
       "unsupported-content",
@@ -273,6 +278,7 @@ function readDocx(input: DocxBytes): {
 } {
   const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
   const parts = openParts(bytes);
+  normalizePackagePrefixes(parts);
   const mainPartPath = findMainPartPath(parts);
   const mainPart = parts.get(mainPartPath);
   if (!mainPart) {
