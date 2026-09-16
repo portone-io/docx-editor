@@ -197,17 +197,75 @@ describe("a kind the editor was built with", () => {
     setPageMarks(live, { pushes: [], cuts: [{ at: 4, height: 80 }] });
 
     live.dispatch(live.state.tr.insertText("x", 1));
-    expect(holdsCut).toHaveBeenLastCalledWith(live.state.doc, 5);
+    expect(holdsCut).toHaveBeenLastCalledWith(
+      live.state.doc,
+      5,
+      expect.arrayContaining([...DEFAULT_BLOCK_KINDS])
+    );
     expect(
       live.dom.querySelector(`[${LINE_SPACE}]`)?.getAttribute(LINE_SPACE)
     ).toBe("80");
 
     holdsCut.mockReturnValue(false);
     live.dispatch(live.state.tr.insertText("y", 1));
-    expect(holdsCut).toHaveBeenLastCalledWith(live.state.doc, 6);
+    expect(holdsCut).toHaveBeenLastCalledWith(
+      live.state.doc,
+      6,
+      expect.arrayContaining([...DEFAULT_BLOCK_KINDS])
+    );
     expect(
       live.dom.querySelector(`[${LINE_SPACE}]`)?.getAttribute(LINE_SPACE)
     ).toBe("0");
+  });
+
+  /**
+   * A content control pages what it holds by the very list the editor was built with, so a kind a
+   * consumer registered claims a block standing inside a control exactly as it claims the same
+   * block standing under the body.
+   */
+  it("claims a block held inside a content control too", () => {
+    const mount = document.createElement("div");
+    document.body.append(mount);
+    const live = new EditorView(mount, {
+      state: EditorState.create({
+        doc: docxSchema.nodes.doc.create(null, [
+          docxSchema.nodes.sdtBlock.create(
+            { sdtPrefix: "<w:sdt><w:sdtPr/>", key: 1 },
+            [
+              paragraph(
+                docxSchema.text("aaa"),
+                lineBreak(),
+                docxSchema.text("bbb")
+              ),
+            ]
+          ),
+        ]),
+        plugins: [pageDecorations([lineBreakKind, ...DEFAULT_BLOCK_KINDS])],
+      }),
+    });
+    view = live;
+
+    // The kind drew its own space inside the control before anything was measured
+    expect(live.dom.querySelectorAll(`[${LINE_SPACE}]`)).toHaveLength(1);
+
+    const control = live.nodeDOM(0);
+    const held = live.nodeDOM(1);
+    const space = live.dom.querySelector(`[${LINE_SPACE}]`);
+    if (
+      !(control instanceof HTMLElement) ||
+      !(held instanceof HTMLElement) ||
+      !space
+    ) {
+      throw new Error("the control was not drawn");
+    }
+    control.getBoundingClientRect = () => new DOMRect(0, 0, 400, 40);
+    held.getBoundingClientRect = () => new DOMRect(0, 0, 400, 40);
+    space.getBoundingClientRect = () => new DOMRect(0, 20, 400, 0);
+
+    // The break stands 20 down the paragraph, which is where the control starts
+    expect(measureSheet(live, live.dom).blocks[0]?.candidates).toEqual([
+      { at: 5, offset: 20, forced: true, repeatHeight: 0 },
+    ]);
   });
 
   it("a kind registered for a custom block type measures it and the layout cuts at its candidate", () => {

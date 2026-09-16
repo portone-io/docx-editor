@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { unzipSync } from "fflate";
+import { unzipSync, zipSync } from "fflate";
 import { Fragment, type Node as PMNode, Slice } from "prosemirror-model";
 import { AllSelection, NodeSelection, TextSelection } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
@@ -44,6 +44,22 @@ const LOCKED_REFERENCE =
   '<w:r><w:t xml:space="preserve">Text</w:t></w:r>' +
   '<w:r><w:footnoteReference w:id="2"/></w:r>' +
   "</w:sdtContent></w:sdt></w:p>";
+
+/** The package of `NOTE_BODY` with footnote 2 written as one paragraph inside a block control */
+function footnoteHeldInAControl(): Uint8Array {
+  const parts = unzipSync(makeNotesDocx());
+  parts["word/footnotes.xml"] = new TextEncoder().encode(
+    '<w:footnotes xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">' +
+      '<w:footnote w:id="-1" w:type="separator">' +
+      "<w:p><w:r><w:separator/></w:r></w:p></w:footnote>" +
+      '<w:footnote w:id="2">' +
+      '<w:sdt><w:sdtPr><w:id w:val="9"/></w:sdtPr><w:sdtContent>' +
+      "<w:p><w:r><w:footnoteRef/></w:r></w:p>" +
+      "</w:sdtContent></w:sdt></w:footnote>" +
+      "</w:footnotes>"
+  );
+  return zipSync(parts);
+}
 
 const opened: { main: EditorView | null; story: StoryView | null } = {
   main: null,
@@ -109,6 +125,32 @@ function openNote(
   });
   opened.story = story;
   return story;
+}
+
+function openMainFrom(pkg: Uint8Array): EditorView {
+  const view = createEditorView({
+    mount: document.createElement("div"),
+    state: editorStateForSession(importDocx(pkg), {
+      protection: "none",
+      author: { id: "me", name: "Me" },
+    }),
+    onStateChange: () => {},
+  });
+  opened.main = view;
+  return view;
+}
+
+/** Just past the note's own number, wherever in the story the number stands */
+function noteNumberEnd(story: StoryView): number {
+  let found: number | null = null;
+  story.view.state.doc.descendants((node, pos) => {
+    if (found === null && node.type === docxSchema.nodes.rawRunContent) {
+      found = pos + node.nodeSize;
+    }
+    return found === null;
+  });
+  if (found === null) throw new Error("the note opens with no number");
+  return found;
 }
 
 /** Where the note's own text begins, which is the first place a caret may stand in the story */
@@ -336,6 +378,26 @@ describe("what a note takes", () => {
     expect(storyOf(main.state.doc, asked.key)).toBeNull();
     // The caret is handed back to where the reference stood
     expect(main.state.selection.from).toBe(at);
+  });
+
+  /**
+   * A block-level content control is no content of its own (`docx/storyBlocks`), so a note holding
+   * one paragraph inside one is as empty as the paragraph is.
+   */
+  it("deletes an empty footnote whose only paragraph stands inside a control", () => {
+    const main = openMainFrom(footnoteHeldInAControl());
+    expect(storyOf(main.state.doc, FOOTNOTE)?.firstChild?.type.name).toBe(
+      "sdtBlock"
+    );
+    const story = openNote(main);
+    story.view.dispatch(
+      story.view.state.tr.setSelection(
+        TextSelection.create(story.view.state.doc, noteNumberEnd(story))
+      )
+    );
+
+    expect(pressBackspace(story.view)).toBe(true);
+    expect(storyOf(main.state.doc, FOOTNOTE)).toBeNull();
   });
 
   it("keeps a footnote holding an image alone on Backspace at its start", () => {

@@ -59,6 +59,7 @@ A `w:sdt` under `w:body`, inside a `w:tc`, or inside another control's `w:sdtCon
 Which control stands inside which is then what the tree says, where the inline mark has to carry `depth` as an attribute of its own, since several marks stand on one and the same text.
 
 The control is one block of the story, so a control nobody edited goes back out as the bytes it arrived as and an edit anywhere inside it rewrites the control whole - the same bargain a table makes.
+Because `CT_SdtContentBlock` holds what `CT_Body` holds, a paragraph inside a block control is one of the story's own paragraphs: a reader looking for the paragraphs a story is written in walks through a control, and not into a table, whose cells hold a sequence of their own.
 
 Both shapes read the prefix, what the control states about being edited and deleted, and the copy rule out of `docx/sdt`, so what the four levels - block, inline, cell, row - disagree about is the node, never the vocabulary.
 

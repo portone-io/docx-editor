@@ -6,6 +6,7 @@ import { docxSchema } from "../../schema";
 import { editorAttributes } from "../../styles/classNames";
 import type { KindMeasure } from "../blockKinds";
 import { setPageMarks } from "../pageDecorations";
+import { DEFAULT_BLOCK_KINDS } from "./index";
 import { tableKind } from "./tableKind";
 
 let view: EditorView | null = null;
@@ -85,6 +86,7 @@ function measure(live: EditorView, table: HTMLElement, scale = 1): KindMeasure {
     node: live.state.doc.child(0),
     pos: 0,
     dom: table,
+    kinds: DEFAULT_BLOCK_KINDS,
     sheetY,
     top: sheetY(table.getBoundingClientRect().top),
     scale,

@@ -1,12 +1,19 @@
 // @vitest-environment jsdom
 import { unzipSync, zipSync } from "fflate";
+import type { Node as PMNode } from "prosemirror-model";
 import { describe, expect, it } from "vitest";
 import { makeDocx } from "../__testing__/docx";
 import { docxSchema } from "../schema";
 import { storyKey } from "../schema/stories";
 import { importDocx } from "./importDocx";
 import type { SessionStore } from "./session";
-import { type ImportedStory, storyFromText, storyOf, storyText } from "./story";
+import {
+  type ImportedStory,
+  storyFromText,
+  storyOf,
+  storyText,
+  withThreadKeyOn,
+} from "./story";
 
 const encoder = new TextEncoder();
 const REL_BASE =
@@ -165,5 +172,71 @@ describe("what a story reads as", () => {
         "comment:4"
       )
     ).toBe(null);
+  });
+});
+
+/**
+ * Word keeps a thread's `w14:paraId` on the last paragraph of the body, and a body ending in a
+ * block-level content control keeps that paragraph inside the control.
+ */
+describe("the thread key a comment body carries", () => {
+  function paragraph(text: string): PMNode {
+    return docxSchema.nodes.paragraph.create({}, [docxSchema.text(text)]);
+  }
+
+  function control(...blocks: PMNode[]): PMNode {
+    return docxSchema.nodes.sdtBlock.create(
+      { sdtPrefix: "<w:sdt><w:sdtPr/>", key: 1 },
+      blocks
+    );
+  }
+
+  function story(...blocks: PMNode[]): PMNode {
+    return docxSchema.nodes.doc.create(null, blocks);
+  }
+
+  /** The paragraphs of a story in order, the controls around them read through */
+  function paraIds(keyed: PMNode): (string | null)[] {
+    const found: (string | null)[] = [];
+    keyed.descendants((node) => {
+      if (node.type !== docxSchema.nodes.paragraph) return true;
+      const written: unknown = node.attrs.pAttrs;
+      const id =
+        typeof written === "string"
+          ? (written.match(/w14:paraId="([^"]+)"/)?.[1] ?? null)
+          : null;
+      found.push(id);
+      return false;
+    });
+    return found;
+  }
+
+  it("writes it inside a control holding the whole body", () => {
+    const keyed = withThreadKeyOn(
+      story(control(paragraph("only"))),
+      "11223344"
+    );
+
+    expect(paraIds(keyed)).toEqual(["11223344"]);
+    expect(keyed.child(0).type).toBe(docxSchema.nodes.sdtBlock);
+  });
+
+  it("writes it inside the control the body ends with, not on the loose paragraph", () => {
+    const keyed = withThreadKeyOn(
+      story(paragraph("loose"), control(paragraph("last"))),
+      "11223344"
+    );
+
+    expect(paraIds(keyed)).toEqual([null, "11223344"]);
+  });
+
+  it("leaves a key already written where it stands", () => {
+    const written = docxSchema.nodes.paragraph.create(
+      { pAttrs: 'w14:paraId="00000001"' },
+      [docxSchema.text("last")]
+    );
+    const before = story(control(written));
+
+    expect(withThreadKeyOn(before, "11223344")).toBe(before);
   });
 });

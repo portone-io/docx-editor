@@ -535,6 +535,26 @@ describe("pageLayout", () => {
     expect(result.cuts).toEqual([{ at: 100, height: PAGE - 600 + STEP }]);
   });
 
+  /**
+   * A control holding two blocks always offers the boundary between them, so a keep that only
+   * held for a block offering nothing would never hold for a control at all.
+   */
+  it("a block that only may be parted is still kept with the block after it", () => {
+    const control = {
+      height: 50,
+      keepWithNext: true,
+      candidates: rowBoundaries(0, 20),
+      minFirstPiece: 20,
+    };
+    const result = layout(blocks(900, control, 300));
+
+    expect(result.cuts).toEqual([]);
+    expect(result.pushes).toEqual([
+      { pos: 10, marginTop: PAGE + STEP - 900, push: PAGE + STEP - 900 },
+    ]);
+    expect(result.pages).toHaveLength(2);
+  });
+
   it("a keep does not reach across a page the document starts between the two", () => {
     const before = layout(
       blocks(
@@ -1209,15 +1229,15 @@ describe("the room a page keeps at its foot", () => {
 describe("the paper of each section", () => {
   const first: DocumentSection = {
     index: 0,
-    firstBlock: 0,
-    lastBlock: 1,
-    anchor: { kind: "paragraph", pos: 20 },
+    from: 0,
+    to: 20,
+    anchor: { kind: "paragraph", pos: 12 },
     props: DEFAULT_SECTION,
   };
   const last: DocumentSection = {
     index: 1,
-    firstBlock: 2,
-    lastBlock: 3,
+    from: 21,
+    to: 60,
     anchor: { kind: "body" },
     props: { ...DEFAULT_SECTION, geometry: LETTER_GEOMETRY },
   };

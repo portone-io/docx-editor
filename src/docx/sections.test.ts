@@ -8,6 +8,7 @@ import {
   LETTER_GEOMETRY as LETTER,
   LETTER_SECT_PR,
   makeDocx,
+  readFixture,
 } from "../__testing__/docx";
 import { childByLocalName, parseXml } from "../ooxml/xml";
 import { docxSchema } from "../schema";
@@ -21,6 +22,7 @@ import {
   parseSectionProperties,
   readSectionProperties,
   sectionAt,
+  sectionIn,
   sectionsOf,
   setSectionChild,
   withoutSectionBreak,
@@ -78,11 +80,11 @@ describe("the sections a document is written in", () => {
 
     const anchor = sections[0].anchor;
     expect(anchor).toEqual({ kind: "paragraph", pos: 0 });
-    expect(sections[0].firstBlock).toBe(0);
-    expect(sections[0].lastBlock).toBe(0);
+    expect(sections[0].from).toBe(0);
+    expect(sections[0].to).toBe(doc.child(0).nodeSize - 1);
     expect(sections[1].anchor).toEqual({ kind: "body" });
-    expect(sections[1].firstBlock).toBe(1);
-    expect(sections[1].lastBlock).toBe(1);
+    expect(sections[1].from).toBe(doc.child(0).nodeSize);
+    expect(sections[1].to).toBe(doc.content.size);
     // The position the anchor names is the paragraph that closes the section
     if (anchor.kind !== "paragraph") throw new Error("no paragraph anchor");
     expect(doc.resolve(anchor.pos + 1).parent.textContent).toBe(
@@ -90,6 +92,121 @@ describe("the sections a document is written in", () => {
     );
     expect(sectionAt(doc, 1).index).toBe(0);
     expect(sectionAt(doc, doc.content.size - 1).index).toBe(1);
+  });
+
+  /** The rule `spec/notes/sections.md` states for a break written inside a control */
+  it("reads a section break carried by a paragraph inside a content control", () => {
+    const { doc } = opened(
+      `<w:sdt><w:sdtPr><w:id w:val="7"/></w:sdtPr><w:sdtContent>` +
+        "<w:p><w:r><w:t>inside</w:t></w:r></w:p>" +
+        `<w:p><w:pPr>${LETTER_SECT_PR}</w:pPr>` +
+        "<w:r><w:t>ends the section</w:t></w:r></w:p>" +
+        "</w:sdtContent></w:sdt>" +
+        "<w:p><w:r><w:t>after the control</w:t></w:r></w:p>" +
+        A4_LANDSCAPE_SECT_PR
+    );
+    const control = doc.child(0);
+    expect(control.type.name).toBe("sdtBlock");
+
+    const sections = sectionsOf(doc);
+    expect(sections).toHaveLength(2);
+    expect(sections[0].props.geometry).toEqual(LETTER);
+    // The anchor names the paragraph inside the control, where the break is written
+    const anchor = sections[0].anchor;
+    if (anchor.kind !== "paragraph") throw new Error("no paragraph anchor");
+    expect(doc.resolve(anchor.pos + 1).parent.textContent).toBe(
+      "ends the section"
+    );
+    // The section reaches to the end of the control, and the block after it opens the next one
+    expect(sections[0].to).toBe(control.nodeSize - 1);
+    expect(sections[1].from).toBe(control.nodeSize);
+    expect(sectionAt(doc, anchor.pos + 1).index).toBe(0);
+    expect(sectionAt(doc, control.nodeSize + 1).index).toBe(1);
+  });
+
+  it("a control holding no break does not part the section it stands in", () => {
+    const { doc } = opened(
+      "<w:p><w:r><w:t>before</w:t></w:r></w:p>" +
+        `<w:sdt><w:sdtPr><w:id w:val="8"/></w:sdtPr><w:sdtContent>` +
+        "<w:p><w:r><w:t>inside</w:t></w:r></w:p>" +
+        "</w:sdtContent></w:sdt>" +
+        "<w:p><w:r><w:t>after</w:t></w:r></w:p>" +
+        A4_LANDSCAPE_SECT_PR
+    );
+
+    const sections = sectionsOf(doc);
+    expect(sections).toHaveLength(1);
+    expect(sections[0].anchor).toEqual({ kind: "body" });
+  });
+
+  /** Two breaks in one control collapse onto the first, and every position still reaches a section */
+  it("reads only the first of two breaks a control holds", () => {
+    const { doc } = opened(
+      "<w:p><w:r><w:t>before</w:t></w:r></w:p>" +
+        `<w:sdt><w:sdtPr><w:id w:val="9"/></w:sdtPr><w:sdtContent>` +
+        `<w:p><w:pPr>${LETTER_SECT_PR}</w:pPr>` +
+        "<w:r><w:t>ends the first</w:t></w:r></w:p>" +
+        `<w:p><w:pPr>${LETTER_SECT_PR}</w:pPr>` +
+        "<w:r><w:t>would end another</w:t></w:r></w:p>" +
+        "</w:sdtContent></w:sdt>" +
+        "<w:p><w:r><w:t>after</w:t></w:r></w:p>" +
+        A4_LANDSCAPE_SECT_PR
+    );
+    const sections = sectionsOf(doc);
+
+    expect(sections).toHaveLength(2);
+    expect(sections[0].props.geometry).toEqual(LETTER);
+    const anchor = sections[0].anchor;
+    if (anchor.kind !== "paragraph") throw new Error("no paragraph anchor");
+    expect(doc.resolve(anchor.pos + 1).parent.textContent).toBe(
+      "ends the first"
+    );
+
+    // Every position reaches exactly one section, and every section is reached
+    for (const section of sections) {
+      expect(section.from).toBeLessThanOrEqual(section.to);
+    }
+    const reached = new Set<number>();
+    for (let pos = 0; pos <= doc.content.size; pos += 1) {
+      const section = sectionIn(sections, pos);
+      expect(pos).toBeGreaterThanOrEqual(section.from);
+      expect(pos).toBeLessThanOrEqual(section.to);
+      reached.add(section.index);
+    }
+    expect(reached).toEqual(new Set([0, 1]));
+  });
+
+  /**
+   * A cell's paragraphs are not the sequence the body ends its sections in, so a `w:sectPr`
+   * written in one stays preserved markup rather than becoming a section.
+   */
+  it("reads no section off a paragraph inside a table cell", () => {
+    const { doc } = opened(
+      "<w:tbl><w:tr><w:tc>" +
+        `<w:p><w:pPr>${LETTER_SECT_PR}</w:pPr>` +
+        "<w:r><w:t>in a cell</w:t></w:r></w:p>" +
+        "</w:tc></w:tr></w:tbl>" +
+        A4_LANDSCAPE_SECT_PR
+    );
+
+    expect(sectionsOf(doc)).toHaveLength(1);
+  });
+
+  /** The one committed package holding a section break written inside a control */
+  it("reads the break the content controls fixture writes inside a control", () => {
+    const { doc } = importDocx(readFixture("content-controls.docx"));
+    const sections = sectionsOf(doc);
+
+    expect(sections).toHaveLength(2);
+    const anchor = sections[0].anchor;
+    if (anchor.kind !== "paragraph") throw new Error("no paragraph anchor");
+    expect(doc.resolve(anchor.pos).parent.type.name).toBe("sdtBlock");
+    // The two sections are told apart by the margins each one is written to
+    expect(sections[0].props.geometry.marginTopTwips).not.toBe(
+      sections[1].props.geometry.marginTopTwips
+    );
+    // Everything after the control belongs to the section the body closes
+    expect(sectionAt(doc, sections[0].to + 1).index).toBe(1);
   });
 
   it("the final sectPr goes back out byte for byte from the doc attribute", () => {
@@ -207,10 +324,14 @@ describe("the sections a document is written in", () => {
       doc.child(1),
     ]);
 
-    expect(sectionsOf(split).map((section) => section.firstBlock)).toEqual([
-      0, 2,
+    const halves = sectionsOf(split);
+    expect(halves.map((section) => section.from)).toEqual([
+      0,
+      split.child(0).nodeSize + split.child(1).nodeSize,
     ]);
-    expect(sectionsOf(split)[0].lastBlock).toBe(1);
+    expect(halves[0].to).toBe(
+      split.child(0).nodeSize + split.child(1).nodeSize - 1
+    );
   });
 });
 

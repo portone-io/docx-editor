@@ -12,6 +12,7 @@ import { canSplit } from "prosemirror-transform";
 import { splitParagraphAttrs } from "../../docx/cloning";
 import { toParagraphFormat } from "../../model/format";
 import { docxSchema } from "../../schema";
+import { isBlockControl } from "../../schema/controlAttrs";
 import type { NoteKind } from "../../schema/stories";
 import { removeEmptyBlockControl } from "../blockControlEdits";
 import { insertLineBreak, insertPageBreak } from "../commands/breakCommands";
@@ -96,11 +97,18 @@ function keptEveryAttr(paragraph: PMNode, attrs: Attrs): boolean {
   );
 }
 
+/**
+ * Whether the caret stands in the empty paragraph that keeps two tables apart, which Backspace
+ * would otherwise take away and leave Word reading the two `w:tbl` siblings as one table.
+ *
+ * The paragraph is judged by what holds it rather than by its depth: the body and a block-level
+ * content control both lay their blocks down as one sequence, so two tables inside one control are
+ * siblings exactly as two tables under the body are. A cell's paragraphs are not that sequence.
+ */
 const preserveTableFollowingParagraph: Command = (state) => {
   const { $from } = state.selection;
   if (
     !state.selection.empty ||
-    $from.depth !== 1 ||
     $from.parent.type !== docxSchema.nodes.paragraph ||
     $from.parent.content.size !== 0 ||
     $from.parentOffset !== 0
@@ -108,10 +116,14 @@ const preserveTableFollowingParagraph: Command = (state) => {
     return false;
   }
 
-  const paragraphIndex = $from.index(0);
+  const container = $from.node(-1);
+  const holdsBlocks =
+    container.type === docxSchema.nodes.doc || isBlockControl(container);
+  const paragraphIndex = $from.index(-1);
   return (
+    holdsBlocks &&
     paragraphIndex > 0 &&
-    state.doc.child(paragraphIndex - 1).type.spec.tableRole === "table"
+    container.child(paragraphIndex - 1).type.spec.tableRole === "table"
   );
 };
 

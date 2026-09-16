@@ -107,9 +107,8 @@ export const A4_SECTION_PIXELS: readonly SectionPixels[] = [
 export function sectionPixels(
   sections: readonly DocumentSection[]
 ): SectionPixels[] {
-  return sections.map(({ anchor, props }) => ({
-    untilPos:
-      anchor.kind === "paragraph" ? anchor.pos : Number.POSITIVE_INFINITY,
+  return sections.map(({ anchor, to, props }) => ({
+    untilPos: anchor.kind === "paragraph" ? to : Number.POSITIVE_INFINITY,
     pixels: pagePixels(props.geometry),
     type: props.type,
   }));
@@ -433,9 +432,13 @@ function withinSections(
 
 /**
  * Whether the keep a block asks for can hold between it and the block after it.
- * A block parted inside itself starts its last piece where the cut put it, so there is nothing a
- * keep could move; and a page the document starts between the two is one no keep can close, the
- * start of a section that opens one included.
+ * A block the document parts inside itself starts its last piece where the break put it, so there
+ * is nothing a keep could move; and a page the document starts between the two is one no keep can
+ * close, the start of a section that opens one included.
+ *
+ * A place the block merely may be parted at - a table row, a boundary between two blocks of a
+ * content control - leaves the keep standing: it is taken only where the block runs off the page,
+ * and a run of keeps that cannot fit a page is let go whole (`keptExtents`).
  */
 function keepsWithNext(
   block: MeasuredBlock,
@@ -445,7 +448,7 @@ function keepsWithNext(
   return (
     block.keepWithNext &&
     !opensPage &&
-    block.candidates.length === 0 &&
+    !block.candidates.some((candidate) => candidate.forced) &&
     !block.breakAfter &&
     !next.breakBefore
   );

@@ -11,6 +11,7 @@
 
 import type { Node as PMNode } from "prosemirror-model";
 import type { Decoration, EditorView } from "prosemirror-view";
+import { editorAttributes } from "../styles/classNames";
 import type { PageDemand } from "./demands";
 
 /** A place inside a block where the next page may, or must, start */
@@ -67,6 +68,8 @@ export interface MeasureTarget {
   node: PMNode;
   pos: number;
   dom: HTMLElement;
+  /** The kinds the editor was built with, which a container measures what it holds by */
+  kinds: readonly BlockKind[];
   /**
    * Sheet coordinates from viewport coordinates: the visual scale taken out, and everything the
    * engine has opened up above this block taken back off
@@ -85,6 +88,13 @@ export interface KindMeasure {
   minFirstPiece: number;
   /** The block holds a break it could not open a space at, so the next block starts a page */
   breakAfter: boolean;
+  /**
+   * The block opens a page because what it starts with says so, which the sheet cannot read off
+   * the block's own element: a container draws no properties of its own, so a control whose first
+   * block asks for a page is the one place this is not the block's own attribute
+   * (`page/measureBlocks`). A kind whose blocks never do leaves it out
+   */
+  breakBefore?: boolean;
   /** Height the engine's own marks add inside this block, taken off its measured bottom */
   appliedHeight: number;
   /**
@@ -117,7 +127,7 @@ export interface BlockKind {
   matches(node: PMNode): boolean;
   measure(target: MeasureTarget): KindMeasure;
   /** Whether `at` still names a place this kind can cut at in `doc`; a false drops the cut */
-  holdsCut(doc: PMNode, at: number): boolean;
+  holdsCut(doc: PMNode, at: number, kinds: readonly BlockKind[]): boolean;
   /**
    * The decorations one block of this kind carries: the cuts the layout gave it, plus whatever it
    * needs before any measurement (a paragraph puts an empty space on every page `br`, so the
@@ -127,8 +137,22 @@ export interface BlockKind {
     pos: number,
     node: PMNode,
     cuts: readonly PageCut[],
-    into: Decoration[]
+    into: Decoration[],
+    kinds: readonly BlockKind[]
   ): void;
+}
+
+/**
+ * Whether a block opens a page of its own: what it wrote onto its own element, or what its kind
+ * had to answer for it. A container draws none of the paragraph properties of the blocks it
+ * holds, so a control whose first block asks for a page is the one place the sheet cannot read
+ * the break off the element, and both halves of the rule are needed at every level of nesting.
+ */
+export function opensPage(dom: HTMLElement, measured: KindMeasure): boolean {
+  return (
+    dom.hasAttribute(editorAttributes.pageBreakBefore) ||
+    measured.breakBefore === true
+  );
 }
 
 /** The first kind whose `matches` answers. The kind registered last has to match every block */

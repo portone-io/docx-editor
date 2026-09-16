@@ -20,7 +20,6 @@ import {
 } from "../ooxml/partSplice";
 import { isOnElement } from "../ooxml/units";
 import { decodeUtf8, encodeUtf8, parseXml, R_NS, W_NS } from "../ooxml/xml";
-import { docxSchema } from "../schema";
 import {
   HEADER_FOOTER_KINDS,
   type HeaderFooterKind,
@@ -47,6 +46,7 @@ import {
   type StoryDeps,
   storyLeafText,
 } from "./story";
+import { storyParagraphs } from "./storyBlocks";
 import { storyChangesOf } from "./storyParts";
 
 /** One story a section may show, as the document currently says it */
@@ -181,12 +181,10 @@ export function readHeaderFooterStories(
  * the reader's own writing direction lays it out, not the way some later paragraph is aligned.
  */
 function firstAlign(story: PMNode): ParagraphAlign | null {
-  for (let at = 0; at < story.childCount; at += 1) {
-    const block = story.child(at);
-    if (block.type !== docxSchema.nodes.paragraph) continue;
-    return toParagraphFormat(block.attrs.format)?.align ?? null;
-  }
-  return null;
+  const first = storyParagraphs(story).at(0);
+  return first === undefined
+    ? null
+    : (toParagraphFormat(first.attrs.format)?.align ?? null);
 }
 
 function variantContent(
@@ -348,13 +346,9 @@ export function headerFooterText(
   page: number,
   totalPages: number
 ): string {
-  const lines: string[] = [];
-  story.forEach((block) => {
-    if (block.type === docxSchema.nodes.paragraph) {
-      lines.push(paragraphText(block, page, totalPages));
-    }
-  });
-  return lines.join("\n");
+  return storyParagraphs(story)
+    .map((paragraph) => paragraphText(paragraph, page, totalPages))
+    .join("\n");
 }
 
 /**

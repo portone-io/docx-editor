@@ -104,7 +104,8 @@ function decorationsFor(
       offset,
       node,
       byBlock.get(offset) ?? [],
-      decorations
+      decorations,
+      kinds
     );
   });
   return DecorationSet.create(doc, decorations);
@@ -134,7 +135,7 @@ function stillCuts(
   const $at = doc.resolve(at);
   if ($at.depth === 0) return false;
   const block = doc.nodeAt($at.before(1));
-  return block !== null && blockKindFor(kinds, block).holdsCut(doc, at);
+  return block !== null && blockKindFor(kinds, block).holdsCut(doc, at, kinds);
 }
 
 /**

@@ -1016,6 +1016,20 @@ button.docx-editor-comment-body {
 }
 
 /*
+ * The space a block-level content control opens between two of the blocks it holds, so what
+ * follows starts the next page (`page/kinds/sdtBlockKind`). The control's own outline runs down
+ * both pieces of the cut and needs nothing drawn here, but the background a shut control paints
+ * would run down the rest of the page with it, so the space paints the paper back over it. The
+ * gutter below is broken by `.docx-editor-page-split`, which is drawn over the sheet.
+ */
+.docx-editor-sdt-block > [data-container-page-space] {
+  pointer-events: none;
+  user-select: none;
+  line-height: 0;
+  background: #ffffff;
+}
+
+/*
  * A whole cell shut by the control around it, and the cells of a whole row shut by the control
  * around the row, which carry no lock of their own. The same yellow, outlined just inside the cell
  * border so the mark follows the cell rather than the text standing in it.

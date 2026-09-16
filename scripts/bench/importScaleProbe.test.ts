@@ -25,6 +25,7 @@ import {
   FOOTNOTE_BAND,
   footnoteDemands,
 } from "../../src/page/demands/footnoteDemands";
+import { DEFAULT_BLOCK_KINDS } from "../../src/page/kinds";
 import { pageLayout, sectionPixels } from "../../src/page/pageLayout";
 import { DEFAULT_FONT_FALLBACKS } from "../../src/styles/fontStack";
 
@@ -214,6 +215,7 @@ function measureNotes(withNotes: boolean): NoteTimings {
         node,
         pos,
         dom,
+        kinds: DEFAULT_BLOCK_KINDS,
         sheetY: (y) => y,
         top: 0,
         scale: 1,

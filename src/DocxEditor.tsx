@@ -626,7 +626,7 @@ function DocxEditorSurface(
       )
     );
     return (face: PageFace): HeadersFooters | null =>
-      shown[sectionIn(sections, doc, face.pos).index] ?? null;
+      shown[sectionIn(sections, face.pos).index] ?? null;
   }, [doc, session, sections]);
 
   if (opened?.status === "rejected") {

@@ -74,6 +74,33 @@ describe("Backspace", () => {
     expect(state.doc.child(1).type.name).toBe("paragraph");
   });
 
+  /**
+   * A control lays its blocks down as one sequence exactly as the body does, so the paragraph
+   * between two tables inside one keeps them apart the same way (§17.5.2.34).
+   */
+  it("keeps an empty paragraph between two tables inside a content control", () => {
+    const table = "<w:tbl><w:tr><w:tc><w:p/></w:tc></w:tr></w:tbl>";
+    const body =
+      `<w:sdt><w:sdtPr><w:id w:val="9"/></w:sdtPr><w:sdtContent>` +
+      `${table}<w:p/>${table}` +
+      "</w:sdtContent></w:sdt>";
+    const state = createEditorState(importDocx(makeDocx(body)).doc);
+    const control = state.doc.child(0);
+    expect(control.type.name).toBe("sdtBlock");
+    const paragraphStart = 1 + control.child(0).nodeSize + 1;
+
+    expect(docxKeymap.Backspace(select(state, paragraphStart))).toBe(true);
+    expect(control.child(1).type.name).toBe("paragraph");
+  });
+
+  /** A cell's paragraphs are not that sequence, so the base keymap still answers for one */
+  it("leaves a paragraph inside a table cell to the base keymap", () => {
+    const state = tableFollowedByParagraph();
+    const cellParagraph = 3;
+
+    expect(docxKeymap.Backspace(select(state, cellParagraph))).toBe(false);
+  });
+
   it("leaves a non-empty paragraph after a table to the base keymap", () => {
     const state = tableFollowedByParagraph(
       '<w:r><w:t xml:space="preserve">after</w:t></w:r>'

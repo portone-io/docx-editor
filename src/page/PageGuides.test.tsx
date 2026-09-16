@@ -134,7 +134,7 @@ describe("page header and footer guides", () => {
       <PageGuides
         overlay={{ ...overlay, pages: [face(1, 40), secondSection] }}
         headersFootersFor={(page) =>
-          shown[sectionIn(sections, doc, page.pos).index] ?? null
+          shown[sectionIn(sections, page.pos).index] ?? null
         }
       />
     );

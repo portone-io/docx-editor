@@ -35,6 +35,7 @@ import {
   type PageGeometry,
   readPageGeometry,
 } from "./pageGeometry";
+import { eachStoryParagraph } from "./storyBlocks";
 
 export type HeaderFooterVariant = "default" | "first" | "even";
 
@@ -95,16 +96,19 @@ export const DEFAULT_SECTION: SectionProperties = {
   endnotePr: null,
 };
 
-/** Which `w:sectPr` closes a section: the paragraph carrying it, or the body itself */
+/**
+ * Which `w:sectPr` closes a section: the paragraph carrying it, wherever in the document that
+ * paragraph stands, or the body itself.
+ */
 export type SectionAnchor =
   | { kind: "paragraph"; pos: number }
   | { kind: "body" };
 
 export interface DocumentSection {
   index: number;
-  /** Top-level block indexes this section covers, inclusive */
-  firstBlock: number;
-  lastBlock: number;
+  /** Document positions this section covers, inclusive */
+  from: number;
+  to: number;
   anchor: SectionAnchor;
   props: SectionProperties;
 }
@@ -337,33 +341,61 @@ export function setSectionChild(
 }
 
 /**
+ * The section break a top-level block lays down, and where the paragraph carrying it stands.
+ *
+ * The first is the only one read, because a block ends at most one section. Which paragraphs a
+ * block stands for, and why a block holding two breaks is the shape this has to answer for, are
+ * in `spec/notes/sections.md`.
+ */
+function firstSectionBreak(
+  block: PMNode,
+  pos: number
+): { pos: number; xml: string } | null {
+  let found: { pos: number; xml: string } | null = null;
+  eachStoryParagraph(block, pos, (paragraph, paragraphPos) => {
+    if (found !== null) return;
+    const brk = sectionBreakOf(pPrText(paragraph));
+    if (brk !== null) found = { pos: paragraphPos, xml: brk };
+  });
+  return found;
+}
+
+/**
  * Every section of the document in order, the last of them the one the document node carries.
  *
  * A document naming no section at all still has one, drawn on the paper `DEFAULT_SECTION` lays
- * down. The last section covers no block where the final paragraph itself ends a section, which
- * leaves `firstBlock` past `lastBlock`.
+ * down. Sections are keyed by document position rather than by the index of a top-level block,
+ * because the paragraph that ends one may stand inside a block-level content control.
+ *
+ * A section ends where the top-level block holding its last paragraph ends, which is what
+ * `spec/notes/sections.md` reads off §17.6.18 for a break written inside a control. A document
+ * whose final block ends a section leaves the last section covering that one position alone.
  */
 export function sectionsOf(doc: PMNode): readonly DocumentSection[] {
   const sections: DocumentSection[] = [];
-  let firstBlock = 0;
-  doc.forEach((child, offset, index) => {
-    const brk = sectionBreakOf(pPrText(child));
+  let from = 0;
+  doc.forEach((child, offset) => {
+    const brk = firstSectionBreak(child, offset);
     if (brk === null) return;
+    const end = offset + child.nodeSize;
     sections.push({
       index: sections.length,
-      firstBlock,
-      lastBlock: index,
-      anchor: { kind: "paragraph", pos: offset },
-      props: parseSectionProperties(brk) ?? { ...DEFAULT_SECTION, xml: brk },
+      from,
+      to: end - 1,
+      anchor: { kind: "paragraph", pos: brk.pos },
+      props: parseSectionProperties(brk.xml) ?? {
+        ...DEFAULT_SECTION,
+        xml: brk.xml,
+      },
     });
-    firstBlock = index + 1;
+    from = end;
   });
   const body: unknown = doc.attrs.sectPr;
   const xml = typeof body === "string" ? body : null;
   sections.push({
     index: sections.length,
-    firstBlock,
-    lastBlock: doc.childCount - 1,
+    from,
+    to: doc.content.size,
     anchor: { kind: "body" },
     props:
       xml === null
@@ -381,19 +413,15 @@ export function sectionsOf(doc: PMNode): readonly DocumentSection[] {
  */
 export function sectionIn(
   sections: readonly DocumentSection[],
-  doc: PMNode,
   pos: number
 ): DocumentSection {
-  const index = doc
-    .resolve(Math.min(Math.max(pos, 0), doc.content.size))
-    .index(0);
   return (
-    sections.find((section) => index <= section.lastBlock) ??
+    sections.find((section) => pos <= section.to) ??
     sections[sections.length - 1]
   );
 }
 
 /** The section the block at this position belongs to */
 export function sectionAt(doc: PMNode, pos: number): DocumentSection {
-  return sectionIn(sectionsOf(doc), doc, pos);
+  return sectionIn(sectionsOf(doc), pos);
 }

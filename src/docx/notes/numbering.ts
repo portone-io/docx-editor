@@ -35,16 +35,16 @@ interface SectionReferences {
  * most of them - has no need to pay for on opening.
  */
 function referencesBySection(doc: PMNode): readonly SectionReferences[] {
-  const found: { readonly block: number; readonly reference: Reference }[] = [];
-  eachNoteReference(doc, ({ node, pos, block }) => {
-    found.push({ block, reference: { pos, node } });
+  const found: Reference[] = [];
+  eachNoteReference(doc, ({ node, pos }) => {
+    found.push({ pos, node });
   });
   if (found.length === 0) return [];
   const sections = sectionsOf(doc);
   const references: Reference[][] = sections.map(() => []);
   let at = 0;
-  for (const { block, reference } of found) {
-    while (block > sections[at].lastBlock) at += 1;
+  for (const reference of found) {
+    while (reference.pos > sections[at].to) at += 1;
     references[at].push(reference);
   }
   return sections.map((section, index) => ({

@@ -5,6 +5,7 @@ import { type EditorState, TextSelection } from "prosemirror-state";
 import { describe, expect, it, vi } from "vitest";
 import { makeDocx, makeNotesDocx, NOTE_BODY } from "../__testing__/docx";
 import { importDocx } from "../docx/importDocx";
+import { sectionsOf } from "../docx/sections";
 import { createEditorState } from "../editor/createEditor";
 import { deleteColumn, deleteRow, deleteTable } from "../table";
 import { editShut, transactionAllowed } from "./guards";
@@ -515,6 +516,95 @@ describe("a guard over the sections a document was opened with", () => {
     expect(
       transactionAllowed(state.tr.insertText("new", at + 1, at + 4), state)
     ).toBe(true);
+  });
+
+  /**
+   * The guard counts the breaks a document carries and `docx/sections` reads the sections they lay
+   * down, so the two have to see the same paragraph. A break inside a block-level content control
+   * is one both answer for; a break inside a table cell is the one place they part, on purpose:
+   * the cell's paragraphs are not the sequence the body ends its sections in, so no section is
+   * read off one, while the markup is still guarded against being joined away.
+   */
+  it("agrees with the section reader about a break inside a content control", () => {
+    const inAControl = createEditorState(
+      importDocx(
+        makeDocx(
+          `<w:p>${runXml("one")}</w:p>` +
+            '<w:sdt><w:sdtPr><w:id w:val="3"/></w:sdtPr><w:sdtContent>' +
+            `<w:p><w:pPr>${SECT_PR}</w:pPr>${runXml("two")}</w:p>` +
+            "</w:sdtContent></w:sdt>"
+        )
+      ).doc
+    );
+    const control = inAControl.doc.child(inAControl.doc.childCount - 1);
+    expect(control.type.name).toBe("sdtBlock");
+    const at = inAControl.doc.content.size - control.nodeSize + 1;
+
+    expect(sectionsOf(inAControl.doc)).toHaveLength(2);
+    // Joining the paragraph inside the control away would take the section with it
+    expect(
+      transactionAllowed(inAControl.tr.delete(at - 1, at + 1), inAControl)
+    ).toBe(false);
+  });
+
+  it("guards a break inside a table cell that lays down no section", () => {
+    const inACell = createEditorState(
+      importDocx(
+        makeDocx(
+          `<w:p>${runXml("one")}</w:p>` +
+            "<w:tbl><w:tr><w:tc>" +
+            `<w:p><w:pPr>${SECT_PR}</w:pPr>${runXml("two")}</w:p>` +
+            `<w:p>${runXml("three")}</w:p>` +
+            "</w:tc></w:tr></w:tbl>"
+        )
+      ).doc
+    );
+    let breakAt = -1;
+    inACell.doc.descendants((node, pos) => {
+      if (breakAt < 0 && typeof node.attrs.pPr === "string") breakAt = pos;
+      return true;
+    });
+
+    expect(sectionsOf(inACell.doc)).toHaveLength(1);
+    expect(breakAt).toBeGreaterThan(0);
+    // The markup is still the guard's, so taking that paragraph away is refused
+    const paragraph = inACell.doc.nodeAt(breakAt);
+    if (!paragraph) throw new Error("no paragraph carrying a section break");
+    expect(
+      transactionAllowed(
+        inACell.tr.delete(breakAt, breakAt + paragraph.nodeSize),
+        inACell
+      )
+    ).toBe(false);
+  });
+
+  /**
+   * A block ends at most one section, so the second break a control holds lays none down. The
+   * markup is still the guard's, which is what keeps it from being joined away unsaid.
+   */
+  it("guards the second break a control holds, which lays down no section", () => {
+    const state = createEditorState(
+      importDocx(
+        makeDocx(
+          `<w:p>${runXml("one")}</w:p>` +
+            '<w:sdt><w:sdtPr><w:id w:val="4"/></w:sdtPr><w:sdtContent>' +
+            `<w:p><w:pPr>${SECT_PR}</w:pPr>${runXml("two")}</w:p>` +
+            `<w:p><w:pPr>${SECT_PR}</w:pPr>${runXml("three")}</w:p>` +
+            "</w:sdtContent></w:sdt>"
+        )
+      ).doc
+    );
+    const control = state.doc.child(state.doc.childCount - 1);
+    const controlPos = state.doc.content.size - control.nodeSize;
+    const secondAt = controlPos + 1 + control.child(0).nodeSize;
+
+    expect(sectionsOf(state.doc)).toHaveLength(2);
+    expect(
+      transactionAllowed(
+        state.tr.delete(secondAt, secondAt + control.child(1).nodeSize),
+        state
+      )
+    ).toBe(false);
   });
 
   it("does not read the section break a tracked change kept", () => {

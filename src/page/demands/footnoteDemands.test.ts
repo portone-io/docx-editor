@@ -4,6 +4,7 @@ import { EditorView } from "prosemirror-view";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { docxSchema } from "../../schema";
 import type { MeasureTarget } from "../blockKinds";
+import { DEFAULT_BLOCK_KINDS } from "../kinds";
 import { FOOTNOTE_BAND, footnoteDemands } from "./footnoteDemands";
 
 const { doc, paragraph, table, tableRow, tableCell, noteReference } =
@@ -84,6 +85,7 @@ function blockTarget(live: EditorView, index: number): MeasureTarget {
     node,
     pos,
     dom,
+    kinds: DEFAULT_BLOCK_KINDS,
     sheetY: (viewportY) => viewportY - 10,
     top: 100,
     scale: 1,
