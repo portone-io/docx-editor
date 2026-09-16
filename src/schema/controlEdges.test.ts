@@ -434,19 +434,20 @@ describe("a control holding nothing", () => {
     ["contentLocked, which shuts its contents alone", "contentLocked", true],
     ["sdtLocked, which shuts it against deletion", "sdtLocked", false],
   ])(
-    "is selected whole and deleted where it states %s -> %s",
+    "goes with a stretch that covers it where it states %s -> %s",
     (_n, lock, goes) => {
       const state = stateOf(P("Head") + empty(lock) + P("Tail"));
-      const at = state.doc.child(0).nodeSize;
-      const before = state.apply(
-        state.tr.setSelection(NodeSelection.create(state.doc, at))
+      const before = select(
+        state,
+        endOf(state.doc, "Head"),
+        startOf(state.doc, "Tail")
       );
 
       const after = before.apply(before.tr.deleteSelection());
 
       expect(shape(after.doc)).toBe(
         goes
-          ? "paragraph(Head) paragraph(Tail)"
+          ? "paragraph(HeadTail)"
           : "paragraph(Head) sdtEmpty() paragraph(Tail)"
       );
     }
@@ -454,25 +455,164 @@ describe("a control holding nothing", () => {
 
   /**
    * The node holds no spot a caret could stand in, and the editor registers no gap cursor
-   * (`editor/createEditor`), so what stands either side of it is where a caret goes. A document
-   * opening on one answers with the node itself selected, which is a place to act from rather
-   * than a caret stranded inside it.
+   * (`editor/createEditor`), so what stands either side of it is where a caret goes. It is not
+   * selectable either: it draws nothing, so a node selection would leave the user in a state with
+   * nothing on screen to show it, and the next keystroke would replace a control they cannot see.
    */
   it("leaves the caret free where two of them stand next to each other", () => {
     const state = stateOf(empty() + empty("", 2) + P("Tail"));
 
     expect(shape(state.doc)).toBe("sdtEmpty() sdtEmpty() paragraph(Tail)");
-    expect(state.selection).toBeInstanceOf(NodeSelection);
-    expect(state.selection.from).toBe(0);
+    expect(NodeSelection.isSelectable(state.doc.child(0))).toBe(false);
+    expect(state.selection.empty).toBe(true);
+    expect(state.selection.$from.parent.textContent).toBe("Tail");
 
     const caret = select(state, startOf(state.doc, "Tail"));
     expect(caret.selection.empty).toBe(true);
     expect(caret.selection.$from.parent.textContent).toBe("Tail");
+  });
+});
 
-    const second = state.apply(
-      state.tr.setSelection(NodeSelection.create(state.doc, 1))
+/**
+ * A control a paragraph holds with nothing inside it is an inline atom (`docx/wrappers`),
+ * so it stands between the runs rather than around them. A keystroke beside it passes over it and
+ * takes what stands beyond it, as if it were not there, and only a selection covering it takes the
+ * control away, which is the deletion clause's question (`./locks`).
+ */
+describe("a control a paragraph holds with nothing inside it", () => {
+  const empty = (lock = "", id = 1) =>
+    `<w:sdt><w:sdtPr><w:id w:val="${id}"/>` +
+    (lock === "" ? "" : `<w:lock w:val="${lock}"/>`) +
+    "</w:sdtPr><w:sdtContent></w:sdtContent></w:sdt>";
+  const run = (text: string) =>
+    `<w:r><w:t xml:space="preserve">${text}</w:t></w:r>`;
+  const line = (inline: string) => `<w:p>${inline}</w:p>`;
+
+  /** The inline nodes of the one paragraph, a control spelled out as the nothing it holds */
+  function inlines(doc: PMNode): string {
+    const parts: string[] = [];
+    doc.child(0).forEach((child) => {
+      parts.push(child.isText ? `text(${child.text})` : `${child.type.name}()`);
+    });
+    return parts.join(" ");
+  }
+
+  /** Where the one control stands, which holds no text to be found by */
+  function controlAt(doc: PMNode): number {
+    let found = -1;
+    doc.descendants((node, pos) => {
+      if (found < 0 && node.type.name === "sdtEmptyInline") found = pos;
+    });
+    if (found < 0) throw new Error("no control holding nothing");
+    return found;
+  }
+
+  it("takes the character before it on Backspace from the text after it", () => {
+    const state = stateOf(line(run("ab") + empty() + run("cd")));
+    const before = select(state, controlAt(state.doc) + 1);
+
+    const after = press(before, backspace);
+
+    expect(inlines(after.doc)).toBe("text(a) sdtEmptyInline() text(cd)");
+    expect(after.selection.from).toBe(controlAt(after.doc) + 1);
+  });
+
+  it("takes the character after it on Delete from the text before it", () => {
+    const state = stateOf(line(run("ab") + empty() + run("cd")));
+    const before = select(state, controlAt(state.doc));
+
+    const after = press(before, del);
+
+    expect(inlines(after.doc)).toBe("text(ab) sdtEmptyInline() text(d)");
+    expect(after.selection.from).toBe(controlAt(after.doc));
+  });
+
+  it("passes a run of them in one keystroke", () => {
+    const state = stateOf(line(run("ab") + empty() + empty("", 2) + run("cd")));
+    const before = select(state, controlAt(state.doc) + 2);
+
+    const after = press(before, backspace);
+
+    expect(inlines(after.doc)).toBe(
+      "text(a) sdtEmptyInline() sdtEmptyInline() text(cd)"
     );
-    expect(second.selection.from).toBe(1);
+    expect(after.selection.from).toBe(controlAt(after.doc) + 2);
+  });
+
+  /**
+   * The key takes what stands beyond the run, and at the start of a line that is the line break
+   * itself: the paragraph joins the one above it as it would with no control standing there.
+   */
+  it("joins the line into the one above where it opens one", () => {
+    const state = stateOf(P("Above") + line(empty() + run("cd")));
+    const before = select(state, controlAt(state.doc) + 1);
+
+    const after = press(before, backspace);
+
+    expect(after.doc.childCount).toBe(1);
+    expect(inlines(after.doc)).toBe("text(Above) sdtEmptyInline() text(cd)");
+  });
+
+  /**
+   * What the key takes is the character beyond the run, never the control: the lock has nothing to
+   * refuse here, and the control the file keeps stays where it stood.
+   */
+  it("leaves a control locked against deletion standing", () => {
+    const state = stateOf(line(run("ab") + empty("sdtLocked") + run("cd")));
+    const before = select(state, controlAt(state.doc) + 1);
+
+    const after = press(before, backspace);
+
+    expect(inlines(after.doc)).toBe("text(a) sdtEmptyInline() text(cd)");
+  });
+
+  /**
+   * The node holds nothing, so there is no inside for a character to land in: what a keystroke
+   * beside it writes stands beside it, wearing none of what the control states.
+   */
+  it("types beside it rather than inside it", () => {
+    const state = stateOf(line(run("ab") + empty() + run("cd")));
+    const at = controlAt(state.doc);
+    const before = select(state, at + 1);
+
+    const after = before.apply(before.tr.insertText("X", at + 1));
+    const typed = after.doc.child(0).child(2);
+
+    expect(after.doc.child(0).child(1).type.name).toBe("sdtEmptyInline");
+    expect(typed.text).toBe("X");
+    expect(typed.marks.map((mark) => mark.type.name)).toEqual([]);
+  });
+
+  it.each([
+    ["nothing at all", "", true],
+    ["contentLocked, which shuts its contents alone", "contentLocked", true],
+    ["sdtLocked, which shuts it against deletion", "sdtLocked", false],
+  ])(
+    "goes with a stretch that covers it where it states %s -> %s",
+    (_n, lock, goes) => {
+      const state = stateOf(line(run("ab") + empty(lock) + run("cd")));
+      const at = controlAt(state.doc);
+      const before = select(state, at, at + 1);
+
+      const after = before.apply(before.tr.deleteSelection());
+
+      expect(inlines(after.doc)).toBe(
+        goes ? "text(abcd)" : "text(ab) sdtEmptyInline() text(cd)"
+      );
+    }
+  );
+
+  /**
+   * It takes no width, so a node selection of it would show nothing at all, and the keystroke
+   * after it would replace a control the user cannot see. Only a stretch covering it reaches it,
+   * which is the deletion clause's question (`./locks`).
+   */
+  it("is no node a selection can settle on", () => {
+    const state = stateOf(line(run("ab") + empty() + run("cd")));
+    const control = state.doc.child(0).child(1);
+
+    expect(control.type.name).toBe("sdtEmptyInline");
+    expect(NodeSelection.isSelectable(control)).toBe(false);
   });
 });
 

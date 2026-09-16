@@ -27,14 +27,3 @@ export function serializeSdtBlock(
     node.children.map((block) => writeBlock(block, refs)).join("")
   );
 }
-
-/**
- * A control holding nothing, which is the same opening around a content tag with nothing in it.
- *
- * A control that arrived writing no content element at all gains one here. The two shapes state
- * the same thing - §17.5.2.34 makes the element a cache of what stood inside - and only a control
- * something rewrote reaches this at all; one nobody touched goes out as the bytes it arrived as.
- */
-export function serializeSdtEmpty(node: PMNode): string {
-  return sdtXml(node.attrs.sdtPrefix, "");
-}

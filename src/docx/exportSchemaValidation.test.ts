@@ -677,6 +677,42 @@ describe("the exported package against the OOXML schemas", () => {
   });
 
   /**
+   * The same control standing inside a paragraph, which `CT_SdtContentRun` admits with nothing
+   * inside it for the same reason. Editing the paragraph is what sends it through the writer, and
+   * the outer control it stands in has to close around it again.
+   */
+  it("a control a paragraph holds with nothing inside it validates", () => {
+    const { doc, session } = importDocx(
+      makeDocx(
+        "<w:p><w:r><w:t>beside</w:t></w:r>" +
+          '<w:sdt><w:sdtPr><w:id w:val="7"/></w:sdtPr>' +
+          "<w:sdtContent></w:sdtContent></w:sdt>" +
+          '<w:sdt><w:sdtPr><w:id w:val="8"/></w:sdtPr></w:sdt>' +
+          '<w:sdt><w:sdtPr><w:id w:val="9"/></w:sdtPr><w:sdtContent>' +
+          "<w:r><w:t>held</w:t></w:r>" +
+          '<w:sdt><w:sdtPr><w:id w:val="10"/></w:sdtPr>' +
+          "<w:sdtContent></w:sdtContent></w:sdt>" +
+          "</w:sdtContent></w:sdt></w:p>"
+      )
+    );
+
+    const written = exportDocx(
+      withEditedFirst(doc, "paragraph", "Edited"),
+      session
+    );
+
+    expect(
+      decode(unzipSync(written)[session.mainPartPath]).split(
+        "<w:sdtContent></w:sdtContent>"
+      )
+    ).toHaveLength(4);
+    expectPartsValidate(
+      "a control a paragraph holds with nothing inside it",
+      wordprocessingParts(written)
+    );
+  });
+
+  /**
    * What the internal clipboard channel puts in is the very nodes that were copied, normalized
    * against the document receiving them (`editor/clipboard/normalizers`). The part the validator
    * reads therefore holds one block the export handed back untouched and one it wrote from the

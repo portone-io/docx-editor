@@ -7,30 +7,38 @@
  * export rebuilds it from the marks (`schema/wrappers` holds the order, `docx/importParagraph`
  * reads, `docx/serializeParagraph` writes).
  *
- * A kind knows three things and nothing about either walk: what a mark reads out of one element,
- * what opens it again, and what closes it. Tracked changes (`w:ins`, `w:del`) and simple fields
- * (`w:fldSimple`) are wrappers of the same shape. Registering one is an entry here and a mark spec
- * in `schema/docxSchema` carrying `WRAPPER_ATTRS`; its attrs also want a row in
- * `schema/attrRoles`, and two test lists name the kinds outright (`WRAPPERS_READS` in
- * `schema/attrClasses.test.ts`, the kind list in `schema/wrappers.test.ts`). Neither paragraph walk
- * and neither policy table has to be touched.
+ * A kind knows four things and nothing about either walk: what a mark reads out of one element,
+ * what one holding nothing opens as instead, what opens the element again, and what closes it. A
+ * wrapper holding nothing leaves a mark nothing to sit on, so the kind says whether it has a node
+ * of its own for that shape. Tracked changes (`w:ins`, `w:del`) and simple fields (`w:fldSimple`)
+ * are wrappers of the same shape. Registering one is an entry here and a mark spec in
+ * `schema/docxSchema` carrying `WRAPPER_ATTRS`; its attrs also want a row in `schema/attrRoles`,
+ * and two test lists name the kinds outright (`WRAPPERS_READS` in `schema/attrClasses.test.ts`,
+ * the kind list in `schema/wrappers.test.ts`). Neither paragraph walk and neither policy table has
+ * to be touched.
  *
  * The opening tag is the verbatim string the file wrote wherever there is one, so a wrapper nobody
  * edited goes back out byte for byte; only the closing tag is written from scratch.
  */
 
-import type { Mark } from "prosemirror-model";
+import type { Mark, Node as PMNode } from "prosemirror-model";
 import { DocxExportError } from "../ooxml/errors";
 import { docxSchema } from "../schema";
-import { controlAttrs, OWN_CONTROL_ATTRS } from "../schema/controlAttrs";
+import {
+  controlAttrs,
+  isEmptyInlineControl,
+  OWN_CONTROL_ATTRS,
+} from "../schema/controlAttrs";
 import type { ExportRefs } from "./exportRefs";
 import { readHyperlinkWrapper, relIdIn, withRelId } from "./hyperlink";
 import type { ImportSources } from "./importParagraph";
 import {
   controlFactsFrom,
+  readSdtContents,
   readSdtWrapper,
   SDT_CLOSING_XML,
   sdtOpeningXml,
+  serializeEmptyControl,
 } from "./sdt";
 
 /** A wrapper read off the file: the mark its content wears, and the element that content stands in */
@@ -54,6 +62,14 @@ export interface WrapperKind {
     depth: number,
     sources: ImportSources
   ): WrapperReading | null;
+  /**
+   * One of these the file wrote with nothing inside it as the inline node it stands as, wearing
+   * the `wrappers` it stands inside. null for an element holding something, and for a kind with no
+   * node of that shape, which leaves the wrapper preserved whole where it stood.
+   */
+  readEmpty(el: Element, wrappers: readonly Mark[]): PMNode | null;
+  /** That node back out as the wrapper it came from, and null for a node of another kind */
+  writeEmpty(node: PMNode): string | null;
   /** The opening XML this mark goes back out as */
   open(mark: Mark, refs: ExportRefs): string;
   /** What closes it again */
@@ -87,6 +103,12 @@ export function nextKey(kind: string, el: Element): number {
 /**
  * The content control. Its content stands in a `w:sdtContent` of its own, which is the tag this
  * writes rather than preserves.
+ *
+ * A control holding no run leaves the mark nothing to sit on, so that shape opens as a node of its
+ * own instead - an atom taking no width between the words either side of it. Which of the two
+ * shapes states that it holds nothing is `./sdt`'s to say, so this level and the block level read
+ * the same pair. The node draws from the count the mark draws from, so a control holding nothing
+ * and one holding text never answer `./identities` with the same name.
  */
 const SDT: WrapperKind = {
   mark: "sdt",
@@ -103,6 +125,20 @@ const SDT: WrapperKind = {
       content: wrapper.content,
     };
   },
+  readEmpty(el, wrappers) {
+    const read = readSdtContents(el);
+    if (read?.kind !== "nothing") return null;
+    return docxSchema.nodes.sdtEmptyInline.create(
+      {
+        key: nextKey(SDT.mark, el),
+        ...controlAttrs(OWN_CONTROL_ATTRS, read.facts),
+      },
+      null,
+      wrappers
+    );
+  },
+  writeEmpty: (node) =>
+    isEmptyInlineControl(node) ? serializeEmptyControl(node) : null,
   open: (mark) => sdtOpeningXml(mark.attrs.sdtPrefix),
   close: () => SDT_CLOSING_XML,
 };
@@ -137,6 +173,10 @@ const LINK: WrapperKind = {
       content: el,
     };
   },
+  // A link holding nothing is a link to nowhere the user could stand, and there is no node for it
+  // to open as: it stays the preserved element it always was, wearing the wrappers around it
+  readEmpty: () => null,
+  writeEmpty: () => null,
   open(mark, refs) {
     const prefix: unknown = mark.attrs.linkPrefix;
     const original = typeof prefix === "string" ? prefix : null;
@@ -174,6 +214,18 @@ export const WRAPPER_KINDS: readonly WrapperKind[] = [SDT, LINK];
 /** The kind this element is one of, undefined for an element no kind reads */
 export function wrapperKindFor(el: Element): WrapperKind | undefined {
   return WRAPPER_KINDS.find((kind) => kind.element === el.localName);
+}
+
+/**
+ * One inline node a wrapper holding nothing opened as, back out as that wrapper. null for every
+ * other inline node, which is what the paragraph writer goes on to render as a run.
+ */
+export function emptyWrapperXml(node: PMNode): string | null {
+  for (const kind of WRAPPER_KINDS) {
+    const xml = kind.writeEmpty(node);
+    if (xml !== null) return xml;
+  }
+  return null;
 }
 
 /**

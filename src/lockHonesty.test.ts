@@ -132,7 +132,13 @@ const BODY =
   // A block control nothing shuts, with a paragraph ahead of it for a selection to run in from:
   // what stands in the way there is the control's edge alone
   blockXml("before the open control") +
-  control(blockXml("BlockOpen"), openBlockPr);
+  control(blockXml("BlockOpen"), openBlockPr) +
+  // The same lock on a control the file wrote with nothing inside it, at both the levels such a
+  // control stands at: between the words of a paragraph, and between paragraphs of its own
+  `<w:p>${runXml("EmptyBefore")}${control("")}${runXml("EmptyAfter")}</w:p>` +
+  blockXml("EmptyAbove") +
+  control("") +
+  blockXml("EmptyBelow");
 
 /**
  * A paragraph a bookmark range is anchored inside, which the editor preserves and never edits.
@@ -454,6 +460,31 @@ const PLACES: readonly Place[] = [
         state,
         insideText(state.doc, "before the open control"),
         insideText(state.doc, "BlockOpen") + 2
+      );
+    },
+  },
+  {
+    name: "a caret against a control a paragraph holds with nothing inside it",
+    guards: ["protection"],
+    state: (protection) => afterNode("sdtEmptyInline", protection),
+  },
+  {
+    // The lock refuses the whole replacement, the control being covered and taken away with it
+    name: "a selection covering a control a paragraph holds with nothing inside it",
+    guards: ["protection", "lock"],
+    state: (protection) => acrossNode("sdtEmptyInline", protection),
+  },
+  {
+    // A character either side of it, so the stretch is one the user can see as well as one that
+    // covers the control whole
+    name: "a selection covering a control that stands between paragraphs with nothing inside it",
+    guards: ["protection", "lock"],
+    state: (protection) => {
+      const state = opened(protection);
+      return select(
+        state,
+        insideText(state.doc, "EmptyAbove") + "EmptyAbove".length - 1,
+        insideText(state.doc, "EmptyBelow") + 1
       );
     },
   },

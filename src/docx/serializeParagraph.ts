@@ -5,7 +5,8 @@
  *
  * A fragment the reader kept whole goes back where it stood: one kept inside a run is written as
  * a piece of that run, and one kept beside the runs is written between them, which is what the
- * two content models admit.
+ * two content models admit. A content control holding nothing is written between them for the
+ * same reason.
  *
  * The inlines are grouped from the outside in: neighbours sharing the outermost wrapper each stands
  * inside go back into it, that grouping is made again one wrapper deeper, and at the bottom the
@@ -33,7 +34,7 @@ import { escapeXml } from "../ooxml/xml";
 import { wrapperMarks } from "../schema/wrappers";
 import { type ExportRefs, NO_EXPORT_REFS } from "./exportRefs";
 import type { ImageRefs } from "./media";
-import { wrapperKindOf } from "./wrappers";
+import { emptyWrapperXml, wrapperKindOf } from "./wrappers";
 
 /** Whether neighbouring inlines can be grouped together */
 function sameMark(a: Mark | null, b: Mark | null): boolean {
@@ -175,6 +176,14 @@ function addInline(
 ): void {
   if (child.type.name === "rawInline") {
     parts.push({ kind: "raw", xml: preservedXml(child) });
+    return;
+  }
+  // A wrapper holding nothing stands beside the runs rather than inside one, which is where
+  // `EG_PContent` admits it; only a wrapper something rewrote reaches the writer here, since one
+  // nobody touched goes out as the bytes it arrived as
+  const empty = emptyWrapperXml(child);
+  if (empty !== null) {
+    parts.push({ kind: "raw", xml: empty });
     return;
   }
   if (child.type.name === "commentStart" || child.type.name === "commentEnd") {

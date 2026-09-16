@@ -16,8 +16,8 @@ import { isBlockControl } from "../../schema/controlAttrs";
 import type { NoteKind } from "../../schema/stories";
 import {
   removeEmptyBlockControl,
-  skipEmptyControlAfter,
-  skipEmptyControlBefore,
+  skipEmptyBlockControlAfter,
+  skipEmptyBlockControlBefore,
 } from "../blockControlEdits";
 import { insertLineBreak, insertPageBreak } from "../commands/breakCommands";
 import {
@@ -35,6 +35,10 @@ import {
 } from "../commands/listCommands";
 import { insertEndnote, insertFootnote } from "../commands/noteCommands";
 import { insertTab, moveAcrossTab } from "../commands/tabCommands";
+import {
+  deleteBeyondEmptyControlsAfter,
+  deleteBeyondEmptyControlsBefore,
+} from "../inlineControlEdits";
 import { openLinkPanel } from "./linkPanel";
 
 const insertTabFromKeyboard: Command = (state, dispatch, view) => {
@@ -189,16 +193,23 @@ export const docxKeymap: Record<string, Command> = {
   "Mod-Enter": insertPageBreak,
   // `undoInputRule` comes first because it answers false unless the last transaction was an input
   // rule, and the commands after it report the key handled wherever a control stands beside the
-  // caret. Then: a control holding nothing is passed over rather than taken away, a control holding
-  // one empty paragraph goes whole rather than being opened up, and the empty paragraph after a
-  // table keeps adjacent tables separate without changing imported documents.
+  // caret. Then: a control holding nothing is never taken away by the key - between blocks the
+  // caret passes to the line beyond it, inside a paragraph the key passes over it and takes what
+  // stands beyond instead - a control holding one empty paragraph goes whole rather than being
+  // opened up, and the empty paragraph after a table keeps adjacent tables separate without
+  // changing imported documents.
   Backspace: chainCommands(
     undoInputRule,
-    skipEmptyControlBefore,
+    skipEmptyBlockControlBefore,
+    deleteBeyondEmptyControlsBefore,
     removeEmptyBlockControl,
     preserveTableFollowingParagraph
   ),
-  Delete: chainCommands(skipEmptyControlAfter, removeEmptyBlockControl),
+  Delete: chainCommands(
+    skipEmptyBlockControlAfter,
+    deleteBeyondEmptyControlsAfter,
+    removeEmptyBlockControl
+  ),
   ...historyKeymap,
   "Mod-b": toggleBold,
   "Mod-i": toggleItalic,

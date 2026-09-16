@@ -59,7 +59,8 @@ import {
   OWN_CONTROL_ATTRS,
   PREFIX_DOM_ATTR,
   SDT_BLOCK_NODE,
-  SDT_EMPTY_NODE,
+  SDT_EMPTY_BLOCK_NODE,
+  SDT_EMPTY_INLINE_NODE,
   WRAPPED_CONTROL_ATTRS,
 } from "./controlAttrs";
 import { imageNodeSpec, runMarkSpec } from "./rendering";
@@ -740,12 +741,12 @@ export const docxSchema = new Schema({
      * which is what a server's condition-failed clause is meant to look like, and what it states
      * about itself rides back out in the same attributes the container carries.
      */
-    [SDT_EMPTY_NODE]: {
+    [SDT_EMPTY_BLOCK_NODE]: {
       group: "block modelled",
       atom: true,
-      // Deleted whole under its deletion clause like the container, and there is nothing else a
-      // selection could reach here: the node holds no spot a caret can stand in
-      selectable: true,
+      // It draws nothing, so a node selection would put the user in a state with nothing on screen
+      // to show it: it goes with a stretch that covers it instead
+      selectable: false,
       attrs: {
         /**
          * The fragment of the session this control was opened from, as the container names its
@@ -1151,6 +1152,61 @@ export const docxSchema = new Schema({
         {
           tag: `span.${editorClassNames.rawRunContent}`,
           getAttrs: preservedAttrs,
+        },
+      ],
+    },
+    /**
+     * A content control holding nothing that the file wrote inside a paragraph, which is the
+     * `sdtEmpty` node's inline counterpart (§17.5.2.34).
+     *
+     * The inline control is otherwise a mark on the runs it wrapped (`./wrappers`), and a control
+     * holding no run leaves a mark nothing to sit on. So it stands as an atom of its own, taking
+     * no width between the words either side of it, and what it states about itself rides back out
+     * in the attributes every other carrier uses.
+     *
+     * It wears the wrapper marks rather than carrying a `depth` of its own: what it stands inside
+     * is what has to close around it on export, while the control it is has nothing to nest.
+     */
+    [SDT_EMPTY_INLINE_NODE]: {
+      group: "inline",
+      inline: true,
+      atom: true,
+      marks: "wrapper",
+      // No selection settles on it, for the reason `sdtEmpty` above states
+      selectable: false,
+      attrs: {
+        /** Which control of the document this is, counted as the file was opened (`docx/wrappers`) */
+        key: { default: 0 },
+        /** What the control states, under the names every carrier holds them by (`./controlAttrs`) */
+        ...controlAttrSpecs(OWN_CONTROL_ATTRS),
+      },
+      toDOM(node) {
+        const control = controlFactsOf(OWN_CONTROL_ATTRS, node.attrs);
+        return [
+          "span",
+          {
+            class: controlClassName(
+              control,
+              editorClassNames.sdtEmptyInline,
+              editorClassNames.sdtLocked
+            ),
+            "data-key": numberText(node.attrs.key),
+            ...controlToDom(control),
+          },
+        ];
+      },
+      parseDOM: [
+        {
+          tag: `span.${editorClassNames.sdtEmptyInline}`,
+          getAttrs: (dom) => {
+            const prefix = rawXml(dom, PREFIX_DOM_ATTR, SDT_PREFIX);
+            // With no opening tag to put back there is no control left to write out
+            if (prefix === null || prefix === false) return false;
+            return {
+              key: parseInt10(dom.getAttribute("data-key"), 0),
+              ...controlAttrsFromDom(OWN_CONTROL_ATTRS, dom, prefix),
+            };
+          },
         },
       ],
     },

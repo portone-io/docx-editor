@@ -170,7 +170,10 @@ function claim(mark: Mark, written: Set<string>): Control {
  * same mark, and it is broken in two only where a node without that mark stands between them.
  *
  * A control standing inside another is claimed on its own terms, since either of them may be the
- * one an edit left standing twice.
+ * one an edit left standing twice. So is a control holding nothing, which carries what it states
+ * in its own attributes rather than in a mark (`docx/wrappers`): it is one node rather than
+ * a stretch, so the name it claims is read off the node where it stands, under the same attribute
+ * names a block carrier is read under.
  */
 function rewriteParagraph(paragraph: PMNode, written: Set<string>): PMNode {
   const inline: PMNode[] = [];
@@ -189,7 +192,21 @@ function rewriteParagraph(paragraph: PMNode, written: Set<string>): PMNode {
       renamed = true;
       marks = control.copy.addToSet(control.mark.removeFromSet(marks));
     }
-    inline.push(marks === child.marks ? child : child.mark(marks));
+    const names = controlAttrsOf(child);
+    const own =
+      names === null ? null : claimedPrefix(child.attrs, names, written);
+    if (names === null || own === null) {
+      inline.push(marks === child.marks ? child : child.mark(marks));
+      return;
+    }
+    renamed = true;
+    inline.push(
+      child.type.create(
+        { ...child.attrs, [names.prefix]: own },
+        child.content,
+        marks
+      )
+    );
   });
 
   return renamed ? paragraph.copy(Fragment.fromArray(inline)) : paragraph;
@@ -203,9 +220,10 @@ function rewriteParagraph(paragraph: PMNode, written: Set<string>): PMNode {
  * inside another. Each piece after the first opens as a copy with a `w:id` of its own (see
  * `docx/sdt` for what a copy must not carry along).
  *
- * Every carrier `schema/controlAttrs` knows is settled here, the block container and a wrapped
- * cell or row alike, each read under its own attribute names: a second control claiming the first
- * one's `w:id` is not a shape §17.5.2.18 allows, whichever of them carries it.
+ * Every carrier `schema/controlAttrs` knows is settled here, the block container, a wrapped cell
+ * or row and either node a control holding nothing stands as alike, each read under its own
+ * attribute names: a second control claiming the first one's `w:id` is not a shape §17.5.2.18
+ * allows, whichever of them carries it.
  */
 export const controlRule: IdentityRule = {
   name: "control",

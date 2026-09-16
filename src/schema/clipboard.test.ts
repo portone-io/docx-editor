@@ -386,6 +386,24 @@ describe("the outbound clipboard shape", () => {
     expect(copiedText(controlled)).toBe("inside the control");
   });
 
+  /**
+   * A control holding nothing says only that a phrase is not there, and its opening XML names a
+   * `w:id` and may name a `w:dataBinding`, neither of which may travel in a copy. So it leaves as
+   * the nothing it draws, and the words either side of it come out as one line.
+   */
+  it("leaves a control holding nothing out of the copy entirely", () => {
+    const line = paragraph(
+      docxSchema.text("before "),
+      docxSchema.nodes.sdtEmptyInline.create({
+        sdtPrefix: '<w:sdt><w:sdtPr><w:alias w:val="SECRET"/></w:sdtPr>',
+      }),
+      docxSchema.text("after")
+    );
+
+    expect(copiedHtml(line)).toBe('<p class="docx-editor-p">before after</p>');
+    expect(copiedText(line)).toBe("before after");
+  });
+
   it("opens no blank line where a block the editor only kept stood", () => {
     const kept = docxSchema.nodes.rawBlock.create({
       xml: "<w:tbl>an unsupported table</w:tbl>",

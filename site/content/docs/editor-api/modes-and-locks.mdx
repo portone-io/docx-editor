@@ -48,12 +48,15 @@ const lock = selectionLock(state); // "none" | "shut" | "lockable" | "locked" | 
 
 `selectionLock` answers `lockable` when there is text to lock, `locked` when the selection reaches
 a lock to lift, `mixed` for both, and `shut` inside a group control.
+A selection covering nothing but controls with nothing inside them answers `locked`: there is a
+lock to lift and nothing to lay a new control over.
 A group control's contents refuse edits unless a control inside it opens them, and it carries no
 lock to lift.
 `lockSelection` and `unlockSelection` are ordinary commands and report whether they apply.
 Only a text selection can be locked, and the lock is written as a control around that text; a
 caret touching a locked field, or anywhere inside a locked cell, row, or control around paragraphs
-or tables, is enough to unlock it.
+or tables, is enough to unlock it, except for a control with nothing inside it, which draws nothing
+and has to be covered by the selection instead.
 
 `selectionTouchesLocked(state)` answers whether the selection meets locked content at all.
 `documentHasLocked(doc)` reports whether the document carries any lock.

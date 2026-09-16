@@ -12,12 +12,17 @@ import {
 import { namesNothing, newControlId } from "../../docx/sdt";
 import { lockedControlPrefix, withContentLock } from "../../docx/sdtProps";
 import { docxSchema } from "../../schema";
-import { controlAttrsOf } from "../../schema/controlAttrs";
+import {
+  controlAttrsOf,
+  isEmptyInlineControl,
+} from "../../schema/controlAttrs";
 import { guardedCommand, openStretches } from "../../schema/guards";
 import {
   type ControlSpan,
   carriesLock,
   controlSpans,
+  coversWhole,
+  emptyControlsIn,
   selectionShut,
   type Textblock,
   unlockAllowed,
@@ -110,6 +115,16 @@ function wrapperDepthOver(
   // going inside. Without this a control taken over at its own extent would nest inside itself
   replaced: Mark | null = null
 ): number {
+  const shared = sharedWrappers(childrenUnder(block, stretch));
+  const at =
+    replaced === null
+      ? -1
+      : shared.findIndex((wrapper) => wrapper.eq(replaced));
+  return innermostDepth(at === -1 ? shared : shared.slice(0, at)) + 1;
+}
+
+/** The children of the block this stretch runs through, whole or in part */
+function childrenUnder(block: Textblock, stretch: Stretch): PMNode[] {
   const covered: PMNode[] = [];
   block.node.forEach((child, offset) => {
     const from = block.start + offset;
@@ -117,12 +132,19 @@ function wrapperDepthOver(
       covered.push(child);
     }
   });
-  const shared = sharedWrappers(covered);
-  const at =
-    replaced === null
-      ? -1
-      : shared.findIndex((wrapper) => wrapper.eq(replaced));
-  return innermostDepth(at === -1 ? shared : shared.slice(0, at)) + 1;
+  return covered;
+}
+
+/**
+ * Whether this stretch holds nothing a control could be laid over.
+ *
+ * A control holding nothing draws nothing, so a stretch made up of those alone is a selection the
+ * user cannot see, and locking it would write a fresh control around a phrase that is not there.
+ * What such a stretch does hold is the controls' own locks, which is a lift rather than a lock.
+ */
+function nothingToLock(block: Textblock, stretch: Stretch): boolean {
+  const covered = childrenUnder(block, stretch);
+  return covered.length > 0 && covered.every(isEmptyInlineControl);
 }
 
 /** The parts of this stretch that no control stands in */
@@ -158,6 +180,7 @@ interface LockedContainer {
 /**
  * What lifting the lock off this container would write, and null where it has no lock to lift.
  *
+ * A control holding nothing is read here as well, its extent being the node itself.
  * The two clauses are written under names of the container's own (`schema/locks`), and the opening
  * XML the control goes back out as is rewritten alongside them, so that what the file says and
  * what the editor shows stay the same thing. An opening we cannot rewrite loses its control.
@@ -259,7 +282,9 @@ function blockLockEdits(
         : [];
     }
   );
-  const fresh = open(gapsIn(stretch, spans)).map((gap) => ({
+  const fresh = open(
+    gapsIn(stretch, spans).filter((gap) => !nothingToLock(block, gap))
+  ).map((gap) => ({
     ...gap,
     mark: lockedControlMark(newControlId(), wrapperDepthOver(block, gap)),
   }));
@@ -331,6 +356,9 @@ function liftable(
  * either end of one unlocks it: a lock is lifted as a whole, and asking the user to select the
  * field exactly would be worse. A cell is shut as a whole in the same way, so a caret anywhere
  * inside one reaches it, and a block of selected cells reaches every locked cell in the block.
+ * A control holding nothing is the one that has to be covered rather than reached: it draws
+ * nothing, so an edge of it is nowhere the user can see, and a caret resting there would offer to
+ * unlock a control nobody pointed at.
  *
  * Only a text selection has anything to lock; a whole selected image or a block of table cells
  * is not a stretch of text a control can hold.
@@ -354,6 +382,14 @@ function selectionLockDetail(state: EditorState): SelectionLockDetail {
       if (opened) containers.set(pos, opened);
       if (!node.isTextblock) return true;
       const block: Textblock = { node, start: pos + 1 };
+      // A control holding nothing states its lock in its own attributes rather than in a mark
+      // (`docx/wrappers`), so the lift it offers is read off the node where it stands
+      for (const control of emptyControlsIn(block)) {
+        const lifted = unlockedContainerAttrs(control.node);
+        if (lifted && coversWhole(reach, control.span)) {
+          containers.set(control.span.from, lifted);
+        }
+      }
       const controls = controlSpans(block);
       spans.push(
         ...liftable(

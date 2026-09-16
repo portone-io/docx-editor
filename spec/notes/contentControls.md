@@ -19,7 +19,7 @@ Observed 2026-08-20 against ECMA-376 5th edition, Part 1.
 ## What we implement
 
 `docx/sdt` reads both clauses off the `w:lock` value and carries them apart, as `contentsLocked` and `deletionLocked` on the wrapper, beside `group` for the separate restriction below.
-The three travel through the schema as attributes of the inline `sdt` mark and of the `sdtBlock` node, and as `sdtContentsLocked`, `sdtDeletionLocked` and `sdtGroup` on a cell or a row a control wraps.
+The three travel through the schema as attributes of the inline `sdt` mark, of the `sdtBlock` node and of the two nodes a control holding nothing stands as, and as `sdtContentsLocked`, `sdtDeletionLocked` and `sdtGroup` on a cell or a row a control wraps.
 
 `schema/locks` judges a step's edited range against each control it meets by how much of the control the range covers.
 A range that covers the control from end to end and takes what stands there away is the control being deleted whole, which the deletion clause answers.
@@ -27,6 +27,7 @@ Anything less - a partial overlap, an insertion, or a mark laid across the contr
 For a cell the control's extent is the cell node itself, so the range a row or column deletion writes covers it whole.
 For a row it is the row node, so a row deletion covers it whole while a column deletion takes one cell out of it and reaches its contents instead.
 For a block-level control the extent is the control's own node, so a range that covers that node and takes it away is the control being deleted whole, while any range reaching the blocks inside it is an edit of its contents.
+For a control holding nothing the extent is likewise the node, block or inline, and the deletion clause is the whole of what it answers: there are no contents for a mark laid across it to reach.
 Where one control stands inside another, every control around the spot answers for editing what stands there and any one of them that shuts refuses it, while the outermost control a range covers whole answers for taking it away.
 
 That gives the four values the behavior the table above asks for, including two cases we previously handled incorrectly:
@@ -63,15 +64,18 @@ Because `CT_SdtContentBlock` holds what `CT_Body` holds, a paragraph inside a bl
 
 Both shapes read the prefix, what the control states about being edited and deleted, and the copy rule out of `docx/sdt`, so what the four levels - block, inline, cell, row - disagree about is the node, never the vocabulary.
 
+A control the file wrote with nothing inside it is the one case where the inline level has no mark to work with, and it is read as a node there as well (`docx/wrappers`): an atom standing between the runs, taking no width, wearing the marks of the wrappers around it so that each of them still closes around it on the way out. It is no container, so the type restraints above do not reach it: an atom holds no run an edit could break them with, and a `w:text` control with nothing inside it opens as this node like any other.
+
 A `w:sdt` under `w:tbl` is a `CT_SdtRow` (§17.5.2.30) and rides on the `tableRow` node, exactly as a `CT_SdtCell` rides on the cell.
 §17.5.2.35 describes what such a control holds as "a single table row" where `CT_SdtContentRow` admits any number of them, and the stricter reading is the one this editor takes: the row is what carries the wrapper back out, so a control holding two rows has one wrapper and two candidates to hang it on, and the table is kept whole instead.
 A control holding another control rather than a row is turned down for the same reason, since the one row inside can carry only one of the two.
 That the wrapper is a row's rather than a table's is what the deletion clause is read against: a row deletion takes the control away whole and a column deletion edits what it holds, and a row made beside a wrapped one carries no control at all, since a second control claiming the first one's id is not a shape §17.5.2.18 allows.
 
-## Editing at the edges of a block control
+## Editing at the edges of a control
 
 A control names a settled part of a contract, so the join a keystroke builds at its edge may not carry blocks into it or out of it.
 That is what an edit meeting the edge is judged by.
+Every rule but the last is about a block control, which is the shape that has blocks either side of its edge; the last is about a control holding nothing, which stands between blocks and inside a paragraph alike.
 
 - A join at the edge is refused: the keystroke does nothing and the selection stays where it stood.
 - A selection running from outside a control into it, or the reverse, is refused whole rather than trimmed to the edge, whatever replaces it: typing, a deletion, a paste.
@@ -81,11 +85,14 @@ That is what an edit meeting the edge is judged by.
 - A control left holding a single empty paragraph is removed whole instead, the caret landing where the control stood.
   Word's own empty control is a paragraph of placeholder text rather than an empty one, so the editor never makes a control with nothing inside it.
   Removing it is judged by the deletion clause like any other whole deletion (§17.5.2.23 `w:lock`), so a `sdtLocked` control refuses it.
-- A control the file itself wrote with nothing inside it is read as a node holding nothing and drawn as nothing (`docx/importSdtBlock`): `w:sdtContent` is a cache of what stood there and may be empty or left out altogether (§17.5.2.34), while a `block+` container has no way to say "nothing".
-  Backspace and Delete beside it pass the caret over it, a run of them at once, and with nothing beyond the run the key does nothing at all.
-  A blank line the caret stands on is not the control and goes the way a blank line goes anywhere else, the caret landing past the run.
+- A control the file itself wrote with nothing inside it is read as a node holding nothing and drawn as nothing (`docx/importSdtBlock` between blocks, `docx/wrappers` inside a paragraph): `w:sdtContent` is a cache of what stood there and may be empty or left out altogether (§17.5.2.34), while neither a `block+` container nor a mark on runs has any way to say "nothing".
   The control is the slot a server re-renders the clause into, and it draws nothing on the page, so no single key may take it away with nothing on screen to show what went.
-  It goes when something covers it whole - the node selected, or a stretch running over it - which is the deletion clause's question (§17.5.2.23) as it is for any other whole deletion, so a `sdtLocked` control refuses it.
+  Between blocks Backspace and Delete pass the caret over the run of them to the line beyond, which is a move the user can see, and with nothing beyond the run the key does nothing at all.
+  A blank line the caret stands on is not the control and goes the way a blank line goes anywhere else, the caret landing past the run.
+  Inside a paragraph the run takes no width, so passing the caret alone would be a keystroke nothing at all comes of: the key passes over the run and takes what stands beyond it in the same stroke, as if the controls were not there, and where the run reaches the edge of the line what stands beyond is the line break itself, so the lines join.
+  What such a key takes is never the control, whatever its lock says.
+  It goes when a stretch covering it is taken away, which is the deletion clause's question (§17.5.2.23) as it is for any other whole deletion, so a `sdtLocked` control refuses it.
+  The node is not one a selection can settle on, at either level: it draws nothing, so a selection of the node alone would show the user nothing at all, and the keystroke after it would replace a control they cannot see.
 
 The rule is about what a keystroke does on its own, not about what the user asks for.
 Text moved out of a control by cutting it and pasting it elsewhere, or by dragging it there, is the user saying where it goes, and is left alone.

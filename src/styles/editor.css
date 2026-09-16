@@ -1029,6 +1029,19 @@ button.docx-editor-comment-body {
 }
 
 /*
+ * The same control standing inside a paragraph, which takes no width between the words either
+ * side of it: the file says a phrase is not there, and a box drawn for it would be a phrase of its
+ * own. This is the shape a preserved fragment with nothing to show takes above.
+ */
+.docx-editor-sdt-empty-inline {
+  display: inline-block;
+  width: 0;
+  overflow: hidden;
+  outline: none;
+  vertical-align: baseline;
+}
+
+/*
  * The space a block-level content control opens between two of the blocks it holds, so what
  * follows starts the next page (`page/kinds/sdtBlockKind`). The control's own outline runs down
  * both pieces of the cut and needs nothing drawn here, but the background a shut control paints

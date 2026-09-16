@@ -9,6 +9,10 @@
  * is read as the file wrote it and recorded on the marks (`docx/wrappers`). A link inside a link is
  * the one arrangement no mark can record, and the inner one stays whole as it always has.
  *
+ * A wrapper the file wrote with nothing inside it holds no text for a mark to ride on, so the
+ * registry says what it opens as instead: a content control becomes a node of its own, wearing the
+ * wrappers around it (`docx/wrappers`).
+ *
  * Nothing here demotes a paragraph. What the editor has no model for - a field character, a
  * tracked insertion, a symbol, a drawing nobody could read - is kept where it stood, inside its
  * run or beside it, by the rule `docx/importPolicy` gives it for the level it stands at. The
@@ -264,8 +268,8 @@ export const NO_IMPORT_SOURCES: ImportSources = {
 
 /**
  * Moves one child of a paragraph or of a wrapper into inline nodes, or null for one this reader
- * cannot take apart: a wrapper whose shape it could not put back together, one holding nothing at
- * all, a marker naming no comment.
+ * cannot take apart: a wrapper whose shape it could not put back together, a hyperlink holding
+ * nothing at all, a marker naming no comment.
  *
  * `depth` is the depth a wrapper met here takes, which is one more than the depth of the wrapper
  * whose content is being read, and `wrappers` are the marks of everything it already stands inside.
@@ -289,6 +293,10 @@ function buildModelledInline(
   if (kind) {
     // A wrapper its own kind cannot hold stays whole where it stood, wearing the wrappers around it
     if (!wrapperFits(kind, wrappers)) return null;
+    // A wrapper holding nothing is asked about first, since a mark laid on nothing is no reading
+    // at all and the number a wrapper is told apart by would be spent on one nobody keeps
+    const empty = kind.readEmpty(child, wrappers);
+    if (empty) return [empty];
     const reading = kind.read(child, depth, sources);
     if (!reading) return null;
     return buildContent(reading.content, sources, depth + 1, [

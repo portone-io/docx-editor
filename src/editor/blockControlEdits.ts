@@ -11,7 +11,7 @@
 import type { Node as PMNode, ResolvedPos } from "prosemirror-model";
 import { type Command, Selection, TextSelection } from "prosemirror-state";
 import { docxSchema } from "../schema";
-import { isBlockControl, isEmptyControl } from "../schema/controlAttrs";
+import { isBlockControl, isEmptyBlockControl } from "../schema/controlAttrs";
 import { guardedCommand } from "../schema/guards";
 
 /**
@@ -88,7 +88,7 @@ function emptyRunBeside(selection: Selection, dir: Direction): EmptyRun | null {
   let pos = dir < 0 ? $cursor.before(depth) : $cursor.after(depth);
   let index = first;
   let sibling: PMNode | null | undefined = container.maybeChild(index);
-  while (sibling && isEmptyControl(sibling)) {
+  while (sibling && isEmptyBlockControl(sibling)) {
     pos += dir * sibling.nodeSize;
     index += dir;
     sibling = container.maybeChild(index);
@@ -103,9 +103,8 @@ function emptyRunBeside(selection: Selection, dir: Direction): EmptyRun | null {
  *
  * Such a control draws nothing on the page, so a key that took it away would take a clause the
  * file keeps with nothing on screen to show what went: the control is the slot a server re-renders
- * into (ADR-024). It goes only when something covers it - a selection of the node itself or a
- * stretch running over it - which is the deletion clause's question as it is anywhere else
- * (`schema/locks`).
+ * into (ADR-024). It goes only when a stretch covering it is taken away, which is the deletion
+ * clause's question as it is anywhere else (`schema/locks`).
  *
  * The blank line the caret stands on is not the control, so it goes as it would anywhere else: the
  * step covers that paragraph alone, never the controls the caret then passes over, and a paragraph
@@ -136,7 +135,7 @@ function skipEmptyControls(dir: Direction): Command {
 }
 
 /** Backspace passing over the controls holding nothing that stand before the caret */
-export const skipEmptyControlBefore: Command = skipEmptyControls(-1);
+export const skipEmptyBlockControlBefore: Command = skipEmptyControls(-1);
 
 /** Delete passing over the controls holding nothing that stand after the caret */
-export const skipEmptyControlAfter: Command = skipEmptyControls(1);
+export const skipEmptyBlockControlAfter: Command = skipEmptyControls(1);
