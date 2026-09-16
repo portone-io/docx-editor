@@ -93,10 +93,15 @@ describe("Backspace", () => {
     expect(control.child(1).type.name).toBe("paragraph");
   });
 
-  /** A cell's paragraphs are not that sequence, so the base keymap still answers for one */
-  it("leaves a paragraph inside a table cell to the base keymap", () => {
+  /**
+   * A cell's paragraphs are not that sequence, so the base keymap still answers for one. The
+   * cell's first paragraph is as far as this can be put to the test: a table inside a cell is
+   * preserved as raw XML rather than modelled, so no cell holds a paragraph standing after a table.
+   */
+  it("leaves the first paragraph inside a table cell to the base keymap", () => {
     const state = tableFollowedByParagraph();
-    const cellParagraph = 3;
+    // Inside the paragraph, which the table, its row and the cell each open a node ahead of
+    const cellParagraph = 4;
 
     expect(docxKeymap.Backspace(select(state, cellParagraph))).toBe(false);
   });

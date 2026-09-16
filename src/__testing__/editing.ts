@@ -38,12 +38,24 @@ export function posOfText(doc: PMNode, needle: string): number {
   return found;
 }
 
-/** A state with the caret placed, or with a range spanning the two positions */
+/**
+ * A state with the caret placed, or with a range spanning the two positions.
+ *
+ * Both ends have to stand inside a paragraph. ProseMirror builds a text selection ending between
+ * blocks without refusing it and then collapses it the first time a transaction maps it, so a test
+ * that asks for one goes on to measure that collapse rather than the command it meant to put to
+ * the test.
+ */
 export function select(
   state: EditorState,
   from: number,
   to = from
 ): EditorState {
+  for (const pos of [from, to]) {
+    if (!state.doc.resolve(pos).parent.inlineContent) {
+      throw new Error(`position ${pos} stands outside a paragraph`);
+    }
+  }
   return state.apply(
     state.tr.setSelection(TextSelection.create(state.doc, from, to))
   );

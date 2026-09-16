@@ -17,8 +17,10 @@ Everything on this page comes from `@portone/docx-editor/commands`.
 | `setTextBackground(hex)` | `activeTextBackground` | Writes the background as `#RRGGBB`. Null withdraws it, along with any highlight an older document wrote there. |
 
 `canFormatText` enables the whole group.
-It returns `false` when a lock covers the whole selection, or when the caret stands where nothing
-can be typed; a selection that only overlaps a lock can still be formatted.
+It returns `false` when a lock covers the whole selection, when the caret stands where nothing can
+be typed, or when the selection holds no character to format.
+A selection covering the boundary between two paragraphs and nothing else holds no character.
+A selection that only overlaps a lock can still be formatted.
 
 ## Fonts
 
