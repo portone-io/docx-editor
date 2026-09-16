@@ -87,6 +87,7 @@ export const NODE_ATTR_ROLES: AttrTable = {
     sdtPrefix: { role: "source", class: "preserved" },
     sdtContentsLocked: { role: "source", class: "derived" },
     sdtDeletionLocked: { role: "source", class: "derived" },
+    sdtGroup: { role: "source", class: "derived" },
     trailingXml: { role: "source", class: "preserved" },
   },
   sdtBlock: {
@@ -99,6 +100,7 @@ export const NODE_ATTR_ROLES: AttrTable = {
     // are: leaving a lock out would let a step that unlocks a control pass as a re-derivation
     contentsLocked: { role: "source", class: "derived" },
     deletionLocked: { role: "source", class: "derived" },
+    group: { role: "source", class: "derived" },
   },
   rawBlock: {
     xml: { role: "source", class: "preserved" },
@@ -188,6 +190,7 @@ export const MARK_ATTR_ROLES: AttrTable = {
     ...WRAPPER_ATTR_ROLES,
     contentsLocked: { role: "source", class: "derived" },
     deletionLocked: { role: "source", class: "derived" },
+    group: { role: "source", class: "derived" },
   },
   link: {
     linkPrefix: { role: "source", class: "preserved" },

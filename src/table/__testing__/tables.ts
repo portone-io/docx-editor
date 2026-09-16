@@ -66,6 +66,7 @@ export const schema = new Schema({
         sdtPrefix: { default: null },
         sdtContentsLocked: { default: false },
         sdtDeletionLocked: { default: false },
+        sdtGroup: { default: false },
         trailingXml: { default: null },
       },
       toDOM: () => ["td", 0],
@@ -84,8 +85,16 @@ export interface CellAttrs {
   sdtPrefix?: string | null;
   sdtContentsLocked?: boolean;
   sdtDeletionLocked?: boolean;
+  sdtGroup?: boolean;
   trailingXml?: string | null;
 }
+
+/**
+ * The opening XML of the content control around a cell. A cell that carries no control carries no
+ * lock either (`schema/locks`), so a fixture standing for a locked cell carries this beside it.
+ */
+export const CELL_CONTROL_PREFIX =
+  '<w:sdt><w:sdtPr><w:id w:val="1"/><w:lock w:val="sdtContentLocked"/></w:sdtPr>';
 
 export const dxa = (twips: number): TableWidth => ({ type: "dxa", twips });
 export const pct = (fiftieths: number): TableWidth => ({
@@ -106,6 +115,7 @@ export function cell(text: string, attrs: CellAttrs = {}): PMNode {
       sdtPrefix: null,
       sdtContentsLocked: false,
       sdtDeletionLocked: false,
+      sdtGroup: false,
       trailingXml: null,
       ...attrs,
     },

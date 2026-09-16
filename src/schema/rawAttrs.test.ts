@@ -199,6 +199,7 @@ const NODE_FRAGMENTS: RawAttrTable = {
     tcW: null,
     sdtContentsLocked: null,
     sdtDeletionLocked: null,
+    sdtGroup: null,
     trailingXml: {
       attribute: "data-trailing",
       sound: MARKER_PAIR,
@@ -223,6 +224,7 @@ const NODE_FRAGMENTS: RawAttrTable = {
     },
     contentsLocked: null,
     deletionLocked: null,
+    group: null,
   },
   rawBlock: {
     xml: {
@@ -387,6 +389,7 @@ const MARK_FRAGMENTS: RawAttrTable = {
     },
     contentsLocked: null,
     deletionLocked: null,
+    group: null,
   },
   link: {
     linkPrefix: {

@@ -200,6 +200,7 @@ function writeSplitFormats(
           sdtDeletionLocked: isOriginalSpot
             ? source.attrs.sdtDeletionLocked
             : false,
+          sdtGroup: isOriginalSpot ? source.attrs.sdtGroup : false,
         }),
       });
     }
