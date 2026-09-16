@@ -21,6 +21,12 @@ const footnote = (id: string, attrs = "") =>
 const endnote = (id: string) => `<w:r><w:endnoteReference w:id="${id}"/></w:r>`;
 const paragraph = (...runs: string[]) => `<w:p>${runs.join("")}</w:p>`;
 
+/** A block-level content control around these blocks */
+const control = (...blocks: string[]) =>
+  '<w:sdt><w:sdtPr><w:id w:val="41"/></w:sdtPr><w:sdtContent>' +
+  blocks.join("") +
+  "</w:sdtContent></w:sdt>";
+
 /** A paragraph that ends a section laying down these properties */
 const sectionEnd = (sectPr: string, ...runs: string[]) =>
   `<w:p><w:pPr><w:sectPr>${sectPr}${A4}</w:sectPr></w:pPr>${runs.join("")}</w:p>`;
@@ -105,6 +111,21 @@ describe("noteLabelsIn", () => {
       "footnote 1",
       "endnote 2",
     ]);
+  });
+
+  it("counts again after a break the paragraph of a content control carries", () => {
+    const doc = opened(
+      control(
+        paragraph(footnote("2")) +
+          sectionEnd("", footnote("3")) +
+          paragraph(footnote("4"))
+      ),
+      '<w:footnotePr><w:numRestart w:val="eachSect"/></w:footnotePr>'
+    );
+
+    // The section ends at the paragraph carrying the break, so the reference standing after it
+    // inside the same control is already counting in the next section
+    expect(labels(doc)).toEqual(["footnote 1", "footnote 2", "footnote 1"]);
   });
 
   it("takes a section's own footnote properties over the settings", () => {
