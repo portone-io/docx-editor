@@ -12,7 +12,8 @@
 import type { Node as PMNode } from "prosemirror-model";
 import { elementChildren } from "../ooxml/xml";
 import { docxSchema } from "../schema";
-import { modelsBlockContent, readSdtWrapper } from "./sdt";
+import { controlAttrs, OWN_CONTROL_ATTRS } from "../schema/controlAttrs";
+import { controlFactsFrom, modelsBlockContent, readSdtWrapper } from "./sdt";
 import { nextKey } from "./wrappers";
 
 /** How the level around a control reads one block of it */
@@ -42,13 +43,8 @@ export function buildSdtBlock(
   return docxSchema.nodes.sdtBlock.create(
     {
       srcId,
-      sdtPrefix: wrapper.prefix,
       key: nextKey(docxSchema.marks.sdt.name, el),
-      contentsLocked: wrapper.contentsLocked,
-      deletionLocked: wrapper.deletionLocked,
-      group: wrapper.group,
-      temporary: wrapper.temporary,
-      showingPlaceholder: wrapper.showingPlaceholder,
+      ...controlAttrs(OWN_CONTROL_ATTRS, controlFactsFrom(wrapper)),
     },
     children.map(readBlock)
   );

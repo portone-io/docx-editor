@@ -1016,10 +1016,12 @@ button.docx-editor-comment-body {
 }
 
 /*
- * A whole cell shut by the control around it. The same yellow, outlined just inside the cell
+ * A whole cell shut by the control around it, and the cells of a whole row shut by the control
+ * around the row, which carry no lock of their own. The same yellow, outlined just inside the cell
  * border so the mark follows the cell rather than the text standing in it.
  */
-.docx-editor-tc-locked {
+.docx-editor-tc-locked,
+.docx-editor-tr-locked > .docx-editor-tc {
   background: #fff59d;
   outline: 1px solid #f9a825;
   outline-offset: -1px;

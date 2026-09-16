@@ -13,7 +13,7 @@ import { Plugin, type Transaction } from "prosemirror-state";
 import { Mapping, ReplaceAroundStep } from "prosemirror-transform";
 import { editSdtPrefix } from "../../docx/sdt";
 import {
-  CELL_CONTROL_ATTRS,
+  type ControlAttrNames,
   type ControlFacts,
   controlAttrs,
   controlAttrsOf,
@@ -82,16 +82,16 @@ function lifts(control: ControlFacts): boolean {
 
 /**
  * Takes the wrapper away from one container, or rewrites its opening XML without the placeholder
- * flag. A block control is replaced by the blocks it holds; a wrapped cell keeps the cell and
- * loses what the control said about it.
+ * flag. A block control is replaced by the blocks it holds; a wrapped cell or row keeps the node
+ * and loses what the control said about it.
  */
 function settleContainer(
   tr: Transaction,
   node: PMNode,
   pos: number,
+  names: ControlAttrNames,
   control: ControlFacts
 ): void {
-  const names = isBlockControl(node) ? OWN_CONTROL_ATTRS : CELL_CONTROL_ATTRS;
   const at = tr.mapping.map(pos);
   const end = tr.mapping.map(pos + node.nodeSize);
   if (lifts(control)) {
@@ -153,7 +153,7 @@ function settleDocument(tr: Transaction, doc: PMNode, ranges: Range[]): void {
     if (names) {
       const container = controlFactsOf(names, node.attrs);
       if (acts(container) && edited(ranges, pos + 1, pos + node.nodeSize - 1)) {
-        settleContainer(tr, node, pos, container);
+        settleContainer(tr, node, pos, names, container);
       }
     }
     if (!node.isTextblock) return true;

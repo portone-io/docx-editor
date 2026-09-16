@@ -277,6 +277,125 @@ describe("a cell wrapped in a content control", () => {
   });
 });
 
+describe("a row wrapped in a content control", () => {
+  const sdt = (inner: string, pr = '<w:sdtPr><w:id w:val="8"/></w:sdtPr>') =>
+    `<w:sdt>${pr}<w:sdtContent>${inner}</w:sdtContent></w:sdt>`;
+
+  it("unwraps the row and holds on to the wrapper", () => {
+    const node = requireTable(
+      "<w:tbl>" +
+        grid(1000, 1000) +
+        sdt(row(cell("", "wrapped"), cell("", "beside"))) +
+        row(cell("", "plain"), cell("", "next")) +
+        "</w:tbl>"
+    );
+    expect(texts(node)).toEqual(["wrapped|beside", "plain|next"]);
+    expect(node.child(0).attrs.sdtPrefix).toBe(
+      '<w:sdt><w:sdtPr><w:id w:val="8"/></w:sdtPr>'
+    );
+    // The row below it was never wrapped
+    expect(node.child(1).attrs.sdtPrefix).toBeNull();
+    // What the control says about the row rides on the row, never on its cells
+    expect(node.child(0).child(0).attrs.sdtPrefix).toBeNull();
+  });
+
+  it("a wrapper that shuts its contents leaves the row locked", () => {
+    const locked =
+      '<w:sdtPr><w:id w:val="8"/><w:lock w:val="sdtContentLocked"/></w:sdtPr>';
+    const node = requireTable(
+      "<w:tbl>" +
+        grid(1000) +
+        sdt(row(cell("", "shut")), locked) +
+        sdt(row(cell("", "open"))) +
+        "</w:tbl>"
+    );
+    expect(node.child(0).attrs.sdtContentsLocked).toBe(true);
+    expect(node.child(0).attrs.sdtDeletionLocked).toBe(true);
+    // A control that says nothing about its contents leaves the row editable
+    expect(node.child(1).attrs.sdtContentsLocked).toBe(false);
+  });
+
+  it("a row control and a cell control inside it are each carried by their own node", () => {
+    const cellPr = '<w:sdtPr><w:id w:val="9"/></w:sdtPr>';
+    const node = requireTable(
+      "<w:tbl>" +
+        grid(1000) +
+        sdt(`<w:tr>${sdt(cell("", "both"), cellPr)}</w:tr>`) +
+        "</w:tbl>"
+    );
+    expect(node.child(0).attrs.sdtPrefix).toBe(
+      '<w:sdt><w:sdtPr><w:id w:val="8"/></w:sdtPr>'
+    );
+    expect(node.child(0).child(0).attrs.sdtPrefix).toBe(`<w:sdt>${cellPr}`);
+  });
+
+  it("a merge the wrapped row starts is read the same way", () => {
+    const node = requireTable(
+      "<w:tbl>" +
+        grid(1000, 1000) +
+        sdt(row(cell('<w:vMerge w:val="restart"/>', "top"), cell("", "a"))) +
+        row(cell("<w:vMerge/>"), cell("", "b")) +
+        "</w:tbl>"
+    );
+    expect(spans(node)).toEqual(["1x2 1x1", "1x1"]);
+    expect(node.child(0).attrs.sdtPrefix).toBe(
+      '<w:sdt><w:sdtPr><w:id w:val="8"/></w:sdtPr>'
+    );
+  });
+});
+
+describe("a row control we could not write back out is left preserved", () => {
+  const wrapping = (inner: string, ...cols: number[]) =>
+    `<w:tbl>${grid(...(cols.length > 0 ? cols : [1000]))}${inner}</w:tbl>`;
+
+  it.each([
+    /** The single-row reading of §17.5.2.35 (`spec/notes/contentControls.md`) */
+    [
+      "an sdtContent holding two rows",
+      wrapping(
+        "<w:sdt><w:sdtPr/><w:sdtContent>" +
+          row(cell("", "a")) +
+          row(cell("", "b")) +
+          "</w:sdtContent></w:sdt>"
+      ),
+    ],
+    // One row, two wrappers asking to hang on it: the outer one has nowhere to go
+    [
+      "a row control holding another row control",
+      wrapping(
+        "<w:sdt><w:sdtPr/><w:sdtContent>" +
+          `<w:sdt><w:sdtPr/><w:sdtContent>${row(cell("", "a"))}</w:sdtContent></w:sdt>` +
+          "</w:sdtContent></w:sdt>"
+      ),
+    ],
+    [
+      "a row control with no sdtPr",
+      wrapping(
+        `<w:sdt><w:sdtContent>${row(cell("", "a"))}</w:sdtContent></w:sdt>`
+      ),
+    ],
+    [
+      "a row control whose sdtContent carries an attribute of its own",
+      wrapping(
+        `<w:sdt><w:sdtPr/><w:sdtContent w:val="1">${row(cell("", "a"))}</w:sdtContent></w:sdt>`
+      ),
+    ],
+    /**
+     * Such a row is no row of the model at all - every cell of it is recreated on export from the
+     * cell the merge started at - so there is nothing left for the wrapper to hang on
+     */
+    [
+      "a control around a row that only continues a vertical merge",
+      wrapping(
+        row(cell('<w:vMerge w:val="restart"/>', "top")) +
+          `<w:sdt><w:sdtPr/><w:sdtContent>${row(cell("<w:vMerge/>"))}</w:sdtContent></w:sdt>`
+      ),
+    ],
+  ])("%s", (_name, xml) => {
+    expect(table(xml)).toBeNull();
+  });
+});
+
 describe("a content control we could not write back out is left preserved", () => {
   const wrapping = (inner: string, ...cols: number[]) =>
     `<w:tbl>${grid(...(cols.length > 0 ? cols : [1000]))}<w:tr>${inner}</w:tr></w:tbl>`;
@@ -1461,18 +1580,33 @@ describe("a cell paragraph carrying markup the editor does not model", () => {
   });
 });
 
+/**
+ * How many tables each fixture deliberately keeps whole, which is only ever a structure a reader
+ * could not take apart. Named per file rather than counted across the corpus, so a table sliding
+ * into the demoting default fails here.
+ *
+ * `content-controls.docx` carries one: a control holding two `w:tr`, where a row wrapper can only
+ * be carried by the single row it stands around (§17.5.2.35).
+ */
+const DEMOTED_TABLES: Readonly<Record<string, number>> = {
+  "content-controls.docx": 1,
+};
+
 describe("tables in the fixtures", () => {
-  it.each(fixtureNames)("%s: no table is left as a preserved block", (name) => {
-    const { doc } = importDocx(readFixture(name));
-    let tables = 0;
-    let demoted = 0;
-    doc.forEach((block) => {
-      if (block.attrs.name === "w:tbl") demoted += 1;
-      if (block.type.name === "table") tables += 1;
-    });
-    expect(demoted).toBe(0);
-    expect(tables).toBeGreaterThan(0);
-  });
+  it.each(fixtureNames)(
+    "%s: a table is kept whole only where the fixture says so",
+    (name) => {
+      const { doc } = importDocx(readFixture(name));
+      let tables = 0;
+      let demoted = 0;
+      doc.forEach((block) => {
+        if (block.attrs.name === "w:tbl") demoted += 1;
+        if (block.type.name === "table") tables += 1;
+      });
+      expect(demoted).toBe(DEMOTED_TABLES[name] ?? 0);
+      expect(tables).toBeGreaterThan(0);
+    }
+  );
 
   it.each(fixtureNames)(
     "%s: prosemirror-tables finds nothing to repair",

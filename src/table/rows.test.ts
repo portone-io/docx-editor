@@ -11,6 +11,7 @@ import {
   firstTable,
   mergedContractDoc,
   posOfText,
+  ROW_CONTROL_PREFIX,
   row,
   rowsOf,
   rowWith,
@@ -371,6 +372,45 @@ describe("a new row beside a cell carrying a marker", () => {
     expect(inserted.attrs).toMatchObject({
       leadingXml: null,
       trailingXml: null,
+    });
+  });
+});
+
+/**
+ * A control names a settled part of a contract, so a row made beside a wrapped one is a row of its
+ * own: carrying the wrapper would give the document a second control claiming the first one's id
+ * and its lock (`docx/cloning`).
+ */
+describe("a new row beside a row a content control wraps", () => {
+  const wrapped = () =>
+    tableDoc([
+      rowWith(
+        {
+          sdtPrefix: ROW_CONTROL_PREFIX,
+          sdtContentsLocked: true,
+          sdtDeletionLocked: true,
+          trPr: "<w:trPr/>",
+        },
+        cell("A")
+      ),
+    ]);
+
+  it.each([
+    ["below it", addRowAfterCellWith],
+    ["above it", addRowBeforeCellWith],
+  ])("carries no control %s", (_where, insert) => {
+    const state = insert(wrapped(), "A");
+    const { table } = firstTable(state.doc);
+    const inserted = table.child(
+      table.child(0).attrs.sdtPrefix === null ? 0 : 1
+    );
+
+    // The formatting it does inherit is what says the copy happened at all
+    expect(inserted.attrs.trPr).toBe("<w:trPr/>");
+    expect(inserted.attrs).toMatchObject({
+      sdtPrefix: null,
+      sdtContentsLocked: false,
+      sdtDeletionLocked: false,
     });
   });
 });

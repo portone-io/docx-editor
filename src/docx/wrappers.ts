@@ -22,10 +22,16 @@
 import type { Mark } from "prosemirror-model";
 import { DocxExportError } from "../ooxml/errors";
 import { docxSchema } from "../schema";
+import { controlAttrs, OWN_CONTROL_ATTRS } from "../schema/controlAttrs";
 import type { ExportRefs } from "./exportRefs";
 import { readHyperlinkWrapper, relIdIn, withRelId } from "./hyperlink";
 import type { ImportSources } from "./importParagraph";
-import { readSdtWrapper, SDT_CLOSING_XML, sdtOpeningXml } from "./sdt";
+import {
+  controlFactsFrom,
+  readSdtWrapper,
+  SDT_CLOSING_XML,
+  sdtOpeningXml,
+} from "./sdt";
 
 /** A wrapper read off the file: the mark its content wears, and the element that content stands in */
 export interface WrapperReading {
@@ -90,14 +96,9 @@ const SDT: WrapperKind = {
     if (!wrapper) return null;
     return {
       mark: docxSchema.marks.sdt.create({
-        sdtPrefix: wrapper.prefix,
         depth,
         key: nextKey(SDT.mark, el),
-        contentsLocked: wrapper.contentsLocked,
-        deletionLocked: wrapper.deletionLocked,
-        group: wrapper.group,
-        temporary: wrapper.temporary,
-        showingPlaceholder: wrapper.showingPlaceholder,
+        ...controlAttrs(OWN_CONTROL_ATTRS, controlFactsFrom(wrapper)),
       }),
       content: wrapper.content,
     };

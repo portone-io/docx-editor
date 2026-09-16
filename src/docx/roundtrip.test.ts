@@ -362,6 +362,15 @@ const WRAPPED_ROW_BODY =
   cell("a") +
   "</w:tr></w:tbl>";
 
+/** A table whose first row stands inside a control, with a second row beside it to edit */
+const CONTROLLED_ROW_BODY =
+  "<w:tbl>" +
+  '<w:tblGrid><w:gridCol w:w="1000"/></w:tblGrid>' +
+  `${OPEN_SDT_PREFIX}<w:sdtContent><w:tr>${cell("wrapped")}</w:tr>` +
+  "</w:sdtContent></w:sdt>" +
+  `<w:tr>${cell("plain")}</w:tr>` +
+  "</w:tbl>";
+
 /** The same shape, with the control around the cell shutting it */
 const LOCKED_CELL_BODY =
   "<w:tbl>" +
@@ -491,6 +500,76 @@ describe("a table whose row and cell carry wrappers we do not read", () => {
     expect(documentXml).toContain(TBL_PR_EX);
     expect(documentXml).toContain(`${OPEN_SDT_PREFIX}<w:sdtContent><w:tc>`);
     expect(documentXml).toContain("</w:tc></w:sdtContent></w:sdt>");
+  });
+});
+
+describe("a table whose row a content control wraps", () => {
+  it("opens as a table to edit rather than as a preserved block", () => {
+    const { doc } = importDocx(makeDocx(CONTROLLED_ROW_BODY));
+    const table = doc.child(0);
+
+    expect(table.type.name).toBe("table");
+    expect(table.childCount).toBe(2);
+    expect(table.child(0).attrs.sdtPrefix).toBe(OPEN_SDT_PREFIX);
+  });
+
+  it("goes back out byte for byte when nothing was edited", () => {
+    const bytes = makeDocx(CONTROLLED_ROW_BODY);
+    const { doc, session } = importDocx(bytes);
+
+    expectEveryPartIdentical(
+      exportDocx(doc, session),
+      bytes,
+      session.mainPartPath
+    );
+  });
+
+  /**
+   * An edit anywhere in a table rewrites the table whole, so the wrapped row is written again from
+   * the model rather than handed back as bytes. What has to come back is the control around it.
+   */
+  it("keeps the control around the row after another row is edited", () => {
+    const { doc, session } = importDocx(makeDocx(CONTROLLED_ROW_BODY));
+    const edited = afterEdit(doc, (tr) =>
+      tr.insertText("!", posOfText(doc, "plain") + 1)
+    );
+    const documentXml = documentXmlOf(edited, session);
+
+    expect(documentXml).toContain("pl!ain");
+    expect(documentXml).toContain(
+      `${OPEN_SDT_PREFIX}<w:sdtContent><w:tr><w:tc>`
+    );
+    expect(documentXml).toContain("</w:tr></w:sdtContent></w:sdt>");
+    // One control, still around the one row it arrived around
+    expect(documentXml.match(/<w:sdt>/g)).toHaveLength(1);
+  });
+});
+
+/**
+ * A copy made inside the editor arrives wearing every attr of the original, the control's opening
+ * XML among them, so the second table would otherwise go out claiming the first one's `w:id`.
+ */
+describe("a copied table carrying a control around a row or a cell", () => {
+  const copiedIds = (body: string) => {
+    const { doc, session } = importDocx(makeDocx(body));
+    const copied = afterEdit(doc, (tr) =>
+      tr.replaceWith(doc.content.size, doc.content.size, doc.child(0))
+    );
+    const documentXml = documentXmlOf(copied, session);
+    expect(documentXml.match(/<w:sdt>/g)).toHaveLength(2);
+    return idValues(documentXml);
+  };
+
+  it("leaves the wrapped row's id with the first table and mints one for the copy", () => {
+    const [first, second] = copiedIds(CONTROLLED_ROW_BODY);
+    expect(first).toBe("7");
+    expect(second).not.toBe("7");
+  });
+
+  it("does the same for a wrapped cell", () => {
+    const [first, second] = copiedIds(WRAPPED_ROW_BODY);
+    expect(first).toBe("7");
+    expect(second).not.toBe("7");
   });
 });
 

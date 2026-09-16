@@ -114,6 +114,15 @@ const BODY =
   "</w:tr>" +
   `<w:tr>${cellXml(runXml("Under1"))}${cellXml(runXml("Under2"))}${cellXml(runXml("Under3"))}</w:tr>` +
   "</w:tbl>" +
+  // A third table whose first row stands inside a control that shuts both clauses, so that the
+  // carrier put to the test is the row rather than a cell of it
+  "<w:tbl>" +
+  '<w:tblGrid><w:gridCol w:w="1000"/><w:gridCol w:w="1000"/></w:tblGrid>' +
+  control(
+    `<w:tr>${cellXml(runXml("ShutRow"))}${cellXml(runXml("ShutRowRight"))}</w:tr>`
+  ) +
+  `<w:tr>${cellXml(runXml("BesideRow"))}${cellXml(runXml("BesideRowRight"))}</w:tr>` +
+  "</w:tbl>" +
   // The same values again where the control is a block of the body rather than a mark or a cell,
   // and a group holding a control of its own, which supersedes what the group shuts
   control(blockXml("BlockShut")) +
@@ -395,6 +404,21 @@ const PLACES: readonly Place[] = [
     name: "a block of cells one of which is locked against deletion alone",
     guards: ["protection", "lock"],
     state: (protection) => cellsSelected("KeptCell", "PlainCell", protection),
+  },
+  {
+    name: "a caret inside a locked row",
+    guards: ["protection", "lock"],
+    state: (protection) => caretIn("ShutRow", protection),
+  },
+  {
+    name: "a block of cells in a locked row",
+    guards: ["protection", "lock"],
+    state: (protection) => cellsSelected("ShutRow", "ShutRowRight", protection),
+  },
+  {
+    name: "a caret in a row standing beside a locked one",
+    guards: ["protection", "lock"],
+    state: (protection) => caretIn("BesideRow", protection),
   },
   {
     name: "a caret inside a locked block control",

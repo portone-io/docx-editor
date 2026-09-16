@@ -69,6 +69,14 @@ export const NODE_ATTR_ROLES: AttrTable = {
     tblPrEx: { role: "source", class: "preserved" },
     trPr: { role: "source", class: "preserved" },
     format: { role: "display", class: "derived" },
+    // The control a `w:sdt` under `w:tbl` put around this row, read and compared for the same
+    // reasons a wrapped cell's is
+    sdtPrefix: { role: "source", class: "preserved" },
+    sdtContentsLocked: { role: "source", class: "derived" },
+    sdtDeletionLocked: { role: "source", class: "derived" },
+    sdtGroup: { role: "source", class: "derived" },
+    sdtTemporary: { role: "source", class: "derived" },
+    sdtShowingPlaceholder: { role: "source", class: "derived" },
     leadingXml: { role: "source", class: "preserved" },
     trailingXml: { role: "source", class: "preserved" },
   },

@@ -1,11 +1,11 @@
 /**
  * The attributes each carrier of a content control writes what the control states in.
  *
- * Three carriers state the same facts: the `sdt` mark and the `sdtBlock` container under the
- * control's own names, and a cell the file wrapped (`docx/importTable`) under `sdt`-prefixed ones,
- * beside the cell's own attributes. The names stand here once, so that a fact the editor reads off
- * a control is declared, drawn, parsed, imported, merged and cleared from one table rather than
- * from a list written out afresh in every module that touches one.
+ * Four carriers state the same facts: the `sdt` mark and the `sdtBlock` container under the
+ * control's own names, and a cell or a row the file wrapped (`docx/importTable`) under
+ * `sdt`-prefixed ones, beside that node's own attributes. The names stand here once, so that a fact
+ * the editor reads off a control is declared, drawn, parsed, imported, merged and cleared from one
+ * table rather than from a list written out afresh in every module that touches one.
  *
  * Nothing is imported here: the schema itself reads this table (`./docxSchema`), and so does the
  * export, which must reach no editor code at all (`core.test`).
@@ -55,8 +55,11 @@ export const OWN_CONTROL_ATTRS: ControlAttrNames = {
   showingPlaceholder: "showingPlaceholder",
 };
 
-/** A wrapped cell carries the control beside its own attributes, so every name is prefixed */
-export const CELL_CONTROL_ATTRS: ControlAttrNames = {
+/**
+ * A wrapped cell or row carries the control beside its own attributes, so every name is prefixed.
+ * Both are one node the file put a `w:sdt` around, so they read it under the same names.
+ */
+export const WRAPPED_CONTROL_ATTRS: ControlAttrNames = {
   prefix: "sdtPrefix",
   contentsLocked: "sdtContentsLocked",
   deletionLocked: "sdtDeletionLocked",
@@ -75,7 +78,10 @@ export const NO_CONTROL: ControlFacts = {
   showingPlaceholder: false,
 };
 
-/** The DOM attribute each flag is drawn under, which the three carriers share (`./docxSchema`) */
+/** The DOM attribute every carrier draws the control's opening XML under (`./docxSchema`) */
+export const PREFIX_DOM_ATTR = "data-sdt-prefix";
+
+/** The DOM attribute each flag is drawn under, which all four carriers share (`./docxSchema`) */
 const FLAG_DOM_ATTRS: Readonly<Record<keyof ControlFlags, string>> = {
   contentsLocked: "data-sdt-contents-locked",
   deletionLocked: "data-sdt-deletion-locked",
@@ -130,7 +136,7 @@ export function controlAttrSpecs(
 const drawn = (flag: boolean): string | undefined => (flag ? "1" : undefined);
 
 /** The flags as a carrier draws them, its opening XML being drawn beside them */
-export function controlFlagsToDom(
+function controlFlagsToDom(
   facts: ControlFlags
 ): Record<string, string | undefined> {
   return {
@@ -143,7 +149,7 @@ export function controlFlagsToDom(
 }
 
 /** The flags read back off a carrier that was drawn */
-export function controlFlagsFromDom(dom: HTMLElement): ControlFlags {
+function controlFlagsFromDom(dom: HTMLElement): ControlFlags {
   const set = (attr: string): boolean => dom.getAttribute(attr) === "1";
   return {
     contentsLocked: set(FLAG_DOM_ATTRS.contentsLocked),
@@ -153,6 +159,46 @@ export function controlFlagsFromDom(dom: HTMLElement): ControlFlags {
     showingPlaceholder: set(FLAG_DOM_ATTRS.showingPlaceholder),
   };
 }
+
+/**
+ * The control as a carrier draws it, beside the attributes and the class of the carrier's own.
+ * Every carrier draws it the same way, so what its node spec keeps is the class names alone.
+ */
+export function controlToDom(
+  facts: ControlFacts
+): Record<string, string | undefined> {
+  return {
+    [PREFIX_DOM_ATTR]: facts.prefix ?? undefined,
+    ...controlFlagsToDom(facts),
+  };
+}
+
+/**
+ * The class the carrier wears, which is its own until the control shuts what stands inside it.
+ * A `w:group` shuts its contents as a lock does, so it is drawn as one (`./locks`).
+ */
+export function controlClassName(
+  facts: ControlFacts,
+  base: string,
+  locked: string
+): string {
+  return facts.contentsLocked || facts.group ? `${base} ${locked}` : base;
+}
+
+/**
+ * The control read back off a carrier that was drawn, as that carrier's attributes. The opening
+ * XML is handed over already validated, since what a carrier accepts there is the schema's to say.
+ */
+export function controlAttrsFromDom(
+  names: ControlAttrNames,
+  dom: HTMLElement,
+  prefix: string | null
+): Record<string, string | boolean | null> {
+  return controlAttrs(names, { prefix, ...controlFlagsFromDom(dom) });
+}
+
+/** The table roles a `w:sdt` stands around whole: `CT_SdtCell` (§17.5.2.32), `CT_SdtRow` (§17.5.2.30) */
+const WRAPPED_TABLE_ROLES: readonly string[] = ["cell", "row"];
 
 /**
  * Whether this node is a block-level content control (`docx/importSdtBlock`).
@@ -168,20 +214,24 @@ export function isBlockControl(node: PMNode | null | undefined): boolean {
  * Which attributes the control standing at this node writes what it states in, and null where no
  * control stands there.
  *
- * These are the two containers a control stands around whole: a cell the file wrapped
+ * These are the containers a control stands around whole: a cell or a row the file wrapped
  * (`docx/importTable`), which carries the control's opening XML beside its own attributes, and a
- * block-level control, which is the wrapper itself. A cell no control wrapped carries none of
- * this, and counting it as a control would end the walk out of the tree at the first cell and open
- * every lock standing around the table (`./locks`).
- * A cell is found by its table role, so a schema built beside the editor's own is read as well.
+ * block-level control, which is the wrapper itself. A cell or a row no control wrapped carries
+ * none of this, and counting it as a control would end the walk out of the tree at the first one
+ * and open every lock standing around the table (`./locks`).
+ * The wrapped nodes are found by their table role, so a schema built beside the editor's own is
+ * read as well.
  */
 export function controlAttrsOf(
   node: PMNode | null | undefined
 ): ControlAttrNames | null {
   if (!node) return null;
   if (isBlockControl(node)) return OWN_CONTROL_ATTRS;
-  if (node.type.spec.tableRole !== "cell") return null;
-  return typeof node.attrs[CELL_CONTROL_ATTRS.prefix] === "string"
-    ? CELL_CONTROL_ATTRS
+  const role: unknown = node.type.spec.tableRole;
+  if (typeof role !== "string" || !WRAPPED_TABLE_ROLES.includes(role)) {
+    return null;
+  }
+  return typeof node.attrs[WRAPPED_CONTROL_ATTRS.prefix] === "string"
+    ? WRAPPED_CONTROL_ATTRS
     : null;
 }

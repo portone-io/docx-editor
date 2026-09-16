@@ -2,11 +2,11 @@ import type { Node as PMNode } from "prosemirror-model";
 import { Plugin, PluginKey } from "prosemirror-state";
 import { TableMap } from "prosemirror-tables";
 import { Decoration, DecorationSet, type EditorView } from "prosemirror-view";
-import { isLockedContainer } from "../../schema/locks";
 import { editorClassNames } from "../../styles/classNames";
 import { pageScaleAround } from "../../styles/visualScale";
 import {
   buildResizeRowTransaction,
+  isRowResizable,
   resizedRowHeight,
   rowPositionAt,
 } from "../../table/rowResize";
@@ -73,9 +73,7 @@ function edgeUnder(view: EditorView, event: MouseEvent): RowEdgeTarget | null {
   const spot = cellSpotAt(view, td);
   if (!spot) return null;
   const hit = rowEdgeAt(event.clientY, td.getBoundingClientRect(), spot);
-  if (!hit || hit.row < 0 || hit.row >= spot.table.childCount) return null;
-  const row = spot.table.child(hit.row);
-  if (row.children.some(isLockedContainer)) return null;
+  if (!hit || !isRowResizable(spot.table, hit.row)) return null;
   const rowPos = rowPositionAt(spot.tablePos, spot.table, hit.row);
   const rowDom = view.nodeDOM(rowPos);
   if (!(rowDom instanceof HTMLTableRowElement)) return null;

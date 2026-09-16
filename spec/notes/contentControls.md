@@ -19,12 +19,13 @@ Observed 2026-08-20 against ECMA-376 5th edition, Part 1.
 ## What we implement
 
 `docx/sdt` reads both clauses off the `w:lock` value and carries them apart, as `contentsLocked` and `deletionLocked` on the wrapper, beside `group` for the separate restriction below.
-The three travel through the schema as attributes of the inline `sdt` mark and of the `sdtBlock` node, and as `sdtContentsLocked`, `sdtDeletionLocked` and `sdtGroup` on a cell a control wraps.
+The three travel through the schema as attributes of the inline `sdt` mark and of the `sdtBlock` node, and as `sdtContentsLocked`, `sdtDeletionLocked` and `sdtGroup` on a cell or a row a control wraps.
 
 `schema/locks` judges a step's edited range against each control it meets by how much of the control the range covers.
 A range that covers the control from end to end and takes what stands there away is the control being deleted whole, which the deletion clause answers.
 Anything less - a partial overlap, an insertion, or a mark laid across the control, which leaves it standing - reaches into the contents, which the contents clause answers.
 For a cell the control's extent is the cell node itself, so the range a row or column deletion writes covers it whole.
+For a row it is the row node, so a row deletion covers it whole while a column deletion takes one cell out of it and reaches its contents instead.
 For a block-level control the extent is the control's own node, so a range that covers that node and takes it away is the control being deleted whole, while any range reaching the blocks inside it is an edit of its contents.
 Where one control stands inside another, every control around the spot answers for editing what stands there and any one of them that shuts refuses it, while the outermost control a range covers whole answers for taking it away.
 
@@ -60,6 +61,11 @@ Which control stands inside which is then what the tree says, where the inline m
 The control is one block of the story, so a control nobody edited goes back out as the bytes it arrived as and an edit anywhere inside it rewrites the control whole - the same bargain a table makes.
 
 Both shapes read the prefix, what the control states about being edited and deleted, and the copy rule out of `docx/sdt`, so what the four levels - block, inline, cell, row - disagree about is the node, never the vocabulary.
+
+A `w:sdt` under `w:tbl` is a `CT_SdtRow` (§17.5.2.30) and rides on the `tableRow` node, exactly as a `CT_SdtCell` rides on the cell.
+§17.5.2.35 describes what such a control holds as "a single table row" where `CT_SdtContentRow` admits any number of them, and the stricter reading is the one this editor takes: the row is what carries the wrapper back out, so a control holding two rows has one wrapper and two candidates to hang it on, and the table is kept whole instead.
+A control holding another control rather than a row is turned down for the same reason, since the one row inside can carry only one of the two.
+That the wrapper is a row's rather than a table's is what the deletion clause is read against: a row deletion takes the control away whole and a column deletion edits what it holds, and a row made beside a wrapped one carries no control at all, since a second control claiming the first one's id is not a shape §17.5.2.18 allows.
 
 ## Editing at the edges of a block control
 

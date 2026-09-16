@@ -196,6 +196,53 @@ describe("a control a lock says may not be deleted", () => {
   });
 });
 
+describe("a control standing around a whole row", () => {
+  const CELL = (text: string) => `<w:tc>${P(text)}</w:tc>`;
+  const ROW = (...cells: string[]) => `<w:tr>${cells.join("")}</w:tr>`;
+
+  const table = (firstRow: string) =>
+    "<w:tbl>" +
+    '<w:tblGrid><w:gridCol w:w="1000"/></w:tblGrid>' +
+    firstRow +
+    ROW(CELL("Under")) +
+    "</w:tbl>";
+
+  /** The row itself stays exactly where it stood; only what the control said about it goes */
+  it("lifts the wrapper off the row on the first edit in one of its cells", () => {
+    const opened = open(table(sdt(ROW(CELL("Inside")), TEMPORARY)));
+
+    const after = type(opened, "Inside", "!");
+    const row = after.doc.child(0).child(0);
+
+    expect(row.type.name).toBe("tableRow");
+    expect(row.attrs.sdtPrefix).toBeNull();
+    expect(row.textContent).toBe("I!nside");
+    expect(exported(after, opened)).not.toContain("<w:sdt>");
+  });
+
+  it("stands where the edit was in another row", () => {
+    const opened = open(table(sdt(ROW(CELL("Inside")), TEMPORARY)));
+
+    const after = type(opened, "Under", "!");
+
+    expect(after.doc.child(0).child(0).attrs.sdtPrefix).not.toBeNull();
+    expect(exported(after, opened)).toContain("<w:temporary/>");
+  });
+
+  it("drops the placeholder flag off the row and keeps the control", () => {
+    const opened = open(table(sdt(ROW(CELL("Inside")), PLACEHOLDER)));
+
+    const after = type(opened, "Inside", "!");
+    const row = after.doc.child(0).child(0);
+
+    expect(row.attrs.sdtShowingPlaceholder).toBe(false);
+    expect(row.attrs.sdtPrefix).not.toContain("showingPlcHdr");
+    const written = exported(after, opened);
+    expect(written).toContain("<w:sdt>");
+    expect(written).not.toContain("showingPlcHdr");
+  });
+});
+
 describe("several controls settling in one round", () => {
   it("lifts a group control and a plain one from the same edit", () => {
     const opened = open(

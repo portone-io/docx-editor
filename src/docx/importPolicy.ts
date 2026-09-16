@@ -14,7 +14,7 @@
  *
  * A level is a content model of `wml.xsd` rather than an element name, because the same name means
  * different things in different places: `sdt` is a control the paragraph reader unwraps, a cell
- * wrapper under `tr`, a block container under the body, and a row wrapper nothing reads. Keys are
+ * wrapper under `tr`, a row wrapper under `tbl`, and a block container under the body. Keys are
  * Clark names (`{namespace}localName`) so that `m:oMath` and `w:sdt` sit in one map.
  */
 
@@ -262,13 +262,15 @@ const SDT_CONTENT_LEVEL: ReadonlyMap<string, ElementPolicy> = new Map([
 ]);
 
 /**
- * `CT_Tbl`: the markers it opens with, its properties, its grid and its rows.
+ * `CT_Tbl`: the markers it opens with, its properties, its grid, its rows and a control wrapping
+ * one row.
  *
- * A row wrapper and a revision container have no node here, so they are left out and the level's
- * default demotes the table around them.
+ * A `w:sdt` here is a `CT_SdtRow` (§17.5.2.30), which `docx/importTable` reads onto the row it
+ * wraps as the row level reads one onto a cell. A revision container has no node here, so it is
+ * left out and the level's default demotes the table around it.
  */
 const TABLE_LEVEL = rules([
-  [["tblPr", "tblGrid", "tr"], MODEL],
+  [["tblPr", "tblGrid", "tr", "sdt"], MODEL],
   [RANGE_MARKERS, HIDDEN_MARKER],
   [COMMENT_RANGE_MARKERS, HIDDEN_MARKER],
   [PERMISSION_MARKERS, HIDDEN_MARKER],

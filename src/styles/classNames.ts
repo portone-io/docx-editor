@@ -34,6 +34,8 @@ export const editorClassNames = {
   imageHandle: `${PREFIX}-img-handle`,
   table: `${PREFIX}-tbl`,
   tableRow: `${PREFIX}-tr`,
+  /** Attached alongside it when the control around the row says the row may not be edited */
+  rowLocked: `${PREFIX}-tr-locked`,
   tableCell: `${PREFIX}-tc`,
   /** Attached alongside it when the control around the cell says the cell may not be edited */
   cellLocked: `${PREFIX}-tc-locked`,

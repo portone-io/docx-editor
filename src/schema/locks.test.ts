@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /**
  * What a lock shuts where the control is a container rather than a mark: a block-level `w:sdt`,
- * and a cell holding one.
+ * and a cell or a row one wraps.
  *
  * The cases are built from small bodies so that what each one proves stands in the test itself.
  * `content-controls.docx` is read at the end, since it is the one package carrying all four
@@ -26,7 +26,7 @@ import {
   createEditorState,
   editorStateForSession,
 } from "../editor/createEditor";
-import { deleteRow } from "../table";
+import { deleteColumn, deleteRow } from "../table";
 import { carriesLock, unlockAllowed } from "./locks";
 
 const run = (text: string) =>
@@ -64,6 +64,16 @@ const table = (...rows: string[]) =>
   "<w:tbl>" +
   '<w:tblGrid><w:gridCol w:w="1000"/></w:tblGrid>' +
   rows.map((row) => `<w:tr>${row}</w:tr>`).join("") +
+  "</w:tbl>";
+
+/** A `w:tr` written out, for a table whose rows a control may stand around */
+const tr = (...cells: string[]) => `<w:tr>${cells.join("")}</w:tr>`;
+
+/** The same table, where each argument is a whole row: a `w:tr` or a `w:sdt` around one */
+const tableOf = (cols: number, ...rows: string[]) =>
+  "<w:tbl><w:tblGrid>" +
+  `${'<w:gridCol w:w="1000"/>'.repeat(cols)}</w:tblGrid>` +
+  rows.join("") +
   "</w:tbl>";
 
 function opened(body: string): EditorState {
@@ -263,6 +273,123 @@ describe("a block control holding a table", () => {
   it("refuses a row deletion inside it", () => {
     const state = opened(BODY);
     expect(deleteRow(select(state, inside(state.doc, "InTable")))).toBe(false);
+  });
+});
+
+/**
+ * A `CT_SdtRow` (§17.5.2.30) is carried by the row node, so the row is the control's extent: every
+ * cell in it is contents, and the range a row deletion writes covers it whole.
+ */
+describe("a row wrapped in a content control", () => {
+  const BODY = (lock: string) =>
+    tableOf(
+      2,
+      sdt(tr(cell(P("Left")), cell(P("Right"))), { lock }),
+      tr(cell(P("Under1")), cell(P("Under2")))
+    );
+
+  it("refuses a character typed in either of its cells", () => {
+    const state = opened(BODY("sdtContentLocked"));
+    expect(
+      applies(state, state.tr.insertText("x", inside(state.doc, "Left")))
+    ).toBe(false);
+    expect(
+      applies(state, state.tr.insertText("x", inside(state.doc, "Right")))
+    ).toBe(false);
+    // The row below it was never wrapped
+    expect(
+      applies(state, state.tr.insertText("x", inside(state.doc, "Under1")))
+    ).toBe(true);
+  });
+
+  it("refuses a paragraph command and a mark command inside it", () => {
+    const state = opened(BODY("sdtContentLocked"));
+    const at = inside(state.doc, "Left");
+    expect(setParagraphAlign("center")(select(state, at))).toBe(false);
+    expect(toggleBold(select(state, at, at + 3))).toBe(false);
+  });
+
+  it("refuses a row deletion under a lock against deletion alone, and lets a retype through", () => {
+    const state = opened(BODY("sdtLocked"));
+    expect(
+      applies(state, state.tr.insertText("x", inside(state.doc, "Left")))
+    ).toBe(true);
+    expect(deleteRow(select(state, inside(state.doc, "Left")))).toBe(false);
+    // The row beside it may still go
+    expect(deleteRow(select(state, inside(state.doc, "Under1")))).toBe(true);
+  });
+
+  /**
+   * A column deletion takes one cell out of the row and leaves the row standing, so it reaches the
+   * contents rather than the control: the contents clause answers, where for a wrapped cell the
+   * same deletion covers the whole control and the deletion clause does.
+   */
+  it("refuses a column deletion where the contents are shut and allows one where they are not", () => {
+    const shut = opened(BODY("contentLocked"));
+    expect(deleteColumn(select(shut, inside(shut.doc, "Left")))).toBe(false);
+
+    const kept = opened(BODY("sdtLocked"));
+    expect(deleteColumn(select(kept, inside(kept.doc, "Left")))).toBe(true);
+  });
+
+  it("is shut by a w:group although it states no lock", () => {
+    const state = opened(
+      tableOf(
+        1,
+        sdt(tr(cell(P("Grouped"))), { type: "<w:group/>" }),
+        tr(cell(P("Beside")))
+      )
+    );
+
+    expect(
+      applies(state, state.tr.insertText("x", inside(state.doc, "Grouped")))
+    ).toBe(false);
+    expect(
+      applies(state, state.tr.insertText("x", inside(state.doc, "Beside")))
+    ).toBe(true);
+  });
+
+  it("shuts an open cell control it holds", () => {
+    const state = opened(
+      tableOf(
+        1,
+        sdt(`<w:tr>${sdt(cell(P("Inner")), { id: 2 })}</w:tr>`, {
+          lock: "sdtContentLocked",
+        })
+      )
+    );
+
+    expect(
+      applies(state, state.tr.insertText("x", inside(state.doc, "Inner")))
+    ).toBe(false);
+  });
+
+  it("carries a lock the document reads, which unlocking lifts off the row", () => {
+    const imported = importDocx(
+      makeDocx(
+        tableOf(
+          1,
+          sdt(tr(cell(P("Shut"))), { id: 44, lock: "sdtContentLocked" })
+        )
+      )
+    );
+    const state = editorStateForSession(imported);
+    expect(carriesLock(state.doc.child(0).child(0))).toBe(true);
+
+    const all = state.apply(state.tr.setSelection(new AllSelection(state.doc)));
+    const after = runCommand(all, unlockSelection);
+    const unlocked = after.doc.child(0).child(0);
+
+    expect(unlocked.attrs.sdtContentsLocked).toBe(false);
+    expect(unlocked.attrs.sdtDeletionLocked).toBe(false);
+    expect(
+      applies(after, after.tr.insertText("x", inside(after.doc, "Shut")))
+    ).toBe(true);
+
+    const xml = documentXmlOf(after.doc, imported.session);
+    expect(xml).not.toContain("<w:lock");
+    // The control itself stays, under the id the file gave it (§17.5.2.18)
+    expect(xml).toContain('<w:id w:val="44"/>');
   });
 });
 

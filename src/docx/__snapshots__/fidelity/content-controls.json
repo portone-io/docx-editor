@@ -22,5 +22,13 @@
     "block": 12,
     "pos": 777,
     "element": "w:sdt"
+  },
+  {
+    "severity": "placeholder",
+    "code": "table-demoted",
+    "part": "word/document.xml",
+    "block": 22,
+    "pos": 1601,
+    "element": "w:tbl"
   }
 ]

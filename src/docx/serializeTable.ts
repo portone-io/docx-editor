@@ -194,15 +194,12 @@ function markerXml(node: PMNode, attr: "leadingXml" | "trailingXml"): string {
 }
 
 /**
- * Puts the content control that wrapped this cell in the original back around it.
- *
- * Only a cell that starts where it stands carries the wrapper. The empty cells rebuilt on the
- * continuing rows of a vertical merge are new cells, so wrapping them would duplicate the control.
+ * Puts the content control that wrapped this row or cell in the original back around it, and hands
+ * back the XML untouched where none did.
  */
-function wrapInSdt(xml: string, cell: PMNode, role: CellRole): string {
-  const prefix: unknown = cell.attrs.sdtPrefix;
-  if (role !== "start" || typeof prefix !== "string") return xml;
-  return sdtXml(prefix, xml);
+function wrapInSdt(xml: string, node: PMNode): string {
+  const prefix: unknown = node.attrs.sdtPrefix;
+  return typeof prefix === "string" ? sdtXml(prefix, xml) : xml;
 }
 
 function cellXml(
@@ -222,11 +219,12 @@ function cellXml(
     body +
     "</w:tc>";
   // The markers this cell carries stood after the cell itself, outside whatever wrapped it, and
-  // only where the cell itself stands: a continuing cell is a fresh one and carries none
-  return (
-    wrapInSdt(xml, cell, role) +
-    (role === "start" ? markerXml(cell, "trailingXml") : "")
-  );
+  // only where the cell itself stands: a continuing cell is a fresh one and carries none. The
+  // wrapper is the cell's own for the same reason, so the cells rebuilt on the continuing rows of
+  // a vertical merge carry neither
+  return role === "start"
+    ? wrapInSdt(xml, cell) + markerXml(cell, "trailingXml")
+    : xml;
 }
 
 interface Placed {
@@ -288,15 +286,16 @@ function rowXml(
   const trPr: unknown = row.attrs.trPr;
   // Inside a row the table property exceptions come ahead of the row properties, and CT_Row takes
   // its markers only after both of them
-  return (
+  const xml =
     openTagXml(wName("tr"), rawAttrsOf(row.attrs.trAttrs)) +
     (typeof tblPrEx === "string" ? tblPrEx : "") +
     (typeof trPr === "string" ? trPr : "") +
     markerXml(row, "leadingXml") +
     cells +
-    "</w:tr>" +
-    markerXml(row, "trailingXml")
-  );
+    "</w:tr>";
+  // The markers a row carries stood at the table's own level, after the row and outside whatever
+  // wrapped it
+  return wrapInSdt(xml, row) + markerXml(row, "trailingXml");
 }
 
 /**

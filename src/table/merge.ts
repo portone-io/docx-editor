@@ -20,10 +20,10 @@ import {
   withWidthNumber,
 } from "../model/format";
 import {
-  CELL_CONTROL_ATTRS,
   controlAttrs,
   controlFactsOf,
   NO_CONTROL,
+  WRAPPED_CONTROL_ATTRS,
 } from "../schema/controlAttrs";
 import { guardedCommand } from "../schema/guards";
 import { inheritCellAttrs, type TableRect } from "./format";
@@ -201,9 +201,9 @@ function writeSplitFormats(
           tcW: cellWidthForGridCol(gridCols, col, width, colspan),
           // Only the cell the merge started at keeps the control the source cell sat inside
           ...controlAttrs(
-            CELL_CONTROL_ATTRS,
+            WRAPPED_CONTROL_ATTRS,
             isOriginalSpot
-              ? controlFactsOf(CELL_CONTROL_ATTRS, source.attrs)
+              ? controlFactsOf(WRAPPED_CONTROL_ATTRS, source.attrs)
               : NO_CONTROL
           ),
         }),

@@ -42,6 +42,10 @@ function tableRow(...cells: PMNode[]): PMNode {
   return docxSchema.nodes.tableRow.create(null, cells);
 }
 
+function tableRowWith(attrs: Record<string, unknown>, ...cells: PMNode[]) {
+  return docxSchema.nodes.tableRow.create(attrs, cells);
+}
+
 function table(attrs: Record<string, unknown>, rows: PMNode[]): PMNode {
   return docxSchema.nodes.table.create(attrs, rows);
 }
@@ -617,6 +621,31 @@ describe("parseDOM", () => {
     expect(host.querySelectorAll("td.docx-editor-tc-locked").length).toBe(1);
     expect(
       parser.parse(host, { preserveWhitespace: true }).eq(withLockedCell)
+    ).toBe(true);
+  });
+
+  it("a row wrapped in a locked control round trips too", () => {
+    const withLockedRow = docxSchema.nodes.doc.create(null, [
+      table({ gridCols: [1000, 1000] }, [
+        tableRowWith(
+          {
+            sdtPrefix:
+              '<w:sdt><w:sdtPr><w:lock w:val="sdtContentLocked"/></w:sdtPr>',
+            sdtContentsLocked: true,
+            sdtDeletionLocked: true,
+          },
+          cell({}, "left"),
+          cell({}, "right")
+        ),
+      ]),
+    ]);
+    const host = render(...withLockedRow.children);
+
+    // The row's own cells carry no lock, so the mark is drawn from the row onto both of them
+    expect(host.querySelectorAll("tr.docx-editor-tr-locked").length).toBe(1);
+    expect(host.querySelectorAll("td.docx-editor-tc-locked").length).toBe(0);
+    expect(
+      parser.parse(host, { preserveWhitespace: true }).eq(withLockedRow)
     ).toBe(true);
   });
 
