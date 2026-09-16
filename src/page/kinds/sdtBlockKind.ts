@@ -140,13 +140,14 @@ export const sdtBlockKind: BlockKind = {
         // What the control has to fit on the page it starts on is what its first block does: a
         // held table still asks for its repeated headers and one body row (§17.4.78)
         minFirstPiece = heldTop - top + measured.minFirstPiece;
-      } else if (forced || !keepWithNext) {
-        // The keep the block above asks for (§17.3.1.14) closes the boundary under it, so the
-        // layout is left to push what the control holds rather than to part it there
+      } else {
         candidates.push({
           at: held.pos,
           offset: heldTop - top,
           forced,
+          // A keep the block above asks for (§17.3.1.14) closes the boundary under it unless no
+          // page can hold what is kept, which is the layout's to decide (`page/pageLayout`)
+          ...(!forced && keepWithNext ? { kept: true } : {}),
           repeatHeight: 0,
         });
         if (space > 0) opened.set(held.pos, space);

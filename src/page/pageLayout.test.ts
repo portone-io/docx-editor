@@ -525,6 +525,78 @@ describe("pageLayout", () => {
     );
   });
 
+  describe("a boundary kept closed inside a block", () => {
+    const boundary = (offset: number, kept: boolean): BreakCandidate => ({
+      at: 100 + offset,
+      offset,
+      forced: false,
+      ...(kept ? { kept } : {}),
+      repeatHeight: 0,
+    });
+
+    it("is not cut while a page could hold what is kept together", () => {
+      // The 300 before the boundary would fit in the 500 left; the whole 800 goes down instead
+      const result = layout(
+        blocks(500, {
+          height: 800,
+          minFirstPiece: 300,
+          candidates: [boundary(300, true)],
+        })
+      );
+
+      expect(result.cuts).toEqual([]);
+      expect(result.pushes).toEqual([
+        { pos: 10, marginTop: PAGE + STEP - 500, push: PAGE + STEP - 500 },
+      ]);
+    });
+
+    it("is cut where no page could hold what is kept together", () => {
+      // 1200 kept together fits no page, so the keep is let go and the boundary is an ordinary one
+      const result = layout(
+        blocks(500, {
+          height: 1200,
+          minFirstPiece: 600,
+          candidates: [boundary(600, true)],
+        })
+      );
+
+      expect(result.cuts).toEqual([{ at: 700, height: PAGE - 600 + STEP }]);
+    });
+
+    it("sizes a keep ending at the block by the piece it has to start with", () => {
+      // The 300 kept with the control would have to bring the control's whole 900 along, which no
+      // page can hold with it, so the keep is let go and only the control goes down
+      const result = layout(
+        blocks(
+          700,
+          { height: 300, keepWithNext: true },
+          {
+            height: 900,
+            minFirstPiece: 100,
+            candidates: [boundary(800, true)],
+          }
+        )
+      );
+
+      expect(result.pushes.map((push) => push.pos)).toEqual([20]);
+      expect(result.cuts).toEqual([]);
+    });
+
+    it("keeps only the run up to the next open boundary together", () => {
+      // 0..600 is kept and fits a page; the open boundary at 600 is where the block is parted
+      const result = layout(
+        blocks(500, {
+          height: 1100,
+          minFirstPiece: 300,
+          candidates: [boundary(300, true), boundary(600, false)],
+        })
+      );
+
+      expect(result.pushes.map((push) => push.pos)).toEqual([10]);
+      expect(result.cuts).toEqual([{ at: 700, height: PAGE - 600 + STEP }]);
+    });
+  });
+
   it("a block parted by a page break is not kept with the block after it", () => {
     // Its last piece starts the page the break opened, and the 600 follows it there
     const result = layout(

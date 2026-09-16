@@ -384,19 +384,21 @@ describe("sdtBlockKind", () => {
   });
 
   /**
-   * A keep (§17.3.1.14) closes the boundary under the block asking for it, so the layout pushes
-   * what the control holds rather than parting it between the two blocks kept together.
+   * A keep (§17.3.1.14) closes the boundary under the block asking for it, which the layout
+   * opens only when no page can hold the two blocks kept together (`page/pageLayout`).
    */
-  it("offers no boundary under a block kept with the one after it", () => {
+  it("offers the boundary under a block kept with the one after it as kept", () => {
     const live = mounted(
       control(
         paragraph("first", { pPr: "<w:pPr><w:keepNext/></w:pPr>" }),
         paragraph("second")
       )
     );
-    stack(live, [40, 50]);
+    const [, second] = stack(live, [40, 50]);
 
-    expect(measure(live).candidates).toEqual([]);
+    expect(measure(live).candidates).toEqual([
+      { at: second, offset: 40, forced: false, kept: true, repeatHeight: 0 },
+    ]);
   });
 
   /** A page the document asks for beats the keep, exactly as it does between two body blocks */

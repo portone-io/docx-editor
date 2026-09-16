@@ -26,7 +26,7 @@ import {
 } from "../docx/pageGeometry";
 import type { DocumentSection, SectionProperties } from "../docx/sections";
 import { editorCssVariables } from "../styles/classNames";
-import type { MeasuredBlock, PageCut } from "./blockKinds";
+import type { BreakCandidate, MeasuredBlock, PageCut } from "./blockKinds";
 import type { DemandBand, PageDemand } from "./demands";
 
 export type { MeasuredBlock };
@@ -454,6 +454,55 @@ function keepsWithNext(
   );
 }
 
+/** A block's candidates on one paper, and the piece that has to fit the page it starts on */
+interface OfferedBlock {
+  candidates: readonly BreakCandidate[];
+  firstPiece: number;
+}
+
+/**
+ * The candidates a block offers on this paper: every one but a kept candidate whose run a page
+ * could hold. A run is what stands between the open candidates either side of the kept ones, or
+ * the block's own top or bottom where there is none; a run no page can hold is let go whole, as
+ * `keptExtents` lets a run of kept blocks go.
+ *
+ * A block is never cut inside a run it keeps, so where its first boundary is kept closed the
+ * piece that has to fit the page it starts on runs on to the first candidate offered.
+ */
+function offered(block: MeasuredBlock, bodyHeight: number): OfferedBlock {
+  const all = block.candidates;
+  if (!all.some((candidate) => candidate.kept)) {
+    return { candidates: all, firstPiece: block.minFirstPiece };
+  }
+  const candidates: BreakCandidate[] = [];
+  let firstKeptClosed = false;
+  let runStart = 0;
+  let index = 0;
+  while (index < all.length) {
+    const candidate = all[index];
+    if (!candidate) break;
+    if (!candidate.kept) {
+      candidates.push(candidate);
+      runStart = candidate.offset;
+      index += 1;
+      continue;
+    }
+    let end = index;
+    while (all[end]?.kept) end += 1;
+    const runEnd = all[end]?.offset ?? block.height;
+    if (runEnd - runStart > bodyHeight + TOLERANCE_PX) {
+      candidates.push(...all.slice(index, end));
+    } else if (index === 0) {
+      firstKeptClosed = true;
+    }
+    index = end;
+  }
+  const firstPiece = firstKeptClosed
+    ? Math.max(block.minFirstPiece, candidates[0]?.offset ?? block.height)
+    : block.minFirstPiece;
+  return { candidates, firstPiece };
+}
+
 /**
  * What a block kept with the next one brings onto the page it starts on, by block index: itself,
  * every block kept after it, and the first piece of the block the keeps end at (§17.3.1.14).
@@ -487,7 +536,9 @@ function keptExtents(
     const next = blocks[index + 1];
     const opensPage = laid[index + 1]?.opensPage === true;
     if (block && next && keepsWithNext(block, next, opensPage)) {
-      const below = run.at(-1)?.extent ?? next.minFirstPiece;
+      const below =
+        run.at(-1)?.extent ??
+        offered(next, laid[index + 1]?.paper.bodyHeight ?? 0).firstPiece;
       run.push({ index, extent: block.height + next.gap + below });
     } else {
       settle();
@@ -743,9 +794,10 @@ export function pageLayout({
     const startsPage =
       (block.breakBefore || breakAfterPrevious || startsSection) &&
       top > pageStart + TOLERANCE_PX;
+    const { candidates, firstPiece } = offered(block, opening.bodyHeight);
     // Only the piece up to the first candidate has to fit on the page the block starts on, and
     // for a block kept with the next one, whatever it is kept with as well
-    const first = kept.get(index) ?? block.minFirstPiece;
+    const first = kept.get(index) ?? firstPiece;
     const overflows = top + first > pageEnd + TOLERANCE_PX;
     const fits = first <= opening.bodyHeight + TOLERANCE_PX;
     // The demands of that piece go where it goes, so it is also pushed when the room they add does
@@ -785,9 +837,9 @@ export function pageLayout({
     let pieceStart = 0;
     /** The first of the block's demands no piece has taken yet */
     let untaken = 0;
-    for (let index = 0; index <= block.candidates.length; index += 1) {
-      const cut = index === 0 ? null : block.candidates[index - 1];
-      const next = block.candidates[index];
+    for (let index = 0; index <= candidates.length; index += 1) {
+      const cut = index === 0 ? null : candidates[index - 1];
+      const next = candidates[index];
       const pieceEnd = next?.offset ?? block.height;
       // A piece holds the places standing above the candidate it ends at, and the last piece
       // every place left
