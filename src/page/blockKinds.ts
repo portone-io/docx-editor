@@ -26,6 +26,12 @@ export interface BreakCandidate {
   offset: number;
   /** A forced candidate always cuts; an optional one cuts only when the piece after it would overflow */
   forced: boolean;
+  /**
+   * The document asks for the pieces either side to stand on one page (`w:keepNext`, §17.3.1.14),
+   * so the layout cuts here only when no page can hold what is kept together. A kind whose
+   * candidates never are leaves it out
+   */
+  kept?: boolean;
   /** Height the continued piece carries onto the next page ahead of its own content (a repeated header) */
   repeatHeight: number;
 }
