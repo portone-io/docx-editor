@@ -36,21 +36,28 @@ export function rowPositionAt(
   return pos;
 }
 
+/**
+ * Whether this row of the table may be given a height.
+ *
+ * A row a control shuts, and a row holding a cell a control shuts, are both rows whose content the
+ * document says may not be edited, and a height is what that content is drawn in. The pointer
+ * affordance asks the same question, so the handle never appears where the drag would be refused
+ * (`editor/plugins/rowResize`).
+ */
+export function isRowResizable(table: PMNode, row: number): boolean {
+  if (row < 0 || row >= table.childCount) return false;
+  const node = table.child(row);
+  return !isLockedContainer(node) && !node.children.some(isLockedContainer);
+}
+
 export function buildResizeRowTransaction(
   state: EditorState,
   resize: RowResize
 ): Transaction | null {
   const table = state.doc.nodeAt(resize.tablePos);
-  if (
-    !table ||
-    table.type.spec.tableRole !== "table" ||
-    resize.row < 0 ||
-    resize.row >= table.childCount
-  ) {
-    return null;
-  }
+  if (table?.type.spec.tableRole !== "table") return null;
+  if (!isRowResizable(table, resize.row)) return null;
   const row = table.child(resize.row);
-  if (row.children.some(isLockedContainer)) return null;
   const edited = editRowHeight(
     typeof row.attrs.trPr === "string" ? row.attrs.trPr : null,
     resize.heightPt

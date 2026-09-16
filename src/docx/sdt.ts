@@ -7,9 +7,10 @@
  * and stands last. Everything else is null, which leaves whatever held the control preserved
  * together with its original fragment.
  *
- * What sits inside the control is the caller's business. A whole cell (`docx/importTable`) and
- * a stretch of runs inside a paragraph (`docx/importParagraph`) each read the content their
- * own way, and the wrapper they put back on export is the same string in both cases.
+ * What sits inside the control is the caller's business. A whole cell or row
+ * (`docx/importTable`), the blocks under a body or a cell (`docx/importSdtBlock`) and a stretch of
+ * runs inside a paragraph (`docx/importParagraph`) each read the content their own way, and the
+ * wrapper they put back on export is the same string in all of them.
  */
 
 import { elementXml, openTagXml } from "../ooxml/element";
@@ -24,7 +25,7 @@ import {
 } from "../ooxml/props";
 import { isOnElement, wAttr } from "../ooxml/units";
 import { attrString, elementChildren, serializeXml, W_NS } from "../ooxml/xml";
-import type { ControlFlags } from "../schema/controlAttrs";
+import type { ControlFacts, ControlFlags } from "../schema/controlAttrs";
 
 /**
  * What a control's `w:sdtPr` states, which is all the editor reads off a control besides the XML
@@ -65,7 +66,7 @@ function states(children: readonly Element[], qualified: string): boolean {
 
 /**
  * Everything the editor judges a control by, read out of its properties in one place so that the
- * inline mark, the wrapped cell and the block container are all given the same reading.
+ * inline mark, a wrapped cell or row and the block container are all given the same reading.
  *
  * `w:group` (§17.5.2.17) shuts the contents whatever the `w:lock` says, so it is carried beside
  * the two clauses rather than folded into them: the lock is the editor's to lift and the group is
@@ -74,7 +75,7 @@ function states(children: readonly Element[], qualified: string): boolean {
  * `w:temporary` and `w:showingPlcHdr` are the two the editor cannot answer by preserving the
  * prefix: the first says the wrapper goes once its contents are edited, the second says what
  * stands inside is placeholder text and is to be shown as such again when the file is opened.
- * Both are read here so that the block, the mark and the wrapped cell hear the same thing.
+ * Both are read here so that the block, the mark and a wrapped cell or row hear the same thing.
  */
 function sdtFacts(sdtPr: Element): SdtFacts {
   const children = elementChildren(sdtPr);
@@ -111,6 +112,24 @@ export function readSdtWrapper(el: Element): SdtWrapper | null {
     prefix: openTagXml(wName("sdt"), attrs) + head.map(serializeXml).join(""),
     content,
     ...sdtFacts(sdtPr),
+  };
+}
+
+/**
+ * What the carrier of this control records about it (`schema/controlAttrs`).
+ *
+ * Every carrier derives it from the wrapper here rather than from the element again, so the four -
+ * the inline mark, the block container, a wrapped cell and a wrapped row - cannot come to disagree
+ * about what one and the same `w:sdtPr` says.
+ */
+export function controlFactsFrom(wrapper: SdtWrapper): ControlFacts {
+  return {
+    prefix: wrapper.prefix,
+    contentsLocked: wrapper.contentsLocked,
+    deletionLocked: wrapper.deletionLocked,
+    group: wrapper.group,
+    temporary: wrapper.temporary,
+    showingPlaceholder: wrapper.showingPlaceholder,
   };
 }
 

@@ -80,7 +80,9 @@ const INHERITED_CELL_ATTRS = ["tcAttrs", "tcPr", "tcW", "format"] as const;
  * Everything a new row inherits. The row height lives inside `trPr`.
  *
  * The property exceptions (`tblPrEx`) stay behind: we never read them, so a new row simply
- * follows the table's own values.
+ * follows the table's own values. The content control around a row (`sdtPrefix`, and what comes out
+ * of it) stays behind for the reason a cell's does: a row inserted beside a wrapped one must not
+ * come into the document carrying a copy of somebody else's control or of its lock.
  */
 const INHERITED_ROW_ATTRS = ["trAttrs", "trPr", "format"] as const;
 

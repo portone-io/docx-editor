@@ -152,6 +152,19 @@ const NODE_FRAGMENTS: RawAttrTable = {
       adversarial: withSibling("<w:trPr/>"),
       draw: (xml) => table({}, [row({ trPr: xml })]),
     },
+    sdtPrefix: {
+      attribute: "data-sdt-prefix",
+      sound: '<w:sdt><w:sdtPr><w:id w:val="4"/></w:sdtPr>',
+      adversarial:
+        "<w:sdt><w:sdtPr/><w:sdtContent><w:tr><w:tc><w:p/></w:tc></w:tr>" +
+        "</w:sdtContent>",
+      draw: (xml) => table({}, [row({ sdtPrefix: xml })]),
+    },
+    sdtContentsLocked: null,
+    sdtDeletionLocked: null,
+    sdtGroup: null,
+    sdtTemporary: null,
+    sdtShowingPlaceholder: null,
     leadingXml: {
       attribute: "data-leading",
       sound: MARKER_PAIR,

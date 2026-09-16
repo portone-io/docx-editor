@@ -160,16 +160,7 @@ const DEMOTED: Readonly<Record<ContentLevel, readonly string[]>> = {
   body: [],
   sdtContent: [],
   tc: [],
-  tbl: [
-    "customXml",
-    "del",
-    "ins",
-    "moveFrom",
-    "moveTo",
-    "oMath",
-    "oMathPara",
-    "sdt",
-  ],
+  tbl: ["customXml", "del", "ins", "moveFrom", "moveTo", "oMath", "oMathPara"],
   tr: ["customXml", "del", "ins", "moveFrom", "moveTo", "oMath", "oMathPara"],
 };
 
@@ -243,13 +234,13 @@ describe("the preservation table against wml.xsd", () => {
     }
   );
 
-  it("sdt is a model everywhere a node holds it, and a demotion at tbl", () => {
+  it("sdt is a model at every level, each level reading a shape of its own", () => {
     expect(tierOf("sdt", "p")).toBe("model");
     expect(tierOf("sdt", "body")).toBe("model");
     expect(tierOf("sdt", "sdtContent")).toBe("model");
     expect(tierOf("sdt", "tc")).toBe("model");
     expect(tierOf("sdt", "tr")).toBe("model");
-    expect(tierOf("sdt", "tbl")).toBe("demote");
+    expect(tierOf("sdt", "tbl")).toBe("model");
   });
 
   it("a control's content takes no altChunk and no closing section", () => {

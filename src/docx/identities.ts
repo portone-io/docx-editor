@@ -27,6 +27,11 @@ import { DocxExportError, type DocxExportErrorCode } from "../ooxml/errors";
 import { qualify } from "../ooxml/names";
 import { parseAttrs } from "../ooxml/tagScan";
 import { docxSchema } from "../schema";
+import {
+  type ControlAttrNames,
+  controlAttrsOf,
+  OWN_CONTROL_ATTRS,
+} from "../schema/controlAttrs";
 import { wrappersOf } from "../schema/wrappers";
 import { withoutParagraphIds } from "./cloning";
 import { copiedControlPrefix, newControlId } from "./sdt";
@@ -114,25 +119,29 @@ function sdtMarksOf(node: PMNode): readonly Mark[] {
 }
 
 /** What tells one control apart from another, wherever in the document it turns up */
-function controlName(attrs: Readonly<Record<string, unknown>>): string {
+function controlName(
+  attrs: Readonly<Record<string, unknown>>,
+  names: ControlAttrNames
+): string {
   const key: unknown = attrs.key;
-  const prefix: unknown = attrs.sdtPrefix;
+  const prefix: unknown = attrs[names.prefix];
   return `${typeof key === "number" ? key : 0} ${typeof prefix === "string" ? prefix : ""}`;
 }
 
 /**
  * The opening XML this control goes back out under, null while it is the first claimant of its
  * name and while it carries no opening to rewrite. A control claiming a name already written opens
- * as a copy of itself (`docx/sdt`), whether it stands as a mark or as a block.
+ * as a copy of itself (`docx/sdt`), whichever of the carriers it stands as.
  */
 function claimedPrefix(
   attrs: Readonly<Record<string, unknown>>,
+  names: ControlAttrNames,
   written: Set<string>
 ): string | null {
-  const name = controlName(attrs);
+  const name = controlName(attrs, names);
   const claimed = written.has(name);
   written.add(name);
-  const prefix: unknown = attrs.sdtPrefix;
+  const prefix: unknown = attrs[names.prefix];
   if (!claimed || typeof prefix !== "string") return null;
   return copiedControlPrefix(prefix, newControlId());
 }
@@ -145,7 +154,7 @@ interface Control {
 }
 
 function claim(mark: Mark, written: Set<string>): Control {
-  const prefix = claimedPrefix(mark.attrs, written);
+  const prefix = claimedPrefix(mark.attrs, OWN_CONTROL_ATTRS, written);
   return {
     mark,
     copy:
@@ -189,10 +198,14 @@ function rewriteParagraph(paragraph: PMNode, written: Set<string>): PMNode {
 /**
  * A content control cannot cross a paragraph, so splitting a paragraph in the middle of one leaves
  * that same control standing in two, and dropping unmarked text into the middle of one breaks it
- * in two within the paragraph. A block control an edit left standing twice - a copy of it pasted,
- * or the same container duplicated - is the same case one level up, and the walker reaches a
- * control nested inside another. Each piece after the first opens as a copy with a `w:id` of its
- * own (see `docx/sdt` for what a copy must not carry along).
+ * in two within the paragraph. A control an edit left standing twice one level up - a copy of it
+ * pasted, or the container duplicated - is the same case, and the walker reaches a control nested
+ * inside another. Each piece after the first opens as a copy with a `w:id` of its own (see
+ * `docx/sdt` for what a copy must not carry along).
+ *
+ * Every carrier `schema/controlAttrs` knows is settled here, the block container and a wrapped
+ * cell or row alike, each read under its own attribute names: a second control claiming the first
+ * one's `w:id` is not a shape §17.5.2.18 allows, whichever of them carries it.
  */
 export const controlRule: IdentityRule = {
   name: "control",
@@ -200,12 +213,13 @@ export const controlRule: IdentityRule = {
     if (block.type === docxSchema.nodes.paragraph) {
       return rewriteParagraph(block, written);
     }
-    if (block.type !== docxSchema.nodes.sdtBlock) return block;
-    const prefix = claimedPrefix(block.attrs, written);
+    const names = controlAttrsOf(block);
+    if (!names) return block;
+    const prefix = claimedPrefix(block.attrs, names, written);
     return prefix === null
       ? block
       : block.type.create(
-          { ...block.attrs, sdtPrefix: prefix },
+          { ...block.attrs, [names.prefix]: prefix },
           block.content,
           block.marks
         );

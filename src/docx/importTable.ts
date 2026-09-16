@@ -13,10 +13,10 @@ import {
 } from "../ooxml/xml";
 import { docxSchema } from "../schema";
 import {
-  CELL_CONTROL_ATTRS,
   type ControlFacts,
   controlAttrs,
   NO_CONTROL,
+  WRAPPED_CONTROL_ATTRS,
 } from "../schema/controlAttrs";
 import {
   type FormattingContext,
@@ -35,7 +35,7 @@ import {
 import { policyFor } from "./importPolicy";
 import { buildPreservedBlock } from "./importPreserved";
 import { buildSdtBlock } from "./importSdtBlock";
-import { readSdtWrapper } from "./sdt";
+import { controlFactsFrom, readSdtWrapper } from "./sdt";
 import {
   cellConditionsOf,
   cellDefaultsFor,
@@ -62,14 +62,18 @@ import {
 
 type VerticalMerge = "restart" | "continue" | null;
 
-/** The content control around a cell, as the cell carries it on (`schema/controlAttrs`) */
-type CellControl = ControlFacts;
+/**
+ * The content control around one cell or one row, as that node carries it on
+ * (`schema/controlAttrs`). `CT_SdtCell` and `CT_SdtRow` say the same things about themselves, so
+ * the two are read and carried alike.
+ */
+type WrappedControl = ControlFacts;
 
 interface RawCell {
   el: Element;
   gridSpan: number;
   vMerge: VerticalMerge;
-  control: CellControl | null;
+  control: WrappedControl | null;
   /** The markers that stood between this cell and the next one */
   trailingXml: string | null;
 }
@@ -78,6 +82,8 @@ interface RawRow {
   el: Element;
   tblPrEx: Element | null;
   cells: RawCell[];
+  /** The content control the file put around the whole row, or null where none did */
+  control: WrappedControl | null;
   /** The markers that stood ahead of the row's first cell */
   leadingXml: string | null;
   /** The markers that stood between this row and the next one */
@@ -92,7 +98,7 @@ interface CellDraft {
   col: number;
   colspan: number;
   rowspan: number;
-  control: CellControl | null;
+  control: WrappedControl | null;
   trailingXml: string | null;
 }
 
@@ -131,44 +137,49 @@ function readVerticalMerge(tcPr: Element | null): VerticalMerge {
   return wAttr(vMerge, "val") === "restart" ? "restart" : "continue";
 }
 
-/** A cell taken out of the content control that wrapped it, plus that control */
-interface SdtCell {
+/** A cell or a row taken out of the content control that wrapped it, plus that control */
+interface WrappedNode {
   el: Element;
-  control: CellControl;
+  control: WrappedControl;
 }
 
 /**
- * Takes the single cell out of a `w:sdt` content control.
+ * Takes the single `w:tc` or `w:tr` out of a `w:sdt` content control (`CT_SdtCell` §17.5.2.32,
+ * `CT_SdtRow` §17.5.2.30).
  *
  * On top of the wrapper shape `readSdtWrapper` insists on, the content has to hold nothing but
- * one cell. Everything else is null, which leaves the whole table preserved.
- *
- * A cell that starts a vertical merge is a cell of the model in its own right, and `serializeTable`
- * puts its wrapper back around it. The cells that only continue the merge are created fresh on
- * export instead, and a wrapper of their own could not be recreated for them.
+ * one element of that name - not two of them, and not another control. Everything else is null,
+ * which leaves the whole table preserved (`spec/notes/contentControls.md`).
  */
-function readSdtCell(el: Element): SdtCell | null {
+function readSdtSingle(el: Element, localName: string): WrappedNode | null {
   const wrapper = readSdtWrapper(el);
   if (!wrapper) return null;
 
   const inner = elementChildren(wrapper.content);
-  const tc = inner[0];
-  if (inner.length !== 1 || tc.localName !== "tc") return null;
-  if (readVerticalMerge(childByLocalName(tc, "tcPr")) === "continue") {
-    return null;
-  }
+  if (inner.length !== 1 || inner[0].localName !== localName) return null;
 
-  return {
-    el: tc,
-    control: {
-      prefix: wrapper.prefix,
-      contentsLocked: wrapper.contentsLocked,
-      deletionLocked: wrapper.deletionLocked,
-      group: wrapper.group,
-      temporary: wrapper.temporary,
-      showingPlaceholder: wrapper.showingPlaceholder,
-    },
-  };
+  return { el: inner[0], control: controlFactsFrom(wrapper) };
+}
+
+/**
+ * A cell that starts a vertical merge is a cell of the model in its own right, and `serializeTable`
+ * puts its wrapper back around it. The cells that only continue the merge are created fresh on
+ * export instead, and a wrapper of their own could not be recreated for them.
+ */
+function readSdtCell(el: Element): WrappedNode | null {
+  const cell = readSdtSingle(el, "tc");
+  if (!cell) return null;
+  return readVerticalMerge(childByLocalName(cell.el, "tcPr")) === "continue"
+    ? null
+    : cell;
+}
+
+/**
+ * A row all of whose cells only continue a vertical merge is no row of the model at all
+ * (`resolveVerticalMerges`), so a control around one stands the table down there instead of here.
+ */
+function readSdtRow(el: Element): WrappedNode | null {
+  return readSdtSingle(el, "tr");
 }
 
 /**
@@ -195,7 +206,7 @@ function trailCell(cells: RawCell[], gathered: string[]): boolean {
  * A `w:tblPrEx` states the table properties this one row departs from. We do not read it, so
  * the row is drawn with the table's own values, but it is carried along to go back out untouched.
  */
-function readRow(el: Element): RawRow | null {
+function readRow(el: Element, control: WrappedControl | null): RawRow | null {
   const cells: RawCell[] = [];
   const gathered: string[] = [];
   let tblPrEx: Element | null = null;
@@ -226,7 +237,7 @@ function readRow(el: Element): RawRow | null {
     });
   }
   if (cells.length === 0 || !trailCell(cells, gathered)) return null;
-  return { el, tblPrEx, cells, leadingXml, trailingXml: null };
+  return { el, tblPrEx, cells, control, leadingXml, trailingXml: null };
 }
 
 interface TableParts {
@@ -264,6 +275,8 @@ function gridRevisionXml(grid: Element): string | null {
  *
  * A marker standing between two rows rides on the row before it, and one ahead of the first row on
  * the table itself, so a bookmark spanning a column no longer stands the whole table down.
+ *
+ * A `w:sdt` here wraps one row (`CT_SdtRow`), which `readSdtRow` reads onto that row.
  */
 function readTableParts(el: Element): TableParts | null {
   let tblPr: Element | null = null;
@@ -286,8 +299,9 @@ function readTableParts(el: Element): TableParts | null {
       gathered.push(serializeXml(child));
       continue;
     }
-    if (child.localName !== "tr") return null;
-    const row = readRow(child);
+    const sdt = child.localName === "sdt" ? readSdtRow(child) : null;
+    if (!sdt && child.localName !== "tr") return null;
+    const row = readRow(sdt?.el ?? child, sdt?.control ?? null);
     if (!row) return null;
     const previous = rows.at(-1);
     if (previous) previous.trailingXml = takeGathered(gathered);
@@ -424,7 +438,7 @@ function buildCell(
       tcPr: tcPr ? serializeXml(tcPr) : null,
       tcW: readTableWidth(tcPr, "tcW"),
       format: readCellFormat(tcPr, defaults),
-      ...controlAttrs(CELL_CONTROL_ATTRS, draft.control ?? NO_CONTROL),
+      ...controlAttrs(WRAPPED_CONTROL_ATTRS, draft.control ?? NO_CONTROL),
       trailingXml: draft.trailingXml,
     },
     blocks
@@ -457,6 +471,7 @@ function buildRow(
       tblPrEx: row.tblPrEx ? serializeXml(row.tblPrEx) : null,
       trPr: trPr ? serializeXml(trPr) : null,
       format: readRowFormat(trPr),
+      ...controlAttrs(WRAPPED_CONTROL_ATTRS, row.control ?? NO_CONTROL),
       leadingXml: row.leadingXml,
       trailingXml: row.trailingXml,
     },

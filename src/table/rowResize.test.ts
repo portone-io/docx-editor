@@ -5,6 +5,7 @@ import {
   CELL_CONTROL_PREFIX,
   cell,
   firstTable,
+  ROW_CONTROL_PREFIX,
   row,
   rowWith,
   schema,
@@ -84,5 +85,27 @@ describe("buildResizeRowTransaction", () => {
       ),
     ]);
     expect(resizeFirstRow(before, 24)).toBeNull();
+  });
+
+  /** The control around the row shuts every cell in it, so the height it is drawn at is shut too */
+  it("does not resize a row a content control shuts", () => {
+    const before = tableDoc([
+      rowWith(
+        { sdtPrefix: ROW_CONTROL_PREFIX, sdtContentsLocked: true },
+        cell("Shut")
+      ),
+    ]);
+    expect(resizeFirstRow(before, 24)).toBeNull();
+  });
+
+  /** A control locked against deletion alone leaves its contents open, height included */
+  it("resizes a row whose control shuts deletion alone", () => {
+    const before = tableDoc([
+      rowWith(
+        { sdtPrefix: ROW_CONTROL_PREFIX, sdtDeletionLocked: true },
+        cell("Kept")
+      ),
+    ]);
+    expect(resizeFirstRow(before, 24)).not.toBeNull();
   });
 });

@@ -13,10 +13,10 @@ import { EditorState, TextSelection } from "prosemirror-state";
 import { CellSelection } from "prosemirror-tables";
 import type { TableWidth } from "../../model/format";
 import {
-  CELL_CONTROL_ATTRS,
   controlAttrSpecs,
   controlAttrs,
   NO_CONTROL,
+  WRAPPED_CONTROL_ATTRS,
 } from "../../schema/controlAttrs";
 
 export const schema = new Schema({
@@ -52,6 +52,7 @@ export const schema = new Schema({
         tblPrEx: { default: null },
         trPr: { default: null },
         format: { default: null },
+        ...controlAttrSpecs(WRAPPED_CONTROL_ATTRS),
         leadingXml: { default: null },
         trailingXml: { default: null },
       },
@@ -69,7 +70,7 @@ export const schema = new Schema({
         tcPr: { default: null },
         tcW: { default: null },
         format: { default: null },
-        ...controlAttrSpecs(CELL_CONTROL_ATTRS),
+        ...controlAttrSpecs(WRAPPED_CONTROL_ATTRS),
         trailingXml: { default: null },
       },
       toDOM: () => ["td", 0],
@@ -101,6 +102,10 @@ export interface CellAttrs {
 export const CELL_CONTROL_PREFIX =
   '<w:sdt><w:sdtPr><w:id w:val="1"/><w:lock w:val="sdtContentLocked"/></w:sdtPr>';
 
+/** The same for the control around a whole row, under an id of its own */
+export const ROW_CONTROL_PREFIX =
+  '<w:sdt><w:sdtPr><w:id w:val="2"/><w:lock w:val="sdtContentLocked"/></w:sdtPr>';
+
 export const dxa = (twips: number): TableWidth => ({ type: "dxa", twips });
 export const pct = (fiftieths: number): TableWidth => ({
   type: "pct",
@@ -117,7 +122,7 @@ export function cell(text: string, attrs: CellAttrs = {}): PMNode {
       tcPr: null,
       tcW: null,
       format: null,
-      ...controlAttrs(CELL_CONTROL_ATTRS, NO_CONTROL),
+      ...controlAttrs(WRAPPED_CONTROL_ATTRS, NO_CONTROL),
       trailingXml: null,
       ...attrs,
     },
@@ -133,6 +138,12 @@ export interface RowAttrs {
   tblPrEx?: string | null;
   trPr?: string | null;
   format?: Record<string, unknown> | null;
+  sdtPrefix?: string | null;
+  sdtContentsLocked?: boolean;
+  sdtDeletionLocked?: boolean;
+  sdtGroup?: boolean;
+  sdtTemporary?: boolean;
+  sdtShowingPlaceholder?: boolean;
   leadingXml?: string | null;
   trailingXml?: string | null;
 }
@@ -144,6 +155,7 @@ export const rowWith = (attrs: RowAttrs, ...cells: PMNode[]) =>
       tblPrEx: null,
       trPr: null,
       format: null,
+      ...controlAttrs(WRAPPED_CONTROL_ATTRS, NO_CONTROL),
       leadingXml: null,
       trailingXml: null,
       ...attrs,

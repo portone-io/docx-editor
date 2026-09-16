@@ -51,14 +51,15 @@ import {
   tableStyle,
 } from "../styles/inlineStyle";
 import {
-  CELL_CONTROL_ATTRS,
   controlAttrSpecs,
-  controlAttrs,
+  controlAttrsFromDom,
+  controlClassName,
   controlFactsOf,
-  controlFlagsFromDom,
-  controlFlagsToDom,
+  controlToDom,
   OWN_CONTROL_ATTRS,
+  PREFIX_DOM_ATTR,
   SDT_BLOCK_NODE,
+  WRAPPED_CONTROL_ATTRS,
 } from "./controlAttrs";
 import { imageNodeSpec, runMarkSpec } from "./rendering";
 import { noteName, type StoryJson } from "./stories";
@@ -508,6 +509,12 @@ export const docxSchema = new Schema({
         /** The whole `<w:trPr>...</w:trPr>` XML */
         trPr: { default: null },
         format: { default: null },
+        /**
+         * What the content control this row sat inside states (`CT_SdtRow`, §17.5.2.30), under the
+         * same `sdt`-prefixed names a wrapped cell carries (`./controlAttrs`), since both are one
+         * node the file put a `w:sdt` around.
+         */
+        ...controlAttrSpecs(WRAPPED_CONTROL_ATTRS),
         /** The markers that stood ahead of this row's first cell (`docx/importTable`) */
         leadingXml: { default: null },
         /** The markers that stood between this row and the next one, under the table */
@@ -515,15 +522,21 @@ export const docxSchema = new Schema({
       },
       toDOM(node) {
         const format = toRowFormat(node.attrs.format);
+        const control = controlFactsOf(WRAPPED_CONTROL_ATTRS, node.attrs);
         return [
           "tr",
           {
-            class: editorClassNames.tableRow,
+            class: controlClassName(
+              control,
+              editorClassNames.tableRow,
+              editorClassNames.rowLocked
+            ),
             style: rowStyle(format),
             "data-trattrs": text(node.attrs.trAttrs),
             "data-tblprex": text(node.attrs.tblPrEx),
             "data-trpr": text(node.attrs.trPr),
             "data-fmt": formatJson(format),
+            ...controlToDom(control),
             "data-leading": text(node.attrs.leadingXml),
             "data-trailing": text(node.attrs.trailingXml),
           },
@@ -537,12 +550,14 @@ export const docxSchema = new Schema({
             const trAttrs = rawXml(dom, "data-trattrs", ATTRIBUTES);
             const tblPrEx = rawXml(dom, "data-tblprex", ELEMENT("tblPrEx"));
             const trPr = rawXml(dom, "data-trpr", ELEMENT("trPr"));
+            const sdtPrefix = rawXml(dom, PREFIX_DOM_ATTR, SDT_PREFIX);
             const leadingXml = rawXml(dom, "data-leading", ANY_ELEMENTS);
             const trailingXml = rawXml(dom, "data-trailing", ANY_ELEMENTS);
             if (
               trAttrs === false ||
               tblPrEx === false ||
               trPr === false ||
+              sdtPrefix === false ||
               leadingXml === false ||
               trailingXml === false
             ) {
@@ -553,6 +568,7 @@ export const docxSchema = new Schema({
               tblPrEx,
               trPr,
               format: toRowFormat(parseJson(dom.getAttribute("data-fmt"))),
+              ...controlAttrsFromDom(WRAPPED_CONTROL_ATTRS, dom, sdtPrefix),
               leadingXml,
               trailingXml,
             };
@@ -586,7 +602,7 @@ export const docxSchema = new Schema({
          * `contentsLocked` and `deletionLocked` on the sdt mark, and all of them only ever stand
          * alongside an `sdtPrefix`, since the control's own XML is where they are read from.
          */
-        ...controlAttrSpecs(CELL_CONTROL_ATTRS),
+        ...controlAttrSpecs(WRAPPED_CONTROL_ATTRS),
         /** The markers that stood between this cell and the next one, under the row */
         trailingXml: { default: null },
       },
@@ -595,14 +611,15 @@ export const docxSchema = new Schema({
         const colspan = spanCount(node.attrs.colspan);
         const rowspan = spanCount(node.attrs.rowspan);
         const colwidth = toColWidth(node.attrs.colwidth);
-        const control = controlFactsOf(CELL_CONTROL_ATTRS, node.attrs);
+        const control = controlFactsOf(WRAPPED_CONTROL_ATTRS, node.attrs);
         return [
           "td",
           {
-            class:
-              control.contentsLocked || control.group
-                ? `${editorClassNames.tableCell} ${editorClassNames.cellLocked}`
-                : editorClassNames.tableCell,
+            class: controlClassName(
+              control,
+              editorClassNames.tableCell,
+              editorClassNames.cellLocked
+            ),
             style: cellStyle(format),
             colspan: colspan > 1 ? `${colspan}` : undefined,
             rowspan: rowspan > 1 ? `${rowspan}` : undefined,
@@ -611,8 +628,7 @@ export const docxSchema = new Schema({
             "data-tcpr": text(node.attrs.tcPr),
             "data-tcw": formatJson(toTableWidth(node.attrs.tcW)),
             "data-fmt": formatJson(format),
-            "data-sdt-prefix": text(control.prefix),
-            ...controlFlagsToDom(control),
+            ...controlToDom(control),
             "data-trailing": text(node.attrs.trailingXml),
           },
           0,
@@ -624,7 +640,7 @@ export const docxSchema = new Schema({
           getAttrs: (dom) => {
             const tcAttrs = rawXml(dom, "data-tcattrs", ATTRIBUTES);
             const tcPr = rawXml(dom, "data-tcpr", ELEMENT("tcPr"));
-            const sdtPrefix = rawXml(dom, "data-sdt-prefix", SDT_PREFIX);
+            const sdtPrefix = rawXml(dom, PREFIX_DOM_ATTR, SDT_PREFIX);
             const trailingXml = rawXml(dom, "data-trailing", ANY_ELEMENTS);
             if (
               tcAttrs === false ||
@@ -644,10 +660,7 @@ export const docxSchema = new Schema({
               tcPr,
               tcW: toTableWidth(parseJson(dom.getAttribute("data-tcw"))),
               format: toCellFormat(parseJson(dom.getAttribute("data-fmt"))),
-              ...controlAttrs(CELL_CONTROL_ATTRS, {
-                prefix: sdtPrefix,
-                ...controlFlagsFromDom(dom),
-              }),
+              ...controlAttrsFromDom(WRAPPED_CONTROL_ATTRS, dom, sdtPrefix),
               trailingXml,
             };
           },
@@ -689,14 +702,14 @@ export const docxSchema = new Schema({
         return [
           "div",
           {
-            class:
-              control.contentsLocked || control.group
-                ? `${editorClassNames.sdtBlock} ${editorClassNames.sdtLocked}`
-                : editorClassNames.sdtBlock,
+            class: controlClassName(
+              control,
+              editorClassNames.sdtBlock,
+              editorClassNames.sdtLocked
+            ),
             "data-src": text(node.attrs.srcId),
-            "data-sdt-prefix": text(control.prefix),
             "data-key": numberText(node.attrs.key),
-            ...controlFlagsToDom(control),
+            ...controlToDom(control),
           },
           0,
         ];
@@ -705,16 +718,13 @@ export const docxSchema = new Schema({
         {
           tag: `div.${editorClassNames.sdtBlock}`,
           getAttrs: (dom) => {
-            const prefix = rawXml(dom, "data-sdt-prefix", SDT_PREFIX);
+            const prefix = rawXml(dom, PREFIX_DOM_ATTR, SDT_PREFIX);
             // With no opening tag to put back there is no control left to write out
             if (prefix === null || prefix === false) return false;
             return {
               srcId: srcIdOf(dom),
               key: parseInt10(dom.getAttribute("data-key"), 0),
-              ...controlAttrs(OWN_CONTROL_ATTRS, {
-                prefix,
-                ...controlFlagsFromDom(dom),
-              }),
+              ...controlAttrsFromDom(OWN_CONTROL_ATTRS, dom, prefix),
             };
           },
         },
@@ -1147,14 +1157,14 @@ export const docxSchema = new Schema({
         return [
           "span",
           {
-            class:
-              control.contentsLocked || control.group
-                ? `${editorClassNames.sdt} ${editorClassNames.sdtLocked}`
-                : editorClassNames.sdt,
-            "data-sdt-prefix": text(control.prefix),
+            class: controlClassName(
+              control,
+              editorClassNames.sdt,
+              editorClassNames.sdtLocked
+            ),
             "data-key": numberText(mark.attrs.key),
             "data-depth": numberText(mark.attrs.depth),
-            ...controlFlagsToDom(control),
+            ...controlToDom(control),
           },
           0,
         ];
@@ -1163,16 +1173,13 @@ export const docxSchema = new Schema({
         {
           tag: `span.${editorClassNames.sdt}`,
           getAttrs: (dom) => {
-            const prefix = rawXml(dom, "data-sdt-prefix", SDT_PREFIX);
+            const prefix = rawXml(dom, PREFIX_DOM_ATTR, SDT_PREFIX);
             // With no opening tag to put back there is no control left to write out
             if (prefix === null || prefix === false) return false;
             return {
               key: parseInt10(dom.getAttribute("data-key"), 0),
               depth: parseInt10(dom.getAttribute("data-depth"), 0),
-              ...controlAttrs(OWN_CONTROL_ATTRS, {
-                prefix,
-                ...controlFlagsFromDom(dom),
-              }),
+              ...controlAttrsFromDom(OWN_CONTROL_ATTRS, dom, prefix),
             };
           },
         },

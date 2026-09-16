@@ -275,6 +275,57 @@ describe("the row and cell wrappers we carry along without reading them", () => 
   });
 });
 
+describe("a row wrapped in a content control", () => {
+  const ROW_PREFIX = '<w:sdt><w:sdtPr><w:id w:val="8"/></w:sdtPr>';
+  const MARKERS =
+    '<w:bookmarkStart w:id="1" w:name="b"/><w:bookmarkEnd w:id="1"/>';
+
+  const exportedCell = (text: string) =>
+    '<w:tc><w:tcPr><w:tcW w:w="1000" w:type="dxa"/></w:tcPr>' +
+    `<w:p><w:r><w:t xml:space="preserve">${text}</w:t></w:r></w:p></w:tc>`;
+
+  const original =
+    "<w:tbl><w:tblPr/>" +
+    grid(1000) +
+    `${ROW_PREFIX}<w:sdtContent><w:tr>${exportedCell("wrapped")}</w:tr>` +
+    "</w:sdtContent></w:sdt>" +
+    MARKERS +
+    `<w:tr>${exportedCell("plain")}</w:tr>` +
+    "</w:tbl>";
+
+  it("puts the control back around the row that sat inside it", () => {
+    const xml = serializeTable(openTable(original));
+    expect(xml).toContain(
+      `${ROW_PREFIX}<w:sdtContent><w:tr>${exportedCell("wrapped")}</w:tr>` +
+        "</w:sdtContent></w:sdt>"
+    );
+    // The row below it goes out on its own
+    expect(xml.match(/<w:sdt>/g)).toHaveLength(1);
+  });
+
+  it("an imported table goes back out as the very same XML", () => {
+    expect(serializeTable(openTable(original))).toBe(original);
+  });
+
+  it("writes the markers the row carries outside the control, at the table's own level", () => {
+    expect(serializeTable(openTable(original))).toContain(
+      `</w:sdtContent></w:sdt>${MARKERS}<w:tr>`
+    );
+  });
+
+  it("an edited cell of the wrapped row keeps the row's control", () => {
+    const edited = editCells(openTable(original), hasText("wrapped"), {
+      tcW: { type: "dxa", twips: 1200 },
+    });
+    const xml = serializeTable(edited);
+    expect(xml).toContain(
+      `${ROW_PREFIX}<w:sdtContent><w:tr><w:tc><w:tcPr>` +
+        '<w:tcW w:w="1200" w:type="dxa"/></w:tcPr>'
+    );
+    expect(xml.match(/<w:sdt>/g)).toHaveLength(1);
+  });
+});
+
 describe("a cell that starts a vertical merge inside a content control", () => {
   const SDT_PREFIX = '<w:sdt><w:sdtPr><w:id w:val="9"/></w:sdtPr>';
   const START_CELL =

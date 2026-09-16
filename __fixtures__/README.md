@@ -18,7 +18,7 @@ Tests using `fixtureNames` from [`src/__testing__/docx.ts`](../src/__testing__/d
 | `table-styles.docx` | Export-style package | Table styles that dress the header row, the closing row, the edge columns, a corner and the banded rows |
 | `list-definitions.docx` | Export-style package | Lists defined through a numbering style, counted in formats past decimal, restarting where their levels say, and drawing their markers in the formatting those levels write |
 | `sections-and-revisions.docx` | Export-style package | Two sections with a mid-body section break, a table carrying a grid revision, an inline content control, and a body-level bookmark pair |
-| `content-controls.docx` | Word-style package | Block-level content controls: nested, holding a table, standing in a cell, and the three kinds kept whole |
+| `content-controls.docx` | Word-style package | Content controls around blocks and around a table row: nested, holding a table, standing in a cell, wrapping a row, and the kinds kept whole |
 | `preserved-markup.docx` | Word-style package | The markup this editor keeps whole rather than models: field characters, tracked changes, range markers, symbols, and a table a row-level marker stands down |
 | `producers/google-docs-export.docx` | Producer package | Markup Google Docs saved: revision identifiers on every run, a tracked insertion, a generated bookmark name, and measurements the schemas turn down |
 
@@ -222,8 +222,10 @@ This is `preserved-markup.docx` with `word/document.xml` replaced. It is the onl
 
 - A rich text control holding two paragraphs, which is the plain case a container node is read for.
 - A `w:group` control holding a rich text control, so that one control nested inside another is covered and the order of the two has to come back.
-- A control holding a table, and a control standing inside a table cell, which are the two ways a control and a table meet.
-- The three kinds kept whole instead: a `w:text` control and a `w:date` control, whose content the specification restrains to a single run, and a control whose `w:sdtContent` is empty. Its fidelity snapshot is those three placeholders and is meant to be read in a diff.
+- A control holding a table, and a control standing inside a table cell, which are two of the three ways a control and a table meet.
+- A control standing around a whole table row (`CT_SdtRow`), carrying `w:lock w:val="sdtLocked"`, with an unwrapped row beside it, which is the third. Its table loses nothing.
+- A second table whose row control holds two `w:tr`, which is more than the single row §17.5.2.35 describes and more than one row can carry back out, so that table is kept whole. `importTable.test.ts` names this file as the one fixture holding a table kept whole.
+- The three kinds kept whole instead: a `w:text` control and a `w:date` control, whose content the specification restrains to a single run, and a control whose `w:sdtContent` is empty. Its fidelity snapshot is those three placeholders beside the `table-demoted` note the two-row control leaves, and is meant to be read in a diff.
 - One control carrying `w:lock w:val="sdtContentLocked"` and one carrying `sdtLocked`, so that both clauses of a lock are read off a block control.
 - One control carrying `w:temporary` and one carrying `w:showingPlcHdr`, which are the two properties an edit inside a control acts on rather than preserves ([Content controls](../spec/notes/contentControls.md)).
 - Every control carrying a `w:id` of its own, which the export must keep unique, and at least six body paragraphs holding text outside any control, which is what the export battery in `src/docx/exportSchemaValidation.test.ts` reserves.

@@ -33,7 +33,8 @@ A table wider than the sheet is drawn shrunk to fit; the saved file keeps its wi
 
 A table is shown as a placeholder when its rows cannot be read, or when a bookmark or similar
 marker sits right after a cell that continues a vertical merge.
-Rows wrapped in a content control, custom XML, or tracked change also make the table a placeholder.
+A row wrapped in a content control is read, and the control is kept around that row.
+A row wrapped in custom XML or in a tracked change, and a content control holding more than one row, still make the table a placeholder.
 Other markers between rows or cells are kept, and the table stays editable.
 Deleting a row or column is unavailable when it would remove such a marker.
 

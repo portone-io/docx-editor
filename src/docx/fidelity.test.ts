@@ -91,12 +91,14 @@ describe("the notes a document opens with", () => {
   });
 
   it("reports a demoted table as a placeholder note of its own", () => {
-    // A content control around a whole row is a row this reader cannot take apart, and the two
-    // levels with no node to keep a stranger in stand the table down (`./importPolicy`)
+    // A control around two rows is one this reader cannot take apart - the wrapper hangs on the
+    // single row it wraps - and the two levels with no node to keep a stranger in stand the table
+    // down (`./importPolicy`)
     const notes = notesOf(
       '<w:tbl><w:tblPr/><w:tblGrid><w:gridCol w:w="1000"/></w:tblGrid>' +
         "<w:sdt><w:sdtPr/><w:sdtContent>" +
         `<w:tr><w:tc><w:p>${run("a")}</w:p></w:tc></w:tr>` +
+        `<w:tr><w:tc><w:p>${run("b")}</w:p></w:tc></w:tr>` +
         "</w:sdtContent></w:sdt></w:tbl>"
     );
     expect(notes).toEqual([
