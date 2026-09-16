@@ -6,6 +6,7 @@ import { createEditorState } from "../../editor/createEditor";
 import { docxSchema } from "../../schema";
 import { editorAttributes } from "../../styles/classNames";
 import type { MeasureTarget } from "../blockKinds";
+import { DEFAULT_BLOCK_KINDS } from "./index";
 import { paragraphKind } from "./paragraphKind";
 
 let view: EditorView | null = null;
@@ -47,6 +48,7 @@ function firstBlock(live: EditorView, scale = 1): MeasureTarget {
     node: live.state.doc.child(0),
     pos: 0,
     dom,
+    kinds: DEFAULT_BLOCK_KINDS,
     sheetY,
     top: sheetY(dom.getBoundingClientRect().top),
     scale,

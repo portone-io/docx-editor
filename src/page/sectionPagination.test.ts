@@ -94,6 +94,31 @@ describe("the pages a document comes to", () => {
   });
 
   /**
+   * A paragraph inside a block-level content control is one of the body's own (§17.5.2.34), so the
+   * break it carries ends a section. The control is one block of the story laid out on one paper,
+   * so the next section opens after the whole control.
+   */
+  it("opens the next section after a control whose last paragraph ends one", () => {
+    const held = importDocx(
+      makeDocx(
+        paragraphs(2) +
+          '<w:sdt><w:sdtPr><w:id w:val="5"/></w:sdtPr><w:sdtContent>' +
+          `<w:p>${RUN}</w:p>` +
+          `<w:p><w:pPr>${LETTER_SECT_PR}</w:pPr>${RUN}</w:p>` +
+          "</w:sdtContent></w:sdt>" +
+          paragraphs(7) +
+          LETTER_LANDSCAPE_SECT_PR
+      )
+    ).doc;
+
+    expect(held.child(2).type.name).toBe("sdtBlock");
+    expect(sectionsOf(held)).toHaveLength(2);
+    // Three blocks on Letter upright and seven on Letter sideways, as they are with the break
+    // written on a loose paragraph. Reading past the control leaves one section and two pages
+    expect(pages(held, 100)).toBe(3);
+  });
+
+  /**
    * A continuous section starts where the one before it ended (§17.6.22), so eight blocks of
    * 100px still come to the one Letter page their 800px fit on, break or no break.
    */

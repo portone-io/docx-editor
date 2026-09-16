@@ -102,6 +102,28 @@ describe("header and footer stories", () => {
     );
   });
 
+  /**
+   * A control in a header part is a wrapper around blocks of the story, so the text it holds is
+   * the text the page shows and its first paragraph is the one the preview is aligned to.
+   */
+  it("reads the text and the alignment of a paragraph held in a content control", () => {
+    const parts = unzipSync(makeHeadersFootersDocx());
+    parts["word/header2.xml"] = encoder.encode(
+      `<w:hdr xmlns:w="${W_NS}">` +
+        '<w:sdt><w:sdtPr><w:id w:val="21"/></w:sdtPr><w:sdtContent>' +
+        '<w:p><w:pPr><w:jc w:val="right"/></w:pPr>' +
+        '<w:r><w:t xml:space="preserve">Held in a control</w:t></w:r></w:p>' +
+        '<w:p><w:r><w:t xml:space="preserve">and a second line</w:t></w:r></w:p>' +
+        "</w:sdtContent></w:sdt></w:hdr>"
+    );
+    const stories = openedStories(zipSync(parts));
+
+    expect(shown(stories, "headers", 1, 3)).toBe(
+      "Held in a control\nand a second line"
+    );
+    expect(stories.headers.first?.align).toBe("right");
+  });
+
   it("starts at page one when pgNumType does not declare a start", () => {
     const parts = unzipSync(makeHeadersFootersDocx());
     parts["word/document.xml"] = encoder.encode(

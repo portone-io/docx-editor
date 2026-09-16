@@ -35,6 +35,7 @@ import { buildSdtBlock } from "./importSdtBlock";
 import { buildTable } from "./importTable";
 import { type BlockScan, scanBlocksIn } from "./scan";
 import { blockKey, type ImportedBlock, type SessionIdentity } from "./session";
+import { withLastStoryParagraph } from "./storyBlocks";
 
 export type { StoryJson, StoryKey, StoryKind } from "../schema/stories";
 export {
@@ -394,27 +395,25 @@ export function storyText(story: PMNode | null): string {
  * because that text is what the writer puts back and a `w14:paraId` is not a name this schema
  * holds. A paragraph already carrying one keeps it: a key already written is what the thread
  * state elsewhere is keyed by, so re-pointing it would orphan that state.
+ *
+ * A story ending in a block-level content control keeps its last paragraph inside that control
+ * (`docx/storyBlocks`), and the key goes there rather than onto an earlier loose paragraph.
  */
 export function withThreadKeyOn(story: PMNode, paraId: string): PMNode {
-  let at = -1;
-  story.forEach((block, _offset, index) => {
-    if (block.type === docxSchema.nodes.paragraph) at = index;
+  return withLastStoryParagraph(story, (paragraph) => {
+    const written: unknown = paragraph.attrs.pAttrs;
+    const pAttrs = typeof written === "string" ? written : "";
+    if (/\bw14:paraId\s*=/.test(pAttrs)) return null;
+    const declared = /\bxmlns:w14\s*=/.test(pAttrs)
+      ? ""
+      : `${xmlnsAttr("w14")[0]}="${NAMESPACES.w14}" `;
+    return paragraph.type.create(
+      {
+        ...paragraph.attrs,
+        pAttrs: `${pAttrs === "" ? "" : `${pAttrs} `}${declared}${qualify("w14", "paraId")}="${paraId}"`,
+      },
+      paragraph.content,
+      paragraph.marks
+    );
   });
-  if (at === -1) return story;
-  const paragraph = story.child(at);
-  const written: unknown = paragraph.attrs.pAttrs;
-  const pAttrs = typeof written === "string" ? written : "";
-  if (/\bw14:paraId\s*=/.test(pAttrs)) return story;
-  const declared = /\bxmlns:w14\s*=/.test(pAttrs)
-    ? ""
-    : `${xmlnsAttr("w14")[0]}="${NAMESPACES.w14}" `;
-  const keyed = paragraph.type.create(
-    {
-      ...paragraph.attrs,
-      pAttrs: `${pAttrs === "" ? "" : `${pAttrs} `}${declared}${qualify("w14", "paraId")}="${paraId}"`,
-    },
-    paragraph.content,
-    paragraph.marks
-  );
-  return story.copy(story.content.replaceChild(at, keyed));
 }

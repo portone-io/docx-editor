@@ -8,6 +8,15 @@ Both the paragraph-level and body-level forms use `CT_SectPr`, so one reader ans
 
 Observed 2026-09-08 against ECMA-376 5th edition, Part 1, §§17.2.2, 17.6.17, 17.6.18, and `wml.xsd` (`CT_SectPr`, `CT_SectPrBase`).
 
+## Where a break written inside a content control ends its section
+
+A block-level content control holds what the body holds (`CT_SdtContentBlock`, §17.5.2.34), so a paragraph inside one is one of the body's own paragraphs and the `w:sectPr` it carries ends a section exactly as a loose paragraph's does; a paragraph inside a table cell is not part of that sequence, so a `w:sectPr` written in a cell is preserved as markup rather than read as a section.
+Word parts the control itself where a paragraph inside one ends a section. This editor lays a control out as one block on one section's paper, so a section ends where the top-level block holding its last paragraph ends and a break standing further up inside a control still takes effect at the control's end.
+One block therefore ends at most one section: where a control holds more than one break the first is the one read, and the breaks after it stay preserved markup that goes back out on export. Two sections ending in the same place would leave the later one covering no position at all, which nothing asking what section a position falls in could ever reach.
+The guard that refuses to let a section-ending paragraph disappear answers for every `w:sectPr` a paragraph carries, the ones this reading passes over included, so no break is lost without the author saying so.
+
+Observed 2026-09-16 against ECMA-376 5th edition, Part 1, §§17.5.2.34, 17.6.18, and `wml.xsd` (`CT_SdtContentBlock`).
+
 ## Splitting and merging the paragraph that ends a section
 
 Because the properties belong to the paragraph that *ends* the section, splitting that paragraph leaves the section break with the later half: the earlier half becomes an ordinary paragraph inside the same section, and the later half goes on ending it. Copying such a paragraph elsewhere carries no break at all, since the copy ends no section.

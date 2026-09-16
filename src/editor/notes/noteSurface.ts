@@ -20,6 +20,7 @@ import {
 import { type Command, Plugin, TextSelection } from "prosemirror-state";
 import type { EditorView, NodeViewConstructor } from "prosemirror-view";
 import { NOTE_NUMBER_ELEMENTS } from "../../docx/notes/newNote";
+import { onlyStoryParagraph, storyParagraphs } from "../../docx/storyBlocks";
 import { docxSchema } from "../../schema";
 import { editShut, transactionAllowed } from "../../schema/guards";
 import { editsShut } from "../../schema/protectionState";
@@ -172,7 +173,7 @@ export function returnToReference(main: EditorView, key: StoryKey): void {
 
 /** How much room the number the note opens with takes, which the caret may stand after */
 function leadingChipSize(story: PMNode): number {
-  const first = story.firstChild?.firstChild ?? null;
+  const first = storyParagraphs(story).at(0)?.firstChild ?? null;
   return first !== null && isOwnMark(first) ? first.nodeSize : 0;
 }
 
@@ -335,15 +336,12 @@ function ownMarkFirst(): Plugin {
 
 /**
  * Whether the note holds nothing but the number it opens with, judged by content rather than by
- * text, since an image or an empty table spells no text at all.
+ * text, since an image or an empty table spells no text at all. A block-level content control
+ * around that paragraph is no content of its own (`docx/storyBlocks`).
  */
 function holdsNothing(story: PMNode): boolean {
-  const only = story.childCount === 1 ? story.firstChild : null;
-  return (
-    only !== null &&
-    only.type === docxSchema.nodes.paragraph &&
-    only.content.size === leadingChipSize(story)
-  );
+  const only = onlyStoryParagraph(story);
+  return only !== null && only.content.size === leadingChipSize(story);
 }
 
 /**

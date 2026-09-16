@@ -21,6 +21,7 @@ import {
   blockKindFor,
   type MeasuredBlock,
   type MeasureTarget,
+  opensPage,
 } from "./blockKinds";
 import { blockKindsOf, demandSourcesOf } from "./pageDecorations";
 
@@ -125,6 +126,7 @@ export function measureSheet(
       node,
       pos,
       dom,
+      kinds,
       sheetY: blockY,
       top,
       scale,
@@ -137,7 +139,7 @@ export function measureSheet(
       pos,
       gap: top - previousBottom,
       height: bottom - top,
-      breakBefore: dom.hasAttribute(editorAttributes.pageBreakBefore),
+      breakBefore: opensPage(dom, measured),
       breakAfter: measured.breakAfter,
       candidates: measured.candidates,
       minFirstPiece: measured.minFirstPiece,

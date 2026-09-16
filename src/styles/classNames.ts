@@ -235,6 +235,8 @@ export const editorAttributes = {
   pageBreakSpace: "data-page-space",
   /** A display-only table row that fills the remainder between page bodies */
   tablePageSpace: "data-table-page-space",
+  /** The space a block-level content control opens between two of the blocks it holds */
+  containerPageSpace: "data-container-page-space",
   /** A display-only copy of a table header row on a continued page */
   tableRepeatedHeader: "data-table-repeated-header",
   /**

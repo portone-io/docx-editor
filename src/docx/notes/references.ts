@@ -16,8 +16,6 @@ export interface PlacedNoteReference {
   readonly node: PMNode;
   /** Where the reference stands in the document */
   readonly pos: number;
-  /** The top-level block it stands in, by index, which is what a section covers a run of */
-  readonly block: number;
   /** The note it names, and null where it names no kind of note or carries no id */
   readonly key: NoteKey | null;
 }
@@ -41,18 +39,13 @@ export function eachNoteReference(
   visit: (reference: PlacedNoteReference) => boolean | void
 ): void {
   let running = true;
-  doc.forEach((block, offset, index) => {
+  doc.forEach((block, offset) => {
     if (!running) return;
     block.descendants((node, pos) => {
       if (!running) return false;
       if (node.type.name !== "noteReference") return true;
       running =
-        visit({
-          node,
-          pos: offset + 1 + pos,
-          block: index,
-          key: keyOf(node),
-        }) !== false;
+        visit({ node, pos: offset + 1 + pos, key: keyOf(node) }) !== false;
       return false;
     });
   });
