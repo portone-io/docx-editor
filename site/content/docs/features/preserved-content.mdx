@@ -48,9 +48,16 @@ Backspace and Delete stop at the edge of a control around paragraphs or tables, 
 holding one empty paragraph is removed whole by either key.
 A temporary control is removed by the first edit inside it, and placeholder text is edited like any
 other text.
-A control with nothing inside it takes no room on the page and is kept in the file: Backspace and
-Delete pass over it, removing a blank line beside it as they would anywhere else, and the control
-itself is removed only when it is selected whole, which a control locked against deletion refuses.
+A control with nothing inside it takes no room on the page and is kept in the file, whether it
+stands between paragraphs or inside one, where it takes no width between the words either side of
+it.
+Backspace and Delete never remove it: between paragraphs they move the caret past it, removing a
+blank line beside it as they would anywhere else, and inside a paragraph they pass over it and
+remove the character beyond it, as if it were not there.
+The control itself is removed only by a selection that covers it, which a control locked against
+deletion refuses.
+A control holding nothing that carries a lock also keeps a selection covering it from being
+replaced or deleted, so typing over such a selection does nothing.
 A control the editor could not take apart is shown as a box: a plain text, picture, date picker,
 combo box, drop-down list, or check box control around whole blocks.
 

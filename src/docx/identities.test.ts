@@ -331,6 +331,37 @@ describe("the control rule", () => {
     });
   });
 
+  /**
+   * The same node standing inside a paragraph, which the rule reaches through the walk over the
+   * paragraph's inline nodes rather than through the walk over the blocks.
+   */
+  describe("a control a paragraph holds with nothing inside it", () => {
+    const empty = (key: number) =>
+      docxSchema.nodes.sdtEmptyInline.create({ sdtPrefix: PREFIX, key });
+
+    it("gives the second of two standing in one paragraph an id of its own", () => {
+      const next = withUniqueIdentities(doc(paragraph(empty(0), empty(0))));
+      const line = next.child(0);
+
+      expect(line.child(0).attrs.sdtPrefix).toBe(PREFIX);
+      expect(line.child(1).attrs.sdtPrefix).toMatch(COPY);
+    });
+
+    it("claims its name in the list the mark claims from", () => {
+      const next = withUniqueIdentities(
+        doc(paragraph(text("a", control(0)), empty(0)))
+      );
+
+      expect(prefixesOf(next)).toEqual([PREFIX]);
+      expect(next.child(0).child(1).attrs.sdtPrefix).toMatch(COPY);
+    });
+
+    it("leaves one standing alone exactly as it came", () => {
+      const original = doc(paragraph(empty(0)));
+      expect(withUniqueIdentities(original)).toBe(original);
+    });
+  });
+
   describe("controls that merely look alike", () => {
     it("are left as they came, opening XML and all", () => {
       const original = doc(

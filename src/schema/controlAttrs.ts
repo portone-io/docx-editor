@@ -1,11 +1,13 @@
 /**
  * The attributes each carrier of a content control writes what the control states in.
  *
- * Five carriers state the same facts: the `sdt` mark, the `sdtBlock` container and the `sdtEmpty`
- * node under the control's own names, and a cell or a row the file wrapped (`docx/importTable`)
- * under `sdt`-prefixed ones, beside that node's own attributes. The names stand here once, so that
- * a fact the editor reads off a control is declared, drawn, parsed, imported, merged and cleared
- * from one table rather than from a list written out afresh in every module that touches one.
+ * Six carriers state the same facts: the `sdt` mark, the `sdtBlock` container and the two nodes a
+ * control holding nothing stands as - `sdtEmpty` between blocks, `sdtEmptyInline` inside a
+ * paragraph - under the control's own names, and a cell or a row the file wrapped
+ * (`docx/importTable`) under `sdt`-prefixed ones, beside that node's own attributes. The names
+ * stand here once, so that a fact the editor reads off a control is declared, drawn, parsed,
+ * imported, merged and cleared from one table rather than from a list written out afresh in every
+ * module that touches one.
  *
  * Nothing is imported here: the schema itself reads this table (`./docxSchema`), and so does the
  * export, which must reach no editor code at all (`core.test`).
@@ -17,7 +19,10 @@ import type { Node as PMNode } from "prosemirror-model";
 export const SDT_BLOCK_NODE = "sdtBlock";
 
 /** The node a control holding nothing at all is read as, which `./docxSchema` declares beside it */
-export const SDT_EMPTY_NODE = "sdtEmpty";
+export const SDT_EMPTY_BLOCK_NODE = "sdtEmpty";
+
+/** The same control standing inside a paragraph, which is an inline node rather than a block one */
+export const SDT_EMPTY_INLINE_NODE = "sdtEmptyInline";
 
 /** Which attribute one carrier writes each fact under */
 export interface ControlAttrNames {
@@ -84,7 +89,7 @@ export const NO_CONTROL: ControlFacts = {
 /** The DOM attribute every carrier draws the control's opening XML under (`./docxSchema`) */
 export const PREFIX_DOM_ATTR = "data-sdt-prefix";
 
-/** The DOM attribute each flag is drawn under, which all four carriers share (`./docxSchema`) */
+/** The DOM attribute each flag is drawn under, which every carrier shares (`./docxSchema`) */
 const FLAG_DOM_ATTRS: Readonly<Record<keyof ControlFlags, string>> = {
   contentsLocked: "data-sdt-contents-locked",
   deletionLocked: "data-sdt-deletion-locked",
@@ -214,13 +219,26 @@ export function isBlockControl(node: PMNode | null | undefined): boolean {
 }
 
 /**
- * Whether this node is a content control with nothing inside it (`docx/importSdtBlock`).
+ * Whether this node is a block-level content control with nothing inside it
+ * (`docx/importSdtBlock`).
  *
  * Deliberately not folded into `isBlockControl`: every caller of that one asks about the blocks a
  * control holds, and this control holds none, so it is no container and stands as an atom.
  */
-export function isEmptyControl(node: PMNode | null | undefined): boolean {
-  return node?.type.name === SDT_EMPTY_NODE;
+export function isEmptyBlockControl(node: PMNode | null | undefined): boolean {
+  return node?.type.name === SDT_EMPTY_BLOCK_NODE;
+}
+
+/**
+ * Whether this node is a content control with nothing inside it standing in a paragraph
+ * (`docx/wrappers`).
+ *
+ * The two shapes are told apart rather than counted together, because where such a control stands
+ * is the whole of what a caller does with it: one is a block among blocks and the other an atom
+ * among runs, and no caller acts on both.
+ */
+export function isEmptyInlineControl(node: PMNode | null | undefined): boolean {
+  return node?.type.name === SDT_EMPTY_INLINE_NODE;
 }
 
 /**
@@ -230,17 +248,23 @@ export function isEmptyControl(node: PMNode | null | undefined): boolean {
  * These are the containers a control stands around whole: a cell or a row the file wrapped
  * (`docx/importTable`), which carries the control's opening XML beside its own attributes, and a
  * block-level control, which is the wrapper itself. A control holding nothing is a carrier as
- * well, its extent being the node itself rather than anything standing inside it. A cell or a row
- * no control wrapped carries none of this, and counting it as a control would end the walk out of
- * the tree at the first one and open every lock standing around the table (`./locks`).
- * The wrapped nodes are found by their table role, so a schema built beside the editor's own is
- * read as well.
+ * well, block or inline, its extent being the node itself rather than anything standing inside it.
+ * A cell or a row no control wrapped carries none of this, and counting it as a control would end
+ * the walk out of the tree at the first one and open every lock standing around the table
+ * (`./locks`). The wrapped nodes are found by their table role, so a schema built beside the
+ * editor's own is read as well.
  */
 export function controlAttrsOf(
   node: PMNode | null | undefined
 ): ControlAttrNames | null {
   if (!node) return null;
-  if (isBlockControl(node) || isEmptyControl(node)) return OWN_CONTROL_ATTRS;
+  if (
+    isBlockControl(node) ||
+    isEmptyBlockControl(node) ||
+    isEmptyInlineControl(node)
+  ) {
+    return OWN_CONTROL_ATTRS;
+  }
   const role: unknown = node.type.spec.tableRole;
   if (typeof role !== "string" || !WRAPPED_TABLE_ROLES.includes(role)) {
     return null;

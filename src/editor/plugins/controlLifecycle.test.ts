@@ -206,6 +206,31 @@ describe("a control holding nothing", () => {
   });
 });
 
+/**
+ * The same control standing inside a paragraph (`docx/wrappers`). The typing happens in the
+ * very paragraph it stands in, which is the stretch an edit of a mark's contents would be read
+ * from, so this is where the two properties would act if anything could reach inside it.
+ */
+describe("a control a paragraph holds with nothing inside it", () => {
+  it.each([
+    ["w:temporary", TEMPORARY, "<w:temporary/>"],
+    ["w:showingPlcHdr", PLACEHOLDER, "<w:showingPlcHdr/>"],
+  ])("keeps %s while the line around it is typed in", (_name, props, xml) => {
+    const opened = open(
+      `<w:p>${R("Outside")}${sdt("", props)}${R("beside")}</w:p>`
+    );
+
+    const after = type(opened, "Outside", "!");
+    const line = after.doc.child(0);
+
+    expect(line.child(1).type.name).toBe("sdtEmptyInline");
+    expect(
+      line.child(1).attrs.temporary || line.child(1).attrs.showingPlaceholder
+    ).toBe(true);
+    expect(exported(after, opened)).toContain(xml);
+  });
+});
+
 describe("a control a lock says may not be deleted", () => {
   it("keeps its wrapper but stops claiming to hold placeholder text", () => {
     const opened = open(

@@ -1,11 +1,12 @@
 import type { Node as PMNode } from "prosemirror-model";
 import { DocxExportError } from "../ooxml/errors";
-import { isBlockControl, isEmptyControl } from "../schema/controlAttrs";
+import { isBlockControl, isEmptyBlockControl } from "../schema/controlAttrs";
 import { sameSource } from "../schema/sourceEquality";
 import { type ExportRefs, NO_EXPORT_REFS } from "./exportRefs";
+import { serializeEmptyControl } from "./sdt";
 import { serializeParagraph } from "./serializeParagraph";
 import { serializePreservedBlock } from "./serializePreserved";
-import { serializeSdtBlock, serializeSdtEmpty } from "./serializeSdtBlock";
+import { serializeSdtBlock } from "./serializeSdtBlock";
 import { serializeTable } from "./serializeTable";
 import { originalBlock } from "./session";
 
@@ -20,7 +21,7 @@ export function serializeBlock(
   if (isBlockControl(node)) {
     return serializeSdtBlock(node, refs, serializeBlock);
   }
-  if (isEmptyControl(node)) return serializeSdtEmpty(node);
+  if (isEmptyBlockControl(node)) return serializeEmptyControl(node);
   if (node.type.isInGroup("preserved")) {
     return serializePreservedBlock(node, refs);
   }

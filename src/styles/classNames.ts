@@ -45,6 +45,8 @@ export const editorClassNames = {
   sdtBlock: `${PREFIX}-sdt-block`,
   /** A content control with nothing inside it, which stands on the page as nothing */
   sdtEmpty: `${PREFIX}-sdt-empty`,
+  /** The same control standing inside a paragraph, which takes no width between the words */
+  sdtEmptyInline: `${PREFIX}-sdt-empty-inline`,
   /** Attached alongside it when the control says its contents may not be edited */
   sdtLocked: `${PREFIX}-sdt-locked`,
   /** A stretch of text inside a hyperlink (`w:hyperlink`) */

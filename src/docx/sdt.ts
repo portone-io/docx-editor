@@ -13,6 +13,7 @@
  * wrapper they put back on export is the same string in all of them.
  */
 
+import type { Node as PMNode } from "prosemirror-model";
 import { elementXml, openTagXml } from "../ooxml/element";
 import { DocxExportError } from "../ooxml/errors";
 import { NAMESPACES, wName } from "../ooxml/names";
@@ -177,6 +178,31 @@ export function controlFactsFrom(wrapper: SdtWrapper): ControlFacts {
 }
 
 /**
+ * What one `w:sdt` holds, which is the question the block reader and the inline reader must
+ * answer the same way.
+ *
+ * A control holding nothing takes two shapes - an empty `w:sdtContent`, and no content element at
+ * all, which §17.5.2.34 admits because that element is a cache of what stood inside rather than
+ * the statement itself - and the two state the same thing. They are told apart here rather than in
+ * each reader, so neither level can come to read one of them as content and the other as nothing.
+ */
+export type SdtContents =
+  | { kind: "nothing"; facts: ControlFacts }
+  | { kind: "content"; wrapper: SdtWrapper };
+
+/** What this control holds, and null for a shape this editor does not write back */
+export function readSdtContents(el: Element): SdtContents | null {
+  const wrapper = readSdtWrapper(el);
+  if (!wrapper) {
+    const facts = readEmptySdt(el);
+    return facts === null ? null : { kind: "nothing", facts };
+  }
+  return elementChildren(wrapper.content).length === 0
+    ? { kind: "nothing", facts: controlFactsFrom(wrapper) }
+    : { kind: "content", wrapper };
+}
+
+/**
  * The control types whose content the specification restrains to a single run: `w:text`
  * (§17.5.2.44), `w:picture` (§17.5.2.24), `w:date` (§17.5.2.7), `w:comboBox` (§17.5.2.5),
  * `w:dropDownList` (§17.5.2.15), and `w14:checkbox`, which the 2010 extension gives the same
@@ -231,6 +257,17 @@ export function sdtOpeningXml(prefix: unknown): string {
 /** One whole control: the opening it arrived with, around content this writer owns */
 export function sdtXml(prefix: unknown, content: string): string {
   return sdtOpeningXml(prefix) + content + SDT_CLOSING_XML;
+}
+
+/**
+ * A control holding nothing, wherever it stood: the opening it arrived with around a content tag
+ * with nothing in it.
+ *
+ * A control that arrived writing no content element at all gains one here: §17.5.2.34 makes that
+ * element a cache of what stood inside, so the two shapes state the same thing.
+ */
+export function serializeEmptyControl(node: PMNode): string {
+  return sdtXml(node.attrs.sdtPrefix, "");
 }
 
 /**

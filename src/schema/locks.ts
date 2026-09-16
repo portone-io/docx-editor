@@ -1,6 +1,7 @@
 /**
- * Evaluates OOXML content and deletion locks for inline controls and for the containers a control
- * stands around whole: a table cell, and a block-level control.
+ * Evaluates OOXML content and deletion locks for inline controls, for the containers a control
+ * stands around whole - a table cell, a block-level control - and for a control holding nothing,
+ * whose extent is the node it stands as, between blocks or inside a paragraph.
  *
  * `lockGuard` is what `./guards` registers all of this as, and it is the only way in: a caller
  * asking about a lock asks the one guard list, which asks the locks along with every other rule an
@@ -25,7 +26,11 @@ import {
   ReplaceStep,
   type Step,
 } from "prosemirror-transform";
-import { controlAttrsOf, controlFactsOf } from "./controlAttrs";
+import {
+  controlAttrsOf,
+  controlFactsOf,
+  isEmptyInlineControl,
+} from "./controlAttrs";
 import type { EditIntent, StepGuard } from "./editGuard";
 import { docxSchema } from "./index";
 import { wrappersOf } from "./wrappers";
@@ -85,7 +90,8 @@ function shutsAlone(locks: Locks): boolean {
   return shutsContents(locks, false);
 }
 
-interface StepRange {
+/** The stretch a judgement or an edit runs over */
+export interface StepRange {
   from: number;
   to: number;
 }
@@ -157,23 +163,25 @@ export function isLockedContainer(node: PMNode | null | undefined): boolean {
   return shutsAlone(containerLocks(node));
 }
 
+/** Whether these locks state either clause, which is what a lock in the document is */
+function statesLock(locks: Locks): boolean {
+  return locks.contents || locks.deletion;
+}
+
 /**
  * Whether this node carries a lock of either clause, an inline one wearing a control's mark and a
- * container standing for one alike.
+ * carrier standing for one alike.
  * This is the question about the document holding a lock at all rather than about editing a spot,
  * so a control locked against deletion alone counts (`editor/commands/lockCommands`). A `w:group`
  * is not a lock and does not: it shuts its contents, and there is nothing in it to lift.
+ *
+ * Both are asked of every node rather than one or the other: a control holding nothing states its
+ * own lock in its attributes and wears the marks of the wrappers around it at the same time
+ * (`docx/wrappers`), so reading only the marks would miss the lock it states itself.
  */
 export function carriesLock(node: PMNode): boolean {
-  const marks = node.isInline ? sdtMarksOf(node) : [];
-  if (marks.length === 0) {
-    const locks = containerLocks(node);
-    return locks.contents || locks.deletion;
-  }
-  return marks.some((mark) => {
-    const locks = markLocks(mark);
-    return locks.contents || locks.deletion;
-  });
+  if (statesLock(containerLocks(node))) return true;
+  return sdtMarksOf(node).some((mark) => statesLock(markLocks(mark)));
 }
 
 /** A textblock a judgement or an edit runs through, and where its content begins */
@@ -296,8 +304,14 @@ interface EditedRange extends StepRange {
   takesAway: boolean;
 }
 
-/** Whether the stretch covers this control from end to end, which is the control going whole */
-function coversWhole(range: StepRange, span: StepRange): boolean {
+/**
+ * Whether the stretch covers this control from end to end, which is the control going whole.
+ *
+ * This is also what reaches a control that draws nothing, since it holds no spot a caret could
+ * stand in: a selection merely resting at its edge points at no control the user can see
+ * (`editor/commands/lockCommands`).
+ */
+export function coversWhole(range: StepRange, span: StepRange): boolean {
   return range.from <= span.from && range.to >= span.to;
 }
 
@@ -337,6 +351,55 @@ function supersededSpan(
 }
 
 /**
+ * Whether the container this node stands as refuses the step, its extent being the node.
+ *
+ * A stretch covering it and taking it away is the container being deleted as one, which the
+ * deletion clause answers whole. Anything else reaches the contents, and a container with no
+ * content has none a mark laid across it could reach, so it refuses nothing there.
+ * Nothing inside supersedes a group: the stretch stands outside the container on both sides.
+ */
+function containerShut(
+  node: PMNode,
+  span: StepRange,
+  range: EditedRange
+): boolean {
+  if (!coversWhole(range, span)) return false;
+  const locks = containerLocks(node);
+  return range.takesAway
+    ? locks.deletion
+    : shutsAlone(locks) && node.content.size > 0;
+}
+
+/** One content control holding nothing, standing as a node of its own, as the one spot it covers */
+export interface EmptyControl {
+  node: PMNode;
+  span: StepRange;
+}
+
+/**
+ * Every control holding nothing that stands among the inlines of this textblock, each as the one
+ * spot it covers.
+ *
+ * Such a control carries what it states in its own attributes rather than in a mark
+ * (`docx/wrappers`), so `controlSpans` never meets it and the walk below never reaches it:
+ * a textblock is where `nodesBetween` is told to stop.
+ *
+ * One walk answers both the lock guard and the menu that lifts a lock
+ * (`editor/commands/lockCommands`), so the two cannot come to disagree about what stands here. It
+ * looks for controls holding nothing and for no other carrier: both callers judge what it finds by
+ * rules written for a node with nothing inside it.
+ */
+export function emptyControlsIn(block: Textblock): EmptyControl[] {
+  const found: EmptyControl[] = [];
+  block.node.forEach((child, offset) => {
+    if (!isEmptyInlineControl(child)) return;
+    const from = block.start + offset;
+    found.push({ node: child, span: { from, to: from + child.nodeSize } });
+  });
+  return found;
+}
+
+/**
  * Whether any control this stretch meets refuses the step, each control judged by how much of it
  * the stretch covers.
  *
@@ -354,18 +417,15 @@ function rangeShut(doc: PMNode, range: EditedRange): boolean {
   doc.nodesBetween(range.from, range.to, (node, pos) => {
     if (shut) return false;
     if (controlAttrsOf(node) !== null) {
-      const locks = containerLocks(node);
-      if (coversWhole(range, { from: pos, to: pos + node.nodeSize })) {
-        // The stretch stands outside the container, so nothing inside it supersedes a group, and a
-        // container with no content has no contents a mark laid across it could reach
-        const edits = shutsAlone(locks) && node.content.size > 0;
-        if (range.takesAway ? locks.deletion : edits) shut = true;
+      if (containerShut(node, { from: pos, to: pos + node.nodeSize }, range)) {
+        shut = true;
       }
       // What the container holds is judged on its own, each control by its own terms
       return !shut;
     }
     if (!node.isTextblock) return true;
-    const spans = controlSpans({ node, start: pos + 1 });
+    const block: Textblock = { node, start: pos + 1 };
+    const spans = controlSpans(block);
     // Never assigned, so a later textblock finding nothing cannot take an earlier refusal back
     shut ||= spans.some((span) =>
       shuts(
@@ -374,6 +434,9 @@ function rangeShut(doc: PMNode, range: EditedRange): boolean {
         span,
         supersededSpan(spans, span, range)
       )
+    );
+    shut ||= emptyControlsIn(block).some((control) =>
+      containerShut(control.node, control.span, range)
     );
     return false;
   });

@@ -3,13 +3,21 @@
 import { unzipSync } from "fflate";
 import type { Node as PMNode } from "prosemirror-model";
 import { describe, expect, it } from "vitest";
-import { decode, documentXmlOf, makeLinkedDocx } from "../__testing__/docx";
+import {
+  decode,
+  documentXmlOf,
+  makeDocx,
+  makeLinkedDocx,
+  readFixture,
+  withBlocks,
+} from "../__testing__/docx";
 import { rangeOfText, runCommand, select } from "../__testing__/editing";
 import { undo } from "../editor/commands";
 import { setLink } from "../editor/commands/linkCommands";
 import { createEditorState } from "../editor/createEditor";
 import { parseXml, R_NS } from "../ooxml/xml";
 import { wrapperMarks } from "../schema/wrappers";
+import { firstBlockIndex, withEditedBlock } from "./__testing__/blockEdits";
 import { type ExportRefs, NO_EXPORT_REFS } from "./exportRefs";
 import type { LinkTargets } from "./hyperlink";
 import { importDocx } from "./importDocx";
@@ -38,9 +46,11 @@ function open(xml: string): PMNode {
 const run = (text: string) =>
   `<w:r><w:t xml:space="preserve">${text}</w:t></w:r>`;
 
-const control = (inner: string, id = 7) =>
-  `<w:sdt><w:sdtPr><w:id w:val="${id}"/></w:sdtPr>` +
-  `<w:sdtContent>${inner}</w:sdtContent></w:sdt>`;
+/** A control, written the way a file writes one: an id, then an optional lock */
+const control = (inner: string, { id = 7, lock = "" } = {}) =>
+  `<w:sdt><w:sdtPr><w:id w:val="${id}"/>` +
+  (lock === "" ? "" : `<w:lock w:val="${lock}"/>`) +
+  `</w:sdtPr><w:sdtContent>${inner}</w:sdtContent></w:sdt>`;
 
 const link = (inner: string) =>
   `<w:hyperlink r:id="rId9">${inner}</w:hyperlink>`;
@@ -75,7 +85,7 @@ describe("a wrapper holding a wrapper", () => {
   });
 
   it("two nested controls keep their order and both ids", () => {
-    const xml = `<w:p>${control(control(run("terms"), 8))}</w:p>`;
+    const xml = `<w:p>${control(control(run("terms"), { id: 8 }))}</w:p>`;
     const node = open(xml);
     const marks = wrapperMarks(only(node));
 
@@ -89,7 +99,7 @@ describe("a wrapper holding a wrapper", () => {
   });
 
   it("three wrappers deep still rebuild in file order", () => {
-    const xml = `<w:p>${control(link(control(run("terms"), 8)))}</w:p>`;
+    const xml = `<w:p>${control(link(control(run("terms"), { id: 8 })))}</w:p>`;
     const node = open(xml);
 
     expect(nesting(only(node))).toEqual(["sdt", "link", "sdt"]);
@@ -259,5 +269,271 @@ describe("a document holding a hyperlink that holds a control", () => {
     expect(
       serializeParagraph(runCommand(linked, undo).doc.child(0), REFS)
     ).toBe(before);
+  });
+});
+
+/**
+ * The cases below are built from small bodies rather than read off the fixture, so what each one
+ * proves stands in the test itself; `content-controls.docx` is what holds them in one package and
+ * is read for the byte identity and the edited round trip.
+ */
+const FIXTURE = "content-controls.docx";
+
+const P = (inline: string) => `<w:p>${inline}</w:p>`;
+
+/** The type of every inline node of the one paragraph a body holds */
+function inlineTypes(body: string): string[] {
+  const doc = importDocx(makeDocx(body)).doc;
+  const names: string[] = [];
+  doc.child(0).forEach((child) => {
+    names.push(child.type.name);
+  });
+  return names;
+}
+
+/** The one control a paragraph holds, which every case here writes as its second inline node */
+function emptyControl(body: string): PMNode {
+  const node = importDocx(makeDocx(body)).doc.child(0).child(1);
+  expect(node.type.name).toBe("sdtEmptyInline");
+  return node;
+}
+
+/**
+ * Which node a wrapper holding nothing opens as is the registry's answer, one entry at a time, so a
+ * kind with no node of its own keeps the element whole where it stood.
+ */
+describe("a wrapper a paragraph holds with nothing inside it", () => {
+  it("keeps a hyperlink of that shape whole where it stood", () => {
+    expect(
+      inlineTypes(
+        P(
+          run("before") +
+            '<w:hyperlink r:id="rId99"></w:hyperlink>' +
+            run("after")
+        )
+      )
+    ).toEqual(["text", "rawInline", "text"]);
+  });
+});
+
+describe("a control a paragraph holds with nothing inside it", () => {
+  it("is read as the node that draws nothing rather than as a preserved chip", () => {
+    expect(
+      inlineTypes(P(run("before") + control("", { id: 1 }) + run("after")))
+    ).toEqual(["text", "sdtEmptyInline", "text"]);
+  });
+
+  it("carries what the mark would carry: the opening tag and a key", () => {
+    const node = emptyControl(
+      P(run("before") + control("", { id: 42, lock: "sdtLocked" }))
+    );
+
+    expect(node.attrs.sdtPrefix).toBe(
+      '<w:sdt><w:sdtPr><w:id w:val="42"/><w:lock w:val="sdtLocked"/></w:sdtPr>'
+    );
+    expect(node.attrs).toMatchObject({
+      contentsLocked: false,
+      deletionLocked: true,
+      key: expect.any(Number),
+    });
+  });
+
+  /**
+   * `CT_Sdt` writes `w:sdtContent` `minOccurs="0"`, so a control may state that what it stood
+   * around is not there by leaving the element out, and §17.5.2.34 makes that element a cache of
+   * contents rather than the statement itself. The two shapes are therefore read as one node.
+   */
+  it("is read the same when the file wrote no content element at all", () => {
+    const node = emptyControl(
+      P(
+        run("before") +
+          '<w:sdt><w:sdtPr><w:id w:val="7"/>' +
+          '<w:lock w:val="sdtContentLocked"/></w:sdtPr></w:sdt>'
+      )
+    );
+
+    expect(node.attrs.sdtPrefix).toBe(
+      '<w:sdt><w:sdtPr><w:id w:val="7"/>' +
+        '<w:lock w:val="sdtContentLocked"/></w:sdtPr>'
+    );
+    expect(node.attrs).toMatchObject({
+      contentsLocked: true,
+      deletionLocked: true,
+    });
+  });
+
+  it("carries a w:sdtEndPr written with no content element in the prefix", () => {
+    const node = emptyControl(
+      P(
+        run("before") +
+          '<w:sdt><w:sdtPr><w:id w:val="7"/></w:sdtPr>' +
+          "<w:sdtEndPr><w:rPr><w:b/></w:rPr></w:sdtEndPr></w:sdt>"
+      )
+    );
+
+    expect(node.attrs.sdtPrefix).toBe(
+      '<w:sdt><w:sdtPr><w:id w:val="7"/></w:sdtPr>' +
+        "<w:sdtEndPr><w:rPr><w:b/></w:rPr></w:sdtEndPr>"
+    );
+  });
+
+  it("is still kept whole where it carries no w:sdtPr to read", () => {
+    expect(inlineTypes(P(run("before") + "<w:sdt/>"))).toEqual([
+      "text",
+      "rawInline",
+    ]);
+  });
+
+  it("counts one control apart from the next, as the mark does", () => {
+    const doc = importDocx(
+      makeDocx(
+        P(
+          run("before") +
+            control("", { id: 1 }) +
+            control(run("held"), { id: 2 })
+        )
+      )
+    ).doc;
+
+    expect(doc.child(0).child(1).attrs.key).not.toBe(
+      doc.child(0).child(2).marks[0]?.attrs.key
+    );
+  });
+
+  it("wears a hyperlink's mark as readily as a control's", () => {
+    const doc = importDocx(
+      makeDocx(
+        P(
+          run("before") +
+            `<w:hyperlink w:anchor="here">${run("linked")}${control("", { id: 2 })}` +
+            "</w:hyperlink>"
+        )
+      )
+    ).doc;
+    const node = doc.child(0).child(2);
+
+    expect(node.type.name).toBe("sdtEmptyInline");
+    expect(node.marks.map((mark) => mark.type.name)).toEqual(["link"]);
+  });
+
+  it("wears the marks of the wrappers it stands inside", () => {
+    const doc = importDocx(
+      makeDocx(
+        P(
+          run("before") +
+            control(run("held") + control("", { id: 2 }), { id: 1 })
+        )
+      )
+    ).doc;
+    const node = doc.child(0).child(2);
+
+    expect(node.type.name).toBe("sdtEmptyInline");
+    expect(node.marks.map((mark) => mark.type.name)).toEqual(["sdt"]);
+    expect(node.marks[0]?.attrs.sdtPrefix).toBe(
+      '<w:sdt><w:sdtPr><w:id w:val="1"/></w:sdtPr>'
+    );
+  });
+});
+
+describe("a control a paragraph holds with nothing inside it, written back", () => {
+  it("goes back out as the bytes it arrived as while an edit stands beside it", () => {
+    const { doc, session } = importDocx(readFixture(FIXTURE));
+    const index = firstBlockIndex(doc, "paragraph");
+
+    const out = documentXmlOf(withEditedBlock(doc, index, "Edited"), session);
+
+    expect(out).toContain(
+      '<w:sdt><w:sdtPr><w:alias w:val="Signing date"/><w:id w:val="416"/>' +
+        "</w:sdtPr><w:sdtContent></w:sdtContent></w:sdt>"
+    );
+    expect(documentXmlOf(doc, session)).toBe(
+      decode(unzipSync(readFixture(FIXTURE))[session.mainPartPath])
+    );
+  });
+
+  /**
+   * A paragraph nobody rewrote never reaches the writer, so the paragraph is edited here: the
+   * control is then built from its attrs, content tag and all, and whichever of the two shapes it
+   * arrived as it goes out as the one the writer knows how to take back apart.
+   */
+  it("writes the content tag itself for a paragraph the writer rebuilt", () => {
+    const original = '<w:sdt><w:sdtPr><w:id w:val="9"/></w:sdtPr></w:sdt>';
+    const { doc, session } = importDocx(
+      makeDocx(P(run("before") + original + run("after")))
+    );
+
+    const out = documentXmlOf(withEditedBlock(doc, 0, "Edited"), session);
+
+    expect(out).toContain(
+      '<w:sdt><w:sdtPr><w:id w:val="9"/></w:sdtPr>' +
+        "<w:sdtContent></w:sdtContent></w:sdt>"
+    );
+    expect(out).not.toContain(original);
+  });
+
+  it("closes a hyperlink it stands inside around it again", () => {
+    const { doc, session } = importDocx(
+      makeDocx(
+        P(
+          run("before") +
+            `<w:hyperlink w:anchor="here">${run("linked")}${control("", { id: 2 })}` +
+            "</w:hyperlink>"
+        )
+      )
+    );
+
+    const out = documentXmlOf(withEditedBlock(doc, 0, "Edited"), session);
+
+    expect(out).toContain(
+      '<w:hyperlink w:anchor="here">' +
+        '<w:r><w:t xml:space="preserve">linked</w:t></w:r>' +
+        '<w:sdt><w:sdtPr><w:id w:val="2"/></w:sdtPr><w:sdtContent>' +
+        "</w:sdtContent></w:sdt></w:hyperlink>"
+    );
+  });
+
+  it("closes the wrapper it stands inside around it again", () => {
+    const { doc, session } = importDocx(
+      makeDocx(
+        P(
+          run("before") +
+            control(run("held") + control("", { id: 2 }), { id: 1 })
+        )
+      )
+    );
+
+    const out = documentXmlOf(withEditedBlock(doc, 0, "Edited"), session);
+
+    expect(out).toContain(
+      '<w:sdt><w:sdtPr><w:id w:val="1"/></w:sdtPr><w:sdtContent>' +
+        '<w:r><w:t xml:space="preserve">held</w:t></w:r>' +
+        '<w:sdt><w:sdtPr><w:id w:val="2"/></w:sdtPr><w:sdtContent>' +
+        "</w:sdtContent></w:sdt></w:sdtContent></w:sdt>"
+    );
+  });
+
+  /**
+   * A control nobody rewrote goes out as the bytes it arrived as, so this is the copy: the second
+   * one carries an id of its own (§17.5.2.18) and is written from its attrs (`docx/identities`).
+   */
+  it("gives a second copy of one an id of its own", () => {
+    const { doc, session } = importDocx(
+      makeDocx(P(run("before") + control("", { id: 9 })))
+    );
+    const paragraph = doc.child(0);
+    const twice = paragraph.copy(
+      paragraph.content.append(
+        paragraph.content.cut(paragraph.child(0).nodeSize)
+      )
+    );
+
+    const out = documentXmlOf(withBlocks(doc, [twice]), session);
+    const ids = [
+      ...out.matchAll(/<w:sdt><w:sdtPr><w:id w:val="(\d+)"\/>/g),
+    ].map((match) => match[1]);
+
+    expect(ids).toHaveLength(2);
+    expect(ids[0]).toBe("9");
+    expect(ids[1]).not.toBe("9");
   });
 });

@@ -17,12 +17,7 @@ import {
   controlAttrs,
   OWN_CONTROL_ATTRS,
 } from "../schema/controlAttrs";
-import {
-  controlFactsFrom,
-  modelsBlockContent,
-  readEmptySdt,
-  readSdtWrapper,
-} from "./sdt";
+import { controlFactsFrom, modelsBlockContent, readSdtContents } from "./sdt";
 import { nextKey } from "./wrappers";
 
 /** How the level around a control reads one block of it */
@@ -47,9 +42,8 @@ function controlNodeAttrs(
  * `srcId` names the fragment of the session the control was sliced as; a control inside a cell or
  * inside another control was never a fragment of its own and is handed null, as a nested table is.
  *
- * A control holding nothing is read as the atom that draws nothing: an empty `w:sdtContent` and a
- * control that writes no content element at all say the same thing, since §17.5.2.34 makes that
- * element a cache of what stood inside rather than the statement itself.
+ * A control holding nothing is read as the atom that draws nothing, in either of the two shapes
+ * that state it (`./sdt`).
  */
 export function buildSdtBlock(
   el: Element,
@@ -57,23 +51,15 @@ export function buildSdtBlock(
   readBlock: BlockReader
 ): PMNode | null {
   if (!modelsBlockContent(el)) return null;
-  const wrapper = readSdtWrapper(el);
-  if (!wrapper) {
-    const facts = readEmptySdt(el);
-    return facts === null
-      ? null
-      : docxSchema.nodes.sdtEmpty.create(controlNodeAttrs(el, srcId, facts));
-  }
-
-  const children = elementChildren(wrapper.content);
-  if (children.length === 0) {
+  const read = readSdtContents(el);
+  if (read === null) return null;
+  if (read.kind === "nothing") {
     return docxSchema.nodes.sdtEmpty.create(
-      controlNodeAttrs(el, srcId, controlFactsFrom(wrapper))
+      controlNodeAttrs(el, srcId, read.facts)
     );
   }
-
   return docxSchema.nodes.sdtBlock.create(
-    controlNodeAttrs(el, srcId, controlFactsFrom(wrapper)),
-    children.map(readBlock)
+    controlNodeAttrs(el, srcId, controlFactsFrom(read.wrapper)),
+    elementChildren(read.wrapper.content).map(readBlock)
   );
 }

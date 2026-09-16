@@ -1,10 +1,13 @@
 // @vitest-environment jsdom
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { Node as PMNode } from "prosemirror-model";
 import { EditorView } from "prosemirror-view";
 import { afterEach, describe, expect, it } from "vitest";
 import { createEditorState } from "../../editor/createEditor";
 import { docxSchema } from "../../schema";
-import { editorAttributes } from "../../styles/classNames";
+import { editorAttributes, editorClassNames } from "../../styles/classNames";
 import { blockKindFor, type MeasureTarget } from "../blockKinds";
 import { DEFAULT_BLOCK_KINDS } from "./index";
 import { paragraphKind } from "./paragraphKind";
@@ -226,5 +229,50 @@ describe("paragraphKind", () => {
     expect(keptWithNext("<w:pPr><w:keepNext/></w:pPr>")).toBe(true);
     expect(keptWithNext('<w:pPr><w:keepNext w:val="0"/></w:pPr>')).toBe(false);
     expect(keptWithNext(null)).toBe(false);
+  });
+});
+
+/**
+ * A control a paragraph holds with nothing inside it is measured as part of the line it stands in
+ * (`docx/wrappers`), so the paper sees it only through the room its drawing asks for. Only the CSS
+ * keeps that at nothing: the file says a phrase is not there, and a width drawn for it would push
+ * the words beside it apart.
+ */
+describe("a control a paragraph holds with nothing inside it", () => {
+  let sheet: HTMLStyleElement | null = null;
+
+  afterEach(() => {
+    sheet?.remove();
+    sheet = null;
+  });
+
+  /** The editor's own stylesheet, which the page is drawn under wherever the editor is mounted */
+  function styled(): void {
+    sheet = document.createElement("style");
+    sheet.textContent = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), "../../styles/editor.css"),
+      "utf8"
+    );
+    document.head.append(sheet);
+  }
+
+  it("asks the line it stands in for no room at all", () => {
+    styled();
+    const live = mounted(
+      docxSchema.nodes.doc.create(null, [
+        docxSchema.nodes.paragraph.create(null, [
+          docxSchema.text("ab"),
+          docxSchema.nodes.sdtEmptyInline.create(),
+          docxSchema.text("cd"),
+        ]),
+      ])
+    );
+    const drawn = live.dom.querySelector(`.${editorClassNames.sdtEmptyInline}`);
+    if (!drawn) throw new Error("the control was not drawn");
+    const style = getComputedStyle(drawn);
+
+    expect(style.width).toBe("0px");
+    expect(style.overflow).toBe("hidden");
+    expect(live.dom.textContent).toBe("abcd");
   });
 });

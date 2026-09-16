@@ -130,6 +130,17 @@ export const NODE_ATTR_ROLES: AttrTable = {
     temporary: { role: "source", class: "derived" },
     showingPlaceholder: { role: "source", class: "derived" },
   },
+  // The same rows again for the control standing inside a paragraph, less the `srcId`: it is no
+  // block of the story, so it names no fragment of the session to be written back from.
+  sdtEmptyInline: {
+    sdtPrefix: { role: "source", class: "preserved" },
+    key: { role: "session", class: "identity" },
+    contentsLocked: { role: "source", class: "derived" },
+    deletionLocked: { role: "source", class: "derived" },
+    group: { role: "source", class: "derived" },
+    temporary: { role: "source", class: "derived" },
+    showingPlaceholder: { role: "source", class: "derived" },
+  },
   rawBlock: {
     xml: { role: "source", class: "preserved" },
     srcId: { role: "session", class: "identity" },

@@ -222,6 +222,8 @@ const CLIPBOARD_NODES: Readonly<Record<DocxNodeName, ClipboardNodeSpec>> = {
   // A control holding nothing says only that something is not there, which a copy carries by
   // leaving it out
   sdtEmpty: WRITES_NOTHING,
+  // The same of the one standing inside a paragraph, which says nothing the words around it do not
+  sdtEmptyInline: WRITES_NOTHING,
   rawBlock: WRITES_NOTHING,
   hardBreak: {
     toClipboardDOM: () => ["br"],

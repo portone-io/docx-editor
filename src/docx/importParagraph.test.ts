@@ -272,7 +272,6 @@ describe("a control we could not take apart stays one preserved inline", () => {
       `<w:p><w:sdt>${ID_PR}<w:sdtContent>${run("value")}</w:sdtContent>` +
         "<w:sdtEndPr/></w:sdt></w:p>",
     ],
-    ["a control with nothing inside it at all", `<w:p>${sdt("")}</w:p>`],
   ])("%s", (_name, xml) => {
     const preserved = lonePreserved(xml);
 

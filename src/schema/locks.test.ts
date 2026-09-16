@@ -18,6 +18,7 @@ import { importDocx } from "../docx/importDocx";
 import { toggleBold } from "../editor/commands/formatting/editing";
 import {
   documentHasLocked,
+  lockSelection,
   selectionLock,
   unlockSelection,
 } from "../editor/commands/lockCommands";
@@ -258,6 +259,115 @@ describe("a control holding nothing", () => {
 
     expect(carriesLock(state.doc.child(1))).toBe(true);
     expect(documentHasLocked(state.doc)).toBe(true);
+  });
+});
+
+/**
+ * The same control standing inside a paragraph (`docx/wrappers`). It is no container
+ * either, so the deletion clause is the whole of what it can answer, and the walk reaches it
+ * inside the textblock where `nodesBetween` is told to stop.
+ */
+describe("a control a paragraph holds with nothing inside it", () => {
+  const bodyWith = (lock: string) =>
+    `<w:p>${run("Before")}${inlineSdt("", { lock })}${run("After")}</w:p>`;
+
+  /** Where the control stands, which holds no text to be found by */
+  function emptySpan(doc: PMNode): { from: number; to: number } {
+    let found: { from: number; to: number } | null = null;
+    doc.descendants((node, pos) => {
+      if (!found && node.type.name === "sdtEmptyInline") {
+        found = { from: pos, to: pos + node.nodeSize };
+      }
+      return true;
+    });
+    if (found === null) throw new Error("no control holding nothing");
+    return found;
+  }
+
+  it.each([
+    ["nothing at all", "", true],
+    ["contentLocked, which shuts the contents alone", "contentLocked", true],
+    ["sdtLocked, which shuts the wrapper alone", "sdtLocked", false],
+    ["sdtContentLocked, which shuts both", "sdtContentLocked", false],
+  ])("is taken away whole where it states %s -> %s", (_name, lock, allowed) => {
+    const state = opened(bodyWith(lock));
+    const span = emptySpan(state.doc);
+    expect(applies(state, state.tr.delete(span.from, span.to))).toBe(allowed);
+  });
+
+  it("refuses nothing where a stretch marks it rather than taking it away", () => {
+    const state = opened(bodyWith("sdtContentLocked"));
+    const from = rangeOfText(state.doc, "Before").from;
+    const to = rangeOfText(state.doc, "After").to;
+
+    expect(editShut(state, { kind: "mark", from, to })).toBe(false);
+    expect(editShut(state, { kind: "replace", from, to })).toBe(true);
+  });
+
+  it("is shut by a block control around the paragraph it stands in", () => {
+    const state = opened(
+      sdt(bodyWith(""), { id: 5, lock: "sdtContentLocked" })
+    );
+    const span = emptySpan(state.doc);
+
+    expect(applies(state, state.tr.delete(span.from, span.to))).toBe(false);
+  });
+
+  it("still carries a lock the document can be asked about", () => {
+    const state = opened(bodyWith("sdtContentLocked"));
+
+    expect(carriesLock(state.doc.child(0).child(1))).toBe(true);
+    expect(documentHasLocked(state.doc)).toBe(true);
+  });
+
+  /**
+   * Every other lock is lifted from a caret resting against the control's edge. This one draws
+   * nothing, so an edge of it is nowhere the user can see: a caret there would offer to unlock a
+   * control nobody pointed at.
+   */
+  it("offers nothing where the caret merely rests against its edge", () => {
+    const state = opened(bodyWith("sdtContentLocked"));
+    const span = emptySpan(state.doc);
+
+    expect(selectionLock(select(state, span.from))).toBe("none");
+    expect(selectionLock(select(state, span.to))).toBe("none");
+  });
+
+  /**
+   * A stretch covering the node is what reaches it. It holds nothing a control could be laid over,
+   * so the answer names the lift alone: locking it would write a fresh control around a phrase
+   * that is not there, over a selection the user cannot see.
+   */
+  it("offers its lock to be lifted where a stretch covers it", () => {
+    const state = opened(bodyWith("sdtContentLocked"));
+    const span = emptySpan(state.doc);
+    const before = select(state, span.from, span.to);
+
+    expect(selectionLock(before)).toBe("locked");
+    expect(lockSelection(before, undefined)).toBe(false);
+
+    const after = runCommand(before, unlockSelection);
+
+    const lifted = after.doc.child(0).child(1);
+
+    expect(lifted.attrs).toMatchObject({
+      contentsLocked: false,
+      deletionLocked: false,
+    });
+    expect(lifted.attrs.sdtPrefix).not.toContain("w:lock");
+  });
+
+  /**
+   * Text beside it is something a control can be laid over, so the same selection then holds both
+   * what there is to lock and the lock there is to lift.
+   */
+  it("offers both where the stretch reaches the text beside it", () => {
+    const state = opened(bodyWith("sdtContentLocked"));
+    const span = emptySpan(state.doc);
+    const before = select(state, span.from - 1, span.to);
+
+    expect(selectionLock(before)).toBe("mixed");
+    expect(lockSelection(before, undefined)).toBe(true);
   });
 });
 

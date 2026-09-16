@@ -18,7 +18,7 @@ Tests using `fixtureNames` from [`src/__testing__/docx.ts`](../src/__testing__/d
 | `table-styles.docx` | Export-style package | Table styles that dress the header row, the closing row, the edge columns, a corner and the banded rows |
 | `list-definitions.docx` | Export-style package | Lists defined through a numbering style, counted in formats past decimal, restarting where their levels say, and drawing their markers in the formatting those levels write |
 | `sections-and-revisions.docx` | Export-style package | Two sections with a mid-body section break, a table carrying a grid revision, an inline content control, and a body-level bookmark pair |
-| `content-controls.docx` | Word-style package | Content controls around blocks and around a table row: nested, holding a table, standing in a cell, wrapping a row, and the kinds kept whole |
+| `content-controls.docx` | Word-style package | Content controls around blocks and around a table row: nested, holding a table, standing in a cell, wrapping a row, holding nothing at all, and the kinds kept whole |
 | `preserved-markup.docx` | Word-style package | The markup this editor keeps whole rather than models: field characters, tracked changes, range markers, symbols, and a table a row-level marker stands down |
 | `producers/google-docs-export.docx` | Producer package | Markup Google Docs saved: revision identifiers on every run, a tracked insertion, a generated bookmark name, and measurements the schemas turn down |
 
@@ -218,7 +218,7 @@ This is `letter-page.docx` with `word/document.xml` replaced. It holds the marku
 
 ### `content-controls.docx`
 
-This is `preserved-markup.docx` with `word/document.xml` replaced. It is the only fixture whose controls stand at block level, so it is what holds the reading of a `w:sdt` under the body and inside a cell ([Content controls](../spec/notes/contentControls.md)). It must retain:
+This is `preserved-markup.docx` with `word/document.xml` replaced. It is the only fixture whose controls stand at block level, so it is what holds the reading of a `w:sdt` under the body and inside a cell, and it carries the controls holding nothing at both levels beside them ([Content controls](../spec/notes/contentControls.md)). It must retain:
 
 - A rich text control holding two paragraphs, which is the plain case a container node is read for.
 - A `w:group` control holding a rich text control, so that one control nested inside another is covered and the order of the two has to come back.
@@ -227,6 +227,7 @@ This is `preserved-markup.docx` with `word/document.xml` replaced. It is the onl
 - A second table whose row control holds two `w:tr`, which is more than the single row §17.5.2.35 describes and more than one row can carry back out, so that table is kept whole. `importTable.test.ts` names this file as the one fixture holding a table kept whole.
 - The two kinds kept whole instead: a `w:text` control and a `w:date` control, whose content the specification restrains to a single run. Its fidelity snapshot is those two placeholders beside the `table-demoted` note the two-row control leaves, and is meant to be read in a diff.
 - A control whose `w:sdtContent` is empty, which is read as a node holding nothing and leaves no note behind ([Content controls](../spec/notes/contentControls.md)).
+- Two controls holding nothing inside one paragraph, the first writing an empty `w:sdtContent` and the second writing no content element at all, so that both shapes are read from a package rather than from a test body alone. A third stands inside a control holding text, so that the wrapper around one has to close again on export. None of them leaves a note behind either, which is what the fidelity snapshot of this file says by not naming them.
 - One control carrying `w:lock w:val="sdtContentLocked"` and one carrying `sdtLocked`, so that both clauses of a lock are read off a block control.
 - One control carrying `w:temporary` and one carrying `w:showingPlcHdr`, which are the two properties an edit inside a control acts on rather than preserves ([Content controls](../spec/notes/contentControls.md)).
 - A second rich text control holding three paragraphs, whose second carries a `w:sectPr` in its own `w:pPr`, naming a top, bottom, header and footer the body's closing `w:sectPr` does not, so the two sections are told apart by their margins. That paragraph ends the document's first section, which is what holds the section reader to reading a break written inside a control, and the third paragraph stands after the break inside the same control, so the control is parted across two sheets. The paper stays the A4 every fixture but `letter-page.docx` is written on, since `src/docx/pageGeometry.test.ts` reads the document's paper off the first section's `w:sectPr`, which this now is.
