@@ -15,7 +15,7 @@ import {
   NOTE_BODY,
   TINY_PNG_DATA_URL,
 } from "./__testing__/docx";
-import { select } from "./__testing__/editing";
+import { posOfText, rangeOfText, select } from "./__testing__/editing";
 import { importDocx } from "./docx/importDocx";
 import { storyFromText, storyOf } from "./docx/story";
 import * as commands from "./editor/commands/index";
@@ -138,7 +138,10 @@ const BODY =
   `<w:p>${runXml("EmptyBefore")}${control("")}${runXml("EmptyAfter")}</w:p>` +
   blockXml("EmptyAbove") +
   control("") +
-  blockXml("EmptyBelow");
+  blockXml("EmptyBelow") +
+  // Plain on both sides, so a selection over the boundary between them meets no lock
+  blockXml("BoundaryAbove") +
+  blockXml("BoundaryBelow");
 
 /**
  * A paragraph a bookmark range is anchored inside, which the editor preserves and never edits.
@@ -208,16 +211,6 @@ function commentState(
   });
 }
 
-/** The position just inside the first text node reading exactly this */
-function insideText(doc: PMNode, needle: string): number {
-  let found = -1;
-  doc.descendants((node, pos) => {
-    if (found < 0 && node.isText && node.text === needle) found = pos + 1;
-  });
-  if (found < 0) throw new Error(`text not found: ${needle}`);
-  return found;
-}
-
 /** The position of the cell holding this text */
 function cellPos(doc: PMNode, needle: string): number {
   let found = -1;
@@ -237,13 +230,13 @@ function cellPos(doc: PMNode, needle: string): number {
 
 function caretIn(needle: string, protection: EditingProtection): EditorState {
   const state = opened(protection);
-  return select(state, insideText(state.doc, needle));
+  return select(state, posOfText(state.doc, needle));
 }
 
 /** The selection covering exactly this text, which is the whole of the control wrapping it */
 function overText(needle: string, protection: EditingProtection): EditorState {
   const state = opened(protection);
-  const inside = insideText(state.doc, needle);
+  const inside = posOfText(state.doc, needle);
   return select(state, inside - 1, inside - 1 + needle.length);
 }
 
@@ -458,8 +451,8 @@ const PLACES: readonly Place[] = [
       const state = opened(protection);
       return select(
         state,
-        insideText(state.doc, "before the open control"),
-        insideText(state.doc, "BlockOpen") + 2
+        posOfText(state.doc, "before the open control"),
+        posOfText(state.doc, "BlockOpen") + 2
       );
     },
   },
@@ -483,8 +476,21 @@ const PLACES: readonly Place[] = [
       const state = opened(protection);
       return select(
         state,
-        insideText(state.doc, "EmptyAbove") + "EmptyAbove".length - 1,
-        insideText(state.doc, "EmptyBelow") + 1
+        posOfText(state.doc, "EmptyAbove") + "EmptyAbove".length - 1,
+        posOfText(state.doc, "EmptyBelow") + 1
+      );
+    },
+  },
+  {
+    // Protection alone: nothing here is refused, there is simply nothing for a command to reach
+    name: "a selection covering the boundary between two paragraphs and no character of either",
+    guards: ["protection"],
+    state: (protection) => {
+      const state = opened(protection);
+      return select(
+        state,
+        rangeOfText(state.doc, "BoundaryAbove").to,
+        rangeOfText(state.doc, "BoundaryBelow").from
       );
     },
   },
@@ -527,8 +533,8 @@ const PLACES: readonly Place[] = [
       const state = opened(protection);
       return select(
         state,
-        insideText(state.doc, "ahead"),
-        insideText(state.doc, "ends")
+        posOfText(state.doc, "ahead"),
+        posOfText(state.doc, "ends")
       );
     },
   },

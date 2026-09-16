@@ -8,7 +8,7 @@ import {
   makeDocx,
   makeStyledDocx,
 } from "../../__testing__/docx";
-import { runCommand, select } from "../../__testing__/editing";
+import { rangeOfText, runCommand, select } from "../../__testing__/editing";
 import { exportDocx } from "../../docx/exportDocx";
 import { importDocx } from "../../docx/importDocx";
 import type { SessionStore } from "../../docx/session";
@@ -21,6 +21,7 @@ import {
   activeFontSize,
   activeTextBackground,
   activeTextColor,
+  canFormatText,
   documentFontNames,
   isBoldActive,
   isItalicActive,
@@ -708,4 +709,64 @@ describe("formatting a selection that runs over locked text", () => {
     expect(isBoldActive(select(cleared, 1, 2))).toBe(false);
     expect(isBoldActive(select(cleared, 4, 5))).toBe(false);
   });
+});
+
+/**
+ * Character formatting reaches characters, and the boundary between two paragraphs holds none:
+ * Word would format the paragraph mark there, which this editor does not model, so the stretch
+ * leaves the commands nothing to reach and every one of them says so.
+ */
+describe("a selection covering a paragraph boundary and no character", () => {
+  const TWO_PARAGRAPHS =
+    "<w:p>" +
+    paragraph("", "ab") +
+    "</w:p><w:p>" +
+    paragraph("", "cd") +
+    "</w:p>";
+
+  function boundary(state: EditorState): EditorState {
+    return select(
+      state,
+      rangeOfText(state.doc, "ab").to,
+      rangeOfText(state.doc, "cd").from
+    );
+  }
+
+  it("offers no character formatting there", () => {
+    const { state } = opened(TWO_PARAGRAPHS);
+    const at = boundary(state);
+
+    expect(canFormatText(at)).toBe(false);
+    expect(isBoldActive(at)).toBe(false);
+    expect(isItalicActive(at)).toBe(false);
+  });
+
+  it.each([
+    ["bold", toggleBold],
+    ["italic", toggleItalic],
+  ] as const)(
+    "leaves both paragraphs alone when %s is pressed there, twice over",
+    (_name, toggle) => {
+      const { state, session } = opened(TWO_PARAGRAPHS);
+      const at = boundary(state);
+      let next = at;
+      const press = () =>
+        toggle(next, (tr) => {
+          next = next.apply(tr);
+        });
+
+      // A press that reported true and then changed nothing would leave the format stuck on
+      expect(press()).toBe(false);
+      expect(next).toBe(at);
+      expect(press()).toBe(false);
+
+      const documentXml = documentXmlOf(next.doc, session);
+      expect(documentXml).toContain(
+        '<w:p><w:r><w:t xml:space="preserve">ab</w:t></w:r></w:p>'
+      );
+      expect(documentXml).toContain(
+        '<w:p><w:r><w:t xml:space="preserve">cd</w:t></w:r></w:p>'
+      );
+    }
+  );
 });
