@@ -243,6 +243,21 @@ const NODE_FRAGMENTS: RawAttrTable = {
     temporary: null,
     showingPlaceholder: null,
   },
+  sdtEmpty: {
+    sdtPrefix: {
+      attribute: "data-sdt-prefix",
+      sound: '<w:sdt><w:sdtPr><w:id w:val="3"/></w:sdtPr>',
+      adversarial:
+        "<w:sdt><w:sdtPr/><w:sdtContent><w:p><w:r><w:t>smuggled</w:t>" +
+        "</w:r></w:p></w:sdtContent>",
+      draw: (xml) => docxSchema.nodes.sdtEmpty.create({ sdtPrefix: xml }),
+    },
+    contentsLocked: null,
+    deletionLocked: null,
+    group: null,
+    temporary: null,
+    showingPlaceholder: null,
+  },
   rawBlock: {
     xml: {
       attribute: "data-xml",

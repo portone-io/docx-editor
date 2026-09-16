@@ -356,8 +356,10 @@ function rangeShut(doc: PMNode, range: EditedRange): boolean {
     if (controlAttrsOf(node) !== null) {
       const locks = containerLocks(node);
       if (coversWhole(range, { from: pos, to: pos + node.nodeSize })) {
-        // The stretch stands outside the container, so nothing inside it supersedes a group
-        if (range.takesAway ? locks.deletion : shutsAlone(locks)) shut = true;
+        // The stretch stands outside the container, so nothing inside it supersedes a group, and a
+        // container with no content has no contents a mark laid across it could reach
+        const edits = shutsAlone(locks) && node.content.size > 0;
+        if (range.takesAway ? locks.deletion : edits) shut = true;
       }
       // What the container holds is judged on its own, each control by its own terms
       return !shut;

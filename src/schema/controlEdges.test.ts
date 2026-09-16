@@ -331,6 +331,151 @@ describe("a control holding one empty paragraph", () => {
   });
 });
 
+/**
+ * A control holding nothing is an atom rather than a container (`docx/importSdtBlock`), so no edge
+ * of it stands between two blocks: `controlsAround` walks the ancestors of a position and an atom
+ * is never one of them. A keystroke beside it passes the caret over it rather than joining
+ * anything, and only a selection covering it takes it away, which is the deletion clause's
+ * question (`./locks`).
+ */
+describe("a control holding nothing", () => {
+  const empty = (lock = "", id = 1) => sdt("", { id, lock });
+  /** A paragraph drawn as a blank line, which is not the control and goes as any blank line does */
+  const BLANK = "<w:p/>";
+
+  it("passes the caret over it on Backspace from the block after it", () => {
+    const state = stateOf(P("Head") + empty() + P("Tail"));
+    const before = select(state, startOf(state.doc, "Tail"));
+
+    const after = press(before, backspace);
+
+    expect(shape(after.doc)).toBe("paragraph(Head) sdtEmpty() paragraph(Tail)");
+    expect(after.selection.from).toBe(endOf(state.doc, "Head"));
+  });
+
+  it("passes the caret over it on Delete from the block before it", () => {
+    const state = stateOf(P("Head") + empty() + P("Tail"));
+    const before = select(state, endOf(state.doc, "Head"));
+
+    const after = press(before, del);
+
+    expect(shape(after.doc)).toBe("paragraph(Head) sdtEmpty() paragraph(Tail)");
+    expect(after.selection.from).toBe(startOf(state.doc, "Tail"));
+  });
+
+  it("passes a run of them in one keystroke", () => {
+    const state = stateOf(P("Head") + empty() + empty("", 2) + P("Tail"));
+    const before = select(state, startOf(state.doc, "Tail"));
+
+    const after = press(before, backspace);
+
+    expect(shape(after.doc)).toBe(
+      "paragraph(Head) sdtEmpty() sdtEmpty() paragraph(Tail)"
+    );
+    expect(after.selection.from).toBe(endOf(state.doc, "Head"));
+  });
+
+  it("does nothing on Backspace where it stands at the start of the document", () => {
+    const state = stateOf(empty() + P("Tail"));
+    const before = select(state, startOf(state.doc, "Tail"));
+
+    const after = press(before, backspace);
+
+    expect(shape(after.doc)).toBe(shape(state.doc));
+    expect(after.selection.from).toBe(before.selection.from);
+  });
+
+  /**
+   * The blank line is not the control, so it goes the way a blank line goes anywhere else, and the
+   * caret lands past the control rather than on the line that went.
+   */
+  it("takes the caret's own blank line away on Backspace", () => {
+    const state = stateOf(P("Head") + empty() + BLANK + P("Tail"));
+    const before = select(state, startOf(state.doc, "Tail") - 2);
+
+    const after = press(before, backspace);
+
+    expect(shape(after.doc)).toBe("paragraph(Head) sdtEmpty() paragraph(Tail)");
+    expect(after.selection.from).toBe(endOf(state.doc, "Head"));
+  });
+
+  it("takes the caret's own blank line away on Delete", () => {
+    const state = stateOf(P("Head") + BLANK + empty() + P("Tail"));
+    const before = select(state, endOf(state.doc, "Head") + 2);
+
+    const after = press(before, del);
+
+    expect(shape(after.doc)).toBe("paragraph(Head) sdtEmpty() paragraph(Tail)");
+    expect(after.selection.from).toBe(startOf(after.doc, "Tail"));
+  });
+
+  it("keeps the blank line where nothing stands beyond the control", () => {
+    const state = stateOf(empty() + BLANK + P("Tail"));
+    const before = select(state, startOf(state.doc, "Tail") - 2);
+
+    const after = press(before, backspace);
+
+    expect(shape(after.doc)).toBe(shape(state.doc));
+    expect(after.selection.from).toBe(before.selection.from);
+  });
+
+  it("does nothing on Delete where it stands at the end of the document", () => {
+    const state = stateOf(P("Head") + empty());
+    const before = select(state, endOf(state.doc, "Head"));
+
+    const after = press(before, del);
+
+    expect(shape(after.doc)).toBe(shape(state.doc));
+    expect(after.selection.from).toBe(before.selection.from);
+  });
+
+  it.each([
+    ["nothing at all", "", true],
+    ["contentLocked, which shuts its contents alone", "contentLocked", true],
+    ["sdtLocked, which shuts it against deletion", "sdtLocked", false],
+  ])(
+    "is selected whole and deleted where it states %s -> %s",
+    (_n, lock, goes) => {
+      const state = stateOf(P("Head") + empty(lock) + P("Tail"));
+      const at = state.doc.child(0).nodeSize;
+      const before = state.apply(
+        state.tr.setSelection(NodeSelection.create(state.doc, at))
+      );
+
+      const after = before.apply(before.tr.deleteSelection());
+
+      expect(shape(after.doc)).toBe(
+        goes
+          ? "paragraph(Head) paragraph(Tail)"
+          : "paragraph(Head) sdtEmpty() paragraph(Tail)"
+      );
+    }
+  );
+
+  /**
+   * The node holds no spot a caret could stand in, and the editor registers no gap cursor
+   * (`editor/createEditor`), so what stands either side of it is where a caret goes. A document
+   * opening on one answers with the node itself selected, which is a place to act from rather
+   * than a caret stranded inside it.
+   */
+  it("leaves the caret free where two of them stand next to each other", () => {
+    const state = stateOf(empty() + empty("", 2) + P("Tail"));
+
+    expect(shape(state.doc)).toBe("sdtEmpty() sdtEmpty() paragraph(Tail)");
+    expect(state.selection).toBeInstanceOf(NodeSelection);
+    expect(state.selection.from).toBe(0);
+
+    const caret = select(state, startOf(state.doc, "Tail"));
+    expect(caret.selection.empty).toBe(true);
+    expect(caret.selection.$from.parent.textContent).toBe("Tail");
+
+    const second = state.apply(
+      state.tr.setSelection(NodeSelection.create(state.doc, 1))
+    );
+    expect(second.selection.from).toBe(1);
+  });
+});
+
 describe("a control on the clipboard", () => {
   it("lands inside the control when the caret stands in one", () => {
     const state = stateOf(P("Outside") + sdt(P("First")));

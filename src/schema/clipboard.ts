@@ -219,6 +219,9 @@ const CLIPBOARD_NODES: Readonly<Record<DocxNodeName, ClipboardNodeSpec>> = {
     toClipboardDOM: () => ["div", 0],
     toClipboardText: (_node, children) => children.join("\n"),
   },
+  // A control holding nothing says only that something is not there, which a copy carries by
+  // leaving it out
+  sdtEmpty: WRITES_NOTHING,
   rawBlock: WRITES_NOTHING,
   hardBreak: {
     toClipboardDOM: () => ["br"],

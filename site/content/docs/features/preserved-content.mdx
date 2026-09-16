@@ -48,8 +48,11 @@ Backspace and Delete stop at the edge of a control around paragraphs or tables, 
 holding one empty paragraph is removed whole by either key.
 A temporary control is removed by the first edit inside it, and placeholder text is edited like any
 other text.
+A control with nothing inside it takes no room on the page and is kept in the file: Backspace and
+Delete pass over it, removing a blank line beside it as they would anywhere else, and the control
+itself is removed only when it is selected whole, which a control locked against deletion refuses.
 A control the editor could not take apart is shown as a box: a plain text, picture, date picker,
-combo box, drop-down list, or check box control around whole blocks, or an empty control.
+combo box, drop-down list, or check box control around whole blocks.
 
 ## Other markup
 

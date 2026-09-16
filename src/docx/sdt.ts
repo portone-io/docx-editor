@@ -90,15 +90,36 @@ function sdtFacts(sdtPr: Element): SdtFacts {
   };
 }
 
+/**
+ * Whether this child of a `w:sdt` is the content element, which both readers ask the same way so
+ * that neither can take a control the other turned down. The prefix a control goes out under is
+ * read off whatever stood ahead of this element, so what counts as it decides where that cut falls.
+ */
+function isSdtContent(child: Element): boolean {
+  return child.localName === "sdtContent";
+}
+
+/**
+ * The opening a control goes back out as: its own tag as it arrived, followed by everything that
+ * stood ahead of its content element.
+ *
+ * This is the exact string the writer splices back into the file (`sdtOpeningXml`), so it is built
+ * here alone, for a control whose contents are read as well as for one carrying none.
+ */
+function sdtPrefix(el: Element, head: readonly Element[]): string {
+  return (
+    openTagXml(wName("sdt"), attrString(el)) + head.map(serializeXml).join("")
+  );
+}
+
 /** Takes a `w:sdt` apart into the wrapper to put back on export and the content to read. null for a shape we do not write ourselves */
 export function readSdtWrapper(el: Element): SdtWrapper | null {
   if (el.nodeName !== "w:sdt") return null;
   const children = elementChildren(el);
-  const contentAt = children.findIndex(
-    (child) => child.localName === "sdtContent"
-  );
+  const contentAt = children.findIndex(isSdtContent);
   const content = contentAt === -1 ? null : children[contentAt];
-  // We write the content tag ourselves, so nothing may hang off it and nothing may follow it
+  // We write the content tag ourselves, so it may carry no other prefix, nothing may hang off it
+  // and nothing may follow it
   if (!content || content.nodeName !== "w:sdtContent") return null;
   if (content.attributes.length > 0) return null;
   if (contentAt !== children.length - 1) return null;
@@ -107,10 +128,32 @@ export function readSdtWrapper(el: Element): SdtWrapper | null {
   const sdtPr = head.find((child) => child.localName === "sdtPr");
   if (!sdtPr) return null;
 
-  const attrs = attrString(el);
   return {
-    prefix: openTagXml(wName("sdt"), attrs) + head.map(serializeXml).join(""),
+    prefix: sdtPrefix(el, head),
     content,
+    ...sdtFacts(sdtPr),
+  };
+}
+
+/**
+ * A `w:sdt` that carries no `w:sdtContent` at all, as the facts its carrier records. null for
+ * anything else, this editor's own shape of control included.
+ *
+ * `CT_Sdt` writes the content element `minOccurs="0"`, so a control stating that what it stood
+ * around is not there may leave it out entirely, and §17.5.2.34 makes that element a cache of
+ * contents rather than the statement itself. `readSdtWrapper` turns such a control down and stays
+ * that way: the inline mark and a wrapped cell or row all read the content it hands back, and
+ * there is none here for them to stand around. Everything the control carries, `w:sdtEndPr`
+ * included, rides in the prefix, exactly as it does when a content element follows it.
+ */
+export function readEmptySdt(el: Element): ControlFacts | null {
+  if (el.nodeName !== "w:sdt") return null;
+  const children = elementChildren(el);
+  if (children.some(isSdtContent)) return null;
+  const sdtPr = children.find((child) => child.localName === "sdtPr");
+  if (!sdtPr) return null;
+  return {
+    prefix: sdtPrefix(el, children),
     ...sdtFacts(sdtPr),
   };
 }
@@ -118,9 +161,9 @@ export function readSdtWrapper(el: Element): SdtWrapper | null {
 /**
  * What the carrier of this control records about it (`schema/controlAttrs`).
  *
- * Every carrier derives it from the wrapper here rather than from the element again, so the four -
- * the inline mark, the block container, a wrapped cell and a wrapped row - cannot come to disagree
- * about what one and the same `w:sdtPr` says.
+ * Every carrier derives it from the wrapper here rather than from the element again, so the inline
+ * mark, the block container, the node a control holding nothing stands as, a wrapped cell and a
+ * wrapped row cannot come to disagree about what one and the same `w:sdtPr` says.
  */
 export function controlFactsFrom(wrapper: SdtWrapper): ControlFacts {
   return {

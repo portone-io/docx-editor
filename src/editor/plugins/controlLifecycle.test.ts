@@ -167,6 +167,45 @@ describe("a control whose contents are placeholder text", () => {
   });
 });
 
+/**
+ * Both properties are about an edit of the control's contents, and a control holding nothing has
+ * none: nothing can be typed inside it, so neither ever acts and both ride back out in the prefix.
+ */
+describe("a control holding nothing", () => {
+  it.each([
+    ["w:temporary", TEMPORARY, "<w:temporary/>"],
+    ["w:showingPlcHdr", PLACEHOLDER, "<w:showingPlcHdr/>"],
+  ])("keeps %s while the document is edited around it", (_name, props, xml) => {
+    const opened = open(P("Outside") + sdt("", props));
+
+    const after = type(opened, "Outside", "!");
+
+    expect(blockTypes(after.doc)).toEqual(["paragraph", "sdtEmpty"]);
+    expect(exported(after, opened)).toContain(xml);
+  });
+
+  /**
+   * A step that rewrites the node where it stands covers the very stretch the walk asks about,
+   * since the node holds nothing and its two ends are one and the same spot. Settling it there
+   * would take away the opening XML it goes back out as, which is a file that cannot be written.
+   */
+  it("keeps w:temporary where a step rewrites the node where it stands", () => {
+    const opened = open(P("Outside") + sdt("", TEMPORARY));
+    const at = opened.state.doc.child(0).nodeSize;
+    const control = opened.state.doc.child(1);
+
+    const after = opened.state.apply(
+      opened.state.tr.setNodeMarkup(at, undefined, {
+        ...control.attrs,
+        key: 99,
+      })
+    );
+
+    expect(after.doc.child(1).attrs.sdtPrefix).toBe(control.attrs.sdtPrefix);
+    expect(exported(after, opened)).toContain("<w:temporary/>");
+  });
+});
+
 describe("a control a lock says may not be deleted", () => {
   it("keeps its wrapper but stops claiming to hold placeholder text", () => {
     const opened = open(

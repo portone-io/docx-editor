@@ -27,6 +27,7 @@ import {
   editorStateForSession,
 } from "../editor/createEditor";
 import { deleteColumn, deleteRow } from "../table";
+import { editShut } from "./guards";
 import { carriesLock, unlockAllowed } from "./locks";
 
 const run = (text: string) =>
@@ -207,6 +208,56 @@ describe("taking a block control away whole", () => {
     const state = opened(bodyWith(lock));
     const span = spanOf(state.doc, "sdtBlock", "Whole");
     expect(applies(state, state.tr.delete(span.from, span.to))).toBe(allowed);
+  });
+});
+
+/**
+ * A control holding nothing (`docx/importSdtBlock`) states both clauses as the container does, but
+ * it has no contents: the deletion clause is the whole of what it can answer.
+ */
+describe("a control holding nothing", () => {
+  const bodyWith = (lock: string) =>
+    P("Before") + sdt("", { lock }) + P("After");
+
+  /** Where the control stands, which holds no text to be found by */
+  function emptySpan(doc: PMNode): { from: number; to: number } {
+    const found: { from: number; to: number }[] = [];
+    doc.descendants((node, pos) => {
+      if (node.type.name === "sdtEmpty") {
+        found.push({ from: pos, to: pos + node.nodeSize });
+      }
+      return true;
+    });
+    const first = found[0];
+    if (first === undefined) throw new Error("no control holding nothing");
+    return first;
+  }
+
+  it.each([
+    ["nothing at all", "", true],
+    ["contentLocked, which shuts the contents alone", "contentLocked", true],
+    ["sdtLocked, which shuts the wrapper alone", "sdtLocked", false],
+    ["sdtContentLocked, which shuts both", "sdtContentLocked", false],
+  ])("is taken away whole where it states %s -> %s", (_name, lock, allowed) => {
+    const state = opened(bodyWith(lock));
+    const span = emptySpan(state.doc);
+    expect(applies(state, state.tr.delete(span.from, span.to))).toBe(allowed);
+  });
+
+  it("refuses nothing where a stretch marks it rather than taking it away", () => {
+    const state = opened(bodyWith("sdtContentLocked"));
+    const from = rangeOfText(state.doc, "Before").from;
+    const to = rangeOfText(state.doc, "After").to;
+
+    expect(editShut(state, { kind: "mark", from, to })).toBe(false);
+    expect(editShut(state, { kind: "replace", from, to })).toBe(true);
+  });
+
+  it("still carries a lock the document can be asked about", () => {
+    const state = opened(bodyWith("sdtContentLocked"));
+
+    expect(carriesLock(state.doc.child(1))).toBe(true);
+    expect(documentHasLocked(state.doc)).toBe(true);
   });
 });
 

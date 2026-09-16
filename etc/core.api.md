@@ -100,7 +100,7 @@ export class DocxImportError extends Error {
 export type DocxImportErrorCode = "no-xml-parser" | "not-a-docx" | "too-large" | "missing-part" | "missing-body" | "malformed-xml" | "unsupported-conformance" | "unsupported-content";
 
 // @public (undocumented)
-export const docxSchema: Schema<"commentEnd" | "commentReference" | "commentStart" | "doc" | "hardBreak" | "image" | "noteReference" | "paragraph" | "rawBlock" | "rawInline" | "rawRunContent" | "sdtBlock" | "table" | "tableCell" | "tableRow" | "text", "link" | "run" | "sdt" | "tab">;
+export const docxSchema: Schema<"commentEnd" | "commentReference" | "commentStart" | "doc" | "hardBreak" | "image" | "noteReference" | "paragraph" | "rawBlock" | "rawInline" | "rawRunContent" | "sdtBlock" | "sdtEmpty" | "table" | "tableCell" | "tableRow" | "text", "link" | "run" | "sdt" | "tab">;
 
 // @public
 export interface DocxSession {

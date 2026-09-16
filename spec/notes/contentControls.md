@@ -79,8 +79,13 @@ That is what an edit meeting the edge is judged by.
 - A selection covering a control from end to end crosses no edge.
   Taking the control away with everything it held is the deletion clause's question (§17.5.2.23), not this rule's.
 - A control left holding a single empty paragraph is removed whole instead, the caret landing where the control stood.
-  `w:sdtContent` may hold nothing at all, but Word's own empty control is a paragraph of placeholder text rather than an empty one, so the editor never makes a control with nothing inside it.
+  Word's own empty control is a paragraph of placeholder text rather than an empty one, so the editor never makes a control with nothing inside it.
   Removing it is judged by the deletion clause like any other whole deletion (§17.5.2.23 `w:lock`), so a `sdtLocked` control refuses it.
+- A control the file itself wrote with nothing inside it is read as a node holding nothing and drawn as nothing (`docx/importSdtBlock`): `w:sdtContent` is a cache of what stood there and may be empty or left out altogether (§17.5.2.34), while a `block+` container has no way to say "nothing".
+  Backspace and Delete beside it pass the caret over it, a run of them at once, and with nothing beyond the run the key does nothing at all.
+  A blank line the caret stands on is not the control and goes the way a blank line goes anywhere else, the caret landing past the run.
+  The control is the slot a server re-renders the clause into, and it draws nothing on the page, so no single key may take it away with nothing on screen to show what went.
+  It goes when something covers it whole - the node selected, or a stretch running over it - which is the deletion clause's question (§17.5.2.23) as it is for any other whole deletion, so a `sdtLocked` control refuses it.
 
 The rule is about what a keystroke does on its own, not about what the user asks for.
 Text moved out of a control by cutting it and pasting it elsewhere, or by dragging it there, is the user saying where it goes, and is left alone.

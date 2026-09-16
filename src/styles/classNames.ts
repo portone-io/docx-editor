@@ -43,6 +43,8 @@ export const editorClassNames = {
   sdt: `${PREFIX}-sdt`,
   /** The blocks a block-level content control (`w:sdt` under the body or a cell) holds */
   sdtBlock: `${PREFIX}-sdt-block`,
+  /** A content control with nothing inside it, which stands on the page as nothing */
+  sdtEmpty: `${PREFIX}-sdt-empty`,
   /** Attached alongside it when the control says its contents may not be edited */
   sdtLocked: `${PREFIX}-sdt-locked`,
   /** A stretch of text inside a hyperlink (`w:hyperlink`) */
