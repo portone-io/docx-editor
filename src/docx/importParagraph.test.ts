@@ -81,6 +81,8 @@ describe("a stretch of text wrapped in a content control", () => {
       contentsLocked: true,
       deletionLocked: true,
       group: false,
+      temporary: false,
+      showingPlaceholder: false,
     });
   });
 
@@ -93,6 +95,8 @@ describe("a stretch of text wrapped in a content control", () => {
       contentsLocked: false,
       deletionLocked: false,
       group: false,
+      temporary: false,
+      showingPlaceholder: false,
     });
   });
 

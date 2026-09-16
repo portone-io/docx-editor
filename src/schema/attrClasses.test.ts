@@ -209,6 +209,8 @@ describe("reading a class", () => {
       "contentsLocked",
       "deletionLocked",
       "group",
+      "temporary",
+      "showingPlaceholder",
     ]);
     expect(attrsOfClass(docxSchema.nodes.tableCell, "derived")).toEqual([
       "colwidth",
@@ -216,6 +218,8 @@ describe("reading a class", () => {
       "sdtContentsLocked",
       "sdtDeletionLocked",
       "sdtGroup",
+      "sdtTemporary",
+      "sdtShowingPlaceholder",
     ]);
   });
 });

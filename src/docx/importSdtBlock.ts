@@ -47,6 +47,8 @@ export function buildSdtBlock(
       contentsLocked: wrapper.contentsLocked,
       deletionLocked: wrapper.deletionLocked,
       group: wrapper.group,
+      temporary: wrapper.temporary,
+      showingPlaceholder: wrapper.showingPlaceholder,
     },
     children.map(readBlock)
   );

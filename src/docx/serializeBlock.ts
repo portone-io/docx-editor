@@ -1,5 +1,6 @@
 import type { Node as PMNode } from "prosemirror-model";
 import { DocxExportError } from "../ooxml/errors";
+import { isBlockControl } from "../schema/controlAttrs";
 import { sameSource } from "../schema/sourceEquality";
 import { type ExportRefs, NO_EXPORT_REFS } from "./exportRefs";
 import { serializeParagraph } from "./serializeParagraph";
@@ -16,7 +17,7 @@ export function serializeBlock(
   if (node.type.name === "table") {
     return serializeTable(node, refs, serializeBlock);
   }
-  if (node.type.name === "sdtBlock") {
+  if (isBlockControl(node)) {
     return serializeSdtBlock(node, refs, serializeBlock);
   }
   if (node.type.isInGroup("preserved")) {

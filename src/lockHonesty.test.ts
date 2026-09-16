@@ -80,6 +80,9 @@ const groupPr = '<w:sdtPr><w:id w:val="7"/><w:group/></w:sdtPr>';
 /** A control stating no lock at all, which is what supersedes the group it stands in */
 const openPr = '<w:sdtPr><w:id w:val="8"/></w:sdtPr>';
 
+/** A second such control, so that a block-level one standing open has a number of its own */
+const openBlockPr = '<w:sdtPr><w:id w:val="10"/></w:sdtPr>';
+
 /**
  * The shapes a lock comes in, in both the places it can stand and over each of the values whose
  * two clauses differ.
@@ -116,7 +119,11 @@ const BODY =
   control(blockXml("BlockShut")) +
   control(blockXml("BlockKept"), lockPr("sdtLocked")) +
   control(blockXml("BlockGroup"), groupPr) +
-  control(control(blockXml("InGroup"), openPr), groupPr);
+  control(control(blockXml("InGroup"), openPr), groupPr) +
+  // A block control nothing shuts, with a paragraph ahead of it for a selection to run in from:
+  // what stands in the way there is the control's edge alone
+  blockXml("before the open control") +
+  control(blockXml("BlockOpen"), openBlockPr);
 
 /**
  * A paragraph a bookmark range is anchored inside, which the editor preserves and never edits.
@@ -410,6 +417,21 @@ const PLACES: readonly Place[] = [
     name: "a caret inside a control a w:group holds",
     guards: ["protection"],
     state: (protection) => caretIn("InGroup", protection),
+  },
+  {
+    // A replacement closing itself here would have to carry what survives inside the control out
+    // of it, or what survives outside into it, so every command that replaces the selection is
+    // refused whole (`schema/controlEdges`)
+    name: "a selection running from body text into a block control",
+    guards: ["protection", "controlEdge"],
+    state: (protection) => {
+      const state = opened(protection);
+      return select(
+        state,
+        insideText(state.doc, "before the open control"),
+        insideText(state.doc, "BlockOpen") + 2
+      );
+    },
   },
   {
     name: "a selection running across a bookmark marker",

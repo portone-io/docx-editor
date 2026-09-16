@@ -96,6 +96,8 @@ const SDT: WrapperKind = {
         contentsLocked: wrapper.contentsLocked,
         deletionLocked: wrapper.deletionLocked,
         group: wrapper.group,
+        temporary: wrapper.temporary,
+        showingPlaceholder: wrapper.showingPlaceholder,
       }),
       content: wrapper.content,
     };

@@ -25,6 +25,7 @@ IME tests drive Chrome's real composition pipeline through CDP `Input.imeSetComp
 | `linkCard.spec.ts` | Link-card placement, stability, tab access, and focus return |
 | `comments.spec.ts` | Comment composition, anchoring, thread actions, scrolling, and narrow layouts |
 | `commentMode.spec.ts` | Commenter commenting, refused typing, and right-click menus by mode |
+| `blockControls.spec.ts` | Backspace at the start of a block-level content control, Delete at the end of it, and the caret left where it stood |
 | `preservedContent.spec.ts` | Pointer selection and deletion of preserved chips, and protection of complex-field pieces |
 | `clipboard.spec.ts` | Rich HTML formatting, tables pasted from another application, web images, plain-text paste, text fallback, and preservation of selections when clipboard content is empty |
 | `notesAndPages.spec.ts` | Footnote and endnote placement on the paper, displayed page numbering, and the demo's closing order |
