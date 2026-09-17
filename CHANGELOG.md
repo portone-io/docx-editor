@@ -1,5 +1,34 @@
 # @portone/docx-editor
 
+## 0.6.4
+
+### Patch Changes
+
+- [#171](https://github.com/portone-io/docx-editor/pull/171) [`2a610ee`](https://github.com/portone-io/docx-editor/commit/2a610ee732cd2e024e0ce735efa5c91b1ddc9428) Thanks [@Deea222](https://github.com/Deea222)! - Draw nothing for a content control a paragraph holds with nothing inside it.
+  
+  A `w:sdt` standing between the words of a paragraph whose `w:sdtContent` was empty, or which wrote no content element at all, used to open as a dotted box saying the content was preserved. A server that answers a failed condition by leaving a tagged phrase empty - a clause that does not apply, a signing date to be filled in later - therefore drew a box in the middle of a sentence, in every draft, and the reader could neither open it nor take it away. Such a control now opens as a node of its own that holds nothing and takes no width, so the sentence reads on as the file says it should.
+  
+  Everything the control states about itself is kept: its tag, its id, its lock and its data binding all ride back out untouched, a control nobody edited goes out as the bytes it arrived as, and a control standing inside another control or inside a hyperlink still has that wrapper closed around it. Backspace and Delete beside it pass over it and take the character on the far side, as if it were not there, so the control goes only with a selection that covers it, and then only if its lock does not say otherwise; a control holding nothing that carries a lock also keeps a selection covering it from being replaced or deleted. Copying a sentence it stands in leaves the control behind, since it holds nothing to carry, and a document holding one no longer reports it as content that was preserved rather than read, since nothing of it was lost.
+  
+  The control a file writes with nothing inside it between paragraphs, which 0.6.3 released as one that goes only when it is selected whole, now follows the same rule: it can no longer be selected on its own, and a selection covering it is what removes it.
+
+- [#172](https://github.com/portone-io/docx-editor/pull/172) [`d882a25`](https://github.com/portone-io/docx-editor/commit/d882a25aac4d0434e4a9d95a79447dcaee4f3b00) Thanks [@Deea222](https://github.com/Deea222)! - Open a document whose WordprocessingML is written under another prefix.
+  
+  A file whose main part spells the wordprocessing namespace `ns0:` or leaves
+  it as the default namespace - what Python's `xml.etree` writes, and what
+  Word and Google Docs both open - used to be refused as content the editor
+  cannot write back. Such a package now opens: each part is rewritten to the
+  prefixes the editor writes, tag and attribute names only, before anything is
+  read, so a comment, a footnote, a header and the body all come through and
+  the file goes back out spelled `w:` throughout. A part that had already
+  bound `w`, `r` or another prefix the editor writes to a namespace of its own
+  is left exactly as it arrived, since respelling it would change what its
+  preserved markup means; the checks that applied before still decide such a
+  file, so a main part that binds `w` itself to some other namespace - the one
+  arrangement no respelling can reach - is refused as it was. A package
+  already spelling those prefixes is untouched and still exports byte for
+  byte.
+
 ## 0.6.3
 
 ### Patch Changes
