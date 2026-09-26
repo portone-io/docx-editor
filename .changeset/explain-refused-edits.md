@@ -1,5 +1,5 @@
 ---
-"@portone/docx-editor": minor
+"@portone/docx-editor": patch
 ---
 
 Tell the application when an edit is refused, and let it theme locked content.
