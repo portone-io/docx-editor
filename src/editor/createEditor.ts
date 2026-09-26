@@ -38,6 +38,7 @@ import { commentComposer } from "./plugins/commentComposer";
 import { commentDecorations } from "./plugins/commentDecorations";
 import { commentRestoration } from "./plugins/commentRestoration";
 import { compositionSelection } from "./plugins/compositionSelection";
+import { controlContents } from "./plugins/controlContents";
 import { controlLifecycle } from "./plugins/controlLifecycle";
 import {
   displayDerivation,
@@ -130,6 +131,10 @@ export function createEditorState(
       // Ahead of the keys and the clipboard: the plugin registered first sees a DOM event first,
       // and this one hands every composition on
       compositionSelection(),
+      // Keeps an inline control through an edit of everything it holds. It stands ahead of every
+      // plugin appending to an edit, which then sees the control it kept, and behind the one above,
+      // whose deletion it keeps the control through before a composition opens
+      controlContents(),
       history(),
       keymap(docxKeymap),
       historyKeys(),

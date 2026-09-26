@@ -50,6 +50,15 @@ export interface ControlFacts {
   showingPlaceholder: boolean;
 }
 
+/**
+ * Whether the first edit of its contents takes the control away. `w:temporary` (§17.5.2.43) says
+ * it goes and a lock against deletion (§17.5.2.23) that it may not, and the lock wins
+ * (`spec/notes/contentControls.md`).
+ */
+export function goesWithEdit(control: ControlFacts): boolean {
+  return control.temporary && !control.deletionLocked;
+}
+
 /** Everything a control states other than the opening XML the carrier preserves */
 export type ControlFlags = Omit<ControlFacts, "prefix">;
 

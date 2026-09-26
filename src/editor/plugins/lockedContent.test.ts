@@ -365,10 +365,17 @@ describe.each(LOCK_VALUES)(
       );
     });
 
-    it(`takes a deletion covering the control exactly: ${deletable}`, () => {
+    /**
+     * Everything the control holds is its contents where they stand open, so deleting it empties
+     * the control and keeps it. Where they are shut the same stretch is the control itself.
+     */
+    it(`takes a deletion covering the control exactly: ${editable || deletable}`, () => {
       const state = opened(BODY);
       const from = posOf(state.doc, "bc");
-      expect(applies(state, state.tr.delete(from, from + 2))).toBe(deletable);
+      const after = state.apply(state.tr.delete(from, from + 2));
+      expect(!after.doc.eq(state.doc)).toBe(editable || deletable);
+      const kept = after.doc.child(0).maybeChild(1);
+      expect(kept?.type.name === "sdtEmptyInline").toBe(editable);
     });
 
     /** The paragraph's whole text goes, which takes the control with it and nothing less than it */

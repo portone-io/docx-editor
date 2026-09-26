@@ -24,6 +24,7 @@ The three travel through the schema as attributes of the inline `sdt` mark, of t
 `schema/locks` judges a step's edited range against each control it meets by how much of the control the range covers.
 A range that covers the control from end to end and takes what stands there away is the control being deleted whole, which the deletion clause answers.
 Anything less - a partial overlap, an insertion, or a mark laid across the control, which leaves it standing - reaches into the contents, which the contents clause answers.
+The one exception is an inline control's own stretch, which is its contents where they may be edited; [Writing over what an inline control holds](#writing-over-what-an-inline-control-holds) settles it.
 For a cell the control's extent is the cell node itself, so the range a row or column deletion writes covers it whole.
 For a row it is the row node, so a row deletion covers it whole while a column deletion takes one cell out of it and reaches its contents instead.
 For a block-level control the extent is the control's own node, so a range that covers that node and takes it away is the control being deleted whole, while any range reaching the blocks inside it is an edit of its contents.
@@ -83,7 +84,8 @@ Every rule but the last is about a block control, which is the shape that has bl
 - A selection covering a control from end to end crosses no edge.
   Taking the control away with everything it held is the deletion clause's question (§17.5.2.23), not this rule's.
 - A control left holding a single empty paragraph is removed whole instead, the caret landing where the control stood.
-  Word's own empty control is a paragraph of placeholder text rather than an empty one, so the editor never makes a control with nothing inside it.
+  Word's own empty control is a paragraph of placeholder text rather than an empty one, so the editor never makes a block control with nothing inside it.
+  An inline control is kept instead, standing as one holding nothing ([Writing over what an inline control holds](#writing-over-what-an-inline-control-holds)).
   Removing it is judged by the deletion clause like any other whole deletion (§17.5.2.23 `w:lock`), so a `sdtLocked` control refuses it.
 - A control the file itself wrote with nothing inside it is read as a node holding nothing and drawn as nothing (`docx/importSdtBlock` between blocks, `docx/wrappers` inside a paragraph): `w:sdtContent` is a cache of what stood there and may be empty or left out altogether (§17.5.2.34), while neither a `block+` container nor a mark on runs has any way to say "nothing".
   The control is the slot a server re-renders the clause into, and it draws nothing on the page, so no single key may take it away with nothing on screen to show what went.
@@ -98,6 +100,29 @@ The rule is about what a keystroke does on its own, not about what the user asks
 Text moved out of a control by cutting it and pasting it elsewhere, or by dragging it there, is the user saying where it goes, and is left alone.
 
 Observed 2026-09-16.
+
+## Writing over what an inline control holds
+
+Three clauses of the specification treat replacing a control's contents as something that happens to a control that stays:
+
+- `w:placeholder` (§17.5.2.25) is the text shown "when this structured document tag's run contents are empty", so a control whose contents were all deleted still stands.
+- `w:temporary` (§17.5.2.43) is the one property that removes a control once its contents are modified, meant for placeholder text "which should not return once replaced with content", so a control without it stays when its contents are replaced.
+- `sdtLocked` (§17.18.49, §17.5.2.23) lets the contents be edited and forbids deleting the control, which is only coherent if replacing all of the contents is an edit and not a deletion.
+
+An inline control is a mark on the runs it wraps, so the editor has no position between its edge and the text beside it, and a selection of everything the control holds is the same stretch as a selection of the control.
+The decision is to read that stretch as the contents wherever the lock lets them be edited, and as the control where it does not:
+
+- Typing, a composition, or a paste over a stretch that runs from one edge of the control to the other, or from inside it to one of its edges, writes the new text into the control. Its tag, id and every other property stay.
+- Deleting everything the control holds - Backspace, Delete, a cut, or a Backspace taking its last character - leaves it standing as a control holding nothing (`docx/wrappers`), which is what §17.5.2.25 describes, and the caret left beside it writes the next text typed, composed or pasted back into it.
+  So does a caret an edit leaves at the end of the text it wrote into a control, until the caret moves; a caret the user puts against the control's edge still stands outside it, since the mark is not inclusive.
+- `sdtLocked` therefore takes all of this, and `unlocked` alike. `contentLocked` shuts the contents, so the same stretch is the control, which it lets be deleted whole, and `sdtContentLocked` refuses it.
+- A stretch reaching visible content outside the control holds the control itself, which the deletion clause answers: an unlocked control goes with the text around it, and `sdtLocked` refuses the whole edit. What draws nothing - an empty run, a bookmark, a comment's range marker, a control holding nothing - does not count, because a triple click, a drag past the end of the line, and a Shift-click there take it in without showing it.
+- A stretch running from outside the control into part of it reaches the contents, as before, and the text replacing it lands outside the control.
+- `w:temporary` still takes the control away and `w:showingPlcHdr` is still dropped by the same edit (see below).
+
+`schema/locks` reads the stretch this way, and `editor/plugins/controlContents` appends what keeps the control, in the same history entry as the edit.
+
+Observed 2026-09-27 against ECMA-376 5th edition, Part 1.
 
 ## Two properties an edit acts on rather than preserves
 

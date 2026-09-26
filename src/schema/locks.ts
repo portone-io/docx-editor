@@ -64,6 +64,19 @@ export const historyReplay = new PluginKey<boolean>("docxEditorHistoryReplay");
  */
 export const controlLifted = new PluginKey<boolean>("docxEditorControlLifted");
 
+/**
+ * The pass the transaction that keeps an inline control through an edit of its contents carries
+ * (`editor/plugins/controlContents`).
+ *
+ * Writing over everything a control holds is an edit of its contents rather than its deletion
+ * (`controlsWrittenInto`), and that transaction is what keeps the control standing: it lays the
+ * control back over what was written, or leaves the control standing as one holding nothing. When
+ * the caret then writes into a control it emptied, the node it stood as goes, since the control
+ * stands as the new text instead. That removal is the one step here a lock against deletion would
+ * refuse, and it removes no control.
+ */
+export const controlKept = new PluginKey<boolean>("docxEditorControlKept");
+
 /** What one control states about editing and deleting it, as the schema records it */
 interface Locks {
   /** Whether its `w:lock` says the contents may not be edited */
@@ -320,22 +333,144 @@ function overlaps(range: StepRange, span: StepRange): boolean {
 }
 
 /**
+ * Whether this inline node puts nothing on the page: a control holding nothing, a comment's range
+ * marker, or a preserved element drawn as nothing, such as a bookmark or an empty run.
+ */
+function drawsNothing(node: PMNode): boolean {
+  switch (node.type.name) {
+    case "commentStart":
+    case "commentEnd":
+      return true;
+    case "rawInline":
+    case "rawRunContent":
+      return node.attrs.display === "hidden";
+    default:
+      return isEmptyInlineControl(node);
+  }
+}
+
+/**
+ * The stretch with whatever draws nothing at either end of it, outside the control, set aside.
+ *
+ * A drag carried past the end of the line, a Shift-click there and a triple click all take in
+ * whatever stands between the control and the end of its paragraph, and a paragraph written by a
+ * word processor often holds an empty run or a bookmark there. None of it is on screen, so a
+ * selection holding it still shows the user the control's text and nothing else.
+ */
+function visibleStretch(
+  block: Textblock,
+  range: StepRange,
+  span: StepRange
+): StepRange {
+  let { from, to } = range;
+  const children: { node: PMNode; at: number }[] = [];
+  block.node.forEach((node, offset) => {
+    children.push({ node, at: block.start + offset });
+  });
+  for (const { node, at } of children) {
+    if (at === from && from < span.from && drawsNothing(node)) {
+      from = at + node.nodeSize;
+    }
+  }
+  for (const { node, at } of children.reverse()) {
+    if (at + node.nodeSize === to && to > span.to && drawsNothing(node)) {
+      to = at;
+    }
+  }
+  return { from, to };
+}
+
+/**
+ * Whether this stretch stands inside the control, reaching one of its edges or both at most.
+ *
+ * An inline control is a mark, so no position stands between its edge and the text beside it, and
+ * a selection of everything it holds is the same stretch as a selection of the control. The
+ * stretch is read as what the control holds, since replacing the contents is an edit the
+ * specification keeps apart from removing the control (`spec/notes/contentControls.md`): the new
+ * text goes into the control. A stretch reaching visible content outside the control holds the
+ * control itself.
+ */
+function standsWithin(
+  block: Textblock,
+  range: StepRange,
+  span: StepRange
+): boolean {
+  if (range.from >= range.to) return false;
+  const end = block.start + block.node.content.size;
+  if (range.from < block.start || range.to > end) return false;
+  const visible = visibleStretch(block, range, span);
+  return visible.from >= span.from && visible.to <= span.to;
+}
+
+/**
  * Whether one control refuses this step, which is the two-question judgement.
  *
  * Covering the control whole and taking it away is the control being deleted as one, and the
  * deletion clause is the whole of the answer: the contents going with it is what a deletion is.
  * Anything else - a partial overlap, a mark laid over the control, or an insertion, which has no
  * length and so covers nothing whole - reaches into the contents, and the contents clause answers.
+ *
+ * A stretch covering the control from edge to edge and nothing visible besides is its contents
+ * where the lock lets them be edited, and the control is kept (`controlKept`). Where the lock shuts
+ * them, the same stretch is the control itself: the editor draws no edge a selection could take
+ * the control by, so this is the one selection that can.
  */
 function shuts(
   locks: Locks,
   range: EditedRange,
   span: StepRange,
-  inner: boolean
+  inner: boolean,
+  within: boolean
 ): boolean {
-  return range.takesAway && coversWhole(range, span)
+  const open = !shutsContents(locks, inner);
+  return range.takesAway && coversWhole(range, span) && !(within && open)
     ? locks.deletion
-    : shutsContents(locks, inner) && overlaps(range, span);
+    : !open && overlaps(range, span);
+}
+
+/** Whether one control of this textblock refuses the step */
+function spanShut(
+  block: Textblock,
+  spans: readonly ControlSpan[],
+  span: ControlSpan,
+  range: EditedRange
+): boolean {
+  return shuts(
+    markLocks(span.mark),
+    range,
+    span,
+    supersededSpan(spans, span, range),
+    standsWithin(block, range, span)
+  );
+}
+
+/**
+ * The inline controls replacing this stretch writes into rather than takes away, each as the
+ * whole stretch it covers, outermost first.
+ *
+ * These are the controls the stretch stands within (`standsWithin`) whose contents no lock of
+ * their own shuts, which is what the lock guard reads as an edit of the contents rather than a
+ * deletion. What takes the stretch's place belongs inside each of them, and a control the
+ * replacement leaves holding nothing still stands (`editor/plugins/controlContents`).
+ */
+export function controlsWrittenInto(
+  doc: PMNode,
+  from: number,
+  to: number
+): ControlSpan[] {
+  if (from >= to) return [];
+  const $from = doc.resolve(from);
+  if (!$from.parent.isTextblock || !$from.sameParent(doc.resolve(to))) {
+    return [];
+  }
+  const block: Textblock = { node: $from.parent, start: $from.start() };
+  const range: StepRange = { from, to };
+  const spans = controlSpans(block);
+  return spans.filter(
+    (span) =>
+      standsWithin(block, range, span) &&
+      !shutsContents(markLocks(span.mark), supersededSpan(spans, span, range))
+  );
 }
 
 /** Whether a control inside this one holds the whole stretch, which is what supersedes a group */
@@ -427,14 +562,7 @@ function rangeShut(doc: PMNode, range: EditedRange): boolean {
     const block: Textblock = { node, start: pos + 1 };
     const spans = controlSpans(block);
     // Never assigned, so a later textblock finding nothing cannot take an earlier refusal back
-    shut ||= spans.some((span) =>
-      shuts(
-        markLocks(span.mark),
-        range,
-        span,
-        supersededSpan(spans, span, range)
-      )
-    );
+    shut ||= spans.some((span) => spanShut(block, spans, span, range));
     shut ||= emptyControlsIn(block).some((control) =>
       containerShut(control.node, control.span, range)
     );
@@ -632,12 +760,13 @@ function intentShut(doc: PMNode, intent: EditIntent): boolean {
 /**
  * The locks the document carries, as `./guards` registers them.
  *
- * Both passes lift it: unlocking is the one edit that may reach into a lock, and every step the
- * history replays is the reverse of a step that passed the guard when it was made.
+ * Every pass lifts it: unlocking is the one edit that may reach into a lock, every step the
+ * history replays is the reverse of a step that passed the guard when it was made, and the other
+ * two carry what an edit that passed does to a control (`controlLifted`, `controlKept`).
  */
 export const lockGuard: StepGuard = {
   name: "lock",
-  liftedBy: [unlockAllowed, historyReplay, controlLifted],
+  liftedBy: [unlockAllowed, historyReplay, controlLifted, controlKept],
   step: (step, before) => stepAllowed(step, before),
   shuts: (intent, state) => intentShut(state.doc, intent),
 };

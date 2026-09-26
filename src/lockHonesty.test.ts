@@ -385,9 +385,20 @@ const PLACES: readonly Place[] = [
     state: (protection) => caretIn("gh", protection),
   },
   {
-    name: "a selection covering a control locked against deletion alone whole",
-    guards: ["protection", "lock"],
+    // Everything such a control holds is its contents, which stand open: replacing them keeps it
+    name: "a selection of everything a control locked against deletion alone holds",
+    guards: ["protection"],
     state: (protection) => overText("gh", protection),
+  },
+  {
+    // Reaching past it, the selection holds the control itself, which may not be taken away
+    name: "a selection taking a control locked against deletion alone away with the text before it",
+    guards: ["protection", "lock"],
+    state: (protection) => {
+      const state = opened(protection);
+      const from = posOfText(state.doc, "ef") - 1;
+      return select(state, from, posOfText(state.doc, "gh") + 1);
+    },
   },
   {
     name: "a caret inside a cell whose contents alone are locked",
