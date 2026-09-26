@@ -13,7 +13,7 @@ import {
 import { deleteSelection } from "prosemirror-commands";
 import type { EditorState } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
-import { Fragment, type ReactElement, useCallback, useRef } from "react";
+import { Fragment, type ReactElement, useCallback, useId, useRef } from "react";
 import { canAddComment } from "../editor/commands/commentCommands";
 import {
   lockSelection,
@@ -30,6 +30,7 @@ import {
 import type { SurfaceCapabilities } from "../editor/stories/storyView";
 import { editsShut } from "../schema/protectionState";
 import { editorClassNames } from "../styles/classNames";
+import { LOCKED_NOTE, MenuNote } from "./MenuNote";
 import { noteItems } from "./noteItems";
 import { usePanelAtPoint } from "./panelPlacement";
 import { commandRunner, type RunCommand } from "./runCommand";
@@ -160,6 +161,7 @@ export function TextMenu({
   }, [view]);
   useDismiss(box, true, close);
   const keys = useMenuKeyboard({ menu: box, onClose: close });
+  const noteId = useId();
 
   const selected = !state.selection.empty;
   const shut = selectionTouchesLocked(state);
@@ -241,6 +243,7 @@ export function TextMenu({
       className={editorClassNames.menu}
       role="menu"
       aria-label="Text actions"
+      aria-describedby={bodyOpen && shut ? noteId : undefined}
       {...keys}
       style={{
         left: placement?.left ?? anchor.clientX,
@@ -248,6 +251,7 @@ export function TextMenu({
         visibility: placement ? undefined : "hidden",
       }}
     >
+      {bodyOpen && shut && <MenuNote id={noteId} text={LOCKED_NOTE} />}
       {groups.map((group, index) => (
         <Fragment key={group[0].label}>
           {index > 0 && <hr className={editorClassNames.menuSeparator} />}

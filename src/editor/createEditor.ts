@@ -32,6 +32,7 @@ import {
   editorDocumentOf,
   NO_DOCUMENT,
 } from "./editorDocument";
+import { type EditRefusal, editRefusal } from "./editRefusal";
 import { imageFiles } from "./imageFiles";
 import { columnResize } from "./plugins/columnResize";
 import { commentComposer } from "./plugins/commentComposer";
@@ -238,6 +239,8 @@ export interface EditorOptions {
   /** The fonts stood in for the ones the document declares. The built-in set when none is given */
   fontFallbacks?: FontFallbacks;
   onStateChange: (state: EditorState) => void;
+  /** Told about every edit the guards turn down (`./editRefusal`) */
+  onEditRefused?: (refusal: EditRefusal) => void;
 }
 
 export function createEditorView({
@@ -245,6 +248,7 @@ export function createEditorView({
   state,
   fontFallbacks = DEFAULT_FONT_FALLBACKS,
   onStateChange,
+  onEditRefused,
 }: EditorOptions): EditorView {
   const view = new EditorView(mount, {
     state,
@@ -272,9 +276,17 @@ export function createEditorView({
         new ImageNodeView(node, imageView, getPos),
     },
     dispatchTransaction(transaction) {
-      const next = view.state.apply(transaction);
+      const before = view.state;
+      const next = before.apply(transaction);
       view.updateState(next);
       onStateChange(next);
+      // A state handed back unchanged is a transaction a filter turned down. The application is
+      // told once the view stands on that state again, so a dispatch of its own from the callback
+      // lands on the state it sees rather than being overwritten by this one
+      if (next === before && onEditRefused) {
+        const refusal = editRefusal(transaction, before);
+        if (refusal) onEditRefused(refusal);
+      }
     },
   });
   return view;

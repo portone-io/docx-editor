@@ -22,6 +22,7 @@ IME tests drive Chrome's real composition pipeline through CDP `Input.imeSetComp
 | `pageBreak.spec.ts` | Page-break placement, editing, and arrow navigation past the break beside a footnote |
 | `lockedContent.spec.ts` | Composition at and inside locked content boundaries |
 | `inlineControls.spec.ts` | Writing over everything an inline content control holds after a drag either way, a drag or Shift-click past the end of the line, and a triple click, by typing, hangul composition, and paste, and deleting it all and typing again |
+| `lockedRows.spec.ts` | Typing and deleting in a locked table row, the refusal reported to the application, the table menu's explanation, and the lock styling and its custom properties over transparent cell shading |
 | `keyboard.spec.ts` | Keyboard-only menus, toolbar navigation, focus return, and link-panel focus |
 | `linkCard.spec.ts` | Link-card placement, stability, tab access, and focus return |
 | `comments.spec.ts` | Comment composition, anchoring, thread actions, scrolling, and narrow layouts |

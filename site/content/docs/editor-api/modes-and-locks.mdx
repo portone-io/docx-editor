@@ -60,3 +60,46 @@ and has to be covered by the selection instead.
 
 `selectionTouchesLocked(state)` answers whether the selection meets locked content at all.
 `documentHasLocked(doc)` reports whether the document carries any lock.
+
+## When an edit is refused
+
+The editor leaves the document as it was when an edit meets a lock or anything else it refuses.
+Pass `onEditRefused` to tell the reader why, in your own words:
+
+```tsx
+import type { EditRefusal } from "@portone/docx-editor";
+
+function explain(refusal: EditRefusal) {
+  if (refusal.reason !== "lock") return;
+  const [control] = refusal.controls;
+  showToast(
+    control?.tag === "PRICE_ROWS"
+      ? "Unit prices are filled in by the system."
+      : "This part of the document is locked."
+  );
+}
+
+<DocxEditor document={file} mode={mode} onEditRefused={explain} />;
+```
+
+It is called for an edit made in the document body: typing, deleting, pasting, dropping, formatting,
+or a transaction your own code dispatches.
+It is called once per refused edit, so a held key calls it repeatedly; debounce a notice if that
+matters.
+A command reporting `false` dispatches nothing and calls nothing.
+
+| Field | What it holds |
+| --- | --- |
+| `reason` | `"lock"`, `"protection"` (the `mode` takes no such edit), `"controlEdge"` (a keystroke would join text across the edge of a content control around paragraphs), `"preserved"` (the edit would remove or reorder content the editor keeps without editing, such as a bookmark's ends), or `"section"` (the edit would remove a section break). |
+| `action` | `"insert"`, `"delete"`, `"replace"`, or `"format"`. |
+| `pos` | Where the refused edit starts. |
+| `controls` | For `"lock"`, the locked controls the edit reached, innermost first; empty otherwise. |
+
+Each control carries its `tag`, `alias`, and `id` as the file wrote them (`null` when absent), its
+`lock` (`"sdtLocked"`, `"contentLocked"`, `"sdtContentLocked"`, or `"unlocked"` for a group
+control), `group`, `level` (`"inline"`, `"block"`, `"cell"`, or `"row"`), and the `pos` it starts at.
+
+The editor's own right-click menus say "Locked content can't be edited." above their entries when
+the selection or the table under it holds locked content.
+Locked content is drawn with a yellow tint, an orange outline, and a not-allowed pointer;
+[Styling](/docs/styling#locked-content-and-content-controls) covers changing that.

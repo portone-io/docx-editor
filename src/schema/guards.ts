@@ -33,6 +33,7 @@ import { changesOnlyDisplayAttrs, displayOnly } from "./displayDerivation";
 import {
   type ChangeGuard,
   type EditGuard,
+  type EditGuardName,
   type EditIntent,
   type StepGuard,
   transactionReaches,
@@ -139,7 +140,8 @@ function displayOnlyTransaction(tr: Transaction, state: EditorState): boolean {
 }
 
 /**
- * Whether every guard would let this transaction through, decided and nothing else.
+ * The first guard that would turn this transaction down, decided and nothing else. Null when every
+ * guard lets it through.
  *
  * The refusal a guard itself answers with carries a side effect - the composition it ends
  * (`editor/plugins/lockedContent`) - which a query about a button's state may not set off, so the
@@ -150,29 +152,43 @@ function displayOnlyTransaction(tr: Transaction, state: EditorState): boolean {
  * whole-change judgements then come first and take no pass, since a pass lifts one guard's
  * reading of a step rather than another guard's reading of the change. What is left is judged
  * step by step, each step over the document it was built against.
+ *
+ * Which guard answers is what a refusal is reported under (`editor/editRefusal`), so the list is
+ * asked in its own order and the first refusal is the one named.
  */
+export function transactionRefusal(
+  tr: Transaction,
+  state: EditorState
+): EditGuardName | null {
+  if (!tr.docChanged) return null;
+  if (displayOnlyTransaction(tr, state)) return null;
+  const changeRefusal = EDIT_GUARDS.find(
+    (guard) => guard.change?.(tr, state) === false
+  );
+  if (changeRefusal) return changeRefusal.name;
+  const stepRefusal = EDIT_GUARDS.filter(judgesSteps)
+    .filter((guard) => !lifted(guard, tr))
+    .find(
+      (guard) =>
+        // Each step counts positions in the document it was built against, which `docs` holds
+        !tr.steps.every((step, index) =>
+          guard.step(
+            step,
+            tr.docs[index] ?? state.doc,
+            tr.docs[index + 1] ?? tr.doc,
+            state
+          )
+        )
+    );
+  return stepRefusal?.name ?? null;
+}
+
+/** Whether every guard would let this transaction through (`transactionRefusal`) */
 export function transactionAllowed(
   tr: Transaction,
   state: EditorState
 ): boolean {
-  if (!tr.docChanged) return true;
-  if (displayOnlyTransaction(tr, state)) return true;
-  if (EDIT_GUARDS.some((guard) => guard.change?.(tr, state) === false)) {
-    return false;
-  }
-  return EDIT_GUARDS.filter(judgesSteps)
-    .filter((guard) => !lifted(guard, tr))
-    .every((guard) =>
-      // Each step counts positions in the document it was built against, which `docs` holds
-      tr.steps.every((step, index) =>
-        guard.step(
-          step,
-          tr.docs[index] ?? state.doc,
-          tr.docs[index + 1] ?? tr.doc,
-          state
-        )
-      )
-    );
+  return transactionRefusal(tr, state) === null;
 }
 
 /**

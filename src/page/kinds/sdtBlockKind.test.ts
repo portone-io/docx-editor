@@ -534,7 +534,9 @@ describe("the space rule in editor.css", () => {
   }
 
   it("paints the paper back over the fill a shut control lays down", () => {
-    expect(background(".docx-editor-sdt-locked")).toBe("#fff59d");
+    expect(declarations(".docx-editor-sdt-locked")).toMatch(
+      /background-image:\s*linear-gradient\(\s*var\(--docx-editor-locked-background/
+    );
     expect(
       background(
         `.docx-editor-sdt-block > [${editorAttributes.containerPageSpace}]`

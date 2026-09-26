@@ -127,6 +127,8 @@ export const editorClassNames = {
   /** The keyboard shortcut written on the right of a menu row */
   menuHint: `${PREFIX}-menu-hint`,
   menuSeparator: `${PREFIX}-menu-sep`,
+  /** The line at the head of a menu saying why its editing entries stand disabled */
+  menuNote: `${PREFIX}-menu-note`,
   /** The panel that reads and writes a link's address, floated over the selection */
   linkPanel: `${PREFIX}-link-panel`,
   /** The field the address is typed into */

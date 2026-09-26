@@ -43,7 +43,9 @@ rule precisely.
 ## Locked content
 
 Locked text cannot be edited in any mode, and no prop turns a lock off.
-A lock travels with the file as a content control.
+A lock travels with the file as a content control, and is drawn in yellow with an outline.
+Typing or deleting there leaves the document as it was; the right-click menu says the content is
+locked, and an application can show its own notice through `onEditRefused`.
 Locking and unlocking are offered from the right-click menu while editing with `locking: true`.
 
 [Modes and locks](/docs/editor-api/modes-and-locks) in the Editor API covers how a control of your

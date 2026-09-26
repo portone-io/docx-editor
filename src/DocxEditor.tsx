@@ -36,6 +36,7 @@ import { activeLinkSpan } from "./editor/commands/linkCommands";
 import { createEditorView, editorStateForSession } from "./editor/createEditor";
 import { sectionGeometryAt } from "./editor/documentStyles";
 import { storyDocument } from "./editor/editorDocument";
+import type { EditRefusal } from "./editor/editRefusal";
 import {
   noteExtensions,
   noteHost,
@@ -291,6 +292,16 @@ export interface DocxEditorProps {
   onReady?: (view: EditorView) => void;
   /** Called every time the editor state changes. This covers cursor and selection moves, not just text edits */
   onChange?: () => void;
+  /**
+   * Called when the editor turns down an edit made in the document body: typing, deleting,
+   * pasting or dropping into locked content, or anything the `mode` does not take.
+   *
+   * The editor itself only leaves the document as it was, so this is where an application says
+   * why - a toast, a status line - in its own words. It is called once per refused edit, so a key
+   * held down calls it repeatedly. A command reporting `false` dispatches nothing and calls
+   * nothing.
+   */
+  onEditRefused?: (refusal: EditRefusal) => void;
 }
 
 type OpenedDocument =
@@ -435,6 +446,7 @@ function DocxEditorSurface(
     style,
     onReady,
     onChange,
+    onEditRefused,
   }: DocxEditorProps,
   ref: ForwardedRef<DocxEditorHandle | null>
 ): ReactNode {
@@ -473,6 +485,7 @@ function DocxEditorSurface(
   );
   const latestOnReady = useLatest(onReady);
   const latestOnChange = useLatest(onChange);
+  const latestOnEditRefused = useLatest(onEditRefused);
   const selectedZoom = normalizeZoom(zoom ?? uncontrolledZoom);
   // One sheet is drawn at one paper, the first section's, whatever the sections after it name
   // (`page/pageLayout`)
@@ -514,6 +527,7 @@ function DocxEditorSurface(
         setLive({ view, state });
         latestOnChange.current?.();
       },
+      onEditRefused: (refusal) => latestOnEditRefused.current?.(refusal),
     });
     viewRef.current = view;
     keptState.current = { of: opened, state: view.state };
@@ -532,6 +546,7 @@ function DocxEditorSurface(
     mountedPlugins,
     latestOnReady,
     latestOnChange,
+    latestOnEditRefused,
   ]);
 
   // A mode changed on an open document is put into the state it already holds, so the view, its

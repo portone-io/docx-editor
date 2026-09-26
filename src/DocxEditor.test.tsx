@@ -32,6 +32,7 @@ import {
   type DocxEditorMode,
 } from "./DocxEditor";
 import { editingProtection } from "./editor/commands/index";
+import type { EditRefusal } from "./editor/editRefusal";
 import { DocxImportError } from "./ooxml/errors";
 import { editorClassNames } from "./styles/classNames";
 import type { FontFallbacks } from "./styles/fontStack";
@@ -83,6 +84,13 @@ const PARAGRAPH_AND_TABLE = makeDocx(
     '<w:tblGrid><w:gridCol w:w="1000"/></w:tblGrid>' +
     `<w:tr>${cellXml("Cell")}</w:tr>` +
     "</w:tbl>"
+);
+
+/** A paragraph holding a field a template locked */
+const LOCKED_FIELD = makeDocx(
+  '<w:p><w:r><w:t xml:space="preserve">Name: </w:t></w:r>' +
+    '<w:sdt><w:sdtPr><w:tag w:val="NAME"/><w:id w:val="3"/><w:lock w:val="sdtContentLocked"/></w:sdtPr>' +
+    '<w:sdtContent><w:r><w:t xml:space="preserve">Kim</w:t></w:r></w:sdtContent></w:sdt></w:p>'
 );
 
 const render = (element: ReactNode) => renderInto(host, element);
@@ -187,6 +195,69 @@ describe("DocxEditor", () => {
       unzipSync(editor.exportBytes())["word/document.xml"]
     );
     expect(documentXml).toContain("edited source");
+    unmount();
+  });
+
+  it("tells the application about an edit a lock turned down, and nothing else", () => {
+    const box = handleBox();
+    const refusals: EditRefusal[] = [];
+    const unmount = render(
+      <DocxEditor
+        document={LOCKED_FIELD}
+        mode={EDITING}
+        ref={box}
+        renderImportError={() => null}
+        onEditRefused={(refusal) => refusals.push(refusal)}
+      />
+    );
+    const { view } = attached(box);
+    const inside = rangeOfText(view.state.doc, "Kim").from + 1;
+
+    act(() => {
+      view.dispatch(view.state.tr.insertText("x", inside));
+    });
+    expect(view.state.doc.textContent).toBe("Name: Kim");
+    expect(refusals).toHaveLength(1);
+    expect(refusals[0]).toMatchObject({
+      reason: "lock",
+      action: "insert",
+      pos: inside,
+      controls: [{ tag: "NAME", lock: "sdtContentLocked", level: "inline" }],
+    });
+
+    // A selection change and an edit the lock allows are not refusals
+    act(() => {
+      view.dispatch(
+        view.state.tr.setSelection(TextSelection.create(view.state.doc, 1))
+      );
+      view.dispatch(view.state.tr.insertText("My ", 1));
+    });
+    expect(view.state.doc.textContent).toBe("My Name: Kim");
+    expect(refusals).toHaveLength(1);
+    unmount();
+  });
+
+  it("keeps what the application dispatches from inside the refusal callback", () => {
+    const box = handleBox();
+    const unmount = render(
+      <DocxEditor
+        document={LOCKED_FIELD}
+        mode={EDITING}
+        ref={box}
+        renderImportError={() => null}
+        onEditRefused={() => {
+          const { view } = attached(box);
+          view.dispatch(view.state.tr.insertText("Refused. ", 1));
+        }}
+      />
+    );
+    const { view } = attached(box);
+    const inside = rangeOfText(view.state.doc, "Kim").from + 1;
+
+    act(() => {
+      view.dispatch(view.state.tr.insertText("x", inside));
+    });
+    expect(view.state.doc.textContent).toBe("Refused. Name: Kim");
     unmount();
   });
 
