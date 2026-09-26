@@ -1,5 +1,38 @@
 # @portone/docx-editor
 
+## 0.6.5
+
+### Patch Changes
+
+- [#182](https://github.com/portone-io/docx-editor/pull/182) [`13e5f9f`](https://github.com/portone-io/docx-editor/commit/13e5f9f42d27c047144f3fb22c00b2ac26dae168) Thanks [@Deea222](https://github.com/Deea222)! - Tell the application when an edit is refused, and let it theme locked content.
+  
+  `DocxEditor` takes `onEditRefused`, called when typing, deleting, pasting,
+  dropping or formatting in the document body is turned down. It is handed an
+  `EditRefusal`: the rule that refused the edit (`lock`, `protection`,
+  `controlEdge`, `preserved` or `section`), what the edit would have done, and,
+  for a lock, the controls it reached with their `tag`, `alias`, `id`, lock and
+  level. Before this a refused keystroke did nothing at all and said nothing.
+  
+  The right-click menus now say "Locked content can't be edited." when the
+  selection, or the table under it, holds locked content, which is why their
+  editing entries stand disabled.
+  
+  Four custom properties theme how controls are drawn:
+  `--docx-editor-locked-background` and `--docx-editor-locked-outline` for locked
+  content, which keeps its yellow tint and orange outline by default, and
+  `--docx-editor-control-background` and `--docx-editor-control-outline` for a
+  content control that stays editable, which is not marked by default.
+  
+  The yellow now shows over a locked table cell or row whose shading the
+  document states as `auto`, which used to hide it, and a cell's own shading
+  shows through the tint rather than hiding it.
+
+- [#183](https://github.com/portone-io/docx-editor/pull/183) [`2423668`](https://github.com/portone-io/docx-editor/commit/242366886c89e96d633d2bc31312f42aaf37e4fd) Thanks [@Deea222](https://github.com/Deea222)! - Keep an inline content control when everything it holds is written over or deleted.
+  
+  Selecting all of the text inside a content control that stands in a paragraph - a bracketed placeholder a template leaves to be filled in, say - and typing over it used to take the control away: the new text landed beside it as ordinary text, and the tag and id a server looks for when it fills the document in were gone. The same happened with a drag carried past the end of the line, a Shift-click, a triple click, a composition, and a paste. The new text now goes into the control, which keeps its tag, its id, and everything else it states, and what is typed next goes on into it.
+  
+  Deleting everything the control holds now leaves the control in the file with nothing inside it, and text typed right after goes back into it. A control locked against deletion alone (`sdtLocked`) takes all of this, since its contents may be edited; before, deleting or retyping everything it held was refused. A selection that also takes in text outside the control still removes the control with that text, and a control locked against deletion still refuses it.
+
 ## 0.6.4
 
 ### Patch Changes
