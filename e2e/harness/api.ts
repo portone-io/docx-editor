@@ -5,6 +5,8 @@
  * and it is never part of what the package ships.
  */
 
+import type { EditRefusal } from "../../src/editor/editRefusal";
+
 export interface CompositionCounts {
   start: number;
   update: number;
@@ -79,6 +81,10 @@ export interface DocxHarness {
   selectText(blockIndex: number, offset: number, length: number): number;
   /** Puts the caret in the first cell of the first table, and answers the text that cell holds */
   caretInCell(): string;
+  /** Puts the caret `offset` characters into the first text reading this, and answers where */
+  caretInText(needle: string, offset: number): number;
+  /** Every edit the editor turned down, as `onEditRefused` was handed it */
+  refusals(): EditRefusal[];
   /**
    * Asks for the right click menu over whatever the caret is in.
    *

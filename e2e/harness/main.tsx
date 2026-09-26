@@ -15,6 +15,7 @@ import { DocxEditor, type DocxEditorMode } from "../../src/DocxEditor";
 import type { DocxBytes } from "../../src/docx/importDocx";
 import { storyOf, storyText } from "../../src/docx/story";
 import { lockSelection } from "../../src/editor/commands/lockCommands";
+import type { EditRefusal } from "../../src/editor/editRefusal";
 import { lockedMarkOf } from "../../src/schema/locks";
 import { storyKey } from "../../src/schema/stories";
 import { editorAttributes } from "../../src/styles/classNames";
@@ -27,6 +28,7 @@ import type {
   InlineControlReport,
 } from "./api";
 import { inlineControlFixture } from "./inlineControlFixture";
+import { lockedRowsFixture } from "./lockedRowsFixture";
 import { longTableFixture } from "./longTableFixture";
 import { notesFixture } from "./notesFixture";
 import { tabFixture } from "./tabFixture";
@@ -54,7 +56,8 @@ async function loadFixture(name: string): Promise<DocxBytes> {
     name === "long-table" ||
     name === "tabs" ||
     name === "two-sections" ||
-    name === "inline-controls";
+    name === "inline-controls" ||
+    name === "locked-rows";
   // The notes document is built over the demo, whose header and footer it keeps
   const fixture =
     name === "notes" ? "demo" : generated ? DEFAULT_FIXTURE : name;
@@ -65,6 +68,7 @@ async function loadFixture(name: string): Promise<DocxBytes> {
   if (name === "tabs") return tabFixture(bytes);
   if (name === "two-sections") return twoSectionsFixture(bytes);
   if (name === "inline-controls") return inlineControlFixture(bytes);
+  if (name === "locked-rows") return lockedRowsFixture(bytes);
   return bytes;
 }
 
@@ -267,6 +271,25 @@ function noteOpening(
     : first.children.map((child) => child.type.name);
 }
 
+/** Every edit the editor turned down since the page opened, in the order it did */
+const refusals: EditRefusal[] = [];
+
+/** Puts the caret `offset` characters into the first text node reading this */
+function caretInText(view: EditorView, needle: string, offset: number): number {
+  let at = -1;
+  view.state.doc.descendants((node, pos) => {
+    const found = node.isText ? (node.text ?? "").indexOf(needle) : -1;
+    if (at < 0 && found >= 0) at = pos + found + offset;
+    return at < 0;
+  });
+  if (at < 0) throw new Error(`text not found: ${needle}`);
+  view.dispatch(
+    view.state.tr.setSelection(TextSelection.create(view.state.doc, at))
+  );
+  view.focus();
+  return at;
+}
+
 function install(view: EditorView): void {
   const counts: CompositionCounts = { start: 0, update: 0, end: 0 };
   view.dom.addEventListener("compositionstart", () => {
@@ -327,6 +350,8 @@ function install(view: EditorView): void {
       return lockSelection(view.state, (tr) => view.dispatch(tr));
     },
     caretInCell: () => caretInCell(view),
+    caretInText: (needle, offset) => caretInText(view, needle, offset),
+    refusals: () => [...refusals],
     rightClick: () => rightClick(view),
     tableRows: () => tableRows(view),
     lockedText: () => lockedText(view),
@@ -362,6 +387,7 @@ function Harness() {
         )}
         mode={askedMode()}
         onReady={install}
+        onEditRefused={(refusal) => refusals.push(refusal)}
       />
     </div>
   );

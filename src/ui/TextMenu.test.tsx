@@ -439,6 +439,29 @@ describe("the lock entries", () => {
     expect(blocked("Copy")).toBe(false);
     unmount();
   });
+
+  it("says why the entries that change the text stand disabled", () => {
+    const { handle, unmount } = mount(WITH_LOCK, { mode: AUTHORING });
+    select(handle, 1, 14);
+    rightClickText();
+
+    const menu = host.querySelector('[role="menu"]');
+    const described = menu?.getAttribute("aria-describedby");
+    const note = described ? document.getElementById(described) : null;
+    expect(note?.textContent).toBe("Locked content can't be edited.");
+    unmount();
+  });
+
+  it("says nothing of a lock where the selection reaches none", () => {
+    const { handle, unmount } = mount(WITH_LOCK, { mode: AUTHORING });
+    select(handle, 1, 3);
+    rightClickText();
+
+    const menu = host.querySelector('[role="menu"]');
+    expect(menu?.hasAttribute("aria-describedby")).toBe(false);
+    expect(menu?.textContent).not.toContain("Locked content");
+    unmount();
+  });
 });
 
 describe("the insert note entries", () => {

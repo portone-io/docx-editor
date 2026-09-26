@@ -6,6 +6,7 @@
  */
 
 import { expect, type Page } from "@playwright/test";
+import type { EditRefusal } from "../../src/editor/editRefusal";
 import { editorClassNames } from "../../src/styles/classNames";
 import type {
   BlockReport,
@@ -219,6 +220,21 @@ export async function selectText(
 
 export function caretInCell(page: Page): Promise<string> {
   return page.evaluate(() => window.docxHarness.caretInCell());
+}
+
+export function caretInText(
+  page: Page,
+  needle: string,
+  offset: number
+): Promise<number> {
+  return page.evaluate(
+    ([text, at]) => window.docxHarness.caretInText(text, at),
+    [needle, offset] as const
+  );
+}
+
+export function refusals(page: Page): Promise<EditRefusal[]> {
+  return page.evaluate(() => window.docxHarness.refusals());
 }
 
 export function rightClick(page: Page): Promise<void> {

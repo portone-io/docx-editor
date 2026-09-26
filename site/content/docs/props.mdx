@@ -24,9 +24,11 @@ description: Every DocxEditor prop, the imperative handle, and which props are r
 | `style` | `CSSProperties` | - | Applied to that frame. |
 | `onReady` | `(view: EditorView) => void` | - | Called with the view once a document is mounted. |
 | `onChange` | `() => void` | - | Called on every state change, cursor and selection moves included. |
+| `onEditRefused` | `(refusal: EditRefusal) => void` | - | Called when the editor turns down an edit in the document body, such as typing into locked content. See [When an edit is refused](/docs/editor-api/modes-and-locks#when-an-edit-is-refused). |
 
 `DocxEditorProps`, `DocxEditorMode`, `DocxEditorZoom`, `DocxEditorPresets`, `CommentAuthor`,
-`EditableComments`, and `DocxSource` are exported from the root entry.
+`EditableComments`, `DocxSource`, `EditRefusal`, and the types it is made of are exported from the
+root entry.
 
 ## Mode
 

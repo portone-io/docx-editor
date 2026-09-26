@@ -2,8 +2,12 @@
 
 import type { Command, EditorState } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
-import { Fragment, type ReactElement, useCallback, useRef } from "react";
-import { unlockSelection } from "../editor/commands/lockCommands";
+import { Fragment, type ReactElement, useCallback, useId, useRef } from "react";
+import {
+  documentHasLocked,
+  selectionTouchesLocked,
+  unlockSelection,
+} from "../editor/commands/lockCommands";
 import {
   closeTableMenu,
   type TableMenuAnchor,
@@ -21,6 +25,7 @@ import {
   mergeCells,
   splitCell,
 } from "../table";
+import { LOCKED_NOTE, MenuNote } from "./MenuNote";
 import { noteItems } from "./noteItems";
 import { usePanelAtPoint } from "./panelPlacement";
 import { commandRunner } from "./runCommand";
@@ -91,6 +96,16 @@ function noteGroup(takes: SurfaceCapabilities): MenuGroup | null {
       };
 }
 
+/** Whether the table the selection stands in carries a lock anywhere */
+function tableHoldsLock(state: EditorState): boolean {
+  const { $from } = state.selection;
+  for (let depth = $from.depth; depth > 0; depth -= 1) {
+    const node = $from.node(depth);
+    if (node.type.spec.tableRole === "table") return documentHasLocked(node);
+  }
+  return false;
+}
+
 export interface TableMenuProps {
   view: EditorView;
   state: EditorState;
@@ -117,6 +132,10 @@ export function TableMenu({
   }, [view]);
   useDismiss(box, true, close);
   const keys = useMenuKeyboard({ menu: box, onClose: close });
+  const noteId = useId();
+  // A lock anywhere in the table disables the entries that would take it away, not only the ones
+  // acting where the caret stands, so the table holding one is what the note is drawn for
+  const lockInReach = selectionTouchesLocked(state) || tableHoldsLock(state);
 
   const choose = (command: Command) => {
     // aria-disabled keeps the row focusable, so enforce it in the handler.
@@ -138,6 +157,7 @@ export function TableMenu({
       className={editorClassNames.menu}
       role="menu"
       aria-label="Table actions"
+      aria-describedby={lockInReach ? noteId : undefined}
       {...keys}
       style={{
         left: placement?.left ?? anchor.clientX,
@@ -145,6 +165,7 @@ export function TableMenu({
         visibility: placement ? undefined : "hidden",
       }}
     >
+      {lockInReach && <MenuNote id={noteId} text={LOCKED_NOTE} />}
       {groups.map((group, index) => (
         <Fragment key={group.name}>
           {index > 0 && <hr className={editorClassNames.menuSeparator} />}

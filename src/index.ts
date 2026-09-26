@@ -39,6 +39,15 @@ export type {
 } from "./download";
 export { downloadDocx } from "./download";
 export type { CommentAuthor } from "./editor/commands/commentCommands";
+/** What `onEditRefused` is handed when the editor turns an edit down */
+export type {
+  ControlLevel,
+  ControlLock,
+  EditRefusal,
+  EditRefusalAction,
+  EditRefusalReason,
+  LockedControl,
+} from "./editor/editRefusal";
 export type {
   CellFormat,
   CellVerticalAlign,

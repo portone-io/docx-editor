@@ -36,6 +36,37 @@ one.
 | `--docx-editor-comments-width` | `320px` | The width of the comment rail. The package narrows it to 240, 200, and 180 pixels as the viewport crosses 840, 720, and 560 pixels, so an override for small screens needs a query of its own. |
 | `--docx-editor-horizontal-scrollbar-size` | `10px` | The space kept clear below the comment rail for the horizontal scrollbar a zoomed page brings. |
 
+## Locked content and content controls
+
+Content a lock shuts is drawn with a yellow tint, an orange outline, and a not-allowed pointer. A
+content control whose contents stay editable is not marked.
+Four properties change that, for inline fields, whole paragraphs or tables, cells, and rows alike:
+
+| Property | Default | What it controls |
+| --- | --- | --- |
+| `--docx-editor-locked-background` | `rgb(255 235 59 / 50%)` | The tint over locked content, which reads as `#fff59d` on white paper. `transparent` removes it. |
+| `--docx-editor-locked-outline` | `1px solid #f9a825` | The outline around locked content, as an `outline` value. `none` removes it. |
+| `--docx-editor-control-background` | `transparent` | The tint over a content control that stays editable. |
+| `--docx-editor-control-outline` | `none` | The outline around such a control. |
+
+For example, to draw what the reader cannot change in grey and the fields they fill in in yellow:
+
+```css
+.my-editor {
+  --docx-editor-locked-background: rgb(0 0 0 / 6%);
+  --docx-editor-locked-outline: 1px dashed rgb(0 0 0 / 50%);
+  --docx-editor-control-background: rgb(255 235 59 / 50%);
+}
+```
+
+The tint is painted over the document's own shading rather than in place of it, so a translucent
+color keeps a shaded cell's color visible beneath it. A run's own shading or highlight is painted
+over the tint, and the outline still marks the control there.
+An editable control inside locked content is drawn as the locked content around it, since the lock
+holds there too.
+A color close to the document's own highlighting makes the two hard to tell apart, and an outline
+with less than 3:1 contrast against the paper is hard to see; weigh both when choosing a theme.
+
 ## Properties the editor writes
 
 The editor also sets properties of its own, measured from the open document: `--docx-editor-zoom`,

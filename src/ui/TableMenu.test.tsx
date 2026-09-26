@@ -307,6 +307,39 @@ describe("the table menu over a cell holding locked text", () => {
     unmount();
   });
 
+  it("says why its rows stand disabled over a locked cell", () => {
+    const { unmount } = mount(WITH_LOCKED_WRAPPER);
+    rightClickCell("Locked");
+
+    const menu = host.querySelector('[role="menu"]');
+    const described = menu?.getAttribute("aria-describedby");
+    expect(described).toBeTruthy();
+    const note = described ? document.getElementById(described) : null;
+    expect(note?.textContent).toBe("Locked content can't be edited.");
+    unmount();
+  });
+
+  it("says why beside locked text, where the rows around it stand disabled", () => {
+    const { unmount } = mount(WITH_LOCKED_CELL);
+    rightClickCell("Locked");
+
+    expect(blocked("Delete row")).toBe(true);
+    expect(host.querySelector('[role="menu"]')?.textContent).toContain(
+      "Locked content can't be edited."
+    );
+    unmount();
+  });
+
+  it("says nothing of a lock over a table holding none", () => {
+    const { unmount } = mount(WITHOUT_LOCKED_CELL);
+    rightClickCell("Free");
+
+    const menu = host.querySelector('[role="menu"]');
+    expect(menu?.hasAttribute("aria-describedby")).toBe(false);
+    expect(menu?.textContent).not.toContain("Locked content");
+    unmount();
+  });
+
   it("leaves the rows over a cell with no lock in reach clickable", () => {
     const { handle, unmount } = mount(WITH_LOCKED_CELL);
     rightClickCell("BottomRight");

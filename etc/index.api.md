@@ -77,6 +77,12 @@ export interface CommentAuthor {
     name: string;
 }
 
+// @public
+export type ControlLevel = "inline" | "block" | "cell" | "row";
+
+// @public
+export type ControlLock = "unlocked" | "sdtLocked" | "contentLocked" | "sdtContentLocked";
+
 // @public (undocumented)
 export const DEFAULT_CELL_BORDERS: readonly CellBorderOption[];
 
@@ -161,6 +167,7 @@ export interface DocxEditorProps {
     fontFallbacks?: FontFallbacks;
     mode: DocxEditorMode;
     onChange?: () => void;
+    onEditRefused?: (refusal: EditRefusal) => void;
     // (undocumented)
     onReady?: (view: EditorView) => void;
     onZoomChange?: (zoom: DocxEditorZoom) => void;
@@ -236,6 +243,20 @@ export type EditableComments = "own" | "all";
 export { EditorState }
 
 export { EditorView }
+
+// @public
+export interface EditRefusal {
+    action: EditRefusalAction;
+    controls: readonly LockedControl[];
+    pos: number;
+    reason: EditRefusalReason;
+}
+
+// @public
+export type EditRefusalAction = "insert" | "delete" | "replace" | "format";
+
+// @public
+export type EditRefusalReason = "protection" | "lock" | "controlEdge" | "preserved" | "section";
 
 // @public
 export type ExportPartName = "media" | "numbering" | "comments" | "commentsExtended" | "people" | "footnotes" | "endnotes";
@@ -389,6 +410,17 @@ export interface LineSpacingOption {
     label: string;
     // (undocumented)
     spacing: LineSpacing;
+}
+
+// @public
+export interface LockedControl {
+    alias: string | null;
+    group: boolean;
+    id: number | null;
+    level: ControlLevel;
+    lock: ControlLock;
+    pos: number;
+    tag: string | null;
 }
 
 // @public

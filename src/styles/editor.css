@@ -629,9 +629,6 @@ button.docx-editor-comment-body {
   }
 }
 
-@media (max-width: 420px) {
-}
-
 .docx-editor-sheet {
   /*
    * The paper size, and the margins printed inside it.
@@ -1004,21 +1001,39 @@ button.docx-editor-comment-body {
 }
 
 /*
- * A content control that says its contents may not be edited (`editor/plugins/lockedContent` refuses
- * the edits). Yellow is what the contract templates already paint their settled parts with.
- * A background the run itself carries (`w:shd`, a highlight) paints over this one, so the
- * outline is drawn as well: outlines go on last, whatever the content paints.
+ * A content control that shuts its contents (`editor/plugins/lockedContent` refuses the edits), and
+ * one that leaves them open, each drawn from a pair of properties a host may set (`--docx-editor-
+ * locked-*`, `--docx-editor-control-*`).
+ *
+ * The tint is painted as a background image rather than a background colour: a run, a paragraph
+ * and a cell write the document's own shading as an inline `background-color`, which would win
+ * over a colour set here - a cell whose `w:shd` says `auto` draws as `transparent` - while an
+ * image layer is painted over it. The default tint is a translucent yellow that lands on #fff59d
+ * over white paper, so a shaded cell's own colour still shows through it.
+ * A run's own shading is a box inside the control and paints over the tint, so an outline is drawn
+ * as well: outlines go on last, whatever the content paints. An open control is not marked unless
+ * the host asks for it.
  */
 .docx-editor-sdt-locked {
-  background: #fff59d;
-  outline: 1px solid #f9a825;
+  background-image: linear-gradient(
+    var(--docx-editor-locked-background, rgb(255 235 59 / 50%)) 0 0
+  );
+  outline: var(--docx-editor-locked-outline, 1px solid #f9a825);
   cursor: not-allowed;
+}
+
+.docx-editor-sdt:not(.docx-editor-sdt-locked),
+.docx-editor-sdt-block:not(.docx-editor-sdt-locked) {
+  background-image: linear-gradient(
+    var(--docx-editor-control-background, transparent) 0 0
+  );
+  outline: var(--docx-editor-control-outline, none);
 }
 
 /*
  * A content control that holds nothing occupies nothing on the page: the file says a clause is not
  * there, and a box drawn for it would be a clause of its own.
- * A shut control wears the yellow above beside this class, and an outline is painted outside the
+ * A shut control wears the marks above beside this class, and an outline is painted outside the
  * box rather than clipped by it, so a zero height alone would leave a 1px rule across the page.
  */
 .docx-editor-sdt-empty {
@@ -1057,15 +1072,44 @@ button.docx-editor-comment-body {
 
 /*
  * A whole cell shut by the control around it, and the cells of a whole row shut by the control
- * around the row, which carry no lock of their own. The same yellow, outlined just inside the cell
- * border so the mark follows the cell rather than the text standing in it.
+ * around the row, which carry no lock of their own. The same marks as above, outlined just inside
+ * the cell border so the mark follows the cell rather than the text standing in it. A cell or a row
+ * carries the control's opening XML only when a control stands around it.
  */
 .docx-editor-tc-locked,
 .docx-editor-tr-locked > .docx-editor-tc {
-  background: #fff59d;
-  outline: 1px solid #f9a825;
+  background-image: linear-gradient(
+    var(--docx-editor-locked-background, rgb(255 235 59 / 50%)) 0 0
+  );
+  outline: var(--docx-editor-locked-outline, 1px solid #f9a825);
   outline-offset: -1px;
   cursor: not-allowed;
+}
+
+.docx-editor-tc[data-sdt-prefix]:not(.docx-editor-tc-locked),
+.docx-editor-tr[data-sdt-prefix]:not(.docx-editor-tr-locked)
+  > .docx-editor-tc:not(.docx-editor-tc-locked) {
+  background-image: linear-gradient(
+    var(--docx-editor-control-background, transparent) 0 0
+  );
+  outline: var(--docx-editor-control-outline, none);
+  outline-offset: -1px;
+}
+
+/*
+ * A lock shuts every control inside it (`spec/notes/contentControls.md`), so an open control there
+ * is drawn as the shut content around it rather than as a place to type. A group is superseded by
+ * the controls it holds, and draws them as open.
+ */
+[data-sdt-contents-locked] .docx-editor-sdt:not(.docx-editor-sdt-locked),
+[data-sdt-contents-locked] .docx-editor-sdt-block:not(.docx-editor-sdt-locked),
+[data-sdt-contents-locked]
+  .docx-editor-tc[data-sdt-prefix]:not(.docx-editor-tc-locked),
+[data-sdt-contents-locked]
+  .docx-editor-tr[data-sdt-prefix]:not(.docx-editor-tr-locked)
+  > .docx-editor-tc:not(.docx-editor-tc-locked) {
+  background-image: none;
+  outline: none;
 }
 
 /*
@@ -1694,6 +1738,13 @@ button.docx-editor-comment-body {
   margin: 4px 6px;
   border: none;
   border-top: 1px solid #e6e6e6;
+}
+
+.docx-editor-menu-note {
+  margin: 0 0 4px;
+  padding: 6px 10px;
+  border-bottom: 1px solid #e6e6e6;
+  color: #5f6368;
 }
 
 @media (max-width: 720px) {
