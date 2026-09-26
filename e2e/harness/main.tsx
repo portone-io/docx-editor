@@ -24,7 +24,9 @@ import type {
   CaretBox,
   CompositionCounts,
   DocxHarness,
+  InlineControlReport,
 } from "./api";
+import { inlineControlFixture } from "./inlineControlFixture";
 import { longTableFixture } from "./longTableFixture";
 import { notesFixture } from "./notesFixture";
 import { tabFixture } from "./tabFixture";
@@ -49,7 +51,10 @@ function fixtureUrl(name: string): string {
 
 async function loadFixture(name: string): Promise<DocxBytes> {
   const generated =
-    name === "long-table" || name === "tabs" || name === "two-sections";
+    name === "long-table" ||
+    name === "tabs" ||
+    name === "two-sections" ||
+    name === "inline-controls";
   // The notes document is built over the demo, whose header and footer it keeps
   const fixture =
     name === "notes" ? "demo" : generated ? DEFAULT_FIXTURE : name;
@@ -59,6 +64,7 @@ async function loadFixture(name: string): Promise<DocxBytes> {
   if (name === "long-table") return longTableFixture(bytes);
   if (name === "tabs") return tabFixture(bytes);
   if (name === "two-sections") return twoSectionsFixture(bytes);
+  if (name === "inline-controls") return inlineControlFixture(bytes);
   return bytes;
 }
 
@@ -221,6 +227,34 @@ function lockedText(view: EditorView): string {
   return text;
 }
 
+/** Each inline content control the body holds, by its tag, the text inside and whether it is empty */
+function inlineControls(view: EditorView): InlineControlReport[] {
+  const found = new Map<string, InlineControlReport>();
+  const tagOf = (prefix: unknown) =>
+    typeof prefix === "string"
+      ? (/<w:tag w:val="([^"]*)"/.exec(prefix)?.[1] ?? "")
+      : "";
+  view.state.doc.descendants((node) => {
+    if (node.type.name === "sdtEmptyInline") {
+      const tag = tagOf(node.attrs.sdtPrefix);
+      found.set(tag, { tag, text: "", empty: true });
+      return true;
+    }
+    for (const mark of node.marks) {
+      if (mark.type.name !== "sdt") continue;
+      const tag = tagOf(mark.attrs.sdtPrefix);
+      const known = found.get(tag);
+      found.set(tag, {
+        tag,
+        text: (known?.text ?? "") + (node.text ?? ""),
+        empty: false,
+      });
+    }
+    return true;
+  });
+  return [...found.values()];
+}
+
 /** The node types the first block of one note holds, in order */
 function noteOpening(
   view: EditorView,
@@ -296,6 +330,7 @@ function install(view: EditorView): void {
     rightClick: () => rightClick(view),
     tableRows: () => tableRows(view),
     lockedText: () => lockedText(view),
+    inlineControls: () => inlineControls(view),
     noteText: (kind, id) =>
       storyText(storyOf(view.state.doc, storyKey(kind, id))),
     noteOpening: (kind, id) => noteOpening(view, kind, id),

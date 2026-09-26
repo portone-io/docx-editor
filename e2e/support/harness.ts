@@ -11,10 +11,11 @@ import type {
   BlockReport,
   CaretBox,
   CompositionCounts,
+  InlineControlReport,
   SelectionReport,
 } from "../harness/api";
 
-export type { BlockReport, CaretBox, CompositionCounts };
+export type { BlockReport, CaretBox, CompositionCounts, InlineControlReport };
 
 /** Presses the platform's primary application shortcut. */
 export function pressModKey(page: Page, key: string): Promise<void> {
@@ -245,6 +246,10 @@ export function focused(page: Page): Promise<string> {
     if (!(found instanceof HTMLElement)) return "";
     return found.getAttribute("aria-label") ?? found.textContent ?? "";
   });
+}
+
+export function inlineControls(page: Page): Promise<InlineControlReport[]> {
+  return page.evaluate(() => window.docxHarness.inlineControls());
 }
 
 export function lock(

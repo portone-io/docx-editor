@@ -48,6 +48,11 @@ A lock the control carries is honored;
 [Locked content](/docs/editor-api/modes-and-locks#locked-content) covers locks and group controls.
 Backspace and Delete stop at the edge of a control around paragraphs or tables, and a control left
 holding one empty paragraph is removed whole by either key.
+Selecting everything a control around text holds and typing, composing, or pasting over it writes
+the new text into the control, keeping its tag and id; deleting it all leaves the control in the
+file with nothing inside it, and the next text typed there goes back into it.
+A selection that also takes in text outside the control removes the control with it, which a
+control locked against deletion refuses.
 A temporary control is removed by the first edit inside it, and placeholder text is edited like any
 other text.
 A control with nothing inside it takes no room on the page and is kept in the file, whether it

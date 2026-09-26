@@ -43,14 +43,31 @@ const COMMANDS: ReadonlyArray<[name: string, command: Command]> = [
 ];
 
 /**
- * The break goes in in place of whatever is selected, so the deletion clause answers for it
- * (`schema/locks`): a control locked against deletion alone refuses it even though editing inside
- * it would have gone through. Asked with the contents clause instead, both commands reported that
- * the break had gone in and the guard then turned the transaction down.
+ * The break goes in in place of whatever is selected, so the lock answers for the selection
+ * (`schema/locks`). Everything a control locked against deletion alone holds is its contents,
+ * which stand open, so the break goes into the control; a selection reaching past the control
+ * would take it away, which the deletion clause refuses. Either way the command reports what the
+ * guard then does with the transaction.
  */
 describe.each(COMMANDS)("%s over a locked control", (_name, command) => {
-  it("says nothing goes in over a control locked against deletion alone", () => {
+  it("goes into a control locked against deletion alone, over everything it holds", () => {
     const before = over("LOCKED");
+    const { answered, after } = attempt(before, command);
+    expect(answered).toBe(true);
+    expect(after.doc.textContent).toBe("opentail");
+    let inside = false;
+    after.doc.descendants((node) => {
+      if (node.type.name === "hardBreak") {
+        inside = node.marks.some((mark) => mark.type.name === "sdt");
+      }
+    });
+    expect(inside).toBe(true);
+  });
+
+  it("says nothing goes in over a selection taking that control away with text beside it", () => {
+    const state = opened();
+    const inside = posOfText(state.doc, "LOCKED");
+    const before = select(state, inside - 2, inside - 1 + "LOCKED".length);
     const { answered, after } = attempt(before, command);
     expect(answered).toBe(false);
     expect(after.doc.eq(before.doc)).toBe(true);

@@ -31,6 +31,16 @@ export interface CaretBox {
   left: number;
 }
 
+/** One inline content control, as the document holds it */
+export interface InlineControlReport {
+  /** Its `w:tag` */
+  tag: string;
+  /** The text it holds */
+  text: string;
+  /** Whether it stands as a control holding nothing */
+  empty: boolean;
+}
+
 export interface SelectionReport {
   from: number;
   to: number;
@@ -84,6 +94,8 @@ export interface DocxHarness {
   lock(blockIndex: number, offset: number, length: number): boolean;
   /** The text every locked control in the document holds */
   lockedText(): string;
+  /** Every inline content control the body holds, in document order */
+  inlineControls(): InlineControlReport[];
   /**
    * What one note of the open document says, read off the story the document holds rather than
    * off the screen, so a test can tell an edit that landed from one that was only drawn

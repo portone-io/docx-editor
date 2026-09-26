@@ -18,6 +18,7 @@ import {
   controlAttrs,
   controlAttrsOf,
   controlFactsOf,
+  goesWithEdit,
   isBlockControl,
   NO_CONTROL,
   OWN_CONTROL_ATTRS,
@@ -72,15 +73,6 @@ function acts(control: ControlFacts): boolean {
 }
 
 /**
- * Whether the wrapper goes. A lock against deletion states that the control may not be removed
- * (§17.5.2.23) where `w:temporary` states that it must be, and the lock wins; it says nothing
- * about the placeholder flag, which is dropped either way.
- */
-function lifts(control: ControlFacts): boolean {
-  return control.temporary && !control.deletionLocked;
-}
-
-/**
  * Takes the wrapper away from one container, or rewrites its opening XML without the placeholder
  * flag. A block control is replaced by the blocks it holds; a wrapped cell or row keeps the node
  * and loses what the control said about it.
@@ -94,7 +86,8 @@ function settleContainer(
 ): void {
   const at = tr.mapping.map(pos);
   const end = tr.mapping.map(pos + node.nodeSize);
-  if (lifts(control)) {
+  // The lock that keeps the wrapper says nothing about the placeholder flag, dropped either way
+  if (goesWithEdit(control)) {
     if (isBlockControl(node)) {
       // The blocks stay put as the step's gap, so nothing locked inside is planted anywhere
       tr.step(
@@ -125,7 +118,7 @@ function settleMark(
 ): void {
   const from = tr.mapping.map(span.from);
   const to = tr.mapping.map(span.to);
-  if (lifts(control)) {
+  if (goesWithEdit(control)) {
     tr.removeMark(from, to, span.mark);
     return;
   }
