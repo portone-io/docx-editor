@@ -26,6 +26,14 @@ import {
 
 export const CONTENT_TYPES_PATH = "[Content_Types].xml";
 
+/** Whether two parts hold the same bytes, which is the only sameness a part nothing reads has */
+export function sameBytes(before: Uint8Array, after: Uint8Array): boolean {
+  return (
+    before.length === after.length &&
+    before.every((byte, index) => byte === after[index])
+  );
+}
+
 /**
  * Where the part the main part relates under this type sits. null for no such relationship, and
  * for one that points outside the package, which no part of it can stand behind.

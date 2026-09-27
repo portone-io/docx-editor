@@ -10,6 +10,74 @@ import { Schema } from 'prosemirror-model';
 // @public (undocumented)
 const ALIGNS: readonly ["left", "center", "right", "justify"];
 
+// @public
+export type BlockChange = {
+    kind: "added";
+    block: BlockKind;
+    pos: number;
+    text: string;
+} | {
+    kind: "removed";
+    block: BlockKind;
+    pos: number;
+    text: string;
+} | {
+    kind: "changed";
+    block: Exclude<BlockKind, "table">;
+    original: {
+        pos: number;
+        text: string;
+    };
+    revised: {
+        pos: number;
+        text: string;
+    };
+    change: "text";
+    edits: TextEdit[];
+} | {
+    kind: "changed";
+    block: Exclude<BlockKind, "table">;
+    original: {
+        pos: number;
+        text: string;
+    };
+    revised: {
+        pos: number;
+        text: string;
+    };
+    change: "formatting";
+} | {
+    kind: "changed";
+    block: "table";
+    original: {
+        pos: number;
+        text: string;
+    };
+    revised: {
+        pos: number;
+        text: string;
+    };
+    change: "text";
+    edits: TextEdit[];
+    rows: RowChange[];
+} | {
+    kind: "changed";
+    block: "table";
+    original: {
+        pos: number;
+        text: string;
+    };
+    revised: {
+        pos: number;
+        text: string;
+    };
+    change: "formatting";
+    rows: RowChange[];
+};
+
+// @public
+export type BlockKind = "paragraph" | "table" | "control" | "preserved";
+
 // @public (undocumented)
 const CELL_VERTICAL_ALIGNS: readonly ["top", "center", "bottom"];
 
@@ -43,6 +111,28 @@ export interface CellFormat {
 export type CellVerticalAlign = (typeof CELL_VERTICAL_ALIGNS)[number];
 
 // @public
+export type CommentChange = {
+    kind: "added";
+    id: string;
+    author: string | null;
+    authorId: string | null;
+    text: string;
+} | {
+    kind: "removed";
+    id: string;
+    author: string | null;
+    authorId: string | null;
+    text: string;
+} | {
+    kind: "changed";
+    id: string;
+    author: string | null;
+    authorId: string | null;
+    original: string;
+    revised: string;
+};
+
+// @public
 export type CommentOnlyVerdict = {
     ok: true;
 } | {
@@ -53,6 +143,11 @@ export type CommentOnlyVerdict = {
     reason: "part-changed" | "relationship-changed" | "comment-markup-rejected";
     part: string;
 };
+
+// @public
+export function compareDocx(original: DocxBytes, revised: DocxBytes, input?: {
+    xmlParser?: XmlParser;
+}): DocxComparison;
 
 // @public
 export interface DocumentDefaults {
@@ -72,6 +167,16 @@ export function documentPartPath(session: DocxSession): string;
 
 // @public
 export type DocxBytes = ArrayBuffer | Uint8Array;
+
+// @public
+export interface DocxComparison {
+    // (undocumented)
+    blocks: BlockChange[];
+    // (undocumented)
+    comments: CommentChange[];
+    // (undocumented)
+    parts: PartChange[];
+}
 
 // @public
 export class DocxExportError extends Error {
@@ -450,11 +555,40 @@ export interface ParagraphStyleOption {
 // @public
 export function parseNumbering(xml: string | null, options?: NumberingOptions): Numbering;
 
+// @public
+export interface PartChange {
+    // (undocumented)
+    kind: "added" | "removed" | "changed";
+    // (undocumented)
+    part: string;
+}
+
 // @public (undocumented)
 export function pxToEmu(px: number): number;
 
 // @public
 export type ReadLevelRun = (rPr: Element) => RunFormat | null;
+
+// @public
+export type RowChange = {
+    kind: "added";
+    index: number;
+    cells: string[];
+} | {
+    kind: "removed";
+    index: number;
+    cells: string[];
+} | {
+    kind: "changed";
+    original: {
+        index: number;
+        cells: string[];
+    };
+    revised: {
+        index: number;
+        cells: string[];
+    };
+};
 
 // @public
 export interface RowFormat {
@@ -558,6 +692,18 @@ interface TabStop {
 type TabStopDirective = TabStop | {
     positionPt: number;
     align: "clear";
+};
+
+// @public
+export type TextEdit = {
+    kind: "kept";
+    text: string;
+} | {
+    kind: "added";
+    text: string;
+} | {
+    kind: "removed";
+    text: string;
 };
 
 // @public (undocumented)

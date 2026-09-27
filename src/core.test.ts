@@ -883,6 +883,62 @@ describe("onlyCommentsChangedBy", () => {
       });
     });
 
+    /**
+     * A content type declared for a comment part excuses only that part: the same type declared
+     * for another part, or for an extension, retypes parts no comment edit writes.
+     */
+    describe("for a content type declared as a comment part's", () => {
+      const COMMENTS_TYPE =
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml";
+
+      function alsoDeclared(
+        bytes: Uint8Array,
+        declaration: string
+      ): Uint8Array {
+        return repacked(bytes, {
+          "[Content_Types].xml": partText(bytes, "[Content_Types].xml").replace(
+            "</Types>",
+            `${declaration}</Types>`
+          ),
+        });
+      }
+
+      it("does not hold for an override retyping another part as comments", () => {
+        const { bytes, commented } = commentedBy("me");
+        const retyped = alsoDeclared(
+          commented,
+          `<Override PartName="/word/styles.xml" ContentType="${COMMENTS_TYPE}"/>`
+        );
+        expect(onlyCommentsChangedBy(bytes, retyped, "me")).toEqual(
+          partRefused("[Content_Types].xml")
+        );
+      });
+
+      it("does not hold for an extension declared as comments", () => {
+        const { bytes, commented } = commentedBy("me");
+        const byExtension = alsoDeclared(
+          commented,
+          `<Default Extension="bin" ContentType="${COMMENTS_TYPE}"/>`
+        );
+        expect(onlyCommentsChangedBy(bytes, byExtension, "me")).toEqual(
+          partRefused("[Content_Types].xml")
+        );
+      });
+
+      it("does not hold for a comment part's override dropped while the part stays", () => {
+        const { commented } = commentedBy("me");
+        const undeclared = repacked(commented, {
+          "[Content_Types].xml": partText(
+            commented,
+            "[Content_Types].xml"
+          ).replace(/<Override PartName="\/word\/comments\.xml"[^>]*\/>/, ""),
+        });
+        expect(onlyCommentsChangedBy(commented, undeclared, "me")).toEqual(
+          partRefused("[Content_Types].xml")
+        );
+      });
+    });
+
     it("holds for the parts a comment of one's own is written across", () => {
       const { bytes, commented } = commentedBy("me");
       const added = Object.keys(unzipSync(commented)).filter(

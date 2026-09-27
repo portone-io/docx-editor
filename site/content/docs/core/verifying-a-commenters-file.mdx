@@ -13,13 +13,16 @@ const verdict = onlyCommentsChangedBy(original, submitted, user.id);
 if (!verdict.ok) console.warn(verdict.reason);
 ```
 
+When the verdict is `body-changed` or `part-changed`, [`compareDocx`](/docs/core/comparing-two-files) lists the blocks and parts that differ.
+It compares comment text alone, so it shows nothing for a refusal over a comment's author, anchor, or markup.
+
 ## What must hold
 
 The comparison checks the whole package within the [limits below](#how-files-are-compared):
 
 - Every part is byte-identical, except the comments, extended comments, and people parts.
 - The main document part is unchanged outside its body blocks.
-- Its relationships and `[Content_Types].xml` gain only what those three parts need.
+- Its relationships and `[Content_Types].xml` gain only what those three parts need: a relationship to each and an override naming each part the file holds.
 - The story reads as it did with the comments taken out, and every changed comment is this author's.
 - Every entry of those three parts is unchanged, or is one this editor writes and this author could
   have written; adding a person cannot claim an existing unattributed comment.

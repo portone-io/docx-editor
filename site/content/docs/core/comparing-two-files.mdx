@@ -1,0 +1,85 @@
+---
+title: Comparing two files
+description: List the paragraphs, tables, comments, and package parts that differ between two DOCX files.
+---
+
+`compareDocx` opens two files and reports what differs between them, block by block:
+
+```ts
+import { compareDocx } from "@portone/docx-editor/core";
+
+const { blocks, comments, parts } = compareDocx(original, revised);
+
+for (const change of blocks) {
+  if (change.kind !== "changed") {
+    console.log(change.kind, change.block, change.text);
+  } else if (change.change === "formatting") {
+    console.log("formatting", change.revised.text);
+  } else {
+    for (const edit of change.edits) console.log(edit.kind, edit.text);
+  }
+}
+```
+
+Both files take an `ArrayBuffer` or `Uint8Array`.
+Outside a browser, pass `xmlParser` in the options as [Server environments](/docs/core/server-environments) describes.
+Unreadable bytes throw `DocxImportError`, as opening them does.
+
+## The result
+
+| Field | What it holds |
+| --- | --- |
+| `blocks` | The top-level blocks of the body that differ, in document order. |
+| `comments` | The comments and replies that were added, removed, or rewritten. |
+| `parts` | The package parts that differ, sorted by path. |
+
+Each entry of `blocks` has a `kind` and a `block`:
+
+| Field | What it holds |
+| --- | --- |
+| `kind` | `added`, `removed`, or `changed`. |
+| `block` | `paragraph`, `table`, `control` for a block-level content control, or `preserved` for a block the editor keeps behind a placeholder. |
+| `pos`, `text` | On an added block, where it stands in the revised document and its plain text; on a removed block, the same in the original. |
+| `original`, `revised` | On a changed block, the `pos` and `text` on each side. |
+| `change` | On a changed block, `formatting` when its text reads the same on both sides, and `text` otherwise. |
+| `edits` | On a `text` change, the stretches that are `kept`, `removed`, or `added`: the `kept` and `removed` texts spell `original.text`, and the `kept` and `added` texts spell `revised.text`. |
+| `rows` | On every changed table, the rows whose cells read differently. An added or removed row carries its `index` and the text of its `cells`; a changed row carries `original` and `revised`, each with an `index` and `cells`. |
+
+A `pos` is a position in the document `importDocx` returns for that file, so an editor opened on the same file can select it.
+A block's `text` is its paragraphs, one per line.
+For a table that means every paragraph of every cell on its own line, row after row, so use `rows` to tell which row and cell a line belongs to.
+The `edits` compare the texts a character at a time as a reader sees one, so a flag, an emoji with its skin tone, or a letter with its accent is never split.
+
+Each entry of `comments` carries the comment's `id`, `author`, and `authorId`, with `text` on an added or removed comment and `original` and `revised` on a rewritten one.
+Each entry of `parts` names a `part` and whether it was `added`, `removed`, or `changed`.
+The main document part is listed as changed when something outside its body blocks differs, such as the page setup of the last section.
+
+## Matching blocks
+
+A block written the same way in both files is unchanged.
+Among the rest, a block whose text reads the same on both sides is reported as a `formatting` change.
+Between two matched blocks, each block left over in the revised file is paired as a `text` change with the next leftover of the same kind in the original, in order.
+Blocks left without a partner are reported as removed and added.
+So three edited paragraphs where two now stand are two `text` changes and one removal, and a table edited just after a deleted paragraph is one removal and one changed table.
+
+Comments are matched by id.
+A comment whose id stands on both sides with a different author is reported as removed and added, since it is a different comment under a reused id.
+
+## The comment parts
+
+The comments, extended comments, and people parts are not listed in `parts`.
+What they hold is reported through `comments`, which compares each comment's text alone.
+Comment markers are left out of the block comparison, so a file that differs only in its comments reports no blocks.
+The main part's relationships and `[Content_Types].xml` are not listed in `parts` when they differ only by a relationship to those three parts and an override naming each, and only while the file that gained them holds the part.
+
+## What it does not report
+
+- A change inside a header, footer, footnote, or endnote is reported only as a changed part.
+- A comment's resolved state, date, or anchor is not reported, since only its text is compared.
+- A difference in the extended comments or people parts beyond a comment's text is not reported.
+- A producer that renumbers comment ids on save makes a comment inserted ahead of others read as a rewrite plus an addition.
+- Markup inside `w:tblGrid` beyond the column widths is not compared.
+- The size a picture's own transform states is not compared.
+- Table properties the model no longer needs are not compared.
+- A change inside a cell that continues a vertical merge is not detected.
+- Two long texts rewritten throughout are reported as one removal and one addition between the parts they share at either end, rather than as the shortest edit.

@@ -21,6 +21,7 @@
   "./core": [
     "DocxExportError",
     "DocxImportError",
+    "compareDocx",
     "documentNumbering",
     "documentPartPath",
     "docxSchema",

@@ -60,7 +60,7 @@ The fixture sanitizer CLI is checked by `pnpm test:fixtures`, also included in `
 | `src/schema/domRoundtrip.test.ts` | Every fixture survives being drawn to the DOM and read back, which is the path an IME composition takes. |
 | `src/schema/rawAttrs.test.ts` | Every attr the writer writes from says whether it carries raw XML, and each one that does is drawn holding its shape and not holding it. |
 | `packaging/apiReport.test.ts` | The committed `etc/*.api.md` reports match the declarations built from each published entry point. |
-| `packaging/coreRuntime.test.ts` | The built `dist/core.js` opens every fixture in a Node runtime holding no DOM globals, reading through the `xmlParser` option and reading the export back, answers the returned-file verifier there, and refuses with `no-xml-parser` when given neither the option nor a `DOMParser` global. |
+| `packaging/coreRuntime.test.ts` | The built `dist/core.js` opens every fixture in a Node runtime holding no DOM globals, reading through the `xmlParser` option and reading the export back, answers the returned-file verifier and the file comparison there, and refuses with `no-xml-parser` when given neither the option nor a `DOMParser` global. |
 
 Update `api-manifest.json` only when a public runtime API change is intentional. `pnpm api:update` does the same for the declaration reports, which record types and signatures rather than names. The lock test lists command factories explicitly so every new command must state how it behaves around locks and markers and under every editing protection. The probe test reads the same manifest, so a new command must also say what it writes into an exported package.
 

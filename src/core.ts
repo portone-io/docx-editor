@@ -18,6 +18,19 @@ import type { DocxSession } from "./docx/session";
 
 export type { CommentOnlyVerdict } from "./docx/commentOnlyChange";
 export { onlyCommentsChangedBy } from "./docx/commentOnlyChange";
+/**
+ * What differs between two files, block by block, for the case where knowing that something
+ * changed is not enough. Each block change carries the `pos` a reader can select it by.
+ */
+export type {
+  BlockChange,
+  BlockKind,
+  CommentChange,
+  DocxComparison,
+  PartChange,
+  RowChange,
+} from "./docx/compareDocx";
+export { compareDocx } from "./docx/compareDocx";
 export type { ExportOptions } from "./docx/exportDocx";
 export { exportDocx, exportDocxReport } from "./docx/exportDocx";
 export type {
@@ -42,6 +55,7 @@ export type {
 export { exportProblems } from "./docx/invariants";
 export type { DocxSession } from "./docx/session";
 export { documentNumbering, documentPartPath } from "./docx/session";
+export type { TextEdit } from "./docx/textDiff";
 export type {
   CellFormat,
   CellVerticalAlign,

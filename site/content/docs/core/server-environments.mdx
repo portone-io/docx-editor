@@ -17,8 +17,8 @@ const { DOMParser } = new JSDOM().window;
 const { doc, session } = importDocx(source, { xmlParser: new DOMParser() });
 ```
 
-`importDocx`, `exportDocx`, `exportProblems`, and `onlyCommentsChangedBy` take `xmlParser` in their
-options; `documentNumbering` and `parseNumbering` take it as their second argument.
+`importDocx`, `exportDocx`, `exportProblems`, `onlyCommentsChangedBy`, and `compareDocx` take
+`xmlParser` in their options; `documentNumbering` and `parseNumbering` take it as their second argument.
 The parser must implement `parseFromString(source, "application/xml")` and return a real DOM
 document, since the readers use the standard DOM API: `documentElement`, `children`, `childNodes`,
 `attributes`, `getAttribute` and `getElementsByTagName` with their namespace-aware forms,
