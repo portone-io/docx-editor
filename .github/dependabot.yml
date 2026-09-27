@@ -14,6 +14,14 @@ updates:
       fumadocs:
         patterns:
           - "fumadocs*"
+      # react-dom throws unless react is the exact same version, so the two
+      # and their type packages are updated together.
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
   # Keeps the commit-pinned actions in .github/workflows/ moving.
   - package-ecosystem: "github-actions"
     directory: "/"
