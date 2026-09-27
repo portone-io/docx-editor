@@ -63,10 +63,10 @@ Changes limited to tests, fixtures, scripts, or documentation do not need a chan
 The public API is the exported names and types of the four entry points - `.`, `./core`, `./commands`, and `./table` - together with the parts of the document model that [What a plugin may rely on](https://docx-editor.portone.io/docs/editor-api/plugins-and-presets#what-a-plugin-may-rely-on) calls stable.
 An attr that page calls internal is not part of it, and neither is anything under `src/` that no entry point reaches.
 
-Choose `patch` unless the change adds to that surface, takes something out of it, or changes what a part of it means.
-Those are `minor` while the package is below 1.0.
-A diff to `src/schema/attrRoles.ts` is where to check this: a change to a stable document-model attr is `minor` even when the declaration reports do not change.
-A declaration added, removed, or rewritten in `etc/*.api.md` after running `pnpm api:update` is what that looks like; a line that only gains or loses an `(undocumented)` marker is not.
+Choose `patch` unless the change takes something out of that surface or changes what a part of it means.
+Those are `minor` while the package is below 1.0; adding to the surface is `patch`, so a new command, option, or attr ships in a patch release.
+A diff to `src/schema/attrRoles.ts` is where to check this: a stable document-model attr that is removed or renamed, or whose value is read differently, is `minor` even when the declaration reports do not change.
+A declaration removed or rewritten in `etc/*.api.md` after running `pnpm api:update` is what that looks like; a declaration that is only added, or a line that only gains or loses an `(undocumented)` marker, is not.
 Commit the regenerated report in the same commit as the changeset.
 
 The changesets that have landed become a release the way [Releasing](https://github.com/portone-io/docx-editor/blob/main/docs/releasing.md) describes.
