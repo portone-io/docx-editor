@@ -107,7 +107,7 @@
     "react": ">=18"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.10",
+    "@biomejs/biome": "2.5.14",
     "@changesets/changelog-github": "^1.0.0",
     "@changesets/cli": "^3.0.1",
     "@microsoft/api-extractor": "7.59.1",
