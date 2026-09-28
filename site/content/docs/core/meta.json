@@ -1,5 +1,10 @@
 {
   "title": "Core API",
   "defaultOpen": true,
-  "pages": ["server-environments", "verifying-a-commenters-file", "errors"]
+  "pages": [
+    "server-environments",
+    "verifying-a-commenters-file",
+    "comparing-two-files",
+    "errors"
+  ]
 }

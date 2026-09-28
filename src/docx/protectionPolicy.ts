@@ -24,11 +24,12 @@ import {
   unattributedCommentAuthors,
 } from "../schema/protection";
 import { type DocxBytes, importDocx } from "./importDocx";
-import { CONTENT_TYPES_PATH } from "./packageParts";
+import { CONTENT_TYPES_PATH, sameBytes } from "./packageParts";
 import {
   type Relationship,
   readRelationships,
   relsPathOf,
+  resolveTarget,
 } from "./relationships";
 import type { SessionStore } from "./session";
 import { isModelledBlock, type Story } from "./storyProjection";
@@ -174,13 +175,6 @@ export function protectionPolicyFor(
   return policies.get(level);
 }
 
-function sameBytes(before: Uint8Array, after: Uint8Array): boolean {
-  return (
-    before.length === after.length &&
-    before.every((byte, index) => byte === after[index])
-  );
-}
-
 /**
  * Where the reader found each of the policy's parts, in the order the policy names them.
  *
@@ -196,7 +190,8 @@ function partPathsOf(
   return policy.parts.map((kind) => kind.pathIn(session));
 }
 
-function excusedPaths(
+/** The paths of the policy's parts this package holds, which is what a comparison of its bytes leaves to the policy */
+export function policyPartPaths(
   policy: ProtectionPolicy<string, string>,
   session: SessionStore
 ): string[] {
@@ -206,115 +201,206 @@ function excusedPaths(
 }
 
 /**
- * The main document part with the blocks the document model carries taken out of it.
- *
- * What is left is everything the document comparison cannot see: the namespaces the story is
- * written under, the section properties that set the paper and its margins, and every block kept
- * as the XML it arrived as. A comment is written inside a paragraph, so nothing a comment edit
- * writes reaches this text.
+ * The main document part with every block of the body taken out of it: the namespaces the story
+ * is written under, the text around the body, and the section properties that set the paper and
+ * its margins. A comment is written inside a paragraph, so nothing a comment edit writes reaches
+ * this text.
  *
  * The section closing the body is read off the document node rather than out of the tail
  * (`docx/sections`), and it belongs here for the same reason the rest does: a submission is free
- * to rewrite the paper it is written on, and the story comparison would not see it.
+ * to rewrite the paper it is written on, and a comparison of the blocks would not see it.
  */
-function aroundTheStory(story: Story): string {
-  const preserved = story.session.blocks
-    .filter((block) => !isModelledBlock(block.node))
-    .map((block) => block.xml)
-    .join("");
+export function aroundTheBlocks(story: Story): string {
   const sectPr: unknown = story.doc.attrs.sectPr;
   return (
     story.session.documentPrefix +
-    preserved +
     (typeof sectPr === "string" ? sectPr : "") +
     story.session.documentSuffix
   );
 }
 
 /**
+ * The blocks kept as the XML they arrived as, which the story comparison cannot see and so has to
+ * be compared beside `aroundTheBlocks`.
+ */
+function preservedBlocks(story: Story): string {
+  return story.session.blocks
+    .filter((block) => !isModelledBlock(block.node))
+    .map((block) => block.xml)
+    .join("");
+}
+
+/**
+ * Which of the policy's declarations two packages differ by: `gained` lets the revised package add
+ * them, the way a submission writing its first comment does, and `gained or dropped` also lets it
+ * give them up, the way a file that lost its last comment may.
+ */
+export type DeclarationChange = "gained" | "gained or dropped";
+
+function partKindAt(
+  policy: ProtectionPolicy<string, string>,
+  session: SessionStore,
+  path: string,
+  matches: (kind: StoryPartKind) => boolean
+): boolean {
+  return partPathsOf(policy, session).some(
+    (at, index) => at === path && matches(policy.parts[index])
+  );
+}
+
+/**
  * Whether the relationships of the main document part are the ones it arrived with, save for the
- * policy's own parts it may have gained. An id already handed out keeps pointing where it pointed.
+ * policy's own parts. An id already handed out keeps pointing where it pointed.
  *
- * A part the file did not have may be gained, once. Writing under one of these protections relates
- * each part a single time, so a second one under the same type is not something this editor
- * writes, and it is how a submission would otherwise name a part of its choosing.
+ * A part the file did not have may be gained, once, and only where the revised package holds it.
+ * Writing under one of these protections relates each part a single time, so a second one under
+ * the same type is not something this editor writes, and it is how a submission would otherwise
+ * name a part of its choosing. A relationship may be dropped only where it is allowed to be and
+ * the revised package no longer holds the part it named.
  *
  * An id names one relationship. A part naming one twice is read differently depending on which of
  * the two a reader keeps, so it is turned down rather than judged.
  */
 function relationshipsKept(
-  before: readonly Relationship[],
-  after: readonly Relationship[],
-  relTypes: readonly string[]
+  policy: ProtectionPolicy<string, string>,
+  before: SessionStore,
+  after: SessionStore,
+  allowed: DeclarationChange
 ): boolean {
+  const relsPath = relsPathOf(before.mainPartPath);
+  const was = readRelationships(before.parts, relsPath);
+  const now = readRelationships(after.parts, relsPath);
   if (
-    new Set(before.map((entry) => entry.id)).size !== before.length ||
-    new Set(after.map((entry) => entry.id)).size !== after.length
+    new Set(was.map((entry) => entry.id)).size !== was.length ||
+    new Set(now.map((entry) => entry.id)).size !== now.length
   ) {
     return false;
   }
-  const now = new Map(after.map((entry) => [entry.id, entry]));
-  const kept = before.every((entry) => {
-    const current = now.get(entry.id);
+  const relTypes = policy.parts.map((kind) => kind.relType);
+  const heldByRevised = (entry: Relationship) =>
+    after.parts.has(resolveTarget(before.mainPartPath, entry.target));
+  const current = new Map(now.map((entry) => [entry.id, entry]));
+  const kept = was.every((entry) => {
+    const other = current.get(entry.id);
+    if (other === undefined) {
+      return (
+        allowed === "gained or dropped" &&
+        relTypes.includes(entry.type) &&
+        !entry.external &&
+        !heldByRevised(entry)
+      );
+    }
     return (
-      current !== undefined &&
-      current.type === entry.type &&
-      current.target === entry.target &&
-      current.external === entry.external
+      other.type === entry.type &&
+      other.target === entry.target &&
+      other.external === entry.external
     );
   });
-  const ids = new Set(before.map((entry) => entry.id));
-  // Every original relationship survives where `kept` holds, so a type standing once in the
-  // submission is a type gained where the file had none. Only the relationships a reader opens
-  // count: one pointing outside the package names no part, whatever type it carries
-  const parts = after.filter((entry) => !entry.external);
+  const ids = new Set(was.map((entry) => entry.id));
+  // Only the relationships a reader opens count: one pointing outside the package names no part,
+  // whatever type it carries
+  const parts = now.filter((entry) => !entry.external);
   return (
     kept &&
-    after
+    now
       .filter((entry) => !ids.has(entry.id))
       .every(
         (entry) =>
           relTypes.includes(entry.type) &&
           !entry.external &&
+          heldByRevised(entry) &&
           parts.filter((other) => other.type === entry.type).length === 1
-      )
+      ) &&
+    gainedPartsAreNew(policy, before, after)
   );
 }
 
-/** What `[Content_Types].xml` declares, each declaration under the name it is keyed by */
-function contentTypes(bytes: Uint8Array | undefined): Map<string, string> {
-  if (bytes === undefined) return new Map();
-  const declared = new Map<string, string>();
+interface ContentTypes {
+  defaults: Map<string, string>;
+  overrides: Map<string, string>;
+}
+
+/** What `[Content_Types].xml` declares: the types by extension, and the types of named parts */
+function contentTypes(bytes: Uint8Array | undefined): ContentTypes {
+  const declared: ContentTypes = { defaults: new Map(), overrides: new Map() };
+  if (bytes === undefined) return declared;
   for (const el of elementChildren(
     parseXml(decodeUtf8(bytes).text).documentElement
   )) {
-    const key =
-      el.localName === "Default"
-        ? el.getAttribute("Extension")
-        : el.localName === "Override"
-          ? el.getAttribute("PartName")
-          : null;
-    if (key !== null) declared.set(key, el.getAttribute("ContentType") ?? "");
+    const type = el.getAttribute("ContentType") ?? "";
+    const extension = el.getAttribute("Extension");
+    const partName = el.getAttribute("PartName");
+    if (el.localName === "Default" && extension !== null) {
+      declared.defaults.set(extension, type);
+    } else if (el.localName === "Override" && partName !== null) {
+      declared.overrides.set(partName, type);
+    }
   }
   return declared;
 }
 
+function sameDeclarations(
+  before: ReadonlyMap<string, string>,
+  after: ReadonlyMap<string, string>
+): boolean {
+  return (
+    before.size === after.size &&
+    Array.from(before).every(([key, type]) => after.get(key) === type)
+  );
+}
+
 /**
- * Whether the package declares the content types it arrived with, save for an override a part it
- * gained needs. A declaration that was there keeps naming the type it named.
+ * Whether the package declares the content types it arrived with, save for the override of a
+ * policy part. A declaration that was there keeps naming the type it named.
+ *
+ * A gained override has to name a part of the policy where the revised package holds it, as the
+ * type that part is: a type alone would excuse retyping any part, and a declaration by extension
+ * types every part that ends in it. A dropped one has to name a policy part the original held and
+ * the revised package no longer does.
  */
 function contentTypesKept(
-  before: Map<string, string>,
-  after: Map<string, string>,
-  declarable: readonly string[]
+  policy: ProtectionPolicy<string, string>,
+  before: SessionStore,
+  after: SessionStore,
+  allowed: DeclarationChange
 ): boolean {
-  for (const [key, type] of before) {
-    if (after.get(key) !== type) return false;
-  }
-  for (const [key, type] of after) {
-    if (!before.has(key) && !declarable.includes(type)) return false;
-  }
-  return true;
+  const was = contentTypes(before.parts.get(CONTENT_TYPES_PATH));
+  const now = contentTypes(after.parts.get(CONTENT_TYPES_PATH));
+  const pathOf = (partName: string) => partName.replace(/^\//, "");
+  const dropped = Array.from(was.overrides).filter(
+    ([partName]) => !now.overrides.has(partName)
+  );
+  const gained = Array.from(now.overrides).filter(
+    ([partName]) => !was.overrides.has(partName)
+  );
+  return (
+    sameDeclarations(was.defaults, now.defaults) &&
+    Array.from(was.overrides).every(
+      ([partName, type]) =>
+        !now.overrides.has(partName) || now.overrides.get(partName) === type
+    ) &&
+    dropped.every(
+      ([partName, type]) =>
+        allowed === "gained or dropped" &&
+        !after.parts.has(pathOf(partName)) &&
+        partKindAt(
+          policy,
+          before,
+          pathOf(partName),
+          (kind) => kind.contentType === type
+        )
+    ) &&
+    gained.every(
+      ([partName, type]) =>
+        after.parts.has(pathOf(partName)) &&
+        partKindAt(
+          policy,
+          after,
+          pathOf(partName),
+          (kind) => kind.contentType === type
+        )
+    )
+  );
 }
 
 /**
@@ -335,6 +421,26 @@ function gainedPartsAreNew(
   );
 }
 
+/**
+ * Whether each of the package's two declaration parts, the main part's relationships and
+ * `[Content_Types].xml`, differs between the two packages in nothing but what the policy's parts
+ * need, keyed by the part's path.
+ */
+export function declarationsKept(
+  policy: ProtectionPolicy<string, string>,
+  before: SessionStore,
+  after: SessionStore,
+  allowed: DeclarationChange
+): ReadonlyMap<string, boolean> {
+  return new Map([
+    [
+      relsPathOf(before.mainPartPath),
+      relationshipsKept(policy, before, after, allowed),
+    ],
+    [CONTENT_TYPES_PATH, contentTypesKept(policy, before, after, allowed)],
+  ]);
+}
+
 /** Whether every part outside the document story is the one the file arrived with */
 function packageKept(
   policy: ProtectionPolicy<string, string>,
@@ -351,8 +457,8 @@ function packageKept(
     was.mainPartPath,
     relsPath,
     CONTENT_TYPES_PATH,
-    ...excusedPaths(policy, was),
-    ...excusedPaths(policy, now),
+    ...policyPartPaths(policy, was),
+    ...policyPartPaths(policy, now),
   ]);
   for (const path of new Set([...was.parts.keys(), ...now.parts.keys()])) {
     if (untouched.has(path)) continue;
@@ -366,26 +472,17 @@ function packageKept(
       return { ok: false, reason: "part-changed", part: path };
     }
   }
-  if (
-    !relationshipsKept(
-      readRelationships(was.parts, relsPath),
-      readRelationships(now.parts, relsPath),
-      policy.parts.map((kind) => kind.relType)
-    ) ||
-    !gainedPartsAreNew(policy, was, now)
-  ) {
+  const declarations = declarationsKept(policy, was, now, "gained");
+  if (declarations.get(relsPath) !== true) {
     return { ok: false, reason: "relationship-changed", part: relsPath };
   }
-  if (
-    !contentTypesKept(
-      contentTypes(was.parts.get(CONTENT_TYPES_PATH)),
-      contentTypes(now.parts.get(CONTENT_TYPES_PATH)),
-      policy.parts.map((kind) => kind.contentType)
-    )
-  ) {
+  if (declarations.get(CONTENT_TYPES_PATH) !== true) {
     return { ok: false, reason: "part-changed", part: CONTENT_TYPES_PATH };
   }
-  if (aroundTheStory(before) !== aroundTheStory(after)) {
+  if (
+    preservedBlocks(before) !== preservedBlocks(after) ||
+    aroundTheBlocks(before) !== aroundTheBlocks(after)
+  ) {
     return { ok: false, reason: "part-changed", part: was.mainPartPath };
   }
   return { ok: true };

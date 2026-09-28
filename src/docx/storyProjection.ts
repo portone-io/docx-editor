@@ -47,18 +47,24 @@ export function comparableStory(
   strip: (node: PMNode) => PMNode
 ): readonly string[] | null {
   const blocks: string[] = [];
+  for (const block of story.doc.children) {
+    const xml = comparableBlock(block, story.session, strip);
+    if (xml === null) return null;
+    blocks.push(xml);
+  }
+  return blocks;
+}
+
+/** One block as the writer puts it out, and null where it cannot be written back at all */
+export function comparableBlock(
+  block: PMNode,
+  session: SessionStore,
+  strip: (node: PMNode) => PMNode
+): string | null {
   try {
-    story.doc.forEach((block) => {
-      blocks.push(
-        serializeBlock(strip(block), {
-          ...NO_EXPORT_REFS,
-          session: story.session,
-        })
-      );
-    });
+    return serializeBlock(strip(block), { ...NO_EXPORT_REFS, session });
   } catch (error) {
     if (error instanceof DocxExportError) return null;
     throw error;
   }
-  return blocks;
 }

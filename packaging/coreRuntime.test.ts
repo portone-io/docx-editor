@@ -99,4 +99,19 @@ describe("the core entry in a runtime with no DOM", () => {
       )
     ).toBe("no-xml-parser");
   });
+
+  it("lists what a returned file changed with the parser it was handed", async () => {
+    const bytes = await readFile(join(fixturesDir, "demo.docx"));
+    const { doc, session } = core.importDocx(bytes, { xmlParser });
+    const returned = core.exportDocx(doc, session, { xmlParser });
+
+    expect(core.compareDocx(bytes, returned, { xmlParser })).toEqual({
+      blocks: [],
+      comments: [],
+      parts: [],
+    });
+    expect(refusalCode(() => core.compareDocx(bytes, returned))).toBe(
+      "no-xml-parser"
+    );
+  });
 });
