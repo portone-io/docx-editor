@@ -68,29 +68,38 @@ export async function check(root = repositoryRoot) {
     : { source: "npm", version: declared[0] };
 }
 
-/** Publication and registry reads can become visible at different times. */
-async function retry(operation, { wait, attempts }) {
-  for (let attempt = 1; ; attempt++) {
-    try {
-      return await operation();
-    } catch (cause) {
-      if (attempt >= attempts) throw cause;
-      await wait(5000);
+/** Publication and registry reads can become visible minutes apart. */
+function retrying({ wait, now, budget }) {
+  const deadline = now() + budget;
+  return async (operation) => {
+    for (let delay = 5000; ; delay = Math.min(delay * 2, 60000)) {
+      try {
+        return await operation();
+      } catch (cause) {
+        if (now() + delay > deadline) throw cause;
+        await wait(delay);
+      }
     }
-  }
+  };
 }
 
 /** Resolves once, then installs that exact version for both consumers and the badge. */
 export async function pin(
   root = repositoryRoot,
-  { version = "latest", run = exec, wait = setTimeout, attempts = 6 } = {}
+  {
+    version = "latest",
+    run = exec,
+    wait = setTimeout,
+    now = Date.now,
+    budget = 10 * 60000,
+  } = {}
 ) {
   if (version !== "latest" && !STABLE_VERSION.test(version)) {
     throw new Error(
       "Use latest or an exact stable version (for example, 0.3.0)"
     );
   }
-  const policy = { wait, attempts };
+  const retry = retrying({ wait, now, budget });
   const resolved = await retry(async () => {
     const { stdout } = await run(
       "npm",
@@ -115,7 +124,12 @@ export async function pin(
       );
     }
     return found;
-  }, policy);
+  }).catch((cause) => {
+    throw new Error(
+      `${LIBRARY}@${version} never became visible on the registry within ${budget / 60000} minutes. Once npm view lists it, rerun the site update as site/README.md describes.`,
+      { cause }
+    );
+  });
 
   try {
     const current = await check(root);
@@ -148,13 +162,11 @@ export async function pin(
       await writeFile(paths[i], `${JSON.stringify(manifest, null, 2)}\n`);
     }
     // This command intentionally updates the lockfile, including in CI. Ordinary installs stay frozen.
-    await retry(
-      () =>
-        run("pnpm", ["install", "--no-frozen-lockfile", "--ignore-scripts"], {
-          cwd: root,
-          timeout: 120000,
-        }),
-      policy
+    await retry(() =>
+      run("pnpm", ["install", "--no-frozen-lockfile", "--ignore-scripts"], {
+        cwd: root,
+        timeout: 120000,
+      })
     );
     await check(root);
     return resolved;

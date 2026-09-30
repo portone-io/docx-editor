@@ -25,6 +25,19 @@ const json = (root, path, value) =>
 const inputs = (root) =>
   Promise.all(files.map((path) => readFile(join(root, path), "utf8")));
 const noWait = async () => {};
+function clock() {
+  let time = 0;
+  const waits = [];
+  return {
+    waits,
+    now: () => time,
+    wait: async (delay) => {
+      waits.push(delay);
+      time += delay;
+    },
+  };
+}
+const backoff = [5000, 10000, 20000, 40000, ...Array(8).fill(60000)];
 
 const entry = (root, dir) =>
   join(root, dir, "node_modules", library, "package.json");
@@ -138,14 +151,14 @@ for (const version of ["latest", "0.3.0"]) {
 }
 
 for (const failed of ["npm", "pnpm"]) {
-  test(`${failed} failure stops after bounded retries and restores build inputs`, async (t) => {
+  test(`${failed} failure backs off for about ten minutes, then gives up and restores build inputs`, async (t) => {
     const root = await fixture(t);
     const before = await inputs(root);
+    const time = clock();
     let failures = 0;
     await assert.rejects(
       pin(root, {
-        attempts: 2,
-        wait: noWait,
+        ...time,
         run: async (command) => {
           if (command !== failed) return { stdout: '"0.3.0"' };
           failures++;
@@ -153,12 +166,36 @@ for (const failed of ["npm", "pnpm"]) {
             await writeFile(join(root, "pnpm-lock.yaml"), "partial update");
           throw new Error("unavailable");
         },
-      })
+      }),
+      failed === "npm"
+        ? /docx-editor@latest never became visible on the registry within 10 minutes/
+        : /manifests and lockfile were restored/
     );
-    assert.equal(failures, 2);
+    assert.deepEqual(time.waits, backoff);
+    assert.equal(failures, backoff.length + 1);
     assert.deepEqual(await inputs(root), before);
   });
 }
+
+test("installation shares the deadline the lookup started", async (t) => {
+  const root = await fixture(t);
+  const time = clock();
+  let views = 0;
+  await assert.rejects(
+    pin(root, {
+      ...time,
+      run: async (command) => {
+        if (command === "pnpm") throw new Error("unavailable");
+        if (++views < 5) throw new Error("version not visible yet");
+        return { stdout: '"0.3.0"' };
+      },
+    }),
+    /restored/
+  );
+  // Each step backs off from the start, but both stop at the same deadline
+  const lookup = backoff.slice(0, 4);
+  assert.deepEqual(time.waits, [...lookup, ...lookup, ...Array(7).fill(60000)]);
+});
 
 test("site preparation awaits installation and propagates install or build failures", async (t) => {
   const root = await fixture(t);
