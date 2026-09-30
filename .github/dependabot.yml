@@ -22,6 +22,11 @@ updates:
           - "react-dom"
           - "@types/react"
           - "@types/react-dom"
+      # prosemirror packages require recent versions of one another, and a
+      # second prosemirror-model breaks editing. They are updated together.
+      prosemirror:
+        patterns:
+          - "prosemirror-*"
   # Keeps the commit-pinned actions in .github/workflows/ moving.
   - package-ecosystem: "github-actions"
     directory: "/"
