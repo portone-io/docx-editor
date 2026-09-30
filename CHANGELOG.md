@@ -1,5 +1,19 @@
 # @portone/docx-editor
 
+## 0.6.6
+
+### Patch Changes
+
+- [#199](https://github.com/portone-io/docx-editor/pull/199) [`e315ab9`](https://github.com/portone-io/docx-editor/commit/e315ab93fff2b33f865ee0fbd0bbb16da97282e0) Thanks [@Deea222](https://github.com/Deea222)! - The comments panel shows when each comment and reply was written in the reader's time zone and browser language, rather than in UTC.
+  `DocumentComment.date` and `DocumentCommentReply.date` are now that instant as an ISO 8601 string: the UTC time Word 2019 and later record for a comment where the file has one, and otherwise the comment's clock time read on the reader's clock, which is what Word shows.
+  A comment added with `NewComment.date` reads the same instant back, and the saved file records it the way Word does, so Word shows it in each reader's time zone as well.
+  A comment written by an earlier version of the editor recorded only a UTC time, so its UTC clock digits are now shown as the reader's local time, as Word shows them: it appears shifted by the reader's UTC offset.
+  `onlyCommentsChangedBy` accepts the parts Word records a comment's time in, `commentsIds.xml` and `commentsExtensible.xml`, as the editor writes them, and refuses a returned file that removes an entry of a comment still in it from any comment part.
+  Put the server running `onlyCommentsChangedBy` on this release or later before, or together with, the editor, as [the verifier's version rule](https://docx-editor.portone.io/docs/core/verifying-a-commenters-file#how-files-are-compared) asks: an earlier verifier refuses every file in which this editor wrote a new comment.
+
+- [#192](https://github.com/portone-io/docx-editor/pull/192) [`de9da98`](https://github.com/portone-io/docx-editor/commit/de9da989b23871ecaa32074813c66c9d7704dd28) Thanks [@Deea222](https://github.com/Deea222)! - `compareDocx` on the core entry lists the paragraphs, tables, comments and package parts that differ between two files.
+  `onlyCommentsChangedBy` now also refuses a file that declares a comment content type for anything but a comment part it holds, including by extension, or relates a comment part it does not hold.
+
 ## 0.6.5
 
 ### Patch Changes
