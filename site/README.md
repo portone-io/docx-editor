@@ -44,12 +44,13 @@ On `main` that number is the last release, so a preview can run sources newer th
 ### Automatic updates after publishing
 
 After npm publishing succeeds, [Update site release](../.github/workflows/site-release.yml) checks out the release commit, installs the published version into the site and the demo, builds the site, and writes the result to the `production` branch as the release commit plus one commit updating the two manifests and lockfile. Vercel's production deployment must track `production`; `main` deploys as a preview. The live site therefore changes only at a release, and a docs-only fix reaches it with the next one. Failed updates leave the previous release in place.
+The update waits up to ten minutes for npm to list the new release, and as long again for it to install, before failing.
 
 Nothing moves on `main` after a release: its site keeps running the sources.
 
 If the update fails, run **Update site release** on `main` in GitHub Actions with the already published version. It rebuilds `production` from scratch, so rerunning is always safe. If `production` is right but its deployment failed, retry in Vercel. Neither requires republishing npm.
 
-To build the site against a specific release locally, run `pnpm pin:demo-library 0.3.0` followed by `pnpm build:site`. If installation fails, run `pnpm install` before retrying.
+To build the site against a specific release locally, run `pnpm pin:demo-library 0.3.0` followed by `pnpm build:site`. A version npm does not list fails after about half a minute. If installation fails, run `pnpm install` before retrying.
 To return to the sources, run `git checkout -- site/package.json demo/package.json pnpm-lock.yaml && pnpm install`.
 
 ## Markdown for AI agents

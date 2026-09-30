@@ -24,20 +24,48 @@ const json = (root, path, value) =>
   writeFile(join(root, path), JSON.stringify(value));
 const inputs = (root) =>
   Promise.all(files.map((path) => readFile(join(root, path), "utf8")));
-const noWait = async () => {};
 function clock() {
   let time = 0;
   const waits = [];
+  const lines = [];
   return {
     waits,
-    now: () => time,
-    wait: async (delay) => {
-      waits.push(delay);
-      time += delay;
+    lines,
+    spend: (ms) => {
+      time += ms;
+    },
+    options: {
+      now: () => time,
+      wait: async (delay) => {
+        waits.push(delay);
+        time += delay;
+      },
+      log: (line) => lines.push(line),
     },
   };
 }
-const backoff = [5000, 10000, 20000, 40000, ...Array(8).fill(60000)];
+const minutes = (count) => count * 60000;
+const failure = (output) =>
+  Object.assign(new Error("Command failed"), { stdout: output, stderr: "" });
+const unlisted = () => failure("npm error code E404");
+const uninstallable = () =>
+  failure(" ERR_PNPM_NO_MATCHING_VERSION  No matching version found");
+
+/**
+ * Answers npm view and pnpm install, each call spending its whole timeout on the clock.
+ * `view` and `install` receive the call count and throw to fail that call.
+ */
+function registry(root, time, { view = () => '"0.3.0"', install = () => {} }) {
+  const calls = { npm: 0, pnpm: 0 };
+  const run = async (command, args, options) => {
+    time.spend(options.timeout);
+    const count = ++calls[command];
+    if (command === "npm") return { stdout: view(count, args) };
+    await install(count, args);
+    await installed(root, "0.3.0");
+  };
+  return { calls, run };
+}
 
 const entry = (root, dir) =>
   join(root, dir, "node_modules", library, "package.json");
@@ -128,74 +156,186 @@ for (const version of ["latest", "0.3.0"]) {
     const root = await fixture(t);
     // The release commit links the sources; the pin is what moves it onto the release
     if (version !== "latest") await linked(root);
-    let views = 0;
-    let installs = 0;
-    await pin(root, {
-      version,
-      wait: noWait,
-      run: async (command, args) => {
-        if (command === "npm") {
-          assert.equal(args[1], `${library}@${version}`);
-          if (++views === 1) throw new Error("version not visible yet");
-          return { stdout: '"0.3.0"' };
-        }
+    const time = clock();
+    const { calls, run } = registry(root, time, {
+      view: (count, args) => {
+        assert.equal(args[1], `${library}@${version}`);
+        if (count === 1) throw unlisted();
+        return '"0.3.0"';
+      },
+      install: (count, args) => {
         assert.ok(args.includes("--no-frozen-lockfile"));
         assert.ok(args.includes("--ignore-scripts"));
-        if (++installs === 1) throw new Error("tarball not visible yet");
-        await installed(root, "0.3.0");
+        if (count === 1) throw uninstallable();
       },
     });
+    await pin(root, {
+      version,
+      registryWaitMs: minutes(10),
+      run,
+      ...time.options,
+    });
     assert.deepEqual(await check(root), { source: "npm", version: "0.3.0" });
-    assert.deepEqual([views, installs], [2, 2]);
+    assert.deepEqual(calls, { npm: 2, pnpm: 2 });
+    assert.deepEqual(time.lines, [
+      `${library}@${version} is not listed on the registry yet; retrying in 5 s.`,
+      `${library}@0.3.0 is not installable yet; retrying in 5 s.`,
+    ]);
   });
 }
 
-for (const failed of ["npm", "pnpm"]) {
-  test(`${failed} failure backs off for about ten minutes, then gives up and restores build inputs`, async (t) => {
+test("the lookup backs off until its window closes, counting the time each call takes", async (t) => {
+  const root = await fixture(t);
+  const before = await inputs(root);
+  const time = clock();
+  const { calls, run } = registry(root, time, {
+    view: () => {
+      throw unlisted();
+    },
+  });
+  await assert.rejects(
+    pin(root, {
+      version: "0.3.0",
+      registryWaitMs: minutes(10),
+      run,
+      ...time.options,
+    }),
+    {
+      message:
+        "@portone/docx-editor@0.3.0 was not listed on the registry within 10 min. Check it with `npm view @portone/docx-editor@0.3.0 version`, then rerun pnpm pin:demo-library.",
+    }
+  );
+  assert.deepEqual(time.waits, [
+    5000,
+    10000,
+    20000,
+    40000,
+    ...Array(6).fill(60000),
+  ]);
+  assert.deepEqual(calls, { npm: 11, pnpm: 0 });
+  assert.equal(time.lines.length, time.waits.length);
+  assert.deepEqual(await inputs(root), before);
+});
+
+test("the local default gives up on an unlisted version within half a minute", async (t) => {
+  const root = await fixture(t);
+  const time = clock();
+  const { run } = registry(root, time, {
+    view: () => {
+      throw unlisted();
+    },
+  });
+  await assert.rejects(pin(root, { version: "0.3.9", run, ...time.options }), {
+    message:
+      "@portone/docx-editor@0.3.9 was not listed on the registry within 30 s. Check it with `npm view @portone/docx-editor@0.3.9 version`, then rerun pnpm pin:demo-library.",
+  });
+  assert.deepEqual(time.waits, [5000]);
+});
+
+test("the install gets its own window and gives up by restoring build inputs", async (t) => {
+  const root = await fixture(t);
+  const before = await inputs(root);
+  const time = clock();
+  const { calls, run } = registry(root, time, {
+    install: async () => {
+      await writeFile(join(root, "pnpm-lock.yaml"), "partial update");
+      throw uninstallable();
+    },
+  });
+  await assert.rejects(
+    pin(root, {
+      version: "0.3.0",
+      registryWaitMs: minutes(10),
+      run,
+      ...time.options,
+    }),
+    (error) => {
+      assert.match(error.message, /manifests and lockfile were restored/);
+      assert.match(
+        error.cause.message,
+        /^@portone\/docx-editor@0\.3\.0 was not installable within 10 min\./
+      );
+      return true;
+    }
+  );
+  assert.deepEqual(time.waits, [5000, 10000, 20000, 40000]);
+  assert.deepEqual(calls, { npm: 1, pnpm: 5 });
+  assert.deepEqual(await inputs(root), before);
+});
+
+test("a version listed late in the lookup window still gets install retries", async (t) => {
+  const root = await fixture(t);
+  const time = clock();
+  const { calls, run } = registry(root, time, {
+    view: (count) => {
+      if (count < 11) throw unlisted();
+      return '"0.3.0"';
+    },
+    install: (count) => {
+      if (count === 1) throw uninstallable();
+    },
+  });
+  await pin(root, {
+    version: "0.3.0",
+    registryWaitMs: minutes(10),
+    run,
+    ...time.options,
+  });
+  assert.deepEqual(await check(root), { source: "npm", version: "0.3.0" });
+  assert.deepEqual(calls, { npm: 11, pnpm: 2 });
+  assert.equal(time.waits.at(-1), 5000);
+});
+
+for (const [name, answers, expected] of [
+  [
+    "npm is missing",
+    {
+      view: () => {
+        throw Object.assign(new Error("spawn npm ENOENT"), { code: "ENOENT" });
+      },
+    },
+    /spawn npm ENOENT/,
+  ],
+  ["npm prints something other than JSON", { view: () => "oops" }, SyntaxError],
+  [
+    "the registry answers another version",
+    { view: () => '"0.2.9"' },
+    /did not return the requested stable version/,
+  ],
+  [
+    "the registry answers a prerelease",
+    { view: () => '"0.3.0-beta.1"' },
+    /did not return the requested stable version/,
+  ],
+  [
+    "pnpm rejects the dependency graph",
+    {
+      install: () => {
+        throw failure(" ERR_PNPM_PEER_DEP_ISSUES  Unmet peer dependencies");
+      },
+    },
+    (error) => error.cause.stdout.includes("ERR_PNPM_PEER_DEP_ISSUES"),
+  ],
+]) {
+  test(`${name} fails at once with its own cause`, async (t) => {
     const root = await fixture(t);
     const before = await inputs(root);
     const time = clock();
-    let failures = 0;
+    const { run } = registry(root, time, answers);
     await assert.rejects(
       pin(root, {
-        ...time,
-        run: async (command) => {
-          if (command !== failed) return { stdout: '"0.3.0"' };
-          failures++;
-          if (command === "pnpm")
-            await writeFile(join(root, "pnpm-lock.yaml"), "partial update");
-          throw new Error("unavailable");
-        },
+        version: "0.3.0",
+        registryWaitMs: minutes(10),
+        run,
+        ...time.options,
       }),
-      failed === "npm"
-        ? /docx-editor@latest never became visible on the registry within 10 minutes/
-        : /manifests and lockfile were restored/
+      expected
     );
-    assert.deepEqual(time.waits, backoff);
-    assert.equal(failures, backoff.length + 1);
+    assert.deepEqual(time.waits, []);
+    assert.deepEqual(time.lines, []);
     assert.deepEqual(await inputs(root), before);
   });
 }
-
-test("installation shares the deadline the lookup started", async (t) => {
-  const root = await fixture(t);
-  const time = clock();
-  let views = 0;
-  await assert.rejects(
-    pin(root, {
-      ...time,
-      run: async (command) => {
-        if (command === "pnpm") throw new Error("unavailable");
-        if (++views < 5) throw new Error("version not visible yet");
-        return { stdout: '"0.3.0"' };
-      },
-    }),
-    /restored/
-  );
-  // Each step backs off from the start, but both stop at the same deadline
-  const lookup = backoff.slice(0, 4);
-  assert.deepEqual(time.waits, [...lookup, ...lookup, ...Array(7).fill(60000)]);
-});
 
 test("site preparation awaits installation and propagates install or build failures", async (t) => {
   const root = await fixture(t);
@@ -204,6 +344,9 @@ test("site preparation awaits installation and propagates install or build failu
     const result = prepare(root, "0.3.0", {
       install: async (_root, options) => {
         assert.equal(options.version, "0.3.0");
+        // A just-published release gets minutes, and the recovery the workflow documents
+        assert.ok(options.registryWaitMs >= minutes(5));
+        assert.match(options.recovery, /site\/README\.md/);
         await new Promise((resolve) => setImmediate(resolve));
         steps.push("install");
         if (failed === "install") throw new Error(failed);
