@@ -375,6 +375,8 @@ const NODE_FRAGMENTS: RawAttrTable = {
     date: null,
     paraId: null,
     resolved: null,
+    durableId: null,
+    dateUtc: null,
   },
   noteReference: {
     referenceXml: {

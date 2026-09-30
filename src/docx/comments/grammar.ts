@@ -1,5 +1,5 @@
 /**
- * The shapes this editor writes the three comment parts in, and the reading of those shapes.
+ * The shapes this editor writes the comment parts in, and the reading of those shapes.
  *
  * Each entry is written here and judged here, so the two halves cannot drift apart: a body written
  * by hand can be told from one this editor put out only where the writer and the reader agree on
@@ -16,7 +16,14 @@ import {
   parseXml,
   W_NS,
 } from "../../ooxml/xml";
-import { COMMENT_AUTHOR_PROVIDER, W14_NS, W15_NS } from "./constants";
+import {
+  COMMENT_AUTHOR_PROVIDER,
+  W14_NS,
+  W15_NS,
+  W16CEX_NS,
+  W16CID_NS,
+} from "./constants";
+import { writtenDate } from "./dates";
 import type { CommentReferenceData, CommentReplyData } from "./model";
 
 const ELEMENT_NODE = 1;
@@ -43,6 +50,18 @@ export const COMMENT_EX_ATTRIBUTES: ReadonlySet<string> = new Set([
   nameKey(W15_NS, "done"),
 ]);
 
+/** The attributes this editor writes on a `w16cid:commentId` */
+const COMMENT_ID_ATTRIBUTES: ReadonlySet<string> = new Set([
+  nameKey(W16CID_NS, "paraId"),
+  nameKey(W16CID_NS, "durableId"),
+]);
+
+/** `intelligentPlaceholder` and the extension list are Word's to write, never this editor's */
+const COMMENT_DATE_ATTRIBUTES: ReadonlySet<string> = new Set([
+  nameKey(W16CEX_NS, "durableId"),
+  nameKey(W16CEX_NS, "dateUtc"),
+]);
+
 const PERSON_ATTRIBUTES: ReadonlySet<string> = new Set([
   nameKey(W15_NS, "author"),
 ]);
@@ -65,17 +84,27 @@ function threadKeyOrNone(el: Element, localName: string): boolean {
   return value === null || THREAD_KEY.test(value);
 }
 
+/** An `ST_LongHexNumber` greater than 0 and less than 0x7FFFFFFF ([MS-DOCX] §2.8.3.1) */
+export function isDurableId(value: string | null): value is string {
+  if (value === null || !THREAD_KEY.test(value)) return false;
+  const number = Number.parseInt(value, 16);
+  return number > 0 && number < 0x7fffffff;
+}
+
 /**
  * The namespaces this package writes a declaration for, each under the prefix it writes it under.
  *
- * The writer declares a namespace on an entry it builds itself and nowhere else: `w` on a comment,
- * `w14` on the paragraph a thread key goes on, `w15` on an identity written into a part whose root
- * binds nothing.
+ * The writer declares a namespace on an entry it builds itself and on the root of a part it writes
+ * from nothing: `w` on a comment, `w14` on the paragraph a thread key goes on, `w15` on an identity
+ * written into a part whose root binds nothing, `w16cid` and `w16cex` on the ids and extensible
+ * parts.
  */
 const WRITTEN_NAMESPACES: ReadonlyMap<string, string> = new Map([
   ["w", NAMESPACES.w],
   ["w14", NAMESPACES.w14],
   ["w15", NAMESPACES.w15],
+  ["w16cid", NAMESPACES.w16cid],
+  ["w16cex", NAMESPACES.w16cex],
 ]);
 
 /**
@@ -280,6 +309,26 @@ export function wellFormedCommentExtension(entry: Element): boolean {
   );
 }
 
+/** Whether this editor's writer could have put out this durable id */
+export function wellFormedCommentId(entry: Element): boolean {
+  return (
+    attributesWithin(entry, COMMENT_ID_ATTRIBUTES) &&
+    entry.childNodes.length === 0 &&
+    THREAD_KEY.test(attributeByLocalName(entry, "paraId") ?? "") &&
+    isDurableId(attributeByLocalName(entry, "durableId"))
+  );
+}
+
+/** Whether this editor's writer could have put out this UTC date */
+export function wellFormedCommentDate(entry: Element): boolean {
+  return (
+    attributesWithin(entry, COMMENT_DATE_ATTRIBUTES) &&
+    entry.childNodes.length === 0 &&
+    isDurableId(attributeByLocalName(entry, "durableId")) &&
+    writtenDate(attributeByLocalName(entry, "dateUtc"))
+  );
+}
+
 /** Whether this editor's writer could have put out this recorded identity */
 export function wellFormedPerson(entry: Element): boolean {
   if (!attributesWithin(entry, PERSON_ATTRIBUTES)) return false;
@@ -321,6 +370,20 @@ export function renderCommentExtension(
     [qualify("w15", "paraId"), comment.paraId],
     ...parent,
     ...done,
+  ]);
+}
+
+export function renderCommentId(paraId: string, durableId: string): string {
+  return elementXml(qualify("w16cid", "commentId"), [
+    [qualify("w16cid", "paraId"), paraId],
+    [qualify("w16cid", "durableId"), durableId],
+  ]);
+}
+
+export function renderCommentDate(durableId: string, dateUtc: string): string {
+  return elementXml(qualify("w16cex", "commentExtensible"), [
+    [qualify("w16cex", "durableId"), durableId],
+    [qualify("w16cex", "dateUtc"), dateUtc],
   ]);
 }
 

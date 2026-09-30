@@ -142,6 +142,8 @@ function buildModelledRunChild(
             extensionXml: comment?.extensionXml ?? null,
             threadImported: true,
             replies: importedCommentReplies(comments, id),
+            durableId: comment?.durableId ?? null,
+            dateUtc: comment?.dateUtc ?? null,
           },
           null,
           marks

@@ -10,7 +10,12 @@ import {
   serializeXml,
 } from "../../ooxml/xml";
 import { relatedPartPath } from "../packageParts";
-import { COMMENTS_EXTENDED_REL_TYPE, COMMENTS_REL_TYPE } from "./constants";
+import {
+  COMMENTS_EXTENDED_REL_TYPE,
+  COMMENTS_EXTENSIBLE_REL_TYPE,
+  COMMENTS_IDS_REL_TYPE,
+  COMMENTS_REL_TYPE,
+} from "./constants";
 import { lastBodyParagraph } from "./grammar";
 import {
   commentAuthorId,
@@ -33,12 +38,42 @@ export interface ImportedComment {
    */
   authorId: string | null;
   initials: string | null;
+  /** As written: the author's wall clock (`./dates`) */
   date: string | null;
   paraId: string | null;
   parentParaId: string | null;
   resolved: boolean;
   extensionXml: string | null;
+  durableId: string | null;
+  /** As written, where the durable id reaches one */
+  dateUtc: string | null;
 }
+
+/** A `w16cid:commentId`, keyed by the thread key of the comment it stands for */
+export interface ImportedCommentId {
+  paraId: string;
+  durableId: string;
+}
+
+/** A `w16cex:commentExtensible` */
+export interface ImportedCommentDate {
+  durableId: string;
+  dateUtc: string | null;
+}
+
+export interface ImportedCommentPart<Entry> {
+  partPath: string | null;
+  xml: string | null;
+  hadBom: boolean;
+  ordered: readonly Entry[];
+}
+
+const NO_PART: ImportedCommentPart<never> = {
+  partPath: null,
+  xml: null,
+  hadBom: false,
+  ordered: [],
+};
 
 export interface ImportedComments {
   partPath: string | null;
@@ -53,6 +88,8 @@ export interface ImportedComments {
   extendedOrdered: readonly ImportedCommentExtension[];
   /** The people part as opened, which is where an author's identity is looked up */
   people: ImportedPeople;
+  ids: ImportedCommentPart<ImportedCommentId>;
+  extensible: ImportedCommentPart<ImportedCommentDate>;
 }
 
 export const NO_COMMENTS: ImportedComments = {
@@ -67,6 +104,8 @@ export const NO_COMMENTS: ImportedComments = {
   extendedHadBom: false,
   extendedOrdered: [],
   people: NO_PEOPLE,
+  ids: NO_PART,
+  extensible: NO_PART,
 };
 
 export interface ImportedCommentExtension {
@@ -138,6 +177,53 @@ function readCommentExtensions(
   return { partPath, xml: text, hadBom, byParaId, ordered };
 }
 
+function readCommentPart<Entry>(
+  parts: Map<string, Uint8Array>,
+  mainPartPath: string,
+  relType: string,
+  localName: string,
+  entryOf: (el: Element) => Entry | null
+): ImportedCommentPart<Entry> {
+  const partPath = relatedPartPath(parts, mainPartPath, relType);
+  if (partPath === null) return NO_PART;
+  const bytes = parts.get(partPath);
+  if (!bytes) return { ...NO_PART, partPath };
+  const { text, hadBom } = decodeUtf8(bytes);
+  const ordered = elementChildren(parseXml(text).documentElement).flatMap(
+    (el) => {
+      const entry = el.localName === localName ? entryOf(el) : null;
+      return entry === null ? [] : [entry];
+    }
+  );
+  return { partPath, xml: text, hadBom, ordered };
+}
+
+function commentIdOf(el: Element): ImportedCommentId | null {
+  const paraId = attributeByLocalName(el, "paraId");
+  const durableId = attributeByLocalName(el, "durableId");
+  return paraId === null || durableId === null ? null : { paraId, durableId };
+}
+
+function commentDateOf(el: Element): ImportedCommentDate | null {
+  const durableId = attributeByLocalName(el, "durableId");
+  return durableId === null
+    ? null
+    : { durableId, dateUtc: attributeByLocalName(el, "dateUtc") };
+}
+
+/** The first entry under a key wins, as in every other comment part */
+function firstByKey<Entry>(
+  entries: readonly Entry[],
+  key: (entry: Entry) => string,
+  value: (entry: Entry) => string | null
+): ReadonlyMap<string, string | null> {
+  const found = new Map<string, string | null>();
+  for (const entry of entries) {
+    if (!found.has(key(entry))) found.set(key(entry), value(entry));
+  }
+  return found;
+}
+
 /**
  * Reads the Comments part related from the main document story.
  *
@@ -151,13 +237,39 @@ export function readComments(
 ): ImportedComments {
   const people = readPeople(parts, mainPartPath);
   const extensions = readCommentExtensions(parts, mainPartPath);
+  const ids = readCommentPart(
+    parts,
+    mainPartPath,
+    COMMENTS_IDS_REL_TYPE,
+    "commentId",
+    commentIdOf
+  );
+  const extensible = readCommentPart(
+    parts,
+    mainPartPath,
+    COMMENTS_EXTENSIBLE_REL_TYPE,
+    "commentExtensible",
+    commentDateOf
+  );
   const aside = {
     people,
     extendedPartPath: extensions.partPath,
     extendedXml: extensions.xml,
     extendedHadBom: extensions.hadBom,
     extendedOrdered: extensions.ordered,
+    ids,
+    extensible,
   };
+  const durableIds = firstByKey(
+    ids.ordered,
+    (entry) => entry.paraId,
+    (entry) => entry.durableId
+  );
+  const utcDates = firstByKey(
+    extensible.ordered,
+    (entry) => entry.durableId,
+    (entry) => entry.dateUtc
+  );
   const partPath = relatedPartPath(parts, mainPartPath, COMMENTS_REL_TYPE);
   if (partPath === null) return { ...NO_COMMENTS, ...aside };
 
@@ -174,6 +286,8 @@ export function readComments(
       const paraId = lastParagraphId(el);
       const extension = paraId ? extensions.byParaId.get(paraId) : undefined;
       const author = attributeByLocalName(el, "author");
+      const durableId =
+        paraId === null ? null : (durableIds.get(paraId) ?? null);
       return [
         {
           id,
@@ -185,6 +299,9 @@ export function readComments(
           parentParaId: extension?.parentParaId ?? null,
           resolved: extension?.resolved ?? false,
           extensionXml: extension?.xml ?? null,
+          durableId,
+          dateUtc:
+            durableId === null ? null : (utcDates.get(durableId) ?? null),
         },
       ];
     });

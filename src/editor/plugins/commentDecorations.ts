@@ -12,6 +12,7 @@
 import type { Node as PMNode } from "prosemirror-model";
 import type { Plugin } from "prosemirror-state";
 import { Decoration, DecorationSet } from "prosemirror-view";
+import { commentInstant } from "../../docx/comments/dates";
 import { storyKey, storyOf, storyText } from "../../docx/story";
 import { editorClassNames } from "../../styles/classNames";
 import {
@@ -66,7 +67,10 @@ function commentsIn(doc: PMNode): readonly DocumentComment[] {
       author: stringAttr(node.attrs.author),
       authorId: stringAttr(node.attrs.authorId),
       initials: stringAttr(node.attrs.initials),
-      date: stringAttr(node.attrs.date),
+      date: commentInstant(
+        stringAttr(node.attrs.date),
+        stringAttr(node.attrs.dateUtc)
+      ),
       text: bodyText(doc, id),
       from: anchored ? start + 1 : point,
       to: anchored ? end : point,
@@ -78,7 +82,7 @@ function commentsIn(doc: PMNode): readonly DocumentComment[] {
         author: reply.author,
         authorId: reply.authorId,
         initials: reply.initials,
-        date: reply.date,
+        date: commentInstant(stringAttr(reply.date), stringAttr(reply.dateUtc)),
         text: bodyText(doc, reply.id),
       })),
     };

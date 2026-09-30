@@ -1000,6 +1000,9 @@ export const docxSchema = new Schema({
         extensionXml: { default: null },
         threadImported: { default: false },
         replies: { default: [] },
+        // `date` is the author's wall clock and `dateUtc` the instant (`docx/comments/dates`)
+        durableId: { default: null },
+        dateUtc: { default: null },
       },
       toDOM(node) {
         return [
@@ -1020,6 +1023,8 @@ export const docxSchema = new Schema({
             "data-comment-thread-imported":
               node.attrs.threadImported === true ? "1" : undefined,
             "data-comment-replies": JSON.stringify(node.attrs.replies ?? []),
+            "data-comment-durable-id": text(node.attrs.durableId),
+            "data-comment-date-utc": text(node.attrs.dateUtc),
           },
         ];
       },
@@ -1061,6 +1066,8 @@ export const docxSchema = new Schema({
               threadImported:
                 dom.getAttribute("data-comment-thread-imported") === "1",
               replies,
+              durableId: dom.getAttribute("data-comment-durable-id"),
+              dateUtc: dom.getAttribute("data-comment-date-utc"),
             };
           },
         },

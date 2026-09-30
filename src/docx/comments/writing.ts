@@ -25,6 +25,7 @@ import {
   storyOf,
   withThreadKeyOn,
 } from "../story";
+import { planDurableParts } from "./durable";
 import {
   arrivedEntries,
   renderCommentExtension,
@@ -34,6 +35,8 @@ import {
   type CommentReferenceData,
   type CommentReplyData,
   commentReferencesIn,
+  currentCommentBodies,
+  originalThreadIds,
 } from "./model";
 import { commentsExtendedPart, commentsPart, peoplePart } from "./parts";
 import { planPeoplePart } from "./people";
@@ -239,15 +242,19 @@ function carriesThreadMetadata(
 }
 
 /**
- * The thread key belongs on the entry where the comment has thread state to hang off it, and
- * where the entry arrived carrying one: a key already written is what its state is keyed by
- * elsewhere, so a rewrite of what the comment says keeps it.
+ * The thread key belongs on the entry where the comment has thread state or a durable id to hang
+ * off it, and where the entry arrived carrying one: a key already written is what its state is
+ * keyed by elsewhere, so a rewrite of what the comment says keeps it.
  */
 function keyedEntry(
   comment: CommentReferenceData | CommentReplyData,
   arrivedKeyed: ReadonlySet<string>
 ): boolean {
-  return carriesThreadMetadata(comment) || arrivedKeyed.has(comment.id);
+  return (
+    carriesThreadMetadata(comment) ||
+    comment.durableId !== null ||
+    arrivedKeyed.has(comment.id)
+  );
 }
 
 /** The two ends of a `w:comment` this editor writes from nothing, its identity on the opening tag */
@@ -325,35 +332,6 @@ export const EXTENSIONS_MARKUP: RootDeclarations = {
   namespaces: { w15: NAMESPACES.w15 },
 };
 
-export function currentCommentBodies(
-  references: ReadonlyMap<string, CommentReferenceData>
-): ReadonlyMap<string, CommentReferenceData | CommentReplyData> {
-  const comments = new Map<string, CommentReferenceData | CommentReplyData>();
-  for (const [id, comment] of references) {
-    comments.set(id, comment);
-    for (const reply of comment.replies) comments.set(reply.id, reply);
-  }
-  return comments;
-}
-
-function originalThreadIds(
-  comments: ImportedComments,
-  rootIds: ReadonlySet<string>
-): ReadonlySet<string> {
-  const ids = new Set(rootIds);
-  const pending = Array.from(rootIds);
-  while (pending.length > 0) {
-    const parent = pending.shift();
-    if (parent === undefined) break;
-    for (const reply of comments.repliesByParentId.get(parent) ?? []) {
-      if (ids.has(reply.id)) continue;
-      ids.add(reply.id);
-      pending.push(reply.id);
-    }
-  }
-  return ids;
-}
-
 function commentsXml(
   doc: PMNode,
   session: SessionStore,
@@ -424,8 +402,9 @@ function commentsXml(
 }
 
 /**
- * Plans the Comments part, relationship and content type only when comment state changed, and the
- * people part beside them for an author whose identity the document has yet to record.
+ * Plans the Comments part, relationship and content type only when comment state changed, the
+ * people part beside them for an author whose identity the document has yet to record, and the
+ * ids and extensible parts that date a comment (`./durable`).
  */
 function planCommentParts(
   doc: PMNode,
@@ -499,6 +478,9 @@ function planCommentParts(
       context
     );
     for (const [path, bytes] of people ?? []) parts.set(path, bytes);
+    for (const [path, bytes] of planDurableParts(doc, session, context)) {
+      parts.set(path, bytes);
+    }
   }
   return parts;
 }

@@ -41,6 +41,14 @@ const COMMENTS_EXTENDED_TYPE =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.commentsExtended+xml";
 const PEOPLE_TYPE =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.people+xml";
+const COMMENTS_IDS_TYPE =
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.commentsIds+xml";
+const COMMENTS_EXTENSIBLE_TYPE =
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.commentsExtensible+xml";
+/** The ids and extensible parts a new comment is dated in, added after the comment writer's own */
+const DATED_OVERRIDES =
+  `<Override PartName="/word/commentsIds.xml" ContentType="${COMMENTS_IDS_TYPE}"/>` +
+  `<Override PartName="/word/commentsExtensible.xml" ContentType="${COMMENTS_EXTENSIBLE_TYPE}"/>`;
 const encoder = new TextEncoder();
 
 function rels(entries: string): Uint8Array {
@@ -230,13 +238,14 @@ describe("contentTypeWriter", () => {
       `<Types xmlns="${TYPES_NS}">` +
         '<Default Extension="png" ContentType="image/png"/>' +
         `<Override PartName="/word/comments.xml" ContentType="${COMMENTS_TYPE}"/>` +
+        DATED_OVERRIDES +
         `${DOCUMENT_OVERRIDE}</Types>`
     );
   });
 
   /**
-   * A comment settled by an author the file has yet to record adds three parts, and each writer
-   * used to prepend its own declaration, so the three came out in the reverse order of writing.
+   * A comment settled by an author the file has yet to record adds several parts, and each writer
+   * used to prepend its own declaration, so they came out in the reverse order of writing.
    */
   it("writes several overrides in the order their parts were added", () => {
     const parts = unzipSync(
@@ -265,6 +274,7 @@ describe("contentTypeWriter", () => {
         `<Override PartName="/word/comments.xml" ContentType="${COMMENTS_TYPE}"/>` +
         `<Override PartName="/word/commentsExtended.xml" ContentType="${COMMENTS_EXTENDED_TYPE}"/>` +
         `<Override PartName="/word/people.xml" ContentType="${PEOPLE_TYPE}"/>` +
+        DATED_OVERRIDES +
         `${DOCUMENT_OVERRIDE}</Types>`
     );
   });

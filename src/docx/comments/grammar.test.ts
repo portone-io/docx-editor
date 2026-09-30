@@ -208,6 +208,8 @@ const said = {
   commentXml: null,
   imported: false,
   extensionXml: null,
+  durableId: null,
+  dateUtc: null,
 };
 
 const alone = (xml: string): Element =>

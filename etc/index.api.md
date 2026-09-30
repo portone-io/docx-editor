@@ -259,7 +259,7 @@ export type EditRefusalAction = "insert" | "delete" | "replace" | "format";
 export type EditRefusalReason = "protection" | "lock" | "controlEdge" | "preserved" | "section";
 
 // @public
-export type ExportPartName = "media" | "numbering" | "comments" | "commentsExtended" | "people" | "footnotes" | "endnotes";
+export type ExportPartName = "media" | "numbering" | "comments" | "commentsExtended" | "people" | "commentsIds" | "commentsExtensible" | "footnotes" | "endnotes";
 
 // @public
 export interface ExportProblem {

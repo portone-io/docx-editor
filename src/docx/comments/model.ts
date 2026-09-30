@@ -15,12 +15,15 @@ export interface CommentReferenceData {
   author: string | null;
   authorId: string | null;
   initials: string | null;
+  /** As the file writes it: the author's wall clock (`./dates`) */
   date: string | null;
   paraId: string;
   resolved: boolean;
   extensionXml: string | null;
   threadImported: boolean;
   replies: readonly CommentReplyData[];
+  durableId: string | null;
+  dateUtc: string | null;
 }
 
 export interface CommentReplyData {
@@ -32,6 +35,8 @@ export interface CommentReplyData {
   paraId: string;
   parentParaId: string;
   extensionXml: string | null;
+  durableId: string | null;
+  dateUtc: string | null;
 }
 
 /** A stable Word paragraph id for a comment created or upgraded by the editor. */
@@ -75,6 +80,8 @@ export function importedCommentReplies(
       paraId,
       parentParaId,
       extensionXml: reply.extensionXml,
+      durableId: reply.durableId,
+      dateUtc: reply.dateUtc,
     });
     const children = comments.repliesByParentId.get(reply.id) ?? [];
     for (let index = children.length - 1; index >= 0; index -= 1) {
@@ -82,6 +89,36 @@ export function importedCommentReplies(
     }
   }
   return replies;
+}
+
+export function currentCommentBodies(
+  references: ReadonlyMap<string, CommentReferenceData>
+): ReadonlyMap<string, CommentReferenceData | CommentReplyData> {
+  const comments = new Map<string, CommentReferenceData | CommentReplyData>();
+  for (const [id, comment] of references) {
+    comments.set(id, comment);
+    for (const reply of comment.replies) comments.set(reply.id, reply);
+  }
+  return comments;
+}
+
+/** These comments and every reply under them, however deep, in the part as it arrived */
+export function originalThreadIds(
+  comments: ImportedComments,
+  rootIds: ReadonlySet<string>
+): ReadonlySet<string> {
+  const ids = new Set(rootIds);
+  const pending = Array.from(rootIds);
+  while (pending.length > 0) {
+    const parent = pending.shift();
+    if (parent === undefined) break;
+    for (const reply of comments.repliesByParentId.get(parent) ?? []) {
+      if (ids.has(reply.id)) continue;
+      ids.add(reply.id);
+      pending.push(reply.id);
+    }
+  }
+  return ids;
 }
 
 function nullableString(value: unknown): string | null {
@@ -107,6 +144,8 @@ function replyData(value: unknown): CommentReplyData[] {
         paraId,
         parentParaId,
         extensionXml: nullableString(entry.extensionXml),
+        durableId: nullableString(entry.durableId),
+        dateUtc: nullableString(entry.dateUtc),
       },
     ];
   });
@@ -127,6 +166,8 @@ function referenceData(node: PMNode): CommentReferenceData | null {
     extensionXml: nullableString(node.attrs.extensionXml),
     threadImported: node.attrs.threadImported === true,
     replies: replyData(node.attrs.replies),
+    durableId: nullableString(node.attrs.durableId),
+    dateUtc: nullableString(node.attrs.dateUtc),
   };
 }
 

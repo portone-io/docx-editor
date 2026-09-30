@@ -200,6 +200,26 @@ describe("the comments panel", () => {
     unmount();
   });
 
+  it("shows when each comment was written on the reader's clock, in the browser's language", () => {
+    const { unmount } = mount(datedCommentsDocument());
+    click(button("Show comments"));
+
+    const dates = Array.from(
+      host.querySelectorAll(`.${"docx-editor-comment-date"}`)
+    ).map((element) => element.textContent);
+    // Neither comment records a UTC date, so its w:date is the wall clock it is shown as
+    const shown = new Intl.DateTimeFormat(undefined, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
+    expect(dates).toEqual([
+      shown.format(new Date(2026, 7, 21, 10, 0)),
+      shown.format(new Date(2026, 7, 20, 10, 0)),
+    ]);
+    expect(dates.join(" ")).not.toContain("UTC");
+    unmount();
+  });
+
   it("keeps the all-comments scroll position across selection changes", () => {
     const { unmount } = mount(commentDocument());
     click(button("Show comments"));

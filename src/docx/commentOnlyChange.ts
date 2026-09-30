@@ -38,9 +38,9 @@ export type CommentOnlyVerdict =
  * Whether the submitted file differs from the original in nothing but comments, every one of them
  * added, edited, moved, deleted, replied to or settled by the author with this identity.
  *
- * Every part of the package has to arrive as it left, save for the three a comment is written
+ * Every part of the package has to arrive as it left, save for the parts a comment is written
  * across and the relationship and content type they are declared with; the document story itself
- * has to read as it did, comments aside. Those three parts are read entry by entry instead
+ * has to read as it did, comments aside. Those parts are read entry by entry instead
  * (`./comments/policy`), since a comment edit is free to rewrite them and something has to say
  * what it may have written there. A comment carrying no recorded identity is everyone's to
  * edit here as it is in the editor (`schema/protection`). A comment that appeared carries this

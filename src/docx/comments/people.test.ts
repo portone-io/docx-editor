@@ -406,10 +406,16 @@ describe("the people part", () => {
       peopleXml(person("Ada", COMMENT_AUTHOR_PROVIDER, "u_ada"))
     );
     forged["word/_rels/document.xml.rels"] = encoder.encode(
-      relationships(COMMENTS_REL + PEOPLE_REL)
+      decode(forged["word/_rels/document.xml.rels"]).replace(
+        "</Relationships>",
+        `<Relationship Id="rIdForged" Target="people.xml" Type="${PEOPLE_REL_TYPE}"/></Relationships>`
+      )
     );
     forged["[Content_Types].xml"] = encoder.encode(
-      contentTypes(COMMENTS_OVERRIDE + PEOPLE_OVERRIDE)
+      decode(forged["[Content_Types].xml"]).replace(
+        "</Types>",
+        `${PEOPLE_OVERRIDE}</Types>`
+      )
     );
     expect(onlyCommentsChangedBy(bytes, zipSync(forged), "u_ada")).toEqual({
       ok: false,

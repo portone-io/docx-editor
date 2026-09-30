@@ -58,7 +58,7 @@ function applied(state: EditorState, command: Command): EditorState {
   return next;
 }
 
-/** The document with a comment of this author's on "beta", settled so all three parts are written */
+/** The document with a comment of this author's on "beta", settled so every comment part is written */
 function commentedAndSettled(doc: EditorState["doc"]): EditorState {
   const opened = createEditorState(doc);
   const { from, to } = rangeOfText(opened.doc, "beta");
@@ -131,7 +131,7 @@ describe("the protection policy registry", () => {
 
 describe("the comments policy and the comment part planners", () => {
   /**
-   * The planners write the three parts and the verifier excuses them from the byte comparison,
+   * The planners write the comment parts and the verifier excuses them from the byte comparison,
    * and both sides read the policy for which parts those are. A relationship or a content type
    * the planners wrote that the policy did not name would be a part the writer adds and the
    * verifier refuses; one the policy named that no planner writes would be a part a submission

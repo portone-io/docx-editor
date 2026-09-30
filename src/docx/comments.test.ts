@@ -214,7 +214,8 @@ describe("WordprocessingML comments", () => {
         id: "4",
         author: "Ada",
         initials: "AL",
-        date: "2026-08-22T01:02:03Z",
+        // `w:date` alone is the author's wall clock, read on the runtime's, which is Seoul's here
+        date: "2026-08-21T16:02:03.000Z",
         text: "Check this",
       }),
     ]);

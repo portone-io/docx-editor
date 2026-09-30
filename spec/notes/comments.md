@@ -26,6 +26,42 @@ An untouched part is preserved byte-identically, and a new person is spliced int
 
 Observed 2026-09-02 against the Open XML SDK reference for `Person` and `PresenceInfo` (`DocumentFormat.OpenXml.Office2013.Word`); the [MS-DOCX] text is not held locally, so its section numbers were not verified and are not cited.
 
+## When a comment was written
+
+A comment's `w:date` is an `ST_DateTime` whose meaning the format leaves to its context (ECMA-376 Part 1 §17.13.4.2, §17.18.9).
+Word writes its author's wall-clock time there, followed by a `Z` it does not mean, and shows those digits unchanged wherever the file is opened.
+The instant is recorded in parts defined in [MS-DOCX], not ECMA-376:
+
+- The ids part, `commentsIds` (§2.1.4), holds a `w16cid:commentId` per comment (§2.8.3.1, §2.8.3.2, namespace `http://schemas.microsoft.com/office/word/2016/wordml/cid`).
+  Its `w16cid:paraId` is the `w14:paraId` of the comment's last paragraph, the same thread key the extended part uses, and its `w16cid:durableId` is an `ST_LongHexNumber` greater than 0 and less than `0x7FFFFFFF`.
+- The extensible part, `commentsExtensible` (§2.1.5), holds a `w16cex:commentExtensible` per comment (§2.10.3.1, §2.10.3.2, namespace `http://schemas.microsoft.com/office/word/2018/wordml/cex`), keyed by that durable id.
+  Its optional `w16cex:dateUtc` is an `ST_DateTime` defined to be in UTC, unlike `w:date`.
+  It may also carry `w16cex:intelligentPlaceholder` and an extension list, and the part's root may close on an extension list of its own.
+
+[MS-DOCX] names neither part's relationship or content type.
+The relationship types `http://schemas.microsoft.com/office/2016/09/relationships/commentsIds` and `http://schemas.microsoft.com/office/2018/08/relationships/commentsExtensible`, and the content types `application/vnd.openxmlformats-officedocument.wordprocessingml.commentsIds+xml` and `application/vnd.openxmlformats-officedocument.wordprocessingml.commentsExtensible+xml`, are the ones the Open XML SDK declares for `WordprocessingCommentsIdsPart` and `WordCommentsExtensiblePart`.
+Word 2013 and earlier write neither part, and Word 2016 writes the ids part without the extensible one (Appendix B notes to §2.1.4 and §2.1.5).
+
+What we decide:
+
+- A comment's instant is the `dateUtc` its thread key reaches through the ids part and the extensible part.
+  Without one, `w:date` is read as a floating wall-clock time on the reader's own clock, with any zone designator set aside, which is what Word shows for the same file.
+  A `w:date` that names no calendar time is handed on as written.
+- A comment or reply written in the editor records its author's wall-clock time in `w:date` and the instant in a new entry of each part.
+  The dates are written to the second in the form Word writes, `YYYY-MM-DDTHH:MM:SSZ`.
+  Its thread key goes on its last paragraph so the ids part has something to key.
+  The durable id is minted clear of every durable id either part arrived holding, entries naming no comment among them, so that a date left behind under an id is never read as the new comment's.
+- A date that names no instant is written into `w:date` as given, and the comment gets no entry in either part.
+  So does every comment written into a package with no `[Content_Types].xml` in which the parts would have to be created: it loses its instant but still reads as its author's clock time, while every other part such a package would need is refused over.
+- Entries are spliced into a part that arrived, ahead of any extension list closing it, and the bytes of every other entry and of the text between entries stay as they arrived.
+  Deleting a comment or reply through the comment command takes out the entry its thread key names in the ids part and the entry its durable id names in the extensible part; an entry naming no comment the story stood behind stays.
+- The verifier accepts, in the ids and extensible parts, an entry that arrived unchanged, or a new one of exactly the shape above for a comment that appeared: a durable id the arrived file never spent and the submission names once, and a `dateUtc` no further than fourteen hours, the widest `xsd:dateTime` offset, from its comment's `w:date`.
+  An entry of a comment still standing may not be taken out of any comment part.
+- A comment an earlier version of this editor wrote carries a UTC time in `w:date` and no entry in either part, so it reads as that time on every clock, as it does in Word.
+
+Observed 2026-09-30 against Microsoft [MS-DOCX] revision 23.0 (2026-08-18), sections as cited, read at learn.microsoft.com; ECMA-376 5th edition Part 1 as cited; the Open XML SDK part definitions (`data/parts/WordprocessingCommentsIdsPart.json`, `WordCommentsExtensiblePart.json` in `dotnet/Open-XML-SDK`).
+Word's handling of `w:date` is an interoperability report (the Aspose forum thread "Setting comment timestamps not reflected in Word document when opening", 2024), not a statement of the specification, and no file Word saved is committed to check it against.
+
 ## Anchors
 
 A range comment uses matching start and end markers plus a reference with the same id. A reference without either range marker is a point comment anchored at the reference position. An unmatched start or end marker is also interpreted as a point anchor when a comment reference carries the same id; a marker without that reference is non-conformant. New range comments create the three main-story elements together; removal deletes every supported marker and reference represented for that id.

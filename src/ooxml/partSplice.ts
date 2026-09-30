@@ -24,14 +24,18 @@ export interface PartChild {
 
 /**
  * What goes into a part's root. Every field is optional and they compose: the children are
- * replaced first, then the inserts are placed among them, then the prepend and the append go on
- * either end, and last the opening tag is rewritten.
+ * replaced first, then the ones `keep` turns down are taken out, then the inserts are placed among
+ * them, then the prepend and the append go on either end, and last the opening tag is rewritten.
  */
 export interface PartSplice {
   /** The root's local name. Any prefix, a self-closing root, a prolog and comments are all handled */
   root: string;
-  /** Children put at the spot `CHILD_ORDER[root]` lays down, ahead of the first child that order puts after them */
+  /** Takes out each child whose text this answers false for, leaving the text between children */
+  keep?: (child: string) => boolean;
+  /** Children put at the spot `order` lays down, ahead of the first child that order puts after them */
   insert?: readonly PartChild[];
+  /** The order `insert` places by, for a root outside `wml.xsd`, which `CHILD_ORDER` is held to */
+  order?: readonly string[];
   /** Put in as the last children */
   append?: string;
   /** Put in right after the opening tag */
@@ -96,9 +100,15 @@ export function partRootProblem(xml: string, root: string): string | null {
   return "problem" in reading ? reading.problem : null;
 }
 
-/** The direct children of a root, each as its local name and where its tag starts in `inner` */
-function directChildren(inner: string): { name: string; at: number }[] {
-  const children: { name: string; at: number }[] = [];
+interface ChildSpan {
+  name: string;
+  at: number;
+  end: number;
+}
+
+/** The direct children of a root, each as its local name and the stretch of `inner` it takes */
+function directChildren(inner: string): ChildSpan[] {
+  const children: ChildSpan[] = [];
   let depth = 0;
   let at = 0;
   for (;;) {
@@ -107,12 +117,30 @@ function directChildren(inner: string): { name: string; at: number }[] {
     const tag = readTag(inner, lt);
     if (tag === null) return children;
     if (depth === 0 && (tag.kind === "open" || tag.kind === "empty")) {
-      children.push({ name: localPart(tag.name), at: lt });
+      children.push({ name: localPart(tag.name), at: lt, end: tag.end });
     }
     if (tag.kind === "open") depth += 1;
-    if (tag.kind === "close") depth -= 1;
+    if (tag.kind === "close") {
+      depth -= 1;
+      const last = children.at(-1);
+      if (depth === 0 && last !== undefined) last.end = tag.end;
+    }
     at = tag.end;
   }
+}
+
+function withoutChildren(
+  inner: string,
+  keep: (child: string) => boolean
+): string {
+  let out = "";
+  let from = 0;
+  for (const { at, end } of directChildren(inner)) {
+    if (keep(inner.slice(at, end))) continue;
+    out += inner.slice(from, at);
+    from = end;
+  }
+  return out + inner.slice(from);
 }
 
 /**
@@ -141,10 +169,11 @@ function insertionAt(
 function withInserted(
   inner: string,
   inserts: readonly PartChild[],
-  root: string
+  root: string,
+  given: readonly string[] | undefined
 ): string {
   if (inserts.length === 0) return inner;
-  const order = childOrderOf(root);
+  const order = given ?? childOrderOf(root);
   const children = directChildren(inner);
   const placed = inserts
     .map((child) => ({
@@ -175,13 +204,14 @@ export function splicePart(xml: string, splice: PartSplice): string {
   }
   const { openAt, open, closeAt } = reading.root;
   const inner = closeAt === null ? "" : xml.slice(open.end, closeAt);
+  const replaced = splice.replaceChildren ?? inner;
+  const kept =
+    splice.keep === undefined
+      ? replaced
+      : withoutChildren(replaced, splice.keep);
   const children =
     (splice.prepend ?? "") +
-    withInserted(
-      splice.replaceChildren ?? inner,
-      splice.insert ?? [],
-      splice.root
-    ) +
+    withInserted(kept, splice.insert ?? [], splice.root, splice.order) +
     (splice.append ?? "");
 
   const openTag = xml.slice(openAt, open.end);

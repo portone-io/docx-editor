@@ -52,17 +52,15 @@ import {
   extensionsChanged,
   extensionsRootProblem,
 } from "./comments";
+import { rewrittenDurableParts } from "./comments/durable";
+import { currentCommentBodies } from "./comments/model";
 import {
   commentsExtendedPart,
   commentsPart,
   peoplePart,
 } from "./comments/parts";
 import { unrecordedAuthors } from "./comments/people";
-import {
-  COMMENT_MARKUP,
-  currentCommentBodies,
-  EXTENSIONS_MARKUP,
-} from "./comments/writing";
+import { COMMENT_MARKUP, EXTENSIONS_MARKUP } from "./comments/writing";
 import type { ExportOptions } from "./exportDocx";
 import { HEADER_MARKUP } from "./headersFooters";
 import { identityProblems, identityProblemsInStories } from "./identities";
@@ -463,7 +461,13 @@ const listDefinitions: ExportInvariant = {
 function addedCommentsPart(
   doc: PMNode,
   session: SessionStore
-): "comments" | "commentsExtended" | "people" | null {
+):
+  | "comments"
+  | "commentsExtended"
+  | "people"
+  | "commentsIds"
+  | "commentsExtensible"
+  | null {
   const bodyChanged = commentsChanged(doc, session);
   const threadChanged = extensionsChanged(doc, session);
   if (!bodyChanged && !threadChanged) return null;
@@ -479,7 +483,8 @@ function addedCommentsPart(
   ) {
     return "commentsExtended";
   }
-  return bodyChanged &&
+  if (
+    bodyChanged &&
     (peoplePart.pathIn(session) === null ||
       session.comments.people.xml === null) &&
     unrecordedAuthors(
@@ -487,7 +492,12 @@ function addedCommentsPart(
       session.comments.people,
       unattributedCommentAuthors(session.comments.ordered)
     ).size > 0
-    ? "people"
+  ) {
+    return "people";
+  }
+  return bodyChanged
+    ? (rewrittenDurableParts(doc, session).find((part) => part.xml === null)
+        ?.name ?? null)
     : null;
 }
 
@@ -560,6 +570,16 @@ const commentPartRoots: ExportInvariant = {
         });
       }
     }
+    if (commentsChanged(doc, session)) {
+      for (const part of rewrittenDurableParts(doc, session)) {
+        if (part.rootProblem === null) continue;
+        problems.push({
+          code: "malformed-xml",
+          message: part.rootProblem,
+          reason: { kind: "unwritable-part-root", part: part.name },
+        });
+      }
+    }
     return problems;
   },
 };
@@ -622,6 +642,11 @@ function rewrittenParts(
     (commentReferencesIn(doc).size > 0 || extendedPartPath !== null)
   ) {
     add(commentsExtendedPart.pathIn(session), extendedXml, EXTENSIONS_MARKUP);
+  }
+  if (commentsChanged(doc, session)) {
+    for (const part of rewrittenDurableParts(doc, session)) {
+      add(part.path, part.xml, part.declarations);
+    }
   }
   if (startedLists(doc, session).defined.size > 0) {
     const path = session.numberingPartPath;
