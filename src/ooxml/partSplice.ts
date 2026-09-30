@@ -22,16 +22,26 @@ export interface PartChild {
   xml: string;
 }
 
+/** A child the part already holds, as `keep` is handed it */
+export interface HeldChild extends PartChild {
+  /** As its tag spells them, and null where they cannot be read */
+  attrs: readonly XmlAttr[] | null;
+}
+
 /**
  * What goes into a part's root. Every field is optional and they compose: the children are
- * replaced first, then the inserts are placed among them, then the prepend and the append go on
- * either end, and last the opening tag is rewritten.
+ * replaced first, then the ones `keep` turns down are taken out, then the inserts are placed among
+ * them, then the prepend and the append go on either end, and last the opening tag is rewritten.
  */
 export interface PartSplice {
   /** The root's local name. Any prefix, a self-closing root, a prolog and comments are all handled */
   root: string;
-  /** Children put at the spot `CHILD_ORDER[root]` lays down, ahead of the first child that order puts after them */
+  /** Takes out each child this answers false for, leaving the text between children */
+  keep?: (child: HeldChild) => boolean;
+  /** Children put at the spot `order` lays down, ahead of the first child that order puts after them */
   insert?: readonly PartChild[];
+  /** The order `insert` places by, for a root outside `wml.xsd`, which `CHILD_ORDER` is held to */
+  order?: readonly string[];
   /** Put in as the last children */
   append?: string;
   /** Put in right after the opening tag */
@@ -96,9 +106,22 @@ export function partRootProblem(xml: string, root: string): string | null {
   return "problem" in reading ? reading.problem : null;
 }
 
-/** The direct children of a root, each as its local name and where its tag starts in `inner` */
-function directChildren(inner: string): { name: string; at: number }[] {
-  const children: { name: string; at: number }[] = [];
+interface ChildSpan {
+  name: string;
+  at: number;
+  end: number;
+  open: Tag;
+}
+
+function tagAttributes(text: string, tag: Tag): XmlAttr[] | null {
+  return parseAttrs(
+    text.slice(tag.nameEnd, tag.end - (tag.kind === "empty" ? 2 : 1))
+  );
+}
+
+/** The direct children of a root, each as its local name and the stretch of `inner` it takes */
+function directChildren(inner: string): ChildSpan[] {
+  const children: ChildSpan[] = [];
   let depth = 0;
   let at = 0;
   for (;;) {
@@ -107,12 +130,36 @@ function directChildren(inner: string): { name: string; at: number }[] {
     const tag = readTag(inner, lt);
     if (tag === null) return children;
     if (depth === 0 && (tag.kind === "open" || tag.kind === "empty")) {
-      children.push({ name: localPart(tag.name), at: lt });
+      children.push({
+        name: localPart(tag.name),
+        at: lt,
+        end: tag.end,
+        open: tag,
+      });
     }
     if (tag.kind === "open") depth += 1;
-    if (tag.kind === "close") depth -= 1;
+    if (tag.kind === "close") {
+      depth -= 1;
+      const last = children.at(-1);
+      if (depth === 0 && last !== undefined) last.end = tag.end;
+    }
     at = tag.end;
   }
+}
+
+function withoutChildren(
+  inner: string,
+  keep: (child: HeldChild) => boolean
+): string {
+  let out = "";
+  let from = 0;
+  for (const { name, at, end, open } of directChildren(inner)) {
+    const xml = inner.slice(at, end);
+    if (keep({ name, xml, attrs: tagAttributes(inner, open) })) continue;
+    out += inner.slice(from, at);
+    from = end;
+  }
+  return out + inner.slice(from);
 }
 
 /**
@@ -126,13 +173,13 @@ function insertionAt(
   name: string,
   order: readonly string[],
   root: string,
-  end: number
+  end: number,
+  fromRegistry: boolean
 ): number {
   const target = order.indexOf(name);
   if (target === -1) {
-    throw new Error(
-      `${name} is not a child the order of ${root} knows; add it to CHILD_ORDER`
-    );
+    const fix = fromRegistry ? "; add it to CHILD_ORDER" : "";
+    throw new Error(`${name} is not a child the order of ${root} knows${fix}`);
   }
   const after = children.find((child) => order.indexOf(child.name) > target);
   return after === undefined ? end : after.at;
@@ -141,14 +188,22 @@ function insertionAt(
 function withInserted(
   inner: string,
   inserts: readonly PartChild[],
-  root: string
+  root: string,
+  given: readonly string[] | undefined
 ): string {
   if (inserts.length === 0) return inner;
-  const order = childOrderOf(root);
+  const order = given ?? childOrderOf(root);
   const children = directChildren(inner);
   const placed = inserts
     .map((child) => ({
-      at: insertionAt(children, child.name, order, root, inner.length),
+      at: insertionAt(
+        children,
+        child.name,
+        order,
+        root,
+        inner.length,
+        given === undefined
+      ),
       xml: child.xml,
       rank: order.indexOf(child.name),
     }))
@@ -175,13 +230,14 @@ export function splicePart(xml: string, splice: PartSplice): string {
   }
   const { openAt, open, closeAt } = reading.root;
   const inner = closeAt === null ? "" : xml.slice(open.end, closeAt);
+  const replaced = splice.replaceChildren ?? inner;
+  const kept =
+    splice.keep === undefined
+      ? replaced
+      : withoutChildren(replaced, splice.keep);
   const children =
     (splice.prepend ?? "") +
-    withInserted(
-      splice.replaceChildren ?? inner,
-      splice.insert ?? [],
-      splice.root
-    ) +
+    withInserted(kept, splice.insert ?? [], splice.root, splice.order) +
     (splice.append ?? "");
 
   const openTag = xml.slice(openAt, open.end);
@@ -244,9 +300,7 @@ export function rootBindingConflict(
   const at = rootTagAt(xml);
   const tag = at === -1 ? null : readTag(xml, at);
   if (tag === null || tag.kind === "close") return null;
-  const attrs = parseAttrs(
-    xml.slice(tag.nameEnd, tag.end - (tag.kind === "empty" ? 2 : 1))
-  );
+  const attrs = tagAttributes(xml, tag);
   return attrs === null
     ? null
     : conflictingPrefix(new Map(attrs), declarations);
@@ -263,10 +317,7 @@ function withDeclarations(
   const { namespaces, ignorable } = declarations;
   const tag = readTag(openTag, 0);
   const closeLength = tag?.kind === "empty" ? 2 : 1;
-  const attrs =
-    tag === null
-      ? null
-      : parseAttrs(openTag.slice(tag.nameEnd, tag.end - closeLength));
+  const attrs = tag === null ? null : tagAttributes(openTag, tag);
   if (tag === null || attrs === null) {
     throw new DocxExportError(
       "malformed-xml",

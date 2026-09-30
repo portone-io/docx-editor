@@ -34,7 +34,7 @@ import { docxSchema } from "../schema";
 import type { NoteKind } from "../schema/stories";
 // The two comment modules are named outright rather than through the folder's barrel: the barrel
 // also carries the writer, which reads a story back out (`./story`), and a story is read here
-import { commentParaId, importedCommentReplies } from "./comments/model";
+import { importedCommentReplies, seededHexId } from "./comments/model";
 import { type ImportedComments, NO_COMMENTS } from "./comments/reading";
 import { readParagraphFormat, readRunFormat } from "./formatting";
 import { type LinkTargets, NO_LINK_TARGETS } from "./hyperlink";
@@ -127,7 +127,7 @@ function buildModelledRunChild(
       const id = annotationId(el);
       if (id === null) return null;
       const comment = comments.byId.get(id);
-      const paraId = comment?.paraId ?? commentParaId(`comment-${id}`);
+      const paraId = comment?.paraId ?? seededHexId(`comment-${id}`);
       return [
         docxSchema.nodes.commentReference.create(
           {
@@ -142,6 +142,8 @@ function buildModelledRunChild(
             extensionXml: comment?.extensionXml ?? null,
             threadImported: true,
             replies: importedCommentReplies(comments, id),
+            durableId: comment?.durableId ?? null,
+            dateUtc: comment?.dateUtc ?? null,
           },
           null,
           marks

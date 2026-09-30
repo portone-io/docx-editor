@@ -20,8 +20,11 @@ Everything on this page comes from `@portone/docx-editor/commands`.
 | `setCommentResolved(id, resolved)` | Marks a thread resolved or open. |
 | `selectComment(id)` | Selects the commented text and scrolls it into view; for a detached comment, puts the caret at its reference. |
 
-`NewComment` is `{ text, author, authorId?, initials?, date? }`, where `date` is an ISO 8601 string
-defaulting to now.
+`NewComment` is `{ text, author, authorId?, initials?, date? }`, where `date` is an ISO 8601 instant
+defaulting to now, kept to the second.
+The saved file records it the way Word does: the instant, and on the comment the time it reads on
+the clock of the runtime that adds it, which is the author's clock only when the author runs the
+editor.
 Pass `author` (the display name), `initials`, and `authorId` from `mode.author`, so the comment is
 recorded as that person's.
 
@@ -33,7 +36,7 @@ recorded as that person's.
 | --- | --- |
 | `id` | The comment's id, which every other command takes. |
 | `author`, `authorId`, `initials` | Who wrote it, as the document records them. Null where the document names none. |
-| `date` | When it was written. Null where the document names none. |
+| `date` | When it was written, as an ISO 8601 instant in UTC such as `2026-09-30T06:00:00.000Z`. A value that is not a readable date is returned as written. Null where the document names none. |
 | `text` | The body as plain text. |
 | `from`, `to` | The stretch it marks. |
 | `referencePos` | Where its reference stands in the document. |
@@ -41,6 +44,9 @@ recorded as that person's.
 | `resolved` | Whether the thread is resolved. |
 | `replies` | Its replies, each a `DocumentCommentReply` with `id`, `author`, `authorId`, `initials`, `date`, and `text`. |
 
+A comment added with `date` reads the same instant back.
+[When a comment was written](/docs/features/comments-and-notes#when-a-comment-was-written) says
+which instant a comment from another file reads as.
 The records are read-only; copy one to change it.
 [Features](/docs/features/comments-and-notes) describes what the built-in panel does with detached
 and resolved comments.

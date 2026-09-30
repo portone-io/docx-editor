@@ -98,6 +98,7 @@ interface CommentBody {
   author: string | null;
   initials: string | null;
   date: string | null;
+  dateUtc: string | null;
   /** What it says, as the story the document holds it in. null for a comment holding no story */
   body: PMNode | null;
 }
@@ -126,6 +127,7 @@ function bodyOf(
     author: stringOrNull(attrs.author),
     initials: stringOrNull(attrs.initials),
     date: stringOrNull(attrs.date),
+    dateUtc: stringOrNull(attrs.dateUtc),
     body: id === null ? null : storyNodeOf(doc, storyKey("comment", id)),
   };
 }
@@ -224,7 +226,8 @@ function sameWords(was: CommentBody, now: CommentBody): boolean {
   return (
     sameStory(was.body, now.body) &&
     was.initials === now.initials &&
-    was.date === now.date
+    was.date === now.date &&
+    was.dateUtc === now.dateUtc
   );
 }
 

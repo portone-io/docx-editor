@@ -1,5 +1,5 @@
 /**
- * The three parts a comment is written across, each declared once: where it sits, what it is
+ * The parts a comment is written across, each declared once: where it sits, what it is
  * declared as in the package, what an entry in it looks like, and who may have written one.
  *
  * The writer named the relationship and the content type where it added a part and the verifier
@@ -16,6 +16,7 @@ import type { Node as PMNode } from "prosemirror-model";
 import { NAMESPACES } from "../../ooxml/names";
 import {
   attributeByLocalName,
+  elementChildren,
   isElement,
   parseXml,
   serializeXml,
@@ -31,6 +32,8 @@ import { NO_IMPORT_SOURCES } from "../importParagraph";
 import { availablePartPath } from "../packageParts";
 import type {
   EntryReading,
+  JudgedPackages,
+  PolicyOptions,
   StoryEntry,
   StoryPartKind,
 } from "../protectionPolicy";
@@ -42,12 +45,19 @@ import {
   COMMENTS_CONTENT_TYPE,
   COMMENTS_EXTENDED_CONTENT_TYPE,
   COMMENTS_EXTENDED_REL_TYPE,
+  COMMENTS_EXTENSIBLE_CONTENT_TYPE,
+  COMMENTS_EXTENSIBLE_REL_TYPE,
+  COMMENTS_IDS_CONTENT_TYPE,
+  COMMENTS_IDS_REL_TYPE,
   COMMENTS_REL_TYPE,
   PEOPLE_CONTENT_TYPE,
   PEOPLE_REL_TYPE,
   W14_NS,
   W15_NS,
+  W16CEX_NS,
+  W16CID_NS,
 } from "./constants";
+import { dateWritten, oneInstant } from "./dates";
 import {
   attributesWithin,
   COMMENT_ATTRIBUTES,
@@ -57,12 +67,20 @@ import {
   isLayoutText,
   lastBodyParagraph,
   recordedIdentity,
+  wellFormedCommentDate,
   wellFormedCommentExtension,
+  wellFormedCommentId,
   wellFormedPerson,
 } from "./grammar";
 import { commentReferencesIn } from "./model";
 import { commentAuthorId, type ImportedPeople } from "./people";
-import { lastParagraphId } from "./reading";
+import {
+  durableIdKey,
+  type ImportedComment,
+  type ImportedCommentPart,
+  lastParagraphId,
+  spentDurableIds,
+} from "./reading";
 
 /** The attributes of a comment that say whose it is, which nobody rewrites, its own author included */
 const COMMENT_IDENTITY: readonly string[] = [
@@ -277,7 +295,77 @@ export function entryAllowed(
   return false;
 }
 
-/** What one of the three parts holds, beyond what every story part declares */
+/**
+ * The new comment a submitted durable id stands for. The writer mints one only for a new comment,
+ * clear of every id the arrived file spent, and names it once.
+ */
+function newCommentUnder(
+  durableId: string,
+  { arrived, submitted }: JudgedPackages
+): ImportedComment | null {
+  const key = durableIdKey(durableId);
+  const named = submitted.comments.ids.ordered.filter(
+    (entry) => durableIdKey(entry.durableId) === key
+  );
+  if (named.length !== 1 || spentDurableIds(arrived.comments).has(key)) {
+    return null;
+  }
+  const [{ paraId }] = named;
+  const comment = submitted.comments.ordered.find(
+    (entry) => entry.paraId === paraId
+  );
+  return comment === undefined || arrived.comments.byId.has(comment.id)
+    ? null
+    : comment;
+}
+
+/**
+ * The new comment a durable entry stands for. An entry that arrived is nobody's to rewrite, and
+ * one appearing for a comment that arrived would redate it.
+ */
+function newCommentOf(
+  entry: Element,
+  original: Element | null,
+  packages: JudgedPackages
+): ImportedComment | null {
+  const durableId = attributeByLocalName(entry, "durableId");
+  return original !== null || durableId === null
+    ? null
+    : newCommentUnder(durableId, packages);
+}
+
+/** A new date is written once, and its comment's `w:date` could be its wall clock */
+function commentDateAllowed(
+  entry: Element,
+  original: Element | null,
+  packages: JudgedPackages
+): boolean {
+  const comment = newCommentOf(entry, original, packages);
+  const durableId = attributeByLocalName(entry, "durableId");
+  const dateUtc = attributeByLocalName(entry, "dateUtc");
+  if (comment?.date == null || durableId === null || dateUtc === null) {
+    return false;
+  }
+  const key = durableIdKey(durableId);
+  const dated = packages.submitted.comments.extensible.ordered.filter(
+    (other) => durableIdKey(other.durableId) === key
+  );
+  return (
+    dated.length === 1 &&
+    dateWritten(comment.date) &&
+    oneInstant(comment.date, dateUtc)
+  );
+}
+
+/** What an entry is judged by beside the entry itself and the one that arrived under its key */
+interface EntryJudgement {
+  authorId: string;
+  options: PolicyOptions;
+  packages: JudgedPackages;
+  unattributed: ReadonlySet<string>;
+}
+
+/** What one comment part holds, beyond what every story part declares */
 interface CommentPartShape {
   relType: string;
   contentType: string;
@@ -290,9 +378,35 @@ interface CommentPartShape {
   rewritesContents: boolean;
   localName: string;
   idAttr: string;
+  /** The one other child the part's type takes, after every entry, which a submission keeps as it arrived */
+  closingChild?: string;
   xmlIn(session: SessionStore): string | null;
   pathIn(session: SessionStore): string | null;
   referents(story: Story): ReadonlySet<string>;
+  /** Grammar alone, as `StoryPartKind.wellFormed` asks it */
+  wellFormed(entry: Element, original: Element | null): boolean;
+  /** Permission alone, as `StoryPartKind.allowed` asks it */
+  allowed(
+    entry: Element,
+    original: Element | null,
+    judgement: EntryJudgement
+  ): boolean;
+}
+
+/** An entry of the parts that stand for a comment or its author, which `entryAllowed` judges */
+function commentEntryAllowed(
+  entry: Element,
+  original: Element | null,
+  { authorId, options, packages, unattributed }: EntryJudgement
+): boolean {
+  return entryAllowed(
+    entry,
+    original,
+    authorId,
+    options.editableComments,
+    packages.submitted.comments.people,
+    unattributed
+  );
 }
 
 /** The compatibility declarations the writer adds to a part it writes a thread key into */
@@ -403,6 +517,33 @@ function rootKeptAgainst(
   return kept && Array.from(had.keys()).every((name) => now.hasAttribute(name));
 }
 
+/** The child the part's type closes on, where it stands after every entry, and null where none does */
+function closingChildOf(
+  root: Element,
+  shape: CommentPartShape
+): Element | null {
+  const last = elementChildren(root).at(-1);
+  return shape.closingChild !== undefined &&
+    last !== undefined &&
+    last.namespaceURI === shape.namespace &&
+    last.localName === shape.closingChild
+    ? last
+    : null;
+}
+
+/** The writer puts new entries ahead of that child and leaves the child as it arrived */
+function closingChildKept(
+  now: Element,
+  was: Element | null,
+  shape: CommentPartShape
+): boolean {
+  const kept = closingChildOf(now, shape);
+  const arrived = was === null ? null : closingChildOf(was, shape);
+  return kept === null || arrived === null
+    ? kept === arrived
+    : serializeXml(kept) === serializeXml(arrived);
+}
+
 /**
  * The entries of a part, keyed by the id each carries.
  *
@@ -410,7 +551,8 @@ function rootKeptAgainst(
  * reference a submitted entry is held against. The strict reading of a submission answers null
  * instead: this editor writes one kind of child into each of these parts, one entry per id, so a
  * part carrying a second kind or two entries under one id is not one it wrote, and reading it
- * leniently would leave whichever entry lost the key unjudged.
+ * leniently would leave whichever entry lost the key unjudged. The closing child is passed over
+ * here and held to what arrived by `closingChildKept`.
  */
 function entriesOf(
   shape: CommentPartShape,
@@ -420,10 +562,12 @@ function entriesOf(
   const entries = new Map<string, StoryEntry>();
   if (xml === null) return entries;
   const strict = reading === "submitted";
-  for (const node of Array.from(parseXml(xml).documentElement.childNodes)) {
+  const root = parseXml(xml).documentElement;
+  const closing = closingChildOf(root, shape);
+  for (const node of Array.from(root.childNodes)) {
     // The root comparison checks non-entry content against the original, including annotations
     // the writer preserves. This reader only judges the entries it can key.
-    if (!isElement(node)) continue;
+    if (!isElement(node) || node === closing) continue;
     const el = node;
     const named = strict
       ? el.namespaceURI === shape.namespace && el.localName === shape.localName
@@ -477,21 +621,24 @@ function storyPart(shape: CommentPartShape): StoryPartKind {
           now.documentElement,
           was?.documentElement ?? null,
           shape.rewritesContents
+        ) &&
+        closingChildKept(
+          now.documentElement,
+          was?.documentElement ?? null,
+          shape
         )
       );
     },
     referents: shape.referents,
-    wellFormed: wellFormedEntry,
+    wellFormed: shape.wellFormed,
     anyonesChange: threadKeyAlone,
-    allowed: (entry, original, authorId, options, session, unattributed) =>
-      entryAllowed(
-        entry,
-        original,
+    allowed: (entry, original, authorId, options, packages, unattributed) =>
+      shape.allowed(entry, original, {
         authorId,
-        options.editableComments,
-        session.comments.people,
-        unattributed
-      ),
+        options,
+        packages,
+        unattributed,
+      }),
   };
 }
 
@@ -517,13 +664,24 @@ const commentsShape: CommentPartShape = {
   xmlIn: (session) => session.comments.xml,
   pathIn: (session) => session.comments.partPath,
   referents: (story) => referencedCommentIds(story.doc),
+  wellFormed: wellFormedEntry,
+  allowed: commentEntryAllowed,
 };
 
-/** The entries of a file's comments part, which is what its other two parts are written against */
+/** The entries of a file's comments part, which is what its other parts are written against */
 function commentEntries(story: Story): readonly Element[] {
   return Array.from(
     arrivedIn(commentsShape, story.session).values(),
     (entry) => entry.el
+  );
+}
+
+function threadKeys(story: Story): ReadonlySet<string> {
+  return new Set(
+    commentEntries(story).flatMap((el) => {
+      const key = lastParagraphId(el);
+      return key === null ? [] : [key];
+    })
   );
 }
 
@@ -541,13 +699,9 @@ export const commentsExtendedPart: StoryPartKind = storyPart({
   xmlIn: (session) => session.comments.extendedXml,
   pathIn: (session) => session.comments.extendedPartPath,
   // Thread state stands for a comment, and it is keyed by the comment's own thread key
-  referents: (story) =>
-    new Set(
-      commentEntries(story).flatMap((el) => {
-        const key = lastParagraphId(el);
-        return key === null ? [] : [key];
-      })
-    ),
+  referents: threadKeys,
+  wellFormed: wellFormedEntry,
+  allowed: commentEntryAllowed,
 });
 
 export const peoplePart: StoryPartKind = storyPart({
@@ -569,11 +723,100 @@ export const peoplePart: StoryPartKind = storyPart({
         return author === null ? [] : [author];
       })
     ),
+  wellFormed: wellFormedEntry,
+  allowed: commentEntryAllowed,
 });
 
+/** A part a comment's time is recorded across, which the writer splices entries into (`./durable`) */
+export interface DurablePartShape extends CommentPartShape {
+  /** As an export refusal names it (`ExportPartName`) */
+  name: "commentsIds" | "commentsExtensible";
+  /** What a part written from nothing binds `namespace` to */
+  prefix: "w16cid" | "w16cex";
+  imported(session: SessionStore): ImportedCommentPart<unknown>;
+}
+
+function durableShape(
+  shape: Omit<DurablePartShape, "xmlIn" | "pathIn">
+): DurablePartShape {
+  return {
+    ...shape,
+    xmlIn: (session) => shape.imported(session).xml,
+    pathIn: (session) => shape.imported(session).partPath,
+  };
+}
+
+/** A durable part as the verifier reads it, carrying the shape the writer writes it by */
+export interface DurablePart extends StoryPartKind {
+  shape: DurablePartShape;
+}
+
+function durablePart(shape: DurablePartShape): DurablePart {
+  return { ...storyPart(shape), shape };
+}
+
+const commentsIdsShape = durableShape({
+  name: "commentsIds",
+  prefix: "w16cid",
+  relType: COMMENTS_IDS_REL_TYPE,
+  contentType: COMMENTS_IDS_CONTENT_TYPE,
+  baseName: "commentsIds",
+  namespace: W16CID_NS,
+  rootName: "commentsIds",
+  rewritesContents: false,
+  localName: "commentId",
+  idAttr: "paraId",
+  imported: (session) => session.comments.ids,
+  referents: threadKeys,
+  wellFormed: wellFormedCommentId,
+  allowed: (entry, original, { packages }) =>
+    newCommentOf(entry, original, packages) !== null,
+});
+
+/** Gives a comment's thread key the durable id its UTC date is recorded under */
+export const commentsIdsPart: DurablePart = durablePart(commentsIdsShape);
+
+/** Records under a durable id when the comment was written, in UTC */
+export const commentsExtensiblePart: DurablePart = durablePart(
+  durableShape({
+    name: "commentsExtensible",
+    prefix: "w16cex",
+    relType: COMMENTS_EXTENSIBLE_REL_TYPE,
+    contentType: COMMENTS_EXTENSIBLE_CONTENT_TYPE,
+    baseName: "commentsExtensible",
+    namespace: W16CEX_NS,
+    rootName: "commentsExtensible",
+    rewritesContents: false,
+    localName: "commentExtensible",
+    idAttr: "durableId",
+    // `CT_CommentsExtensible` closes on an optional extension list ([MS-DOCX] §2.10.3.2)
+    closingChild: "extLst",
+    imported: (session) => session.comments.extensible,
+    referents: (story) => {
+      const keys = threadKeys(story);
+      return new Set(
+        Array.from(arrivedIn(commentsIdsShape, story.session).values()).flatMap(
+          ({ el }) => {
+            const paraId = attributeByLocalName(el, "paraId");
+            const durableId = attributeByLocalName(el, "durableId");
+            return paraId !== null && durableId !== null && keys.has(paraId)
+              ? [durableId]
+              : [];
+          }
+        )
+      );
+    },
+    wellFormed: wellFormedCommentDate,
+    allowed: (entry, original, { packages }) =>
+      commentDateAllowed(entry, original, packages),
+  })
+);
+
 /** The parts a comment protection lets an edit rewrite, in the order an export writes them */
-export const COMMENT_STORY_PARTS: readonly [
-  StoryPartKind,
-  StoryPartKind,
-  StoryPartKind,
-] = [commentsPart, commentsExtendedPart, peoplePart];
+export const COMMENT_STORY_PARTS: readonly StoryPartKind[] = [
+  commentsPart,
+  commentsExtendedPart,
+  peoplePart,
+  commentsIdsPart,
+  commentsExtensiblePart,
+];

@@ -23,18 +23,12 @@ import { commentOwned } from "../schema/protection";
 import { protectionOf } from "../schema/protectionState";
 import { editorClassNames } from "../styles/classNames";
 import { CommentComposer, FocusedTextarea } from "./comments/CommentComposer";
+import { commentTime, shownCommentDate } from "./comments/commentDate";
 import {
   COMPOSER_POSITION,
   useCommentRailLayout,
 } from "./comments/useCommentRailLayout";
 import { tooltipAttribute } from "./Tooltip";
-
-function shownDate(value: string | null): string | null {
-  if (value === null) return null;
-  const date = new Date(value);
-  if (Number.isNaN(date.valueOf())) return value;
-  return `${date.toISOString().slice(0, 16).replace("T", " ")} UTC`;
-}
 
 function run(view: EditorView, command: Command): boolean {
   const applied = command(
@@ -76,7 +70,7 @@ function CommentIdentity({
 }: {
   comment: DocumentComment;
 }): ReactElement {
-  const date = shownDate(comment.date);
+  const date = shownCommentDate(comment.date);
   return (
     <>
       <span className={editorClassNames.commentAuthor}>
@@ -137,13 +131,13 @@ export function CommentsPanel({
     () =>
       allCommentsOpen
         ? [...comments].sort((left, right) => {
-            const leftTime = Date.parse(left.date ?? "");
-            const rightTime = Date.parse(right.date ?? "");
-            if (Number.isNaN(leftTime) && Number.isNaN(rightTime)) {
+            const leftTime = commentTime(left.date);
+            const rightTime = commentTime(right.date);
+            if (leftTime === null && rightTime === null) {
               return right.referencePos - left.referencePos;
             }
-            if (Number.isNaN(leftTime)) return 1;
-            if (Number.isNaN(rightTime)) return -1;
+            if (leftTime === null) return 1;
+            if (rightTime === null) return -1;
             return rightTime - leftTime;
           })
         : comments.filter(shownBesideThePage),
@@ -379,9 +373,9 @@ export function CommentsPanel({
                         <span className={editorClassNames.commentAuthor}>
                           {reply.author ?? "Unknown author"}
                         </span>
-                        {shownDate(reply.date) && (
+                        {shownCommentDate(reply.date) && (
                           <span className={editorClassNames.commentDate}>
-                            {shownDate(reply.date)}
+                            {shownCommentDate(reply.date)}
                           </span>
                         )}
                       </div>

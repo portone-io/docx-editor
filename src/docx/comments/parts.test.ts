@@ -614,8 +614,8 @@ describe("over the comment parts of a submitted file", () => {
     expect(verdict(withGhost, dropped, "me")).toEqual(refusedThere);
   });
 
-  /** The same rule over the other two parts: thread state for no comment, an identity for no name */
-  it("keeps an orphan of the other two parts as well", () => {
+  /** The same rule over the extended and people parts: thread state for no comment, an identity for no name */
+  it("keeps an orphan of the extended and people parts as well", () => {
     const { commented } = commentedBy("me");
     const peoplePath = Object.keys(unzipSync(commented)).find((path) =>
       path.endsWith("people.xml")
@@ -750,9 +750,23 @@ describe("over the comment parts of a submitted file", () => {
     expect(verdict(declared, settled, "me")).toEqual(refused);
   });
 
-  /** Settling a thread is where the writer adds the compatibility markup to a root that arrived */
+  /**
+   * Settling a thread is where the writer adds the compatibility markup to a root that arrived. A
+   * comment dated with no instant has no durable id for a thread key to carry, so the part it is
+   * written into arrives holding none.
+   */
   it("takes the compatibility markup the writer adds to a part it settles a thread in", () => {
-    const { commented } = commentedBy("me");
+    const opened = importDocx(plainDocx());
+    const undated = applied(
+      selecting(createEditorState(opened.doc), "beta"),
+      addComment({
+        text: "note",
+        author: "Someone",
+        authorId: "me",
+        date: "undated",
+      })
+    );
+    const commented = exportDocx(undated.doc, opened.session);
     const { doc, session } = importDocx(commented);
     const settled = applied(
       createEditorState(doc),

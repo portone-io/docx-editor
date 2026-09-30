@@ -177,6 +177,8 @@ export const NODE_ATTR_ROLES: AttrTable = {
     replies: { role: "source", class: "model" },
     // Read to decide whether the extended comment part is rewritten at all; it is never written
     threadImported: { role: "session", class: "derived" },
+    durableId: { role: "source", class: "identity" },
+    dateUtc: { role: "source", class: "model" },
   },
   noteReference: {
     kind: { role: "source", class: "model" },

@@ -234,7 +234,7 @@ export interface ExportOptions {
 }
 
 // @public
-export type ExportPartName = "media" | "numbering" | "comments" | "commentsExtended" | "people" | "footnotes" | "endnotes";
+export type ExportPartName = "media" | "numbering" | "comments" | "commentsExtended" | "people" | "commentsIds" | "commentsExtensible" | "footnotes" | "endnotes";
 
 // @public
 export interface ExportProblem {

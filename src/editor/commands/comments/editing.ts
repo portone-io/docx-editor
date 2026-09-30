@@ -7,7 +7,10 @@ import {
   TextSelection,
   type Transaction,
 } from "prosemirror-state";
-import { commentParaId } from "../../../docx/comments";
+import { seededHexId } from "../../../docx/comments";
+import { writtenCommentDates } from "../../../docx/comments/dates";
+import { HIGHEST_DURABLE_ID } from "../../../docx/comments/grammar";
+import { durableIdKey } from "../../../docx/comments/reading";
 import {
   sameStory,
   setStory,
@@ -21,6 +24,7 @@ import { docxSchema } from "../../../schema";
 import { guardedCommand } from "../../../schema/guards";
 import { isWrapperType } from "../../../schema/wrappers";
 import {
+  reservedCommentDurableIds,
   reservedCommentIds,
   reservedCommentParaIds,
 } from "../../editorDocument";
@@ -109,29 +113,71 @@ function nextCommentId(state: EditorState): string {
   return (max + 1n).toString();
 }
 
+const hexId = (value: number): string =>
+  value.toString(16).toUpperCase().padStart(8, "0");
+
+/** `highest` is the largest id it may return */
+function nextHexId(
+  taken: ReadonlySet<string>,
+  seed: string,
+  highest: number
+): string {
+  const hashed = Number.parseInt(seededHexId(seed), 16);
+  let candidate = hashed > highest ? 1 : hashed;
+  while (taken.has(hexId(candidate))) {
+    candidate = candidate === highest ? 1 : candidate + 1;
+  }
+  return hexId(candidate);
+}
+
+function idsInDocument(
+  state: EditorState,
+  key: "paraId" | "durableId"
+): string[] {
+  const ids: string[] = [];
+  const take = (value: unknown) => {
+    const id = stringAttr(value);
+    if (id !== null) ids.push(id);
+  };
+  state.doc.descendants((node) => {
+    if (node.type.name !== "commentReference") return true;
+    take(node.attrs[key]);
+    for (const reply of repliesAttr(node.attrs.replies)) take(reply[key]);
+    return true;
+  });
+  return ids;
+}
+
+/** [MS-DOCX] keeps a paragraph id below 0x80000000 */
 function nextCommentParaId(
   state: EditorState,
   seed: string,
   additional: Iterable<string> = []
 ): string {
   const taken = new Set(
-    Array.from(reservedCommentParaIds(state), (id) => id.toUpperCase())
+    [
+      ...reservedCommentParaIds(state),
+      ...idsInDocument(state, "paraId"),
+      ...additional,
+    ].map((id) => id.toUpperCase())
   );
-  state.doc.descendants((node) => {
-    if (node.type.name !== "commentReference") return true;
-    const paraId = stringAttr(node.attrs.paraId);
-    if (paraId !== null) taken.add(paraId.toUpperCase());
-    for (const reply of repliesAttr(node.attrs.replies)) {
-      taken.add(reply.paraId.toUpperCase());
-    }
-    return true;
-  });
-  for (const paraId of additional) taken.add(paraId.toUpperCase());
-  let candidate = Number.parseInt(commentParaId(seed), 16);
-  while (taken.has(candidate.toString(16).toUpperCase().padStart(8, "0"))) {
-    candidate = candidate === 0x7fffffff ? 1 : candidate + 1;
-  }
-  return candidate.toString(16).toUpperCase().padStart(8, "0");
+  return nextHexId(taken, seed, 0x7fffffff);
+}
+
+/** Null for a comment recording no UTC date, which needs no durable id */
+function nextCommentDurableId(
+  state: EditorState,
+  seed: string,
+  dateUtc: string | null
+): string | null {
+  if (dateUtc === null) return null;
+  const taken = new Set(
+    [
+      ...reservedCommentDurableIds(state),
+      ...idsInDocument(state, "durableId"),
+    ].map(durableIdKey)
+  );
+  return nextHexId(taken, `${seed}-${dateUtc}`, HIGHEST_DURABLE_ID);
 }
 
 function wrapperMarksAt(
@@ -154,7 +200,7 @@ function addCommentTransaction(
   const range = commentedRange(state, at);
   if (range === null || comment.text.trim().length === 0) return null;
   const id = nextCommentId(state);
-  const date = comment.date ?? new Date().toISOString();
+  const { date, dateUtc } = writtenCommentDates(comment.date);
   const paraId = nextCommentParaId(state, `comment-${id}-${date}`);
   const { from, to } = range;
   const startMarks = wrapperMarksAt(state, from, "after");
@@ -177,6 +223,8 @@ function addCommentTransaction(
       extensionXml: null,
       threadImported: true,
       replies: [],
+      durableId: nextCommentDurableId(state, `durable-${id}`, dateUtc),
+      dateUtc,
     },
     null,
     endMarks
@@ -362,7 +410,12 @@ export function addCommentReply(id: string, reply: NewComment): Command {
   return (state, dispatch) => {
     if (reply.text.trim().length === 0) return false;
     const replyId = nextCommentId(state);
-    const date = reply.date ?? new Date().toISOString();
+    const { date, dateUtc } = writtenCommentDates(reply.date);
+    const durableId = nextCommentDurableId(
+      state,
+      `durable-${replyId}`,
+      dateUtc
+    );
     return updateReference(
       id,
       (node) => {
@@ -391,6 +444,8 @@ export function addCommentReply(id: string, reply: NewComment): Command {
               paraId,
               parentParaId,
               extensionXml: null,
+              durableId,
+              dateUtc,
             },
           ],
         };

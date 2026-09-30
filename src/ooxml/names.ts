@@ -34,6 +34,8 @@ export const NAMESPACES = {
   r: R_NS,
   w14: "http://schemas.microsoft.com/office/word/2010/wordml",
   w15: "http://schemas.microsoft.com/office/word/2012/wordml",
+  w16cid: "http://schemas.microsoft.com/office/word/2016/wordml/cid",
+  w16cex: "http://schemas.microsoft.com/office/word/2018/wordml/cex",
   mc: "http://schemas.openxmlformats.org/markup-compatibility/2006",
   wp: "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing",
   a: "http://schemas.openxmlformats.org/drawingml/2006/main",

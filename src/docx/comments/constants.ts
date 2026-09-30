@@ -8,8 +8,19 @@ export const COMMENTS_CONTENT_TYPE =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml";
 export const COMMENTS_EXTENDED_CONTENT_TYPE =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.commentsExtended+xml";
+/** [MS-DOCX] §2.1.4 and §2.1.5 spell out no types for these parts; these are the Open XML SDK's */
+export const COMMENTS_IDS_REL_TYPE =
+  "http://schemas.microsoft.com/office/2016/09/relationships/commentsIds";
+export const COMMENTS_IDS_CONTENT_TYPE =
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.commentsIds+xml";
+export const COMMENTS_EXTENSIBLE_REL_TYPE =
+  "http://schemas.microsoft.com/office/2018/08/relationships/commentsExtensible";
+export const COMMENTS_EXTENSIBLE_CONTENT_TYPE =
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.commentsExtensible+xml";
 export const W14_NS = NAMESPACES.w14;
 export const W15_NS = NAMESPACES.w15;
+export const W16CID_NS = NAMESPACES.w16cid;
+export const W16CEX_NS = NAMESPACES.w16cex;
 export const MC_NS = NAMESPACES.mc;
 export const PEOPLE_REL_TYPE =
   "http://schemas.microsoft.com/office/2011/relationships/people";

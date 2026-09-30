@@ -35,6 +35,9 @@ Place a test beside the source it covers, such as `src/docx/importDocx.test.ts` 
 
 Vitest uses `isolate: false`, so test files in a worker share module state. Restore temporary overrides, scope retained data to its session, and do not let identifiers or caches depend on test order.
 
+The suite runs on the `Asia/Seoul` clock, which `vitest.config.ts` sets before any worker starts, so a wall-clock time read or written as an instant is off by nine hours on every machine rather than passing on one that runs on UTC.
+Do not set `process.env.TZ` inside a test: the worker threads share one process, and the zone would move under every file running beside it.
+
 Build a state for an opened document with `editorStateForSession`, because an option bag copied from the session by hand is how a test comes to hold values the editor itself never builds.
 
 Shared helpers belong under `src/__testing__/` or a feature's `__testing__/` directory. The declaration build excludes those directories, and the package test ensures they are not published.
@@ -64,7 +67,7 @@ The fixture sanitizer CLI is checked by `pnpm test:fixtures`, also included in `
 
 Update `api-manifest.json` only when a public runtime API change is intentional. `pnpm api:update` does the same for the declaration reports, which record types and signatures rather than names. The lock test lists command factories explicitly so every new command must state how it behaves around locks and markers and under every editing protection. The probe test reads the same manifest, so a new command must also say what it writes into an exported package.
 
-Each writer probe has a required `check(before, after)` for its immediate effect. The battery rejects display-only changes and exports every intermediate result before the next command can overwrite it. Every result must change an exported part, each distinct XML part is parsed once across the battery under the probe that wrote it first, and all distinct WordprocessingML outputs are validated in one batch. The final package must also hold every part no committed schema describes: the relationships, the content types, `word/comments.xml`, `word/commentsExtended.xml`, and `word/people.xml`. Optional package-wide assertions run on the final result as well. A setup step belongs in `prepare`, so the probe is measured against the state immediately before its own command.
+Each writer probe has a required `check(before, after)` for its immediate effect. The battery rejects display-only changes and exports every intermediate result before the next command can overwrite it. Every result must change an exported part, each distinct XML part is parsed once across the battery under the probe that wrote it first, and all distinct WordprocessingML outputs are validated in one batch. The final package must also hold every part no committed schema describes: the relationships, the content types, `word/comments.xml`, `word/commentsExtended.xml`, `word/people.xml`, `word/commentsIds.xml`, and `word/commentsExtensible.xml`. Optional package-wide assertions run on the final result as well. A setup step belongs in `prepare`, so the probe is measured against the state immediately before its own command.
 
 The schema test requires `xmllint`, rejects a missing validator or an empty fixture set, and includes negative controls so a broken validation path cannot pass silently. Its MCE profile follows ECMA-376 Part 3 sections 7 and 9 for `Ignorable`, `ProcessContent`, `MustUnderstand`, and alternate content. The understood namespaces come from the imports of the committed WML schema and the supplied XML namespace schema. Known namespaces remain subject to validation even if declared ignorable. For unknown ignorable elements, `ProcessContent` preserves their children for validation; otherwise the subtree is removed. `AlternateContent` selects the first Choice whose required namespaces are understood, or its Fallback if no Choice matches. Declarations are resolved in their original scope before wrappers are removed.
 
@@ -72,7 +75,7 @@ This is a validation profile, not a complete MCE consumer: preservation hints an
 
 A real word processor writes markup the schemas reject, and the export hands the bytes of every block nobody edited back rather than correcting them, so the producer lane is held to an approved list of violations instead of to a clean validation. `PRODUCER_VIOLATIONS` in the schema test is that list, one entry per kind of violation. An edited export is then compared against the untouched one occurrence by occurrence, so that an edit adds no violation, not even one more of an approved kind, and `REBUILD_DROPS` beside it pins what a rebuilt paragraph or table stops being turned down for. [Known gaps](../__fixtures__/README.md#known-gaps) explains every entry in both, and a diff in either is approved the way a fidelity snapshot is.
 
-Parts with no committed validation schema, including relationships, content types, people, and commentsExtended, are checked for well-formedness only. Parsing does not verify their vocabulary or cross-part references.
+Parts with no committed validation schema, including relationships, content types, people, commentsExtended, commentsIds, and commentsExtensible, are checked for well-formedness only. Parsing does not verify their vocabulary or cross-part references.
 
 ## Package checks
 

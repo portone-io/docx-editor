@@ -194,7 +194,6 @@ export interface DocumentComment {
     readonly author: string | null;
     // (undocumented)
     readonly authorId: string | null;
-    // (undocumented)
     readonly date: string | null;
     // (undocumented)
     readonly from: number;
@@ -219,7 +218,6 @@ export interface DocumentCommentReply {
     readonly author: string | null;
     // (undocumented)
     readonly authorId: string | null;
-    // (undocumented)
     readonly date: string | null;
     // (undocumented)
     readonly id: string;
@@ -297,7 +295,7 @@ export function editingProtection(state: EditorState): EditingProtection;
 export type EditorCommand = Command;
 
 // @public
-export type ExportPartName = "media" | "numbering" | "comments" | "commentsExtended" | "people" | "footnotes" | "endnotes";
+export type ExportPartName = "media" | "numbering" | "comments" | "commentsExtended" | "people" | "commentsIds" | "commentsExtensible" | "footnotes" | "endnotes";
 
 // @public
 export interface ExportProblem {

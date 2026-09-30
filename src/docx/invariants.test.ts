@@ -718,6 +718,36 @@ describe("a part the writer cannot declare its prefixes on", () => {
     ]);
   });
 
+  it("names a comments part binding w14 elsewhere once a new comment's thread key is written into it", () => {
+    const encoder = new TextEncoder();
+    const parts = unzipSync(makeDocx(paragraph("Body")));
+    parts[DOCUMENT_RELS] = encoder.encode(
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+        `<Relationship Id="rId5" Target="comments.xml" Type="${REL_BASE}/comments"/>` +
+        "</Relationships>"
+    );
+    parts["word/comments.xml"] = encoder.encode(
+      `<w:comments xmlns:w="${W_NS}" xmlns:w14="urn:not-w14">` +
+        `<w:comment w:id="1" w:author="Ada">${paragraph("Old")}</w:comment>` +
+        "</w:comments>"
+    );
+    const opened = importDocx(zipSync(parts));
+    const commented = withComment(editorStateForSession(opened));
+
+    expect(refusedWith(commented.doc, opened)).toEqual([
+      {
+        code: "unsupported-content",
+        message:
+          "word/comments.xml binds w14 to a namespace the writer cannot use",
+        reason: {
+          kind: "conflicting-part-prefix",
+          path: "word/comments.xml",
+          prefix: "w14",
+        },
+      },
+    ]);
+  });
+
   it("leaves such a part alone while nothing is written into it", () => {
     const parts = unzipSync(makeHeadersFootersDocx());
     parts["word/header1.xml"] = new TextEncoder().encode(

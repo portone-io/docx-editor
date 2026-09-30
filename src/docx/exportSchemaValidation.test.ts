@@ -275,9 +275,10 @@ function xmlParts(
 /**
  * The parts of an exported package that no committed schema describes, every one of which the
  * battery holds its final package to writing. The battery is what puts most of them there: a
- * comment brings `word/comments.xml` and the thread part beside it, an image brings a media
- * relationship, and every one of them is named in the content types. Without the list, a package
- * that stopped writing one of them would still pass a test that only reads what it finds.
+ * comment brings `word/comments.xml`, the thread part and the parts that date it, an image
+ * brings a media relationship, and every one of them is named in the content types. Without the
+ * list, a package that stopped writing one of them would still pass a test that only reads what
+ * it finds.
  */
 const UNDESCRIBED_PARTS: readonly string[] = [
   CONTENT_TYPES_PATH,
@@ -286,6 +287,8 @@ const UNDESCRIBED_PARTS: readonly string[] = [
   "word/comments.xml",
   "word/commentsExtended.xml",
   "word/people.xml",
+  "word/commentsIds.xml",
+  "word/commentsExtensible.xml",
 ];
 
 function expectEveryXmlPartParses(

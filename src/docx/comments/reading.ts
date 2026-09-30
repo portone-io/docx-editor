@@ -10,7 +10,12 @@ import {
   serializeXml,
 } from "../../ooxml/xml";
 import { relatedPartPath } from "../packageParts";
-import { COMMENTS_EXTENDED_REL_TYPE, COMMENTS_REL_TYPE } from "./constants";
+import {
+  COMMENTS_EXTENDED_REL_TYPE,
+  COMMENTS_EXTENSIBLE_REL_TYPE,
+  COMMENTS_IDS_REL_TYPE,
+  COMMENTS_REL_TYPE,
+} from "./constants";
 import { lastBodyParagraph } from "./grammar";
 import {
   commentAuthorId,
@@ -33,12 +38,42 @@ export interface ImportedComment {
    */
   authorId: string | null;
   initials: string | null;
+  /** As written: the author's wall clock (`./dates`) */
   date: string | null;
   paraId: string | null;
   parentParaId: string | null;
   resolved: boolean;
   extensionXml: string | null;
+  durableId: string | null;
+  /** As written, where the durable id reaches one */
+  dateUtc: string | null;
 }
+
+/** A `w16cid:commentId`, keyed by the thread key of the comment it stands for */
+export interface ImportedCommentId {
+  paraId: string;
+  durableId: string;
+}
+
+/** A `w16cex:commentExtensible` */
+export interface ImportedCommentDate {
+  durableId: string;
+  dateUtc: string | null;
+}
+
+export interface ImportedCommentPart<Entry> {
+  partPath: string | null;
+  xml: string | null;
+  hadBom: boolean;
+  ordered: readonly Entry[];
+}
+
+const NO_PART: ImportedCommentPart<never> = {
+  partPath: null,
+  xml: null,
+  hadBom: false,
+  ordered: [],
+};
 
 export interface ImportedComments {
   partPath: string | null;
@@ -53,6 +88,8 @@ export interface ImportedComments {
   extendedOrdered: readonly ImportedCommentExtension[];
   /** The people part as opened, which is where an author's identity is looked up */
   people: ImportedPeople;
+  ids: ImportedCommentPart<ImportedCommentId>;
+  extensible: ImportedCommentPart<ImportedCommentDate>;
 }
 
 export const NO_COMMENTS: ImportedComments = {
@@ -67,6 +104,8 @@ export const NO_COMMENTS: ImportedComments = {
   extendedHadBom: false,
   extendedOrdered: [],
   people: NO_PEOPLE,
+  ids: NO_PART,
+  extensible: NO_PART,
 };
 
 export interface ImportedCommentExtension {
@@ -82,60 +121,81 @@ export function lastParagraphId(comment: Element): string | null {
   return last === null ? null : attributeByLocalName(last, "paraId");
 }
 
-function readCommentExtensions(
+function readCommentPart<Entry>(
   parts: Map<string, Uint8Array>,
-  mainPartPath: string
-): {
-  partPath: string | null;
-  xml: string | null;
-  hadBom: boolean;
-  byParaId: ReadonlyMap<string, ImportedCommentExtension>;
-  ordered: readonly ImportedCommentExtension[];
-} {
-  const partPath = relatedPartPath(
-    parts,
-    mainPartPath,
-    COMMENTS_EXTENDED_REL_TYPE
-  );
-  if (partPath === null) {
-    return {
-      partPath: null,
-      xml: null,
-      hadBom: false,
-      byParaId: new Map(),
-      ordered: [],
-    };
-  }
+  mainPartPath: string,
+  relType: string,
+  localName: string,
+  entryOf: (el: Element) => Entry | null
+): ImportedCommentPart<Entry> {
+  const partPath = relatedPartPath(parts, mainPartPath, relType);
+  if (partPath === null) return NO_PART;
   const bytes = parts.get(partPath);
-  if (!bytes) {
-    return {
-      partPath,
-      xml: null,
-      hadBom: false,
-      byParaId: new Map(),
-      ordered: [],
-    };
-  }
+  if (!bytes) return { ...NO_PART, partPath };
   const { text, hadBom } = decodeUtf8(bytes);
-  const root = parseXml(text).documentElement;
-  const byParaId = new Map<string, ImportedCommentExtension>();
-  const ordered: ImportedCommentExtension[] = [];
-  for (const el of elementChildren(root)) {
-    if (el.localName !== "commentEx") continue;
-    const paraId = attributeByLocalName(el, "paraId");
-    if (paraId === null) continue;
-    const extension = {
-      paraId,
-      parentParaId: attributeByLocalName(el, "paraIdParent"),
-      resolved: ["1", "true", "on"].includes(
-        attributeByLocalName(el, "done")?.toLowerCase() ?? ""
-      ),
-      xml: serializeXml(el),
-    };
-    ordered.push(extension);
-    if (!byParaId.has(paraId)) byParaId.set(paraId, extension);
+  const ordered = elementChildren(parseXml(text).documentElement).flatMap(
+    (el) => {
+      const entry = el.localName === localName ? entryOf(el) : null;
+      return entry === null ? [] : [entry];
+    }
+  );
+  return { partPath, xml: text, hadBom, ordered };
+}
+
+function commentExtensionOf(el: Element): ImportedCommentExtension | null {
+  const paraId = attributeByLocalName(el, "paraId");
+  return paraId === null
+    ? null
+    : {
+        paraId,
+        parentParaId: attributeByLocalName(el, "paraIdParent"),
+        resolved: ["1", "true", "on"].includes(
+          attributeByLocalName(el, "done")?.toLowerCase() ?? ""
+        ),
+        xml: serializeXml(el),
+      };
+}
+
+function commentIdOf(el: Element): ImportedCommentId | null {
+  const paraId = attributeByLocalName(el, "paraId");
+  const durableId = attributeByLocalName(el, "durableId");
+  return paraId === null || durableId === null ? null : { paraId, durableId };
+}
+
+function commentDateOf(el: Element): ImportedCommentDate | null {
+  const durableId = attributeByLocalName(el, "durableId");
+  return durableId === null
+    ? null
+    : { durableId, dateUtc: attributeByLocalName(el, "dateUtc") };
+}
+
+/** The first entry under a key wins, as in every other comment part */
+function firstByKey<Entry, Value>(
+  entries: readonly Entry[],
+  key: (entry: Entry) => string,
+  value: (entry: Entry) => Value
+): ReadonlyMap<string, Value> {
+  const found = new Map<string, Value>();
+  for (const entry of entries) {
+    if (!found.has(key(entry))) found.set(key(entry), value(entry));
   }
-  return { partPath, xml: text, hadBom, byParaId, ordered };
+  return found;
+}
+
+/** A durable id is hexadecimal (`ST_LongHexNumber`), so two spellings in different case are one id */
+export function durableIdKey(durableId: string): string {
+  return durableId.toUpperCase();
+}
+
+/** Every durable id the ids and extensible parts name, orphans included: a date left under one would become a new comment's */
+export function spentDurableIds(
+  comments: ImportedComments
+): ReadonlySet<string> {
+  return new Set(
+    [...comments.ids.ordered, ...comments.extensible.ordered].map((entry) =>
+      durableIdKey(entry.durableId)
+    )
+  );
 }
 
 /**
@@ -150,14 +210,51 @@ export function readComments(
   mainPartPath: string
 ): ImportedComments {
   const people = readPeople(parts, mainPartPath);
-  const extensions = readCommentExtensions(parts, mainPartPath);
+  const extensions = readCommentPart(
+    parts,
+    mainPartPath,
+    COMMENTS_EXTENDED_REL_TYPE,
+    "commentEx",
+    commentExtensionOf
+  );
+  const extensionsByParaId = firstByKey(
+    extensions.ordered,
+    (entry) => entry.paraId,
+    (entry) => entry
+  );
+  const ids = readCommentPart(
+    parts,
+    mainPartPath,
+    COMMENTS_IDS_REL_TYPE,
+    "commentId",
+    commentIdOf
+  );
+  const extensible = readCommentPart(
+    parts,
+    mainPartPath,
+    COMMENTS_EXTENSIBLE_REL_TYPE,
+    "commentExtensible",
+    commentDateOf
+  );
   const aside = {
     people,
     extendedPartPath: extensions.partPath,
     extendedXml: extensions.xml,
     extendedHadBom: extensions.hadBom,
     extendedOrdered: extensions.ordered,
+    ids,
+    extensible,
   };
+  const durableIds = firstByKey(
+    ids.ordered,
+    (entry) => entry.paraId,
+    (entry) => entry.durableId
+  );
+  const utcDates = firstByKey(
+    extensible.ordered,
+    (entry) => durableIdKey(entry.durableId),
+    (entry) => entry.dateUtc
+  );
   const partPath = relatedPartPath(parts, mainPartPath, COMMENTS_REL_TYPE);
   if (partPath === null) return { ...NO_COMMENTS, ...aside };
 
@@ -172,8 +269,10 @@ export function readComments(
       const id = attributeByLocalName(el, "id");
       if (id === null) return [];
       const paraId = lastParagraphId(el);
-      const extension = paraId ? extensions.byParaId.get(paraId) : undefined;
+      const extension = paraId ? extensionsByParaId.get(paraId) : undefined;
       const author = attributeByLocalName(el, "author");
+      const durableId =
+        paraId === null ? null : (durableIds.get(paraId) ?? null);
       return [
         {
           id,
@@ -185,6 +284,11 @@ export function readComments(
           parentParaId: extension?.parentParaId ?? null,
           resolved: extension?.resolved ?? false,
           extensionXml: extension?.xml ?? null,
+          durableId,
+          dateUtc:
+            durableId === null
+              ? null
+              : (utcDates.get(durableIdKey(durableId)) ?? null),
         },
       ];
     });

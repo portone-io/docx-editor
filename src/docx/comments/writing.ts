@@ -25,6 +25,7 @@ import {
   storyOf,
   withThreadKeyOn,
 } from "../story";
+import { planDurableParts } from "./durable";
 import {
   arrivedEntries,
   renderCommentExtension,
@@ -34,6 +35,8 @@ import {
   type CommentReferenceData,
   type CommentReplyData,
   commentReferencesIn,
+  currentCommentBodies,
+  originalThreadIds,
 } from "./model";
 import { commentsExtendedPart, commentsPart, peoplePart } from "./parts";
 import { planPeoplePart } from "./people";
@@ -239,15 +242,19 @@ function carriesThreadMetadata(
 }
 
 /**
- * The thread key belongs on the entry where the comment has thread state to hang off it, and
- * where the entry arrived carrying one: a key already written is what its state is keyed by
- * elsewhere, so a rewrite of what the comment says keeps it.
+ * The thread key belongs on the entry where the comment has thread state or a durable id to hang
+ * off it, and where the entry arrived carrying one: a key already written is what its state is
+ * keyed by elsewhere, so a rewrite of what the comment says keeps it.
  */
 function keyedEntry(
   comment: CommentReferenceData | CommentReplyData,
   arrivedKeyed: ReadonlySet<string>
 ): boolean {
-  return carriesThreadMetadata(comment) || arrivedKeyed.has(comment.id);
+  return (
+    carriesThreadMetadata(comment) ||
+    comment.durableId !== null ||
+    arrivedKeyed.has(comment.id)
+  );
 }
 
 /** The two ends of a `w:comment` this editor writes from nothing, its identity on the opening tag */
@@ -307,7 +314,7 @@ function renderedComment(
  * What a part carrying comments this editor wrote has to declare. Every entry it writes is spelled
  * under `w`, so the root binds it rather than each entry declaring it again.
  */
-export const COMMENT_MARKUP: RootDeclarations = {
+const COMMENT_MARKUP: RootDeclarations = {
   namespaces: { w: NAMESPACES.w },
 };
 
@@ -320,39 +327,38 @@ const THREAD_MARKUP: RootDeclarations = {
   ignorable: ["w14"],
 };
 
+function arrivedKeyedIds(comments: ImportedComments): ReadonlySet<string> {
+  return new Set(
+    Array.from(comments.byId.values()).flatMap((entry) =>
+      entry.paraId === null ? [] : [entry.id]
+    )
+  );
+}
+
+function markupFor(
+  bodies: Iterable<CommentReferenceData | CommentReplyData>,
+  arrivedKeyed: ReadonlySet<string>
+): RootDeclarations {
+  return Array.from(bodies).some((comment) => keyedEntry(comment, arrivedKeyed))
+    ? THREAD_MARKUP
+    : COMMENT_MARKUP;
+}
+
+/** What the Comments part is written declaring, which the export invariants check its root against */
+export function commentsMarkup(
+  doc: PMNode,
+  session: SessionStore
+): RootDeclarations {
+  return markupFor(
+    currentCommentBodies(commentReferencesIn(doc)).values(),
+    arrivedKeyedIds(session.comments)
+  );
+}
+
 /** What a part carrying the thread an entry belongs to has to declare, its keys being `w15` ones */
 export const EXTENSIONS_MARKUP: RootDeclarations = {
   namespaces: { w15: NAMESPACES.w15 },
 };
-
-export function currentCommentBodies(
-  references: ReadonlyMap<string, CommentReferenceData>
-): ReadonlyMap<string, CommentReferenceData | CommentReplyData> {
-  const comments = new Map<string, CommentReferenceData | CommentReplyData>();
-  for (const [id, comment] of references) {
-    comments.set(id, comment);
-    for (const reply of comment.replies) comments.set(reply.id, reply);
-  }
-  return comments;
-}
-
-function originalThreadIds(
-  comments: ImportedComments,
-  rootIds: ReadonlySet<string>
-): ReadonlySet<string> {
-  const ids = new Set(rootIds);
-  const pending = Array.from(rootIds);
-  while (pending.length > 0) {
-    const parent = pending.shift();
-    if (parent === undefined) break;
-    for (const reply of comments.repliesByParentId.get(parent) ?? []) {
-      if (ids.has(reply.id)) continue;
-      ids.add(reply.id);
-      pending.push(reply.id);
-    }
-  }
-  return ids;
-}
 
 function commentsXml(
   doc: PMNode,
@@ -362,14 +368,8 @@ function commentsXml(
 ): string {
   const comments = session.comments;
   const currentBodies = currentCommentBodies(references);
-  const arrivedKeyed = new Set(
-    Array.from(comments.byId.values()).flatMap((entry) =>
-      entry.paraId === null ? [] : [entry.id]
-    )
-  );
-  const hasThreadMetadata = Array.from(currentBodies.values()).some((comment) =>
-    keyedEntry(comment, arrivedKeyed)
-  );
+  const arrivedKeyed = arrivedKeyedIds(comments);
+  const markup = markupFor(currentBodies.values(), arrivedKeyed);
   const arrived = arrivedEntries(comments.xml);
   const originalThreads = originalThreadIds(comments, originallyReferenced);
   const pieces: string[] = [];
@@ -403,29 +403,21 @@ function commentsXml(
     }
   }
 
-  if (comments.xml === null) {
-    const compatibility = hasThreadMetadata
-      ? ` ${xmlnsDecl("w14")} ${xmlnsDecl("mc")} mc:Ignorable="w14"`
-      : "";
-    return (
-      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
-      `<w:comments ${xmlnsDecl("w")}${compatibility}>${pieces.join("")}</w:comments>`
-    );
-  }
-
-  const rewritten = splicePart(comments.xml, {
+  const part =
+    comments.xml ??
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      `<w:comments ${xmlnsDecl("w")}></w:comments>`;
+  const rewritten = splicePart(part, {
     root: COMMENTS_ROOT,
     replaceChildren: pieces.join(""),
   });
-  return ensureRootDeclarations(
-    rewritten,
-    hasThreadMetadata ? THREAD_MARKUP : COMMENT_MARKUP
-  );
+  return ensureRootDeclarations(rewritten, markup);
 }
 
 /**
- * Plans the Comments part, relationship and content type only when comment state changed, and the
- * people part beside them for an author whose identity the document has yet to record.
+ * Plans the Comments part, relationship and content type only when comment state changed, the
+ * people part beside them for an author whose identity the document has yet to record, and the
+ * ids and extensible parts that date a comment (`./durable`).
  */
 function planCommentParts(
   doc: PMNode,
@@ -499,6 +491,9 @@ function planCommentParts(
       context
     );
     for (const [path, bytes] of people ?? []) parts.set(path, bytes);
+    for (const [path, bytes] of planDurableParts(doc, session, context)) {
+      parts.set(path, bytes);
+    }
   }
   return parts;
 }

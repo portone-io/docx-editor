@@ -91,6 +91,8 @@ export type ExportPartName =
   | "comments"
   | "commentsExtended"
   | "people"
+  | "commentsIds"
+  | "commentsExtensible"
   | "footnotes"
   | "endnotes";
 

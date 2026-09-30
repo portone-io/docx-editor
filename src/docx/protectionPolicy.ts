@@ -59,6 +59,11 @@ export interface VerifyOptions extends PolicyOptions {
   xmlParser?: XmlParser;
 }
 
+export interface JudgedPackages {
+  arrived: SessionStore;
+  submitted: SessionStore;
+}
+
 /** One package part a protection lets an editor rewrite, and how a rewritten entry is judged */
 export interface StoryPartKind {
   relType: string;
@@ -101,17 +106,16 @@ export interface StoryPartKind {
   anyonesChange(entry: Element, original: Element): boolean;
   /**
    * Permission alone: whether `authorId` may have written (`original === null`) or rewritten this
-   * entry under `options`. `session` is the submission's, so a kind can look across at a sibling
-   * part, the way a comment's author resolves through the people part. `unattributed` is the
-   * display names the file that arrived writes comments under while recording nobody for them,
-   * which is what an entry claiming no identity is held against.
+   * entry under `options`. `packages` lets a kind look across at a sibling part or back at what
+   * arrived. `unattributed` is the display names the file that arrived writes comments under while
+   * recording nobody for them, which is what an entry claiming no identity is held against.
    */
   allowed(
     entry: Element,
     original: Element | null,
     authorId: string,
     options: PolicyOptions,
-    session: SessionStore,
+    packages: JudgedPackages,
     unattributed: ReadonlySet<string>
   ): boolean;
 }
@@ -493,9 +497,9 @@ function packageKept(
  * who could have written it.
  *
  * An entry the file no longer stands behind is one no edit through the editor could have reached,
- * and an entry it did not stand behind when it left is one no edit could have taken away. Both
- * halves hold for every part of the policy: a comment nothing refers to, thread state for no
- * comment, an identity for a name nobody writes under.
+ * and the writer drops an entry only with what it stood for. Both halves hold for every part of
+ * the policy: a comment nothing refers to, thread state or a date for no comment, an identity for
+ * a name nobody writes under.
  */
 function partKept(
   kind: StoryPartKind,
@@ -525,7 +529,7 @@ function partKept(
         original?.el ?? null,
         authorId,
         options,
-        after.session,
+        { arrived: before.session, submitted: after.session },
         unattributed
       )
     ) {
@@ -535,7 +539,9 @@ function partKept(
 
   const stoodBehindBefore = kind.referents(before);
   return Array.from(arrived.keys()).every(
-    (id) => stoodBehindBefore.has(id) || submitted.has(id)
+    (id) =>
+      submitted.has(id) ||
+      (stoodBehindBefore.has(id) && !stoodBehindNow.has(id))
   );
 }
 

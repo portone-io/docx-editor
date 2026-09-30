@@ -10,6 +10,7 @@
 
 import type { Node as PMNode } from "prosemirror-model";
 import { type EditorState, Plugin, PluginKey } from "prosemirror-state";
+import { spentDurableIds } from "../docx/comments/reading";
 import { DEFAULT_TAB_STOP_PT } from "../docx/documentSettings";
 import {
   type FormattingContext,
@@ -60,6 +61,8 @@ export interface EditorDocument {
   readonly reservedCommentIds: ReadonlySet<string>;
   /** Every paragraph id present in the opened comment parts, including orphan extension entries */
   readonly reservedCommentParaIds: ReadonlySet<string>;
+  /** Every durable id the opened comment parts name, including orphan entries */
+  readonly reservedCommentDurableIds: ReadonlySet<string>;
   /** How the document counts its footnotes and endnotes, which the note labels are spelled in */
   readonly noteNumbering: NoteNumbering;
   /** The note entries that lay out the page rather than number a note: separators and the continuation notice */
@@ -90,6 +93,7 @@ export const NO_DOCUMENT: EditorDocument = {
   defaultTabStopPt: DEFAULT_TAB_STOP_PT,
   reservedCommentIds: NO_IDS,
   reservedCommentParaIds: NO_IDS,
+  reservedCommentDurableIds: NO_IDS,
   noteNumbering: DEFAULT_NOTE_NUMBERING,
   specialNotes: NO_NOTE_KEYS,
   reservedNoteKeys: NO_NOTE_KEYS,
@@ -106,6 +110,9 @@ function reservedParaIds(session: SessionStore): Set<string> {
   }
   for (const extension of session.comments.extendedOrdered) {
     paraIds.add(extension.paraId);
+  }
+  for (const entry of session.comments.ids.ordered) {
+    paraIds.add(entry.paraId);
   }
   return paraIds;
 }
@@ -141,6 +148,7 @@ export function editorDocumentOf(
     defaultTabStopPt: session.defaultTabStopPt,
     reservedCommentIds: new Set(session.comments.byId.keys()),
     reservedCommentParaIds: reservedParaIds(session),
+    reservedCommentDurableIds: spentDurableIds(session.comments),
     noteNumbering: session.noteNumbering,
     specialNotes: session.specialNotes,
     reservedNoteKeys: new Set(
@@ -242,4 +250,11 @@ export function reservedCommentParaIds(
   state: EditorState
 ): ReadonlySet<string> {
   return documentOf(state).reservedCommentParaIds;
+}
+
+/** The durable ids the opened comment parts already spent */
+export function reservedCommentDurableIds(
+  state: EditorState
+): ReadonlySet<string> {
+  return documentOf(state).reservedCommentDurableIds;
 }

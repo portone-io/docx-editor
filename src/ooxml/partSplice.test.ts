@@ -126,6 +126,84 @@ describe("splicePart", () => {
     }
   });
 
+  it("takes out the children keep turns down, and leaves the text between children where it stood", () => {
+    const entry = (id: string) =>
+      `<w16cid:commentId w16cid:paraId="${id}" w16cid:durableId="0000000${id.at(-1)}"/>`;
+    const xml =
+      `${PROLOG}<w16cid:commentsIds ${xmlnsDecl("w16cid")}>\n  ` +
+      `${entry("00000001")}\n  <!-- kept -->${entry("00000002")}\n  ${entry("00000003")}\n` +
+      "</w16cid:commentsIds>";
+    expect(
+      splicePart(xml, {
+        root: "commentsIds",
+        keep: ({ attrs }) =>
+          !attrs?.some(
+            ([name, value]) => name === "w16cid:paraId" && value === "00000002"
+          ),
+      })
+    ).toBe(
+      `${PROLOG}<w16cid:commentsIds ${xmlnsDecl("w16cid")}>\n  ` +
+        `${entry("00000001")}\n  <!-- kept -->\n  ${entry("00000003")}\n` +
+        "</w16cid:commentsIds>"
+    );
+  });
+
+  it("takes out a child holding children of its own, to its closing tag", () => {
+    const xml =
+      `<w16cex:commentsExtensible ${xmlnsDecl("w16cex")}>` +
+      '<w16cex:commentExtensible w16cex:durableId="00000001"><w16cex:extLst><w16cex:ext/></w16cex:extLst></w16cex:commentExtensible>' +
+      '<w16cex:commentExtensible w16cex:durableId="00000002"/>' +
+      "</w16cex:commentsExtensible>";
+    expect(
+      splicePart(xml, {
+        root: "commentsExtensible",
+        keep: ({ name, xml }) =>
+          name !== "commentExtensible" || !xml.includes('"00000001"'),
+      })
+    ).toBe(
+      `<w16cex:commentsExtensible ${xmlnsDecl("w16cex")}>` +
+        '<w16cex:commentExtensible w16cex:durableId="00000002"/>' +
+        "</w16cex:commentsExtensible>"
+    );
+  });
+
+  it("inserts by an order it is given, for a root CHILD_ORDER does not describe", () => {
+    const xml =
+      `<w16cex:commentsExtensible ${xmlnsDecl("w16cex")}>` +
+      '<w16cex:commentExtensible w16cex:durableId="00000001"/>' +
+      "<w16cex:extLst/></w16cex:commentsExtensible>";
+    expect(
+      splicePart(xml, {
+        root: "commentsExtensible",
+        insert: [
+          {
+            name: "commentExtensible",
+            xml: '<w16cex:commentExtensible w16cex:durableId="00000002"/>',
+          },
+        ],
+        order: ["commentExtensible", "extLst"],
+      })
+    ).toBe(
+      `<w16cex:commentsExtensible ${xmlnsDecl("w16cex")}>` +
+        '<w16cex:commentExtensible w16cex:durableId="00000001"/>' +
+        '<w16cex:commentExtensible w16cex:durableId="00000002"/>' +
+        "<w16cex:extLst/></w16cex:commentsExtensible>"
+    );
+  });
+
+  it("names the given order, not CHILD_ORDER, for a child that order does not know", () => {
+    const xml = `<w16cex:commentsExtensible ${xmlnsDecl("w16cex")}/>`;
+    expect(() =>
+      splicePart(xml, {
+        root: "commentsExtensible",
+        insert: [{ name: "somethingNew", xml: "<w16cex:somethingNew/>" }],
+        order: ["commentExtensible", "extLst"],
+      })
+    ).toThrowError(
+      /^somethingNew is not a child the order of commentsExtensible knows$/
+    );
+  });
+
   it("replaces every child and keeps the prolog", () => {
     const xml =
       `${PROLOG}\n<!-- kept --><w:comments ${xmlnsDecl("w")}>` +

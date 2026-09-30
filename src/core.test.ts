@@ -627,7 +627,7 @@ describe("onlyCommentsChangedBy", () => {
     });
 
     /**
-     * The excuse the three comment parts get is an excuse for those parts, not for whichever part
+     * The excuse the comment parts get is an excuse for those parts, not for whichever part
      * a submission decides to relate under a comment type.
      */
     describe("for a part related as a comment part", () => {
@@ -824,7 +824,7 @@ describe("onlyCommentsChangedBy", () => {
 
         const comments = partText(submitted, COMMENTS_PART);
         expect(comments).toMatch(
-          /^<w:comments xmlns:w="[^"]+"><w:comment [^>]*>.*note.*<\/w:comment><\/w:comments>$/
+          /^<w:comments xmlns:w="[^"]+"[^>]*><w:comment [^>]*>.*note.*<\/w:comment><\/w:comments>$/
         );
         expect(onlyCommentsChangedBy(related, submitted, "me")).toEqual(
           allowed
@@ -956,7 +956,7 @@ describe("onlyCommentsChangedBy", () => {
   });
 
   /**
-   * The three parts a comment is written across are the ones a comment edit rewrites, so the
+   * The parts a comment is written across are the ones a comment edit rewrites, so the
    * package comparison passes over their bytes. What a submission put in them is read entry by
    * entry instead (`docx/comments/verifying`), or a file could carry anything at all inside a
    * comment and be answered as one where only comments changed.

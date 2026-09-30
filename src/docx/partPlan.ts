@@ -16,7 +16,11 @@ import {
   type ContentTypeWriter,
   markupParts,
 } from "./packageParts";
-import { type RelationshipWriter, relsPathOf } from "./relationships";
+import {
+  directoryOf,
+  type RelationshipWriter,
+  relsPathOf,
+} from "./relationships";
 import type { SessionStore } from "./session";
 
 export interface PartPlanContext {
@@ -24,6 +28,38 @@ export interface PartPlanContext {
   readonly contentTypes: ContentTypeWriter;
   /** Where a story writer records an approximation it had to make, beside the body writer's */
   readonly notes: FidelityCollector;
+}
+
+/** A part a planner may add, as the package relates and declares it */
+export interface DeclaredPart {
+  readonly relType: string;
+  readonly contentType: string;
+  pathIn(session: SessionStore): string | null;
+  writePathIn(session: SessionStore): string;
+}
+
+/**
+ * Where the part is written: related from the main part where the package relates none, and
+ * declared in `[Content_Types].xml` where its bytes did not arrive.
+ */
+export function declarePart(
+  part: DeclaredPart,
+  session: SessionStore,
+  context: PartPlanContext,
+  arrivedXml: string | null
+): string {
+  const adding = part.pathIn(session) === null;
+  const path = part.writePathIn(session);
+  if (adding) {
+    context.relationships.add({
+      type: part.relType,
+      target: path.slice(directoryOf(session.mainPartPath).length),
+    });
+  }
+  if (adding || arrivedXml === null) {
+    context.contentTypes.addOverride(path, part.contentType);
+  }
+  return path;
 }
 
 export interface PartPlanner {

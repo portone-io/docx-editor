@@ -67,16 +67,17 @@ A comment whose id stands on both sides with a different author is reported as r
 
 ## The comment parts
 
-The comments, extended comments, and people parts are not listed in `parts`.
+The comment parts - comments, extended comments, people, and the parts Word records a comment's
+time in - are not listed in `parts`.
 What they hold is reported through `comments`, which compares each comment's text alone.
 Comment markers are left out of the block comparison, so a file that differs only in its comments reports no blocks.
-The main part's relationships and `[Content_Types].xml` are not listed in `parts` when they differ only by a relationship to those three parts and an override naming each, and only while the file that gained them holds the part.
+The main part's relationships and `[Content_Types].xml` are not listed in `parts` when they differ only by a relationship to those parts and an override naming each, and only while the file that gained them holds the part.
 
 ## What it does not report
 
 - A change inside a header, footer, footnote, or endnote is reported only as a changed part.
 - A comment's resolved state, date, or anchor is not reported, since only its text is compared.
-- A difference in the extended comments or people parts beyond a comment's text is not reported.
+- A difference in the other comment parts beyond a comment's text is not reported.
 - A producer that renumbers comment ids on save makes a comment inserted ahead of others read as a rewrite plus an addition.
 - Markup inside `w:tblGrid` beyond the column widths is not compared.
 - The size a picture's own transform states is not compared.

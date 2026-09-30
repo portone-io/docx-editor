@@ -21,6 +21,7 @@ import {
   documentOf,
   editorDocumentOf,
   NO_DOCUMENT,
+  reservedCommentDurableIds,
   reservedCommentIds,
   reservedCommentParaIds,
 } from "./editorDocument";
@@ -123,6 +124,13 @@ describe("reading an opened document into editor values", () => {
         ...session.comments.extendedOrdered.map(
           (extension) => extension.paraId
         ),
+        ...session.comments.ids.ordered.map((entry) => entry.paraId),
+      ])
+    );
+    expect(document.reservedCommentDurableIds).toEqual(
+      new Set([
+        ...session.comments.ids.ordered.map((entry) => entry.durableId),
+        ...session.comments.extensible.ordered.map((entry) => entry.durableId),
       ])
     );
 
@@ -152,6 +160,9 @@ describe("reading an opened document into editor values", () => {
     expect(documentGeometry(state)).toBe(document.geometry);
     expect(reservedCommentIds(state)).toBe(document.reservedCommentIds);
     expect(reservedCommentParaIds(state)).toBe(document.reservedCommentParaIds);
+    expect(reservedCommentDurableIds(state)).toBe(
+      document.reservedCommentDurableIds
+    );
 
     expect(documentGeometry(state)).toEqual(LETTER_GEOMETRY);
     expect(canStartNewList(state)).toBe(true);

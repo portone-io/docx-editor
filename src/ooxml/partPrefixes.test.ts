@@ -32,6 +32,29 @@ describe("withEditorPrefixes", () => {
     expect(rewritten).toContain('<w:t w:val="ns0:x">ns0:p and w:p</w:t>');
   });
 
+  it("spells the ids and extensible comment parts under w16cid and w16cex", () => {
+    expect(
+      withEditorPrefixes(
+        `<cid:commentsIds xmlns:cid="${NAMESPACES.w16cid}">` +
+          '<cid:commentId cid:paraId="0000000A" cid:durableId="0000000B"/>' +
+          "</cid:commentsIds>"
+      )
+    ).toBe(
+      `<w16cid:commentsIds xmlns:w16cid="${NAMESPACES.w16cid}">` +
+        '<w16cid:commentId w16cid:paraId="0000000A" w16cid:durableId="0000000B"/>' +
+        "</w16cid:commentsIds>"
+    );
+    expect(
+      withEditorPrefixes(
+        `<commentsExtensible xmlns="${NAMESPACES.w16cex}">` +
+          '<commentExtensible durableId="0000000B"/></commentsExtensible>'
+      )
+    ).toBe(
+      `<w16cex:commentsExtensible xmlns:w16cex="${NAMESPACES.w16cex}">` +
+        '<w16cex:commentExtensible durableId="0000000B"/></w16cex:commentsExtensible>'
+    );
+  });
+
   it("gives the elements of a default-namespace part the prefix, and its attributes none", () => {
     const part =
       `<document xmlns="${W_NS}"><body><p><r>` +

@@ -28,7 +28,7 @@ export interface NewComment {
   /** The identity behind `author`. A comment written without one belongs to nobody in particular */
   authorId?: string;
   initials?: string;
-  /** ISO 8601 timestamp. The current time is used when omitted. */
+  /** ISO 8601 instant, kept to the second. The current time is used when omitted. */
   date?: string;
 }
 
@@ -41,6 +41,7 @@ export interface DocumentComment {
   readonly author: string | null;
   readonly authorId: string | null;
   readonly initials: string | null;
+  /** ISO 8601 instant in UTC. A value that is not a readable date is returned as written. */
   readonly date: string | null;
   /** What it says, as plain text. The formatting behind it is `setCommentBody`'s to write */
   readonly text: string;
@@ -63,6 +64,7 @@ export interface DocumentCommentReply {
   readonly author: string | null;
   readonly authorId: string | null;
   readonly initials: string | null;
+  /** Read the way `DocumentComment.date` is */
   readonly date: string | null;
   readonly text: string;
 }

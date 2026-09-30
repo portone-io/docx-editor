@@ -20,14 +20,17 @@ It compares comment text alone, so it shows nothing for a refusal over a comment
 
 The comparison checks the whole package within the [limits below](#how-files-are-compared):
 
-- Every part is byte-identical, except the comments, extended comments, and people parts.
+- Every part is byte-identical, except the comment parts: comments, extended comments, people, and
+  the parts Word records a comment's time in (`commentsIds.xml` and `commentsExtensible.xml`).
 - The main document part is unchanged outside its body blocks.
-- Its relationships and `[Content_Types].xml` gain only what those three parts need: a relationship to each and an override naming each part the file holds.
+- Its relationships and `[Content_Types].xml` gain only what the comment parts need: a relationship to each and an override naming each part the file holds.
 - The story reads as it did with the comments taken out, and every changed comment is this author's.
-- Every entry of those three parts is unchanged, or is one this editor writes and this author could
+- Every entry of the comment parts is unchanged, or is one this editor writes and this author could
   have written; adding a person cannot claim an existing unattributed comment.
-- XML comments and processing instructions outside those entries are unchanged; layout whitespace
-  may differ.
+- An entry of a comment that is still there is not removed, and a comment's recorded time can be
+  added only to a comment that is new, within fourteen hours of the clock time on the comment.
+- XML comments, processing instructions, and the extension list that may close
+  `commentsExtensible.xml` are unchanged outside those entries; layout whitespace may differ.
 
 Both files are read through `importDocx` first, so a package that spelled the namespaces under
 other prefixes is compared respelled on both sides and the verdict is unaffected.
@@ -61,7 +64,7 @@ type CommentOnlyVerdict =
 | `comment-author-forged` | A new comment claims another identity, or an existing comment's author was rewritten. |
 | `part-changed` | A part outside the comment parts differs, or the main part changed outside its body. `part` names it. |
 | `relationship-changed` | The main part's relationships changed beyond what a comment part needs. `part` names the relationship part. |
-| `comment-markup-rejected` | A comment part holds an entry this editor would not write for this author. `part` names it. |
+| `comment-markup-rejected` | A comment part holds an entry this editor would not write for this author, or lacks the entry of a comment still in the file. `part` names it. |
 
 ## How files are compared
 
