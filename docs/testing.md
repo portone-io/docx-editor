@@ -35,6 +35,9 @@ Place a test beside the source it covers, such as `src/docx/importDocx.test.ts` 
 
 Vitest uses `isolate: false`, so test files in a worker share module state. Restore temporary overrides, scope retained data to its session, and do not let identifiers or caches depend on test order.
 
+The suite runs on the `Asia/Seoul` clock, which `vitest.config.ts` sets before any worker starts, so a wall-clock time read or written as an instant is off by nine hours on every machine rather than passing on one that runs on UTC.
+Do not set `process.env.TZ` inside a test: the worker threads share one process, and the zone would move under every file running beside it.
+
 Build a state for an opened document with `editorStateForSession`, because an option bag copied from the session by hand is how a test comes to hold values the editor itself never builds.
 
 Shared helpers belong under `src/__testing__/` or a feature's `__testing__/` directory. The declaration build excludes those directories, and the package test ensures they are not published.

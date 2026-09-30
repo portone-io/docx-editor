@@ -1,5 +1,9 @@
 import { defineConfig } from "vitest/config";
 
+// Set before the worker threads start, since they share one zone. Not UTC, so that a wall clock
+// mistaken for an instant is nine hours out on every machine.
+process.env.TZ = "Asia/Seoul";
+
 export default defineConfig({
   test: {
     dir: "src",
