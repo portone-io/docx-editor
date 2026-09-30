@@ -314,7 +314,7 @@ function renderedComment(
  * What a part carrying comments this editor wrote has to declare. Every entry it writes is spelled
  * under `w`, so the root binds it rather than each entry declaring it again.
  */
-export const COMMENT_MARKUP: RootDeclarations = {
+const COMMENT_MARKUP: RootDeclarations = {
   namespaces: { w: NAMESPACES.w },
 };
 
@@ -326,6 +326,34 @@ const THREAD_MARKUP: RootDeclarations = {
   namespaces: { w: NAMESPACES.w, w14: NAMESPACES.w14, mc: NAMESPACES.mc },
   ignorable: ["w14"],
 };
+
+function arrivedKeyedIds(comments: ImportedComments): ReadonlySet<string> {
+  return new Set(
+    Array.from(comments.byId.values()).flatMap((entry) =>
+      entry.paraId === null ? [] : [entry.id]
+    )
+  );
+}
+
+function markupFor(
+  bodies: Iterable<CommentReferenceData | CommentReplyData>,
+  arrivedKeyed: ReadonlySet<string>
+): RootDeclarations {
+  return Array.from(bodies).some((comment) => keyedEntry(comment, arrivedKeyed))
+    ? THREAD_MARKUP
+    : COMMENT_MARKUP;
+}
+
+/** What the Comments part is written declaring, which the export invariants check its root against */
+export function commentsMarkup(
+  doc: PMNode,
+  session: SessionStore
+): RootDeclarations {
+  return markupFor(
+    currentCommentBodies(commentReferencesIn(doc)).values(),
+    arrivedKeyedIds(session.comments)
+  );
+}
 
 /** What a part carrying the thread an entry belongs to has to declare, its keys being `w15` ones */
 export const EXTENSIONS_MARKUP: RootDeclarations = {
@@ -340,14 +368,8 @@ function commentsXml(
 ): string {
   const comments = session.comments;
   const currentBodies = currentCommentBodies(references);
-  const arrivedKeyed = new Set(
-    Array.from(comments.byId.values()).flatMap((entry) =>
-      entry.paraId === null ? [] : [entry.id]
-    )
-  );
-  const hasThreadMetadata = Array.from(currentBodies.values()).some((comment) =>
-    keyedEntry(comment, arrivedKeyed)
-  );
+  const arrivedKeyed = arrivedKeyedIds(comments);
+  const markup = markupFor(currentBodies.values(), arrivedKeyed);
   const arrived = arrivedEntries(comments.xml);
   const originalThreads = originalThreadIds(comments, originallyReferenced);
   const pieces: string[] = [];
@@ -381,24 +403,15 @@ function commentsXml(
     }
   }
 
-  if (comments.xml === null) {
-    const compatibility = hasThreadMetadata
-      ? ` ${xmlnsDecl("w14")} ${xmlnsDecl("mc")} mc:Ignorable="w14"`
-      : "";
-    return (
-      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
-      `<w:comments ${xmlnsDecl("w")}${compatibility}>${pieces.join("")}</w:comments>`
-    );
-  }
-
-  const rewritten = splicePart(comments.xml, {
+  const part =
+    comments.xml ??
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      `<w:comments ${xmlnsDecl("w")}></w:comments>`;
+  const rewritten = splicePart(part, {
     root: COMMENTS_ROOT,
     replaceChildren: pieces.join(""),
   });
-  return ensureRootDeclarations(
-    rewritten,
-    hasThreadMetadata ? THREAD_MARKUP : COMMENT_MARKUP
-  );
+  return ensureRootDeclarations(rewritten, markup);
 }
 
 /**

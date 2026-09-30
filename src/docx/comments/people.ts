@@ -25,9 +25,8 @@ import {
 } from "../../ooxml/xml";
 import { unattributedCommentAuthors } from "../../schema/protection";
 import { relatedPartPath } from "../packageParts";
-import type { PartPlanContext } from "../partPlan";
+import { declarePart, type PartPlanContext } from "../partPlan";
 import type { StoryPartKind } from "../protectionPolicy";
-import { directoryOf } from "../relationships";
 import type { SessionStore } from "../session";
 import { COMMENT_AUTHOR_PROVIDER, PEOPLE_REL_TYPE, W15_NS } from "./constants";
 import { renderPerson } from "./grammar";
@@ -201,18 +200,8 @@ export function planPeoplePart(
   );
   if (added.size === 0) return null;
 
-  const parts = new Map<string, Uint8Array>();
-  const addingPart = part.pathIn(session) === null;
-  const partPath = part.writePathIn(session);
-  if (addingPart) {
-    context.relationships.add({
-      type: part.relType,
-      target: partPath.slice(directoryOf(session.mainPartPath).length),
-    });
-  }
-  parts.set(partPath, encodeUtf8(peopleXml(people, added), people.hadBom));
-  if (addingPart || people.xml === null) {
-    context.contentTypes.addOverride(partPath, part.contentType);
-  }
-  return parts;
+  const partPath = declarePart(part, session, context, people.xml);
+  return new Map([
+    [partPath, encodeUtf8(peopleXml(people, added), people.hadBom)],
+  ]);
 }

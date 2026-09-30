@@ -60,7 +60,7 @@ import {
   peoplePart,
 } from "./comments/parts";
 import { unrecordedAuthors } from "./comments/people";
-import { COMMENT_MARKUP, EXTENSIONS_MARKUP } from "./comments/writing";
+import { commentsMarkup, EXTENSIONS_MARKUP } from "./comments/writing";
 import type { ExportOptions } from "./exportDocx";
 import { HEADER_MARKUP } from "./headersFooters";
 import { identityProblems, identityProblemsInStories } from "./identities";
@@ -461,13 +461,7 @@ const listDefinitions: ExportInvariant = {
 function addedCommentsPart(
   doc: PMNode,
   session: SessionStore
-):
-  | "comments"
-  | "commentsExtended"
-  | "people"
-  | "commentsIds"
-  | "commentsExtensible"
-  | null {
+): "comments" | "commentsExtended" | "people" | null {
   const bodyChanged = commentsChanged(doc, session);
   const threadChanged = extensionsChanged(doc, session);
   if (!bodyChanged && !threadChanged) return null;
@@ -483,8 +477,7 @@ function addedCommentsPart(
   ) {
     return "commentsExtended";
   }
-  if (
-    bodyChanged &&
+  return bodyChanged &&
     (peoplePart.pathIn(session) === null ||
       session.comments.people.xml === null) &&
     unrecordedAuthors(
@@ -492,12 +485,7 @@ function addedCommentsPart(
       session.comments.people,
       unattributedCommentAuthors(session.comments.ordered)
     ).size > 0
-  ) {
-    return "people";
-  }
-  return bodyChanged
-    ? (rewrittenDurableParts(doc, session).find((part) => part.xml === null)
-        ?.name ?? null)
+    ? "people"
     : null;
 }
 
@@ -635,7 +623,7 @@ function rewrittenParts(
   }
   const { xml, extendedXml, extendedPartPath } = session.comments;
   if (commentsChanged(doc, session)) {
-    add(commentsPart.pathIn(session), xml, COMMENT_MARKUP);
+    add(commentsPart.pathIn(session), xml, commentsMarkup(doc, session));
   }
   if (
     extensionsChanged(doc, session) &&

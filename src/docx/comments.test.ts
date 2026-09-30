@@ -23,7 +23,7 @@ import {
 } from "../editor/createEditor";
 import { type EditorDocument, NO_DOCUMENT } from "../editor/editorDocument";
 import { docxSchema } from "../schema";
-import { commentParaId } from "./comments";
+import { seededHexId } from "./comments";
 import { exportDocx } from "./exportDocx";
 import { importDocx } from "./importDocx";
 import { storyFromText, storyOf } from "./story";
@@ -734,7 +734,7 @@ describe("WordprocessingML comments", () => {
 
   it("keeps generated paragraph ids nonzero and below the signed 32-bit boundary", () => {
     for (const seed of ["comment-4", "comment-5", "comment-100", "reply"]) {
-      const value = Number.parseInt(commentParaId(seed), 16);
+      const value = Number.parseInt(seededHexId(seed), 16);
       expect(value).toBeGreaterThan(0);
       expect(value).toBeLessThan(0x80000000);
     }

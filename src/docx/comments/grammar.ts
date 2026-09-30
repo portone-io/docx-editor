@@ -23,7 +23,7 @@ import {
   W16CEX_NS,
   W16CID_NS,
 } from "./constants";
-import { writtenDate } from "./dates";
+import { dateWritten } from "./dates";
 import type { CommentReferenceData, CommentReplyData } from "./model";
 
 const ELEMENT_NODE = 1;
@@ -84,11 +84,13 @@ function threadKeyOrNone(el: Element, localName: string): boolean {
   return value === null || THREAD_KEY.test(value);
 }
 
-/** An `ST_LongHexNumber` greater than 0 and less than 0x7FFFFFFF ([MS-DOCX] §2.8.3.1) */
+/** [MS-DOCX] §2.8.3.1 keeps a durable id greater than 0 and less than 0x7FFFFFFF */
+export const HIGHEST_DURABLE_ID = 0x7ffffffe;
+
 export function isDurableId(value: string | null): value is string {
   if (value === null || !THREAD_KEY.test(value)) return false;
   const number = Number.parseInt(value, 16);
-  return number > 0 && number < 0x7fffffff;
+  return number > 0 && number <= HIGHEST_DURABLE_ID;
 }
 
 /**
@@ -325,7 +327,7 @@ export function wellFormedCommentDate(entry: Element): boolean {
     attributesWithin(entry, COMMENT_DATE_ATTRIBUTES) &&
     entry.childNodes.length === 0 &&
     isDurableId(attributeByLocalName(entry, "durableId")) &&
-    writtenDate(attributeByLocalName(entry, "dateUtc"))
+    dateWritten(attributeByLocalName(entry, "dateUtc"))
   );
 }
 

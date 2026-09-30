@@ -155,7 +155,7 @@ export function writtenCommentDates(given?: string): WrittenCommentDates {
     : { date, dateUtc };
 }
 
-export function writtenDate(value: string | null): boolean {
+export function dateWritten(value: string | null): boolean {
   return value !== null && WRITTEN.test(value) && readDateTime(value) !== null;
 }
 

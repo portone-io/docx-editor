@@ -22,8 +22,9 @@ Everything on this page comes from `@portone/docx-editor/commands`.
 
 `NewComment` is `{ text, author, authorId?, initials?, date? }`, where `date` is an ISO 8601 instant
 defaulting to now, kept to the second.
-The saved file records it the way Word does: the author's clock time on the comment, and the
-instant beside it.
+The saved file records it the way Word does: the instant, and on the comment the time it reads on
+the clock of the runtime that adds it, which is the author's clock only when the author runs the
+editor.
 Pass `author` (the display name), `initials`, and `authorId` from `mode.author`, so the comment is
 recorded as that person's.
 
@@ -35,7 +36,7 @@ recorded as that person's.
 | --- | --- |
 | `id` | The comment's id, which every other command takes. |
 | `author`, `authorId`, `initials` | Who wrote it, as the document records them. Null where the document names none. |
-| `date` | When it was written, as an ISO 8601 instant in UTC such as `2026-09-30T06:00:00.000Z`. A date the document spells as no time at all is returned as written. Null where the document names none. |
+| `date` | When it was written, as an ISO 8601 instant in UTC such as `2026-09-30T06:00:00.000Z`. A value that is not a readable date is returned as written. Null where the document names none. |
 | `text` | The body as plain text. |
 | `from`, `to` | The stretch it marks. |
 | `referencePos` | Where its reference stands in the document. |

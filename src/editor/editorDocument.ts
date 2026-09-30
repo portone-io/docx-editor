@@ -10,6 +10,7 @@
 
 import type { Node as PMNode } from "prosemirror-model";
 import { type EditorState, Plugin, PluginKey } from "prosemirror-state";
+import { spentDurableIds } from "../docx/comments/reading";
 import { DEFAULT_TAB_STOP_PT } from "../docx/documentSettings";
 import {
   type FormattingContext,
@@ -116,14 +117,6 @@ function reservedParaIds(session: SessionStore): Set<string> {
   return paraIds;
 }
 
-/** A date left in the extensible part under a spent id would become a new comment's */
-function reservedDurableIds(session: SessionStore): Set<string> {
-  return new Set([
-    ...session.comments.ids.ordered.map((entry) => entry.durableId),
-    ...session.comments.extensible.ordered.map((entry) => entry.durableId),
-  ]);
-}
-
 /**
  * The list definitions the editor resolves against: the ones the document wrote down, and the ones
  * the lists started while editing were registered with, which the document node carries.
@@ -155,7 +148,7 @@ export function editorDocumentOf(
     defaultTabStopPt: session.defaultTabStopPt,
     reservedCommentIds: new Set(session.comments.byId.keys()),
     reservedCommentParaIds: reservedParaIds(session),
-    reservedCommentDurableIds: reservedDurableIds(session),
+    reservedCommentDurableIds: spentDurableIds(session.comments),
     noteNumbering: session.noteNumbering,
     specialNotes: session.specialNotes,
     reservedNoteKeys: new Set(

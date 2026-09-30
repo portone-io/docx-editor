@@ -47,17 +47,19 @@ What we decide:
 - A comment's instant is the `dateUtc` its thread key reaches through the ids part and the extensible part.
   Without one, `w:date` is read as a floating wall-clock time on the reader's own clock, with any zone designator set aside, which is what Word shows for the same file.
   A `w:date` that names no calendar time is handed on as written.
-- A comment or reply written in the editor records its author's wall-clock time in `w:date` and the instant in a new entry of each part.
+- A comment or reply written in the editor records, in `w:date`, the wall-clock time of the runtime that adds it, which is its author's clock only when the author runs the editor, and the instant in a new entry of each part.
   The dates are written to the second in the form Word writes, `YYYY-MM-DDTHH:MM:SSZ`.
   Its thread key goes on its last paragraph so the ids part has something to key.
   The durable id is minted clear of every durable id either part arrived holding, entries naming no comment among them, so that a date left behind under an id is never read as the new comment's.
+  Durable ids are compared without regard to case, since an `ST_LongHexNumber` is hexadecimal: the reader follows an id to its date that way, and the writer and the verifier hold a new id clear of every spelling of a spent one.
 - A date that names no instant is written into `w:date` as given, and the comment gets no entry in either part.
-  So does every comment written into a package with no `[Content_Types].xml` in which the parts would have to be created: it loses its instant but still reads as its author's clock time, while every other part such a package would need is refused over.
+  So does every comment written into a package with no `[Content_Types].xml` in which the parts would have to be created: it loses its instant but still reads as the clock time it was written at, while every other part such a package would need is refused over.
 - Entries are spliced into a part that arrived, ahead of any extension list closing it, and the bytes of every other entry and of the text between entries stay as they arrived.
   Deleting a comment or reply through the comment command takes out the entry its thread key names in the ids part and the entry its durable id names in the extensible part; an entry naming no comment the story stood behind stays.
 - The verifier accepts, in the ids and extensible parts, an entry that arrived unchanged, or a new one of exactly the shape above for a comment that appeared: a durable id the arrived file never spent and the submission names once, and a `dateUtc` no further than fourteen hours, the widest `xsd:dateTime` offset, from its comment's `w:date`.
   An entry of a comment still standing may not be taken out of any comment part.
-- A comment an earlier version of this editor wrote carries a UTC time in `w:date` and no entry in either part, so it reads as that time on every clock, as it does in Word.
+  An extension list closing the extensible part has to come back as it arrived, after every entry; one that is new, changed, moved or taken out is refused.
+- A comment an earlier version of this editor wrote carries a UTC time in `w:date` and no entry in either part, so its UTC digits read as local time on every clock, as they do in Word, and it appears shifted by the reader's UTC offset.
 
 Observed 2026-09-30 against Microsoft [MS-DOCX] revision 23.0 (2026-08-18), sections as cited, read at learn.microsoft.com; ECMA-376 5th edition Part 1 as cited; the Open XML SDK part definitions (`data/parts/WordprocessingCommentsIdsPart.json`, `WordCommentsExtensiblePart.json` in `dotnet/Open-XML-SDK`).
 Word's handling of `w:date` is an interoperability report (the Aspose forum thread "Setting comment timestamps not reflected in Word document when opening", 2024), not a statement of the specification, and no file Word saved is committed to check it against.

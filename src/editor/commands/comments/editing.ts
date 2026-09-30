@@ -7,8 +7,10 @@ import {
   TextSelection,
   type Transaction,
 } from "prosemirror-state";
-import { commentParaId } from "../../../docx/comments";
+import { seededHexId } from "../../../docx/comments";
 import { writtenCommentDates } from "../../../docx/comments/dates";
+import { HIGHEST_DURABLE_ID } from "../../../docx/comments/grammar";
+import { durableIdKey } from "../../../docx/comments/reading";
 import {
   sameStory,
   setStory,
@@ -114,13 +116,13 @@ function nextCommentId(state: EditorState): string {
 const hexId = (value: number): string =>
   value.toString(16).toUpperCase().padStart(8, "0");
 
-/** [MS-DOCX] caps a paragraph id below 0x80000000 and a durable id below 0x7FFFFFFF */
+/** `highest` is the largest id it may return */
 function nextHexId(
   taken: ReadonlySet<string>,
   seed: string,
   highest: number
 ): string {
-  const hashed = Number.parseInt(commentParaId(seed), 16);
+  const hashed = Number.parseInt(seededHexId(seed), 16);
   let candidate = hashed > highest ? 1 : hashed;
   while (taken.has(hexId(candidate))) {
     candidate = candidate === highest ? 1 : candidate + 1;
@@ -130,13 +132,12 @@ function nextHexId(
 
 function idsInDocument(
   state: EditorState,
-  reserved: Iterable<string>,
   key: "paraId" | "durableId"
-): Set<string> {
-  const taken = new Set(Array.from(reserved, (id) => id.toUpperCase()));
+): string[] {
+  const ids: string[] = [];
   const take = (value: unknown) => {
     const id = stringAttr(value);
-    if (id !== null) taken.add(id.toUpperCase());
+    if (id !== null) ids.push(id);
   };
   state.doc.descendants((node) => {
     if (node.type.name !== "commentReference") return true;
@@ -144,16 +145,22 @@ function idsInDocument(
     for (const reply of repliesAttr(node.attrs.replies)) take(reply[key]);
     return true;
   });
-  return taken;
+  return ids;
 }
 
+/** [MS-DOCX] keeps a paragraph id below 0x80000000 */
 function nextCommentParaId(
   state: EditorState,
   seed: string,
   additional: Iterable<string> = []
 ): string {
-  const taken = idsInDocument(state, reservedCommentParaIds(state), "paraId");
-  for (const paraId of additional) taken.add(paraId.toUpperCase());
+  const taken = new Set(
+    [
+      ...reservedCommentParaIds(state),
+      ...idsInDocument(state, "paraId"),
+      ...additional,
+    ].map((id) => id.toUpperCase())
+  );
   return nextHexId(taken, seed, 0x7fffffff);
 }
 
@@ -164,12 +171,13 @@ function nextCommentDurableId(
   dateUtc: string | null
 ): string | null {
   if (dateUtc === null) return null;
-  const taken = idsInDocument(
-    state,
-    reservedCommentDurableIds(state),
-    "durableId"
+  const taken = new Set(
+    [
+      ...reservedCommentDurableIds(state),
+      ...idsInDocument(state, "durableId"),
+    ].map(durableIdKey)
   );
-  return nextHexId(taken, `${seed}-${dateUtc}`, 0x7ffffffe);
+  return nextHexId(taken, `${seed}-${dateUtc}`, HIGHEST_DURABLE_ID);
 }
 
 function wrapperMarksAt(

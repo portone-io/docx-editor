@@ -39,8 +39,8 @@ export interface CommentReplyData {
   dateUtc: string | null;
 }
 
-/** A stable Word paragraph id for a comment created or upgraded by the editor. */
-export function commentParaId(seed: string): string {
+/** A stable eight-digit hex number below 0x80000000, hashed from the seed */
+export function seededHexId(seed: string): string {
   let hash = 0x811c9dc5;
   for (const char of seed) {
     hash ^= char.charCodeAt(0);
@@ -66,11 +66,11 @@ export function importedCommentReplies(
     const { parentId, reply } = item;
     visited.add(reply.id);
     const parent = comments.byId.get(parentId);
-    const paraId = reply.paraId ?? commentParaId(`comment-${reply.id}`);
+    const paraId = reply.paraId ?? seededHexId(`comment-${reply.id}`);
     const parentParaId =
       reply.parentParaId ??
       parent?.paraId ??
-      commentParaId(`comment-${parentId}`);
+      seededHexId(`comment-${parentId}`);
     replies.push({
       id: reply.id,
       author: reply.author,

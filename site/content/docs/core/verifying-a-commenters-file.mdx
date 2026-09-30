@@ -29,8 +29,8 @@ The comparison checks the whole package within the [limits below](#how-files-are
   have written; adding a person cannot claim an existing unattributed comment.
 - An entry of a comment that is still there is not removed, and a comment's recorded time can be
   added only to a comment that is new, within fourteen hours of the clock time on the comment.
-- XML comments and processing instructions outside those entries are unchanged; layout whitespace
-  may differ.
+- XML comments, processing instructions, and the extension list that may close
+  `commentsExtensible.xml` are unchanged outside those entries; layout whitespace may differ.
 
 Both files are read through `importDocx` first, so a package that spelled the namespaces under
 other prefixes is compared respelled on both sides and the verdict is unaffected.
@@ -64,7 +64,7 @@ type CommentOnlyVerdict =
 | `comment-author-forged` | A new comment claims another identity, or an existing comment's author was rewritten. |
 | `part-changed` | A part outside the comment parts differs, or the main part changed outside its body. `part` names it. |
 | `relationship-changed` | The main part's relationships changed beyond what a comment part needs. `part` names the relationship part. |
-| `comment-markup-rejected` | A comment part holds an entry this editor would not write for this author. `part` names it. |
+| `comment-markup-rejected` | A comment part holds an entry this editor would not write for this author, or lacks the entry of a comment still in the file. `part` names it. |
 
 ## How files are compared
 

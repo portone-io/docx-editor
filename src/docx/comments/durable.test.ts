@@ -124,6 +124,9 @@ const extensibleXml = (entries: string) =>
   '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n' +
   `${EXTENSIBLE_ROOT}${entries}</w16cex:commentsExtensible>`;
 
+const EXTENSION_LIST =
+  '<w16cex:extLst><w16:ext xmlns:w16="http://schemas.microsoft.com/office/word/2018/wordml" w16:uri="{00000000-0000-0000-0000-000000000000}"/></w16cex:extLst>';
+
 const override = (name: string, type: string) =>
   `<Override PartName="/word/${name}" ContentType="${type}"/>`;
 
@@ -286,6 +289,17 @@ describe("reading when a comment was written", () => {
     expect(datesOf(rekeyed)["1"]).toBe("2024-04-08T01:32:00.000Z");
   });
 
+  it("follows a durable id to its date whatever case either part spells it in", () => {
+    const lowered = wordDocx(
+      idsXml(
+        idEntry("1A2B3C4D", "12ec8c19") +
+          idEntry("2B3C4D5E", "483A933D") +
+          idEntry("3C4D5E6F", "5A5A5A5A")
+      )
+    );
+    expect(datesOf(lowered)["1"]).toBe("2024-04-08T17:32:00.000Z");
+  });
+
   it("writes an untouched file back byte for byte", () => {
     const bytes = wordDocx();
     const { doc, session } = importDocx(bytes);
@@ -399,17 +413,15 @@ describe("writing a comment", () => {
   });
 
   it("puts the new date ahead of an extension list closing the extensible part", () => {
-    const extension =
-      '<w16cex:extLst><w16:ext xmlns:w16="http://schemas.microsoft.com/office/word/2018/wordml" w16:uri="{00000000-0000-0000-0000-000000000000}"/></w16cex:extLst>';
     const output = commentedByGrace(
-      wordDocx(undefined, extensibleXml(EXTENSIBLE_ENTRIES + extension))
+      wordDocx(undefined, extensibleXml(EXTENSIBLE_ENTRIES + EXTENSION_LIST))
     );
     const { durableId } = writtenIds(output, "4");
     expect(partText(output, EXTENSIBLE_PATH)).toBe(
       extensibleXml(
         EXTENSIBLE_ENTRIES +
           dateEntry(durableId, "2026-09-30T06:00:00Z") +
-          extension
+          EXTENSION_LIST
       )
     );
   });
@@ -431,6 +443,23 @@ describe("writing a comment", () => {
     expect(partText(output, EXTENSIBLE_PATH)).toContain(
       dateEntry(durableId, "2001-01-01T00:00:00Z")
     );
+  });
+
+  it("steps past a durable id that arrived spelled in lower case", () => {
+    const { durableId } = writtenIds(commentedByGrace(wordDocx()), "4");
+    const orphaned = wordDocx(
+      undefined,
+      extensibleXml(
+        EXTENSIBLE_ENTRIES +
+          dateEntry(durableId.toLowerCase(), "2001-01-01T00:00:00Z")
+      )
+    );
+    const output = commentedByGrace(orphaned);
+
+    expect(writtenIds(output, "4").durableId).not.toBe(durableId);
+    expect(onlyCommentsChangedBy(orphaned, output, "u_grace")).toEqual({
+      ok: true,
+    });
   });
 
   it("reserves every thread key and durable id the ids and extensible parts name, entries naming no comment among them", () => {
@@ -644,6 +673,105 @@ describe("judging a returned file's durable ids and dates", () => {
     );
     expect(onlyCommentsChangedBy(bytes, reused, "u_grace")).toEqual(
       rejected(IDS_PATH)
+    );
+  });
+
+  it("takes back an extension list closing the extensible part as it arrived, with the writer's new date ahead of it", () => {
+    const bytes = wordDocx(
+      undefined,
+      extensibleXml(EXTENSIBLE_ENTRIES + EXTENSION_LIST)
+    );
+    const { doc, session } = importDocx(bytes);
+
+    expect(onlyCommentsChangedBy(bytes, bytes, "u_grace")).toEqual({
+      ok: true,
+    });
+    expect(
+      onlyCommentsChangedBy(bytes, exportDocx(doc, session), "u_grace")
+    ).toEqual({ ok: true });
+    expect(
+      onlyCommentsChangedBy(bytes, commentedByGrace(bytes), "u_grace")
+    ).toEqual({ ok: true });
+  });
+
+  it("refuses an extension list the file did not arrive with, or one changed, moved or taken out", () => {
+    const plain = wordDocx();
+    const listed = wordDocx(
+      undefined,
+      extensibleXml(EXTENSIBLE_ENTRIES + EXTENSION_LIST)
+    );
+    const added = repacked(commentedByGrace(plain), EXTENSIBLE_PATH, (text) =>
+      text.replace(
+        "</w16cex:commentsExtensible>",
+        `${EXTENSION_LIST}</w16cex:commentsExtensible>`
+      )
+    );
+    const output = commentedByGrace(listed);
+    const changed = repacked(output, EXTENSIBLE_PATH, (text) =>
+      text.replace("{00000000-", "{11111111-")
+    );
+    const moved = repacked(output, EXTENSIBLE_PATH, (text) =>
+      text
+        .replace(EXTENSION_LIST, "")
+        .replace(EXTENSIBLE_ROOT, EXTENSIBLE_ROOT + EXTENSION_LIST)
+    );
+    const removed = repacked(output, EXTENSIBLE_PATH, (text) =>
+      text.replace(EXTENSION_LIST, "")
+    );
+
+    expect(onlyCommentsChangedBy(plain, added, "u_grace")).toEqual(
+      rejected(EXTENSIBLE_PATH)
+    );
+    for (const submitted of [changed, moved, removed]) {
+      expect(onlyCommentsChangedBy(listed, submitted, "u_grace")).toEqual(
+        rejected(EXTENSIBLE_PATH)
+      );
+    }
+  });
+
+  it("refuses a new durable id spelling one the file arrived with in another case", () => {
+    const { durableId } = writtenIds(commentedByGrace(wordDocx()), "4");
+    const lowered = durableId.toLowerCase();
+    // An entry left in the extensible part under the id the writer takes, dated years earlier
+    const orphaned = wordDocx(
+      undefined,
+      extensibleXml(
+        EXTENSIBLE_ENTRIES + dateEntry(durableId, "2020-01-01T00:00:00Z")
+      )
+    );
+    const output = commentedByGrace(orphaned);
+    const minted = writtenIds(output, "4").durableId;
+    const respelled = repacked(
+      repacked(output, IDS_PATH, (text) =>
+        text.replace(
+          `w16cid:durableId="${minted}"`,
+          `w16cid:durableId="${lowered}"`
+        )
+      ),
+      EXTENSIBLE_PATH,
+      (text) =>
+        text.replace(
+          `w16cex:durableId="${minted}"`,
+          `w16cex:durableId="${lowered}"`
+        )
+    );
+    expect(onlyCommentsChangedBy(orphaned, respelled, "u_grace")).toEqual(
+      rejected(IDS_PATH)
+    );
+  });
+
+  it("refuses a second date for a new durable id spelled in another case", () => {
+    const bytes = wordDocx();
+    const output = commentedByGrace(bytes);
+    const { durableId } = writtenIds(output, "4");
+    const twice = repacked(output, EXTENSIBLE_PATH, (text) =>
+      text.replace(
+        "</w16cex:commentsExtensible>",
+        `${dateEntry(durableId.toLowerCase(), "2026-09-30T07:00:00Z")}</w16cex:commentsExtensible>`
+      )
+    );
+    expect(onlyCommentsChangedBy(bytes, twice, "u_grace")).toEqual(
+      rejected(EXTENSIBLE_PATH)
     );
   });
 

@@ -121,62 +121,6 @@ export function lastParagraphId(comment: Element): string | null {
   return last === null ? null : attributeByLocalName(last, "paraId");
 }
 
-function readCommentExtensions(
-  parts: Map<string, Uint8Array>,
-  mainPartPath: string
-): {
-  partPath: string | null;
-  xml: string | null;
-  hadBom: boolean;
-  byParaId: ReadonlyMap<string, ImportedCommentExtension>;
-  ordered: readonly ImportedCommentExtension[];
-} {
-  const partPath = relatedPartPath(
-    parts,
-    mainPartPath,
-    COMMENTS_EXTENDED_REL_TYPE
-  );
-  if (partPath === null) {
-    return {
-      partPath: null,
-      xml: null,
-      hadBom: false,
-      byParaId: new Map(),
-      ordered: [],
-    };
-  }
-  const bytes = parts.get(partPath);
-  if (!bytes) {
-    return {
-      partPath,
-      xml: null,
-      hadBom: false,
-      byParaId: new Map(),
-      ordered: [],
-    };
-  }
-  const { text, hadBom } = decodeUtf8(bytes);
-  const root = parseXml(text).documentElement;
-  const byParaId = new Map<string, ImportedCommentExtension>();
-  const ordered: ImportedCommentExtension[] = [];
-  for (const el of elementChildren(root)) {
-    if (el.localName !== "commentEx") continue;
-    const paraId = attributeByLocalName(el, "paraId");
-    if (paraId === null) continue;
-    const extension = {
-      paraId,
-      parentParaId: attributeByLocalName(el, "paraIdParent"),
-      resolved: ["1", "true", "on"].includes(
-        attributeByLocalName(el, "done")?.toLowerCase() ?? ""
-      ),
-      xml: serializeXml(el),
-    };
-    ordered.push(extension);
-    if (!byParaId.has(paraId)) byParaId.set(paraId, extension);
-  }
-  return { partPath, xml: text, hadBom, byParaId, ordered };
-}
-
 function readCommentPart<Entry>(
   parts: Map<string, Uint8Array>,
   mainPartPath: string,
@@ -198,6 +142,20 @@ function readCommentPart<Entry>(
   return { partPath, xml: text, hadBom, ordered };
 }
 
+function commentExtensionOf(el: Element): ImportedCommentExtension | null {
+  const paraId = attributeByLocalName(el, "paraId");
+  return paraId === null
+    ? null
+    : {
+        paraId,
+        parentParaId: attributeByLocalName(el, "paraIdParent"),
+        resolved: ["1", "true", "on"].includes(
+          attributeByLocalName(el, "done")?.toLowerCase() ?? ""
+        ),
+        xml: serializeXml(el),
+      };
+}
+
 function commentIdOf(el: Element): ImportedCommentId | null {
   const paraId = attributeByLocalName(el, "paraId");
   const durableId = attributeByLocalName(el, "durableId");
@@ -212,16 +170,32 @@ function commentDateOf(el: Element): ImportedCommentDate | null {
 }
 
 /** The first entry under a key wins, as in every other comment part */
-function firstByKey<Entry>(
+function firstByKey<Entry, Value>(
   entries: readonly Entry[],
   key: (entry: Entry) => string,
-  value: (entry: Entry) => string | null
-): ReadonlyMap<string, string | null> {
-  const found = new Map<string, string | null>();
+  value: (entry: Entry) => Value
+): ReadonlyMap<string, Value> {
+  const found = new Map<string, Value>();
   for (const entry of entries) {
     if (!found.has(key(entry))) found.set(key(entry), value(entry));
   }
   return found;
+}
+
+/** A durable id is hexadecimal (`ST_LongHexNumber`), so two spellings in different case are one id */
+export function durableIdKey(durableId: string): string {
+  return durableId.toUpperCase();
+}
+
+/** Every durable id the ids and extensible parts name, orphans included: a date left under one would become a new comment's */
+export function spentDurableIds(
+  comments: ImportedComments
+): ReadonlySet<string> {
+  return new Set(
+    [...comments.ids.ordered, ...comments.extensible.ordered].map((entry) =>
+      durableIdKey(entry.durableId)
+    )
+  );
 }
 
 /**
@@ -236,7 +210,18 @@ export function readComments(
   mainPartPath: string
 ): ImportedComments {
   const people = readPeople(parts, mainPartPath);
-  const extensions = readCommentExtensions(parts, mainPartPath);
+  const extensions = readCommentPart(
+    parts,
+    mainPartPath,
+    COMMENTS_EXTENDED_REL_TYPE,
+    "commentEx",
+    commentExtensionOf
+  );
+  const extensionsByParaId = firstByKey(
+    extensions.ordered,
+    (entry) => entry.paraId,
+    (entry) => entry
+  );
   const ids = readCommentPart(
     parts,
     mainPartPath,
@@ -267,7 +252,7 @@ export function readComments(
   );
   const utcDates = firstByKey(
     extensible.ordered,
-    (entry) => entry.durableId,
+    (entry) => durableIdKey(entry.durableId),
     (entry) => entry.dateUtc
   );
   const partPath = relatedPartPath(parts, mainPartPath, COMMENTS_REL_TYPE);
@@ -284,7 +269,7 @@ export function readComments(
       const id = attributeByLocalName(el, "id");
       if (id === null) return [];
       const paraId = lastParagraphId(el);
-      const extension = paraId ? extensions.byParaId.get(paraId) : undefined;
+      const extension = paraId ? extensionsByParaId.get(paraId) : undefined;
       const author = attributeByLocalName(el, "author");
       const durableId =
         paraId === null ? null : (durableIds.get(paraId) ?? null);
@@ -301,7 +286,9 @@ export function readComments(
           extensionXml: extension?.xml ?? null,
           durableId,
           dateUtc:
-            durableId === null ? null : (utcDates.get(durableId) ?? null),
+            durableId === null
+              ? null
+              : (utcDates.get(durableIdKey(durableId)) ?? null),
         },
       ];
     });

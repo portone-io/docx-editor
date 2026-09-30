@@ -16,8 +16,8 @@ import { verifyChange } from "./protectionPolicy";
 
 /**
  * Why a file is not the one it claims to be. `part-changed`, `relationship-changed` and
- * `comment-markup-rejected` name the part they were reached over; the other three are about the
- * document story itself.
+ * `comment-markup-rejected` name the part they were reached over; `body-changed`,
+ * `comment-not-owned` and `comment-author-forged` are about the document story itself.
  */
 export type CommentOnlyVerdict =
   | { ok: true }

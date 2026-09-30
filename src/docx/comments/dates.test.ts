@@ -1,9 +1,9 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import {
   commentInstant,
+  dateWritten,
   oneInstant,
   writtenCommentDates,
-  writtenDate,
 } from "./dates";
 
 // `vitest.config.ts` runs the suite in Seoul, nine hours ahead of UTC with no daylight saving, so
@@ -109,8 +109,8 @@ describe("writtenCommentDates", () => {
     const instant = Date.parse(commentInstant(date, dateUtc) ?? "");
     expect(instant).toBeGreaterThanOrEqual(before);
     expect(instant).toBeLessThanOrEqual(after);
-    expect(writtenDate(date)).toBe(true);
-    expect(writtenDate(dateUtc)).toBe(true);
+    expect(dateWritten(date)).toBe(true);
+    expect(dateWritten(dateUtc)).toBe(true);
   });
 
   it("puts a date that names no instant into w:date as given, recording no instant", () => {
@@ -125,9 +125,9 @@ describe("writtenCommentDates", () => {
   });
 });
 
-describe("writtenDate", () => {
+describe("dateWritten", () => {
   it("accepts the one form the writer puts out", () => {
-    expect(writtenDate("2026-09-30T06:00:00Z")).toBe(true);
+    expect(dateWritten("2026-09-30T06:00:00Z")).toBe(true);
   });
 
   it("turns down every other spelling of a time, and a time the calendar lacks", () => {
@@ -139,9 +139,9 @@ describe("writtenDate", () => {
       "2026-02-30T06:00:00Z",
       " 2026-09-30T06:00:00Z",
     ]) {
-      expect(writtenDate(value), value).toBe(false);
+      expect(dateWritten(value), value).toBe(false);
     }
-    expect(writtenDate(null)).toBe(false);
+    expect(dateWritten(null)).toBe(false);
   });
 });
 

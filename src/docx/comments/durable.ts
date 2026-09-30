@@ -4,19 +4,17 @@
  */
 
 import type { Node as PMNode } from "prosemirror-model";
-import { NAMESPACES, xmlnsDecl } from "../../ooxml/names";
+import { xmlnsDecl } from "../../ooxml/names";
 import {
   ensureRootDeclarations,
+  type PartChild,
   partRootProblem,
   type RootDeclarations,
   splicePart,
 } from "../../ooxml/partSplice";
-import { parseAttrs, readTag } from "../../ooxml/tagScan";
 import { encodeUtf8, localPart } from "../../ooxml/xml";
 import { CONTENT_TYPES_PATH } from "../packageParts";
-import type { PartPlanContext } from "../partPlan";
-import type { StoryPartKind } from "../protectionPolicy";
-import { directoryOf } from "../relationships";
+import { declarePart, type PartPlanContext } from "../partPlan";
 import type { SessionStore } from "../session";
 import { renderCommentDate, renderCommentId } from "./grammar";
 import {
@@ -24,55 +22,22 @@ import {
   currentCommentBodies,
   originalThreadIds,
 } from "./model";
-import { commentIdsPart, commentsExtensiblePart } from "./parts";
-import type { ImportedCommentPart } from "./reading";
+import {
+  commentsExtensiblePart,
+  commentsIdsPart,
+  type DurablePart,
+  type DurablePartShape,
+} from "./parts";
 
-type DurablePartName = "commentsIds" | "commentsExtensible";
+type DurablePartName = DurablePartShape["name"];
 
-interface DurablePartShape {
-  /** As an export refusal names it (`ExportPartName`) */
-  name: DurablePartName;
-  part: StoryPartKind;
-  root: string;
-  prefix: "w16cid" | "w16cex";
-  /** The children the part's type takes, in order */
-  order: readonly string[];
-  /** The attribute a deletion finds the entries to drop by */
-  key: string;
-  markup: RootDeclarations;
-  imported(session: SessionStore): ImportedCommentPart<unknown>;
-}
-
-const IDS_SHAPE: DurablePartShape = {
-  name: "commentsIds",
-  part: commentIdsPart,
-  root: "commentsIds",
-  prefix: "w16cid",
-  order: ["commentId"],
-  key: "paraId",
-  markup: { namespaces: { w16cid: NAMESPACES.w16cid } },
-  imported: (session) => session.comments.ids,
-};
-
-const EXTENSIBLE_SHAPE: DurablePartShape = {
-  name: "commentsExtensible",
-  part: commentsExtensiblePart,
-  root: "commentsExtensible",
-  prefix: "w16cex",
-  // `CT_CommentsExtensible` closes on an optional extension list ([MS-DOCX] §2.10.3.2)
-  order: ["commentExtensible", "extLst"],
-  key: "durableId",
-  markup: { namespaces: { w16cex: NAMESPACES.w16cex } },
-  imported: (session) => session.comments.extensible,
-};
-
-const DURABLE_SHAPES: readonly DurablePartShape[] = [
-  IDS_SHAPE,
-  EXTENSIBLE_SHAPE,
+const DURABLE_PARTS: readonly DurablePart[] = [
+  commentsIdsPart,
+  commentsExtensiblePart,
 ];
 
 interface DurableChange {
-  added: readonly { name: string; xml: string }[];
+  added: readonly PartChild[];
   /** The keys of the entries it gives up */
   dropped: ReadonlySet<string>;
 }
@@ -117,14 +82,14 @@ function durableChanges(doc: PMNode, session: SessionStore): DurableChanges {
   return {
     commentsIds: {
       added: written.map(({ paraId, durableId }) => ({
-        name: "commentId",
+        name: commentsIdsPart.shape.localName,
         xml: renderCommentId(paraId, durableId),
       })),
       dropped: deletedKeys,
     },
     commentsExtensible: {
       added: written.map(({ durableId, dateUtc }) => ({
-        name: "commentExtensible",
+        name: commentsExtensiblePart.shape.localName,
         xml: renderCommentDate(durableId, dateUtc),
       })),
       dropped: deletedDurableIds,
@@ -137,24 +102,24 @@ function durableChanges(doc: PMNode, session: SessionStore): DurableChanges {
  * refused: the comment then loses only its UTC date and still reads as its `w:date`.
  */
 function partWritten(
-  shape: DurablePartShape,
+  { shape }: DurablePart,
   change: DurableChange,
   session: SessionStore
 ): boolean {
-  const { xml } = shape.imported(session);
-  if (xml === null) {
+  if (shape.xmlIn(session) === null) {
     return change.added.length > 0 && session.parts.has(CONTENT_TYPES_PATH);
   }
   return change.added.length > 0 || change.dropped.size > 0;
 }
 
-function attributeOf(child: string, name: string): string | null {
-  const tag = readTag(child, 0);
-  if (tag === null || tag.kind === "close" || tag.kind === "other") return null;
-  const attrs = parseAttrs(
-    child.slice(tag.nameEnd, tag.end - (tag.kind === "empty" ? 2 : 1))
-  );
-  return attrs?.find(([attr]) => localPart(attr) === name)?.[1] ?? null;
+function markupOf(shape: DurablePartShape): RootDeclarations {
+  return { namespaces: { [shape.prefix]: shape.namespace } };
+}
+
+function childOrderOf(shape: DurablePartShape): readonly string[] {
+  return shape.closingChild === undefined
+    ? [shape.localName]
+    : [shape.localName, shape.closingChild];
 }
 
 function partXml(
@@ -162,9 +127,9 @@ function partXml(
   change: DurableChange,
   session: SessionStore
 ): string {
-  const { xml } = shape.imported(session);
+  const xml = shape.xmlIn(session);
   if (xml === null) {
-    const name = `${shape.prefix}:${shape.root}`;
+    const name = `${shape.prefix}:${shape.rootName}`;
     return (
       '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
       `<${name} ${xmlnsDecl(shape.prefix)}>` +
@@ -174,40 +139,29 @@ function partXml(
   }
   return ensureRootDeclarations(
     splicePart(xml, {
-      root: shape.root,
-      keep: (child) => {
-        const key = attributeOf(child, shape.key);
-        return key === null || !change.dropped.has(key);
+      root: shape.rootName,
+      keep: ({ attrs }) => {
+        const key = attrs?.find(([name]) => localPart(name) === shape.idAttr);
+        return key === undefined || !change.dropped.has(key[1]);
       },
       insert: change.added,
-      order: shape.order,
+      order: childOrderOf(shape),
     }),
-    shape.markup
+    markupOf(shape)
   );
 }
 
 function planPart(
-  shape: DurablePartShape,
+  part: DurablePart,
   change: DurableChange,
   session: SessionStore,
   context: PartPlanContext
 ): ReadonlyMap<string, Uint8Array> {
-  if (!partWritten(shape, change, session)) return new Map();
-  const { part } = shape;
-  const imported = shape.imported(session);
-  const adding = part.pathIn(session) === null;
-  const path = part.writePathIn(session);
-  if (adding) {
-    context.relationships.add({
-      type: part.relType,
-      target: path.slice(directoryOf(session.mainPartPath).length),
-    });
-  }
-  if (adding || imported.xml === null) {
-    context.contentTypes.addOverride(path, part.contentType);
-  }
+  if (!partWritten(part, change, session)) return new Map();
+  const { xml, hadBom } = part.shape.imported(session);
+  const path = declarePart(part, session, context, xml);
   return new Map([
-    [path, encodeUtf8(partXml(shape, change, session), imported.hadBom)],
+    [path, encodeUtf8(partXml(part.shape, change, session), hadBom)],
   ]);
 }
 
@@ -218,17 +172,17 @@ export function planDurableParts(
 ): ReadonlyMap<string, Uint8Array> {
   const changes = durableChanges(doc, session);
   return new Map(
-    DURABLE_SHAPES.flatMap((shape) => [
-      ...planPart(shape, changes[shape.name], session, context),
+    DURABLE_PARTS.flatMap((part) => [
+      ...planPart(part, changes[part.shape.name], session, context),
     ])
   );
 }
 
-/** A part the planner rewrites, as the export invariants read it */
+/** A part that arrived and the planner rewrites, as the export invariants read it */
 export interface RewrittenDurablePart {
   name: DurablePartName;
-  path: string | null;
-  xml: string | null;
+  path: string;
+  xml: string;
   declarations: RootDeclarations;
   /** Why it cannot be rewritten around its root, or null when it can */
   rootProblem: string | null;
@@ -239,16 +193,19 @@ export function rewrittenDurableParts(
   session: SessionStore
 ): readonly RewrittenDurablePart[] {
   const changes = durableChanges(doc, session);
-  return DURABLE_SHAPES.flatMap((shape) => {
-    if (!partWritten(shape, changes[shape.name], session)) return [];
-    const { xml } = shape.imported(session);
+  return DURABLE_PARTS.flatMap((part) => {
+    const { shape } = part;
+    const path = part.pathIn(session);
+    const xml = shape.xmlIn(session);
+    if (path === null || xml === null) return [];
+    if (!partWritten(part, changes[shape.name], session)) return [];
     return [
       {
         name: shape.name,
-        path: shape.part.pathIn(session),
+        path,
         xml,
-        declarations: shape.markup,
-        rootProblem: xml === null ? null : partRootProblem(xml, shape.root),
+        declarations: markupOf(shape),
+        rootProblem: partRootProblem(xml, shape.rootName),
       },
     ];
   });
