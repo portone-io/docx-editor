@@ -3,18 +3,23 @@ import { readFile, realpath } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { check, pin } from "./demo-library-pin.mjs";
+import {
+  BUILD_INPUTS,
+  check,
+  LIBRARY,
+  pin,
+  STABLE_VERSION,
+} from "./demo-library-pin.mjs";
 
 const run = promisify(execFile);
 const root = fileURLToPath(new URL("..", import.meta.url));
-const library = "@portone/docx-editor";
-const files = ["site/package.json", "demo/package.json", "pnpm-lock.yaml"];
-const stable = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+// npm can take minutes to list a version it just published; timeout-minutes in site-release.yml must cover this wait twice.
+const REGISTRY_WAIT_MS = 10 * 60000;
 const branch = "production";
 const api = "https://api.github.com";
 
 function versionParts(version) {
-  if (typeof version !== "string" || !stable.test(version)) {
+  if (typeof version !== "string" || !STABLE_VERSION.test(version)) {
     throw new Error("The site release needs an exact stable version");
   }
   return version.split(".").map(BigInt);
@@ -39,7 +44,11 @@ export async function prepare(
   { install = pin, execute = run } = {}
 ) {
   versionParts(version);
-  await install(directory, { version });
+  await install(directory, {
+    version,
+    registryWaitMs: REGISTRY_WAIT_MS,
+    recovery: "rerun the site update as site/README.md describes",
+  });
   await execute("pnpm", ["build:site"], { cwd: directory });
 }
 
@@ -130,7 +139,7 @@ export async function publish(
     { cwd: directory }
   );
   const paths = changed.trim().split("\n").filter(Boolean);
-  if (paths.some((path) => !files.includes(path)))
+  if (paths.some((path) => !BUILD_INPUTS.includes(path)))
     throw new Error(
       "The site update changed files outside the demo pins and lockfile"
     );
@@ -146,7 +155,7 @@ export async function publish(
     "application/vnd.github.raw+json"
   );
   if (served.status !== 404)
-    assertNotOlder(version, JSON.parse(served.text).dependencies[library]);
+    assertNotOlder(version, JSON.parse(served.text).dependencies[LIBRARY]);
   const { stdout: head } = await execute("git", ["rev-parse", "HEAD"], {
     cwd: directory,
   });

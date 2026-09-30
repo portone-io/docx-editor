@@ -7,10 +7,14 @@ import { promisify } from "node:util";
 
 const exec = promisify(execFile);
 const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
-const LIBRARY = "@portone/docx-editor";
+export const LIBRARY = "@portone/docx-editor";
 const DEPENDENTS = ["site", "demo"];
+export const BUILD_INPUTS = [
+  ...DEPENDENTS.map((dir) => `${dir}/package.json`),
+  "pnpm-lock.yaml",
+];
 const WORKSPACE = "workspace:*";
-const STABLE_VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+export const STABLE_VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 
 const readJson = async (path) => JSON.parse(await readFile(path, "utf8"));
 
@@ -68,14 +72,32 @@ export async function check(root = repositoryRoot) {
     : { source: "npm", version: declared[0] };
 }
 
-/** Publication and registry reads can become visible at different times. */
-async function retry(operation, { wait, attempts }) {
-  for (let attempt = 1; ; attempt++) {
+// npm and pnpm report a version that is published but not yet propagated with these codes.
+const NOT_LISTED_YET =
+  /\bE404\b|\bERR_PNPM_(?:NO_MATCHING_VERSION|FETCH_404)\b/;
+
+const duration = (ms) =>
+  ms % 60000 === 0 ? `${ms / 60000} min` : `${Math.round(ms / 1000)} s`;
+
+/** Publication and registry reads can become visible minutes apart. */
+async function untilListed(
+  operation,
+  { spec, state, windowMs, recovery, wait, now, log }
+) {
+  const deadline = now() + windowMs;
+  for (let delay = 5000; ; delay = Math.min(delay * 2, 60000)) {
     try {
       return await operation();
     } catch (cause) {
-      if (attempt >= attempts) throw cause;
-      await wait(5000);
+      if (!NOT_LISTED_YET.test(`${cause?.stdout ?? ""}${cause?.stderr ?? ""}`))
+        throw cause;
+      if (now() + delay > deadline)
+        throw new Error(
+          `${spec} was not ${state} within ${duration(windowMs)}. Check it with \`npm view ${spec} version\`, then ${recovery}.`,
+          { cause }
+        );
+      log(`${spec} is not ${state} yet; retrying in ${duration(delay)}.`);
+      await wait(delay);
     }
   }
 }
@@ -83,39 +105,54 @@ async function retry(operation, { wait, attempts }) {
 /** Resolves once, then installs that exact version for both consumers and the badge. */
 export async function pin(
   root = repositoryRoot,
-  { version = "latest", run = exec, wait = setTimeout, attempts = 6 } = {}
+  {
+    version = "latest",
+    registryWaitMs = 30000,
+    recovery = "rerun pnpm pin:demo-library",
+    run = exec,
+    wait = setTimeout,
+    now = Date.now,
+    log = (line) => process.stderr.write(`${line}\n`),
+  } = {}
 ) {
   if (version !== "latest" && !STABLE_VERSION.test(version)) {
     throw new Error(
       "Use latest or an exact stable version (for example, 0.3.0)"
     );
   }
-  const policy = { wait, attempts };
-  const resolved = await retry(async () => {
-    const { stdout } = await run(
-      "npm",
-      [
-        "view",
-        `${LIBRARY}@${version}`,
-        "version",
-        "--json",
-        "--registry=https://registry.npmjs.org",
-        "--fetch-retries=0",
-      ],
-      { cwd: root, timeout: 15000 }
-    );
-    const found = JSON.parse(stdout);
-    if (
-      typeof found !== "string" ||
-      !STABLE_VERSION.test(found) ||
-      (version !== "latest" && found !== version)
-    ) {
-      throw new Error(
-        `The registry did not return the requested stable version: ${stdout.trim()}`
+  const policy = { windowMs: registryWaitMs, recovery, wait, now, log };
+  const resolved = await untilListed(
+    async () => {
+      const { stdout } = await run(
+        "npm",
+        [
+          "view",
+          `${LIBRARY}@${version}`,
+          "version",
+          "--json",
+          "--registry=https://registry.npmjs.org",
+          "--fetch-retries=0",
+        ],
+        { cwd: root, timeout: 15000 }
       );
+      const found = JSON.parse(stdout);
+      if (
+        typeof found !== "string" ||
+        !STABLE_VERSION.test(found) ||
+        (version !== "latest" && found !== version)
+      ) {
+        throw new Error(
+          `The registry did not return the requested stable version: ${stdout.trim()}`
+        );
+      }
+      return found;
+    },
+    {
+      ...policy,
+      spec: `${LIBRARY}@${version}`,
+      state: "listed on the registry",
     }
-    return found;
-  }, policy);
+  );
 
   try {
     const current = await check(root);
@@ -125,10 +162,7 @@ export async function pin(
     // A missing installation or a changed pin needs the same install path.
   }
 
-  const paths = [
-    ...DEPENDENTS.map((dir) => join(root, dir, "package.json")),
-    join(root, "pnpm-lock.yaml"),
-  ];
+  const paths = BUILD_INPUTS.map((path) => join(root, path));
   const originals = await Promise.all(
     paths.map(async (path) => {
       try {
@@ -148,13 +182,13 @@ export async function pin(
       await writeFile(paths[i], `${JSON.stringify(manifest, null, 2)}\n`);
     }
     // This command intentionally updates the lockfile, including in CI. Ordinary installs stay frozen.
-    await retry(
+    await untilListed(
       () =>
         run("pnpm", ["install", "--no-frozen-lockfile", "--ignore-scripts"], {
           cwd: root,
           timeout: 120000,
         }),
-      policy
+      { ...policy, spec: `${LIBRARY}@${resolved}`, state: "installable" }
     );
     await check(root);
     return resolved;
