@@ -1113,6 +1113,21 @@ button.docx-editor-comment-body {
 }
 
 /*
+ * A run holding no characters takes no width, unless its own properties paint a background: then
+ * it is a short blank in that colour, the place a form leaves for text to be written in. The run
+ * around it paints the colour, so the box only has to be wide.
+ */
+.docx-editor-empty-run {
+  display: inline-block;
+  width: 0;
+  vertical-align: baseline;
+}
+
+.docx-editor-run[data-paints] > .docx-editor-empty-run {
+  width: var(--docx-editor-empty-run-width, 1em);
+}
+
+/*
  * A preserved fragment inside a paragraph or inside a run. What it draws is the `display` the
  * preservation rule gave it (`docx/importPolicy`), so the rule is read here as an attribute
  * rather than as a second list of element names.

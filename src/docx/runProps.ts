@@ -12,6 +12,7 @@
  * always the rPr string.
  */
 
+import type { Mark } from "prosemirror-model";
 import { type RunFormat, toRunFormat } from "../model/format";
 import {
   type Props,
@@ -19,6 +20,7 @@ import {
   parsePropsXml,
   renderProps,
 } from "../ooxml/props";
+import { runBackground } from "../styles/inlineStyle";
 import {
   type EditableRunKey,
   EMPTY_RUN_PROPS,
@@ -49,6 +51,16 @@ function propsOf(rPr: string | null): Props | null {
 /** Derives the display values again from the rPr we operated on. The same rPr always yields the same display values */
 export function readRunProps(rPr: string | null): RunFormat | null {
   return rPr === null ? null : readRunFormat(parsePropsXml(rPr));
+}
+
+/** The colour a run's own properties paint behind its characters, whatever it inherits. null for none */
+export function ownBackground(run: Mark): string | null {
+  const format = toRunFormat(run.attrs.format);
+  // What its own properties paint its whole formatting paints too, and that is read already
+  if (format === null || runBackground(format) === null) return null;
+  const rPr: unknown = run.attrs.rPr;
+  const own = readRunProps(typeof rPr === "string" ? rPr : null);
+  return own === null ? null : runBackground(own);
 }
 
 /**

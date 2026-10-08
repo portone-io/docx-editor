@@ -468,11 +468,10 @@ describe("parseDOM", () => {
           control,
           docxSchema.marks.run.create({}),
         ]),
-        docxSchema.nodes.rawInline.create(
-          { xml: "<w:r><w:rPr/></w:r>" },
-          null,
-          [control]
-        ),
+        docxSchema.nodes.emptyRun.create(null, null, [
+          control,
+          docxSchema.marks.run.create({}),
+        ]),
       ]),
     ]);
     const host = render(...withControl.children);

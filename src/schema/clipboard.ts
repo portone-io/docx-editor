@@ -254,6 +254,9 @@ const CLIPBOARD_NODES: Readonly<Record<DocxNodeName, ClipboardNodeSpec>> = {
     },
     toClipboardText: noteLabel,
   },
+  // A run holding no characters holds nothing a copy could carry, its formatting being a place to
+  // write rather than text
+  emptyRun: WRITES_NOTHING,
   rawRunContent: PRESERVED_SPEC,
   rawInline: PRESERVED_SPEC,
   text: {

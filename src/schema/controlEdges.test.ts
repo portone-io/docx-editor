@@ -568,7 +568,9 @@ describe("a control a paragraph holds with nothing inside it", () => {
 
   /**
    * The node holds nothing, so there is no inside for a character to land in: what a keystroke
-   * beside it writes stands beside it, wearing none of what the control states.
+   * beside it writes stands beside it, wearing none of what the control states. Drawing nothing,
+   * it gives no formatting either, so the text takes the formatting of the word before it, which
+   * here is the word after it too.
    */
   it("types beside it rather than inside it", () => {
     const state = stateOf(line(run("ab") + empty() + run("cd")));
@@ -579,8 +581,8 @@ describe("a control a paragraph holds with nothing inside it", () => {
     const typed = after.doc.child(0).child(2);
 
     expect(after.doc.child(0).child(1).type.name).toBe("sdtEmptyInline");
-    expect(typed.text).toBe("X");
-    expect(typed.marks.map((mark) => mark.type.name)).toEqual([]);
+    expect(typed.text).toBe("Xcd");
+    expect(typed.marks.map((mark) => mark.type.name)).toEqual(["run"]);
   });
 
   it.each([

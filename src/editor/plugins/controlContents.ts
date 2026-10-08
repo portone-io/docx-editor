@@ -16,16 +16,27 @@
  * left beside a control the edit emptied: what is typed, composed or pasted there next goes into
  * the control rather than beside it, until the caret moves. A caret the user places against the
  * edge of a control still stands outside it.
+ *
+ * What is written where a run holding no characters gave the formatting (`../formatSource`) takes
+ * that run's formatting and fills it, a paste included: the run goes, and where it stood inside
+ * open controls, the controls are laid over what was written, so a caret placed in a control's
+ * blank writes into the control.
  */
 
-import { Mark, type Node as PMNode } from "prosemirror-model";
+import { Mark, type Node as PMNode, type Slice } from "prosemirror-model";
 import {
   Plugin,
   PluginKey,
   TextSelection,
   type Transaction,
 } from "prosemirror-state";
-import { Mapping, ReplaceStep, type StepMap } from "prosemirror-transform";
+import {
+  Mapping,
+  ReplaceAroundStep,
+  ReplaceStep,
+  type Step,
+  type StepMap,
+} from "prosemirror-transform";
 import type { EditorView } from "prosemirror-view";
 import { docxSchema } from "../../schema";
 import {
@@ -36,11 +47,13 @@ import {
   OWN_CONTROL_ATTRS,
 } from "../../schema/controlAttrs";
 import { displayOnly } from "../../schema/displayDerivation";
+import { isEmptyRun } from "../../schema/emptyRuns";
 import {
   controlKept,
   controlLifted,
   controlsWrittenInto,
   historyReplay,
+  type StepRange,
 } from "../../schema/locks";
 import {
   innermostDepth,
@@ -48,6 +61,7 @@ import {
   wrapperMarks,
   wrappersOf,
 } from "../../schema/wrappers";
+import { formatSourceAt, sameRun } from "../formatSource";
 
 /** Where the caret keeps writing into the controls it wrote into, while it stays there */
 type Continuing = number | null;
@@ -154,39 +168,154 @@ interface Written {
   first: PMNode | null;
 }
 
+/** What was written where a run holding no characters gave the formatting, in the document that came out */
+interface Fill {
+  /** The runs holding no characters it filled, which go */
+  runs: StepRange;
+  /** What was written */
+  written: StepRange;
+  /** The run mark the runs gave, which it takes where `restyles` */
+  run: Mark | null;
+  /** Whether it takes that mark, rather than keeping the marks the caret was given on purpose */
+  restyles: boolean;
+}
+
+/** What these transactions wrote, in the document that came out */
+interface Writes {
+  /** The stretches written into controls */
+  written: Written[];
+  filled: Fill[];
+}
+
+/** What a step puts in, at the stretch it puts it in place of */
+interface Insertion {
+  from: number;
+  to: number;
+  slice: Slice;
+}
+
+function insertionOf(step: Step): Insertion | null {
+  if (step instanceof ReplaceStep) {
+    return { from: step.from, to: step.to, slice: step.slice };
+  }
+  // A paste whose last paragraph stands deeper than the one it lands in carries the text after
+  // the caret into that paragraph around a gap, and puts its own in front of it
+  if (step instanceof ReplaceAroundStep) {
+    return { from: step.from, to: step.gapFrom, slice: step.slice };
+  }
+  return null;
+}
+
 /**
- * Every stretch these transactions wrote into a control, in the document that came out.
+ * Every stretch these transactions wrote into a control, and every run holding no characters they
+ * filled, in the document that came out.
  *
  * A step writes into a control when it replaces a stretch the control holds, up to all of it
- * (`controlsWrittenInto`), or when it puts content in at the spot a caret continuing inside a
- * control stood.
+ * (`controlsWrittenInto`), when it puts content in at the spot a caret continuing inside a
+ * control stood, or when it fills a run holding no characters that stands inside the control.
  */
 function writtenStretches(
   transactions: readonly Transaction[],
-  continuing: Continuing
-): Written[] {
+  continuing: Continuing,
+  storedBefore: readonly Mark[] | null
+): Writes {
   const maps: StepMap[] = transactions.flatMap((tr) => tr.mapping.maps);
-  const written: Written[] = [];
+  const writes: Writes = { written: [], filled: [] };
   let index = 0;
+  let stored = storedBefore;
   for (const tr of transactions) {
     const edit = userEdit(tr);
+    // Text typed with marks the caret was given was formatted on purpose; a paste carries its own
+    const restyles = stored === null || pasted(tr);
+    stored = tr.storedMarks;
     tr.steps.forEach((step, stepIndex) => {
       const at = index;
       index += 1;
-      if (!edit || !(step instanceof ReplaceStep)) return;
+      const insertion = edit ? insertionOf(step) : null;
+      if (insertion === null) return;
       const doc = tr.docs[stepIndex] ?? tr.doc;
-      const found = stepControls(doc, step, continuing, maps.slice(0, at));
-      if (found === null) return;
       const rest = new Mapping(maps.slice(at + 1));
-      const from = rest.map(step.from, 1);
-      written.push({
-        ...found,
+      const from = rest.map(insertion.from, 1);
+      const writtenTo = Math.max(
         from,
-        to: Math.max(from, rest.map(step.from + step.slice.size, -1)),
+        rest.map(insertion.from + insertion.slice.size, -1)
+      );
+      const fill = stepFill(doc, insertion);
+      if (fill !== null) {
+        const through = new Mapping(maps.slice(at));
+        writes.filled.push({
+          runs: {
+            from: through.map(fill.runs.from, 1),
+            to: through.map(fill.runs.to, -1),
+          },
+          written: { from, to: writtenTo },
+          run: fill.run,
+          restyles,
+        });
+      }
+      const found =
+        step instanceof ReplaceStep
+          ? stepControls(doc, step, continuing, maps.slice(0, at))
+          : null;
+      const into = found ?? fill;
+      if (into === null || into.controls.length === 0) return;
+      writes.written.push({
+        controls: into.controls,
+        first: into.first,
+        from,
+        to: writtenTo,
       });
     });
   }
-  return written;
+  return writes;
+}
+
+/**
+ * Whether the slice puts text in. An Enter splitting a paragraph puts in none, and neither does a
+ * comment's markers being laid around a stretch, which write nothing in the run beside them.
+ */
+function writesText(slice: Slice): boolean {
+  let found = false;
+  slice.content.descendants((node) => {
+    if (node.isText) found = true;
+    return !found;
+  });
+  return found;
+}
+
+/** Whether the transaction is a paste or a drop, which carries the marks of its own */
+function pasted(tr: Transaction): boolean {
+  const event: unknown = tr.getMeta("uiEvent");
+  return event === "paste" || event === "drop";
+}
+
+/**
+ * The runs holding no characters an insertion at a caret fills (`../formatSource`), the formatting
+ * they give, the controls around them it writes into, and the first of the runs. null where it
+ * fills none. A control going with any edit (`w:temporary`) goes with the runs.
+ */
+function stepFill(
+  doc: PMNode,
+  insertion: Insertion
+):
+  | (Pick<Written, "controls" | "first"> & {
+      runs: StepRange;
+      run: Mark | null;
+    })
+  | null {
+  if (insertion.from !== insertion.to || !writesText(insertion.slice)) {
+    return null;
+  }
+  const source = formatSourceAt(doc, insertion.from);
+  const runs = source?.fills ?? null;
+  const first = runs === null ? null : doc.nodeAt(runs.from);
+  if (source === null || runs === null || first === null) return null;
+  return {
+    runs,
+    run: source.run,
+    controls: controlsOf(first).filter(kept),
+    first,
+  };
 }
 
 /** The controls one step writes into, and what the content it replaced wore. null for none */
@@ -338,6 +467,54 @@ function dropRefilled(tr: Transaction, written: readonly Written[]): void {
   for (const { from, to } of refilled.reverse()) tr.delete(from, to);
 }
 
+/** Gives what was written into runs holding no characters the formatting they gave */
+function restyleFilled(tr: Transaction, filled: readonly Fill[]): void {
+  const runType = docxSchema.marks.run;
+  for (const { written, run, restyles } of filled) {
+    if (!restyles) continue;
+    const from = tr.mapping.map(written.from, 1);
+    const $from = tr.doc.resolve(from);
+    if (!$from.parent.inlineContent) continue;
+    // What a paste wrote past the paragraph the runs stood in took no formatting from them
+    const to = Math.min(tr.mapping.map(written.to, -1), $from.end());
+    const differing: StepRange[] = [];
+    tr.doc.nodesBetween(from, to, (node, pos) => {
+      if (
+        !node.isText &&
+        !(node.isInline && node.type.allowsMarkType(runType))
+      ) {
+        return;
+      }
+      if (sameRun(runType.isInSet(node.marks) ?? null, run)) return;
+      differing.push({
+        from: Math.max(pos, from),
+        to: Math.min(pos + node.nodeSize, to),
+      });
+    });
+    for (const range of differing) {
+      tr.removeMark(range.from, range.to, runType);
+      if (run !== null) tr.addMark(range.from, range.to, run);
+    }
+  }
+}
+
+/** Takes away the runs holding no characters that what was written filled */
+function dropFilled(tr: Transaction, filled: readonly Fill[]): void {
+  // Two steps of one edit may fill the same runs, which go once
+  const runs = new Map<number, number>();
+  for (const { runs: stretch } of filled) {
+    const from = tr.mapping.map(stretch.from, 1);
+    const to = tr.mapping.map(stretch.to, -1);
+    if (from >= to) continue;
+    tr.doc.nodesBetween(from, to, (node, pos) => {
+      if (isEmptyRun(node)) runs.set(pos, pos + node.nodeSize);
+      return node.isBlock;
+    });
+  }
+  const lastFirst = [...runs].sort(([a], [b]) => b - a);
+  for (const [from, to] of lastFirst) tr.delete(from, to);
+}
+
 /**
  * Where the caret keeps writing into a control after this change: where an edit that wrote into a
  * control left it, or where it already continued, as long as a control still ends there.
@@ -382,14 +559,19 @@ export function controlContents(): Plugin<Continuing> {
     },
     appendTransaction(transactions, oldState, newState) {
       if (!transactions.some(userEdit)) return null;
-      const written = writtenStretches(
+      const { written, filled } = writtenStretches(
         transactions,
-        controlContentsKey.getState(oldState) ?? null
+        controlContentsKey.getState(oldState) ?? null,
+        oldState.storedMarks
       );
       const previous = controlContentsKey.getState(newState) ?? null;
       const tr = newState.tr.setMeta(controlKept, true);
+      // The controls go on before the runs come off, so a control never stands on nothing in
+      // between those two steps
       const stored = keepControls(tr, written);
       dropRefilled(tr, written);
+      restyleFilled(tr, filled);
+      dropFilled(tr, filled);
       // Stored marks are how ProseMirror ends a composition, so none are set under an open one
       if (stored !== null && live?.composing !== true) {
         tr.setStoredMarks(stored);

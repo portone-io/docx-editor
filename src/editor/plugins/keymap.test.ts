@@ -106,6 +106,17 @@ describe("Backspace", () => {
     expect(docxKeymap.Backspace(select(state, cellParagraph))).toBe(false);
   });
 
+  it("leaves a run with no characters to ProseMirror, which deletes it, rather than passing over it", () => {
+    // A control holding nothing is passed over (`editor/inlineControlEdits`); this run is drawn,
+    // so the key takes it as it would a character
+    const body =
+      '<w:p><w:r><w:t xml:space="preserve">Label </w:t></w:r>' +
+      '<w:r><w:rPr><w:highlight w:val="yellow"/></w:rPr><w:t xml:space="preserve"></w:t></w:r></w:p>';
+    const state = createEditorState(importDocx(makeDocx(body)).doc);
+    const afterBlank = state.doc.child(0).content.size + 1;
+    expect(docxKeymap.Backspace(select(state, afterBlank))).toBe(false);
+  });
+
   it("leaves a non-empty paragraph after a table to the base keymap", () => {
     const state = tableFollowedByParagraph(
       '<w:r><w:t xml:space="preserve">after</w:t></w:r>'

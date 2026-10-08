@@ -16,6 +16,7 @@ import type { DocxBytes } from "../../src/docx/importDocx";
 import { storyOf, storyText } from "../../src/docx/story";
 import { lockSelection } from "../../src/editor/commands/lockCommands";
 import type { EditRefusal } from "../../src/editor/editRefusal";
+import { isEmptyRun } from "../../src/schema/emptyRuns";
 import { lockedMarkOf } from "../../src/schema/locks";
 import { storyKey } from "../../src/schema/stories";
 import { editorAttributes } from "../../src/styles/classNames";
@@ -27,6 +28,7 @@ import type {
   DocxHarness,
   InlineControlReport,
 } from "./api";
+import { emptyRunFixture } from "./emptyRunFixture";
 import { inlineControlFixture } from "./inlineControlFixture";
 import { lockedRowsFixture } from "./lockedRowsFixture";
 import { longTableFixture } from "./longTableFixture";
@@ -57,7 +59,8 @@ async function loadFixture(name: string): Promise<DocxBytes> {
     name === "tabs" ||
     name === "two-sections" ||
     name === "inline-controls" ||
-    name === "locked-rows";
+    name === "locked-rows" ||
+    name === "empty-runs";
   // The notes document is built over the demo, whose header and footer it keeps
   const fixture =
     name === "notes" ? "demo" : generated ? DEFAULT_FIXTURE : name;
@@ -69,6 +72,7 @@ async function loadFixture(name: string): Promise<DocxBytes> {
   if (name === "two-sections") return twoSectionsFixture(bytes);
   if (name === "inline-controls") return inlineControlFixture(bytes);
   if (name === "locked-rows") return lockedRowsFixture(bytes);
+  if (name === "empty-runs") return emptyRunFixture(bytes);
   return bytes;
 }
 
@@ -259,6 +263,38 @@ function inlineControls(view: EditorView): InlineControlReport[] {
   return [...found.values()];
 }
 
+/** How many runs holding no characters the body still holds */
+function emptyRunCount(view: EditorView): number {
+  let count = 0;
+  view.state.doc.descendants((node) => {
+    if (isEmptyRun(node)) count += 1;
+    return true;
+  });
+  return count;
+}
+
+/** The highlight the run of the first text reading exactly this wears, null for none */
+function highlightOf(view: EditorView, needle: string): string | null {
+  let highlight: string | null = null;
+  let found = false;
+  view.state.doc.descendants((node) => {
+    if (found || !node.isText || node.text !== needle) return !found;
+    found = true;
+    const format: unknown = node.marks.find((mark) => mark.type.name === "run")
+      ?.attrs.format;
+    highlight =
+      typeof format === "object" &&
+      format !== null &&
+      "highlight" in format &&
+      typeof format.highlight === "string"
+        ? format.highlight
+        : null;
+    return false;
+  });
+  if (!found) throw new Error(`text not found: ${needle}`);
+  return highlight;
+}
+
 /** The node types the first block of one note holds, in order */
 function noteOpening(
   view: EditorView,
@@ -356,6 +392,8 @@ function install(view: EditorView): void {
     tableRows: () => tableRows(view),
     lockedText: () => lockedText(view),
     inlineControls: () => inlineControls(view),
+    emptyRuns: () => emptyRunCount(view),
+    highlightOf: (needle) => highlightOf(view, needle),
     noteText: (kind, id) =>
       storyText(storyOf(view.state.doc, storyKey(kind, id))),
     noteOpening: (kind, id) => noteOpening(view, kind, id),

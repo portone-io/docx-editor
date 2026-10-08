@@ -190,6 +190,7 @@ export const NODE_ATTR_ROLES: AttrTable = {
     // renumbered around an edit is the same reference it was
     label: { role: "display", class: "derived" },
   },
+  emptyRun: { xml: { role: "source", class: "preserved" } },
   rawRunContent: {
     xml: { role: "source", class: "preserved" },
     // What the fragment is and how it is drawn are read off the preservation table when the

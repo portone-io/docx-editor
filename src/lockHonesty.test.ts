@@ -83,6 +83,10 @@ const openPr = '<w:sdtPr><w:id w:val="8"/></w:sdtPr>';
 /** A second such control, so that a block-level one standing open has a number of its own */
 const openBlockPr = '<w:sdtPr><w:id w:val="10"/></w:sdtPr>';
 
+/** A run with formatting and no characters */
+const BLANK_RUN =
+  '<w:r><w:rPr><w:highlight w:val="yellow"/></w:rPr><w:t xml:space="preserve"></w:t></w:r>';
+
 /**
  * The shapes a lock comes in, in both the places it can stand and over each of the values whose
  * two clauses differ.
@@ -136,6 +140,8 @@ const BODY =
   // The same lock on a control the file wrote with nothing inside it, at both the levels such a
   // control stands at: between the words of a paragraph, and between paragraphs of its own
   `<w:p>${runXml("EmptyBefore")}${control("")}${runXml("EmptyAfter")}</w:p>` +
+  // A control holding nothing but a highlighted run with no text, the blank a form leaves to fill
+  `<w:p>${runXml("BlankBefore")}${control(BLANK_RUN)}</w:p>` +
   blockXml("EmptyAbove") +
   control("") +
   blockXml("EmptyBelow") +
@@ -471,6 +477,12 @@ const PLACES: readonly Place[] = [
     name: "a caret against a control a paragraph holds with nothing inside it",
     guards: ["protection"],
     state: (protection) => afterNode("sdtEmptyInline", protection),
+  },
+  {
+    // What is typed there stands beside the control, whose lock keeps its blank
+    name: "a caret after the blank a locked control holds",
+    guards: ["protection", "lock"],
+    state: (protection) => afterNode("emptyRun", protection),
   },
   {
     // The lock refuses the whole replacement, the control being covered and taken away with it

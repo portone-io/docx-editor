@@ -7,6 +7,7 @@ import {
   lineHeightValue,
   paragraphStyle,
   rowStyle,
+  runBackground,
   runStyle,
   SINGLE_LINE_RATIO,
   tableStyle,
@@ -99,6 +100,18 @@ describe("a fill that paints nothing", () => {
     expect(runStyle({ background: "none" })).toBe(
       "background-color:transparent"
     );
+  });
+});
+
+describe("what paints behind the characters", () => {
+  it.each([
+    [{ highlight: "yellow" as const }, "#ffff00"],
+    [{ highlight: "yellow" as const, background: "#00FF00" }, "#ffff00"],
+    [{ background: "#00FF00" }, "#00FF00"],
+    [{ background: "none" }, null],
+    [{ bold: true }, null],
+  ])("%o paints %s", (format, color) => {
+    expect(runBackground(format)).toBe(color);
   });
 });
 

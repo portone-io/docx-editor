@@ -268,6 +268,17 @@ export function inlineControls(page: Page): Promise<InlineControlReport[]> {
   return page.evaluate(() => window.docxHarness.inlineControls());
 }
 
+export function emptyRuns(page: Page): Promise<number> {
+  return page.evaluate(() => window.docxHarness.emptyRuns());
+}
+
+export function highlightOf(
+  page: Page,
+  needle: string
+): Promise<string | null> {
+  return page.evaluate((text) => window.docxHarness.highlightOf(text), needle);
+}
+
 export function lock(
   page: Page,
   blockIndex: number,

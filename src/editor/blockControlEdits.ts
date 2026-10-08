@@ -53,9 +53,9 @@ export const removeEmptyBlockControl: Command = guardedCommand((state) => {
 /** Which way a key reaches out of the block the caret stands in */
 type Direction = -1 | 1;
 
-/** The run of controls holding nothing that stands next to the caret's own block */
-interface EmptyRun {
-  /** Where the caret goes to stand on the far side of the run, null where nothing stands there */
+/** The controls holding nothing in a row next to the caret's own block */
+interface EmptyControls {
+  /** Where the caret goes to stand on the far side of them, null where nothing stands there */
   beyond: number | null;
 }
 
@@ -76,10 +76,13 @@ function caretAtEdge(selection: Selection, dir: Direction): ResolvedPos | null {
  * The controls holding nothing that stand between the caret's block and the block beyond them, and
  * null where the next sibling is anything else.
  *
- * A whole run is passed at once: several such controls in a row draw nothing between them either,
- * so stopping inside the run would be stopping nowhere the user can see.
+ * A whole row is passed at once: several such controls in a row draw nothing between them either,
+ * so stopping inside the row would be stopping nowhere the user can see.
  */
-function emptyRunBeside(selection: Selection, dir: Direction): EmptyRun | null {
+function emptyControlsBeside(
+  selection: Selection,
+  dir: Direction
+): EmptyControls | null {
   const $cursor = caretAtEdge(selection, dir);
   if (!$cursor) return null;
   const depth = $cursor.depth;
@@ -112,7 +115,7 @@ function emptyRunBeside(selection: Selection, dir: Direction): EmptyRun | null {
  */
 function skipEmptyControls(dir: Direction): Command {
   const move = guardedCommand((state) => {
-    const beyond = emptyRunBeside(state.selection, dir)?.beyond;
+    const beyond = emptyControlsBeside(state.selection, dir)?.beyond;
     if (beyond === null || beyond === undefined) return null;
     const $cursor =
       state.selection instanceof TextSelection ? state.selection.$cursor : null;
@@ -128,10 +131,10 @@ function skipEmptyControls(dir: Direction): Command {
       .scrollIntoView();
   });
   return (state, dispatch, view) =>
-    // With nothing beyond the run there is nowhere to pass to, and the key still may not take the
+    // With nothing beyond the row there is nowhere to pass to, and the key still may not take the
     // control away, so it is reported handled and the document is left as it stood.
     move(state, dispatch, view) ||
-    emptyRunBeside(state.selection, dir) !== null;
+    emptyControlsBeside(state.selection, dir) !== null;
 }
 
 /** Backspace passing over the controls holding nothing that stand before the caret */

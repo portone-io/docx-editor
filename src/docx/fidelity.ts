@@ -95,7 +95,7 @@ function preservedBy(node: PMNode, element: string | null): Preserved | null {
         code: "preserved-run-content",
       };
     case "rawInline":
-      return preservedInline(node, element);
+      return preservedInline(node);
     default:
       return null;
   }
@@ -124,14 +124,7 @@ function preservedBlockNote(node: PMNode, element: string | null): Preserved {
  * range and a move range are the invisible pairs a document falls apart without, and a `w:proofErr`
  * standing beside them is invisible too but nothing depends on it.
  */
-function preservedInline(
-  node: PMNode,
-  element: string | null
-): Preserved | null {
-  const name = stringAttr(node.attrs.element) ?? localNameOf(element);
-  // A run with no children at all is kept whole (`./importParagraph`). Word draws nothing there
-  // either, so the file lost nothing and there is nothing to report
-  if (name === "r") return null;
+function preservedInline(node: PMNode): Preserved {
   const severity = severityOf(node.attrs.display);
   return severity === "hidden" && node.attrs.guarded === true
     ? { severity, code: "range-marker" }

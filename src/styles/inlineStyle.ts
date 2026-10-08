@@ -167,15 +167,24 @@ function inheritedRunCss(
   return css;
 }
 
-/** The fill painted behind the characters and where they sit on the line. Neither carries down */
-function ownRunCss(format: RunFormat): string[] {
-  const css: string[] = [];
+/** The colour painted behind the characters, the highlight over the fill as Word paints them. null for none */
+export function runBackground(format: RunFormat): string | null {
   const highlight = format.highlight
     ? HIGHLIGHT_COLORS[format.highlight]
     : undefined;
-  if (highlight) css.push(`background-color:${highlight}`);
-  else if (format.background)
-    css.push(`background-color:${fillColor(format.background)}`);
+  if (highlight) return highlight;
+  return format.background && format.background !== NO_FILL
+    ? format.background
+    : null;
+}
+
+/** The fill painted behind the characters and where they sit on the line. Neither carries down */
+function ownRunCss(format: RunFormat): string[] {
+  const css: string[] = [];
+  const background = runBackground(format);
+  if (background !== null) css.push(`background-color:${background}`);
+  else if (format.background === NO_FILL)
+    css.push(`background-color:${fillColor(NO_FILL)}`);
   if (format.verticalAlign === "superscript") css.push("vertical-align:super");
   if (format.verticalAlign === "subscript") css.push("vertical-align:sub");
   return css;

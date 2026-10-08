@@ -102,6 +102,10 @@ export interface DocxHarness {
   lockedText(): string;
   /** Every inline content control the body holds, in document order */
   inlineControls(): InlineControlReport[];
+  /** How many runs holding no characters the body holds */
+  emptyRuns(): number;
+  /** The highlight the first text reading exactly this is formatted with, null for none */
+  highlightOf(needle: string): string | null;
   /**
    * What one note of the open document says, read off the story the document holds rather than
    * off the screen, so a test can tell an edit that landed from one that was only drawn

@@ -30,7 +30,15 @@ import {
   withExtent,
 } from "../ooxml/image";
 import { wName } from "../ooxml/names";
-import { escapeXml } from "../ooxml/xml";
+import { parsePropsXml } from "../ooxml/props";
+import {
+  attrString,
+  childByLocalName,
+  elementChildren,
+  escapeXml,
+  serializeXml,
+} from "../ooxml/xml";
+import { isEmptyRun } from "../schema/emptyRuns";
 import { wrapperMarks } from "../schema/wrappers";
 import { type ExportRefs, NO_EXPORT_REFS } from "./exportRefs";
 import type { ImageRefs } from "./media";
@@ -154,7 +162,13 @@ function renderInline(node: PMNode, images: ImageRefs): string {
 }
 
 type ParagraphPart =
-  | { kind: "run"; mark: Mark | null; pieces: string[] }
+  | {
+      kind: "run";
+      mark: Mark | null;
+      pieces: string[];
+      /** Whether the run takes no neighbour wearing the same formatting in */
+      sealed: boolean;
+    }
   | { kind: "raw"; xml: string };
 
 export function preservedXml(node: PMNode): string {
@@ -168,6 +182,32 @@ export function preservedXml(node: PMNode): string {
   return xml;
 }
 
+/** Whether the run mark is the one this run was read with, as the import reads it (`./importParagraph`) */
+function readWith(run: Element, mark: Mark | null): boolean {
+  const rPr = childByLocalName(run, "rPr");
+  return (
+    attrString(run) === rawAttrsOf(mark?.attrs.rAttrs) &&
+    (rPr ? serializeXml(rPr) : null) === rawAttrsOf(mark?.attrs.rPr)
+  );
+}
+
+/**
+ * Unchanged formatting writes the run as it came, so a verifier comparing its XML finds it equal;
+ * changed formatting is written by the run writer around what the run held.
+ */
+function emptyRunPart(node: PMNode): ParagraphPart {
+  const xml = rawAttrsOf(node.attrs.xml);
+  const run = xml === null ? null : parsePropsXml(xml);
+  const mark = markOf(node, "run");
+  if (xml !== null && run !== null && readWith(run, mark)) {
+    return { kind: "raw", xml };
+  }
+  const pieces = (run ? elementChildren(run) : [])
+    .filter((child) => child.localName !== "rPr")
+    .map(serializeXml);
+  return { kind: "run", mark, pieces, sealed: true };
+}
+
 /** Adds one inline to the parts, joining the run before it when they share the same formatting */
 function addInline(
   parts: ParagraphPart[],
@@ -176,6 +216,12 @@ function addInline(
 ): void {
   if (child.type.name === "rawInline") {
     parts.push({ kind: "raw", xml: preservedXml(child) });
+    return;
+  }
+  // A run holding no characters is a run of its own: joined to a neighbour wearing the same
+  // formatting it would vanish into that one, and the file would lose the place it held
+  if (isEmptyRun(child)) {
+    parts.push(emptyRunPart(child));
     return;
   }
   // A wrapper holding nothing stands beside the runs rather than inside one, which is where
@@ -212,10 +258,10 @@ function addInline(
   const piece = renderInline(child, images);
   const mark = markOf(child, "run");
   const last = parts.at(-1);
-  if (last?.kind === "run" && sameMark(last.mark, mark)) {
+  if (last?.kind === "run" && !last.sealed && sameMark(last.mark, mark)) {
     last.pieces.push(piece);
   } else {
-    parts.push({ kind: "run", mark, pieces: [piece] });
+    parts.push({ kind: "run", mark, pieces: [piece], sealed: false });
   }
 }
 

@@ -74,6 +74,10 @@ export const controlLifted = new PluginKey<boolean>("docxEditorControlLifted");
  * the caret then writes into a control it emptied, the node it stood as goes, since the control
  * stands as the new text instead. That removal is the one step here a lock against deletion would
  * refuse, and it removes no control.
+ *
+ * The same transaction takes away a run holding no characters that text written beside it filled
+ * (`editor/formatSource`), giving that text the run's formatting and laying the controls the run
+ * stood in over it first, so a control a lock keeps never stands on nothing.
  */
 export const controlKept = new PluginKey<boolean>("docxEditorControlKept");
 
@@ -334,12 +338,15 @@ function overlaps(range: StepRange, span: StepRange): boolean {
 
 /**
  * Whether this inline node puts nothing on the page: a control holding nothing, a comment's range
- * marker, or a preserved element drawn as nothing, such as a bookmark or an empty run.
+ * marker, a run holding no characters, or a preserved element drawn as nothing, such as a bookmark.
+ *
+ * A run holding no characters counts even where its highlight is drawn, since it holds no text.
  */
-function drawsNothing(node: PMNode): boolean {
+export function drawsNothing(node: PMNode): boolean {
   switch (node.type.name) {
     case "commentStart":
     case "commentEnd":
+    case "emptyRun":
       return true;
     case "rawInline":
     case "rawRunContent":

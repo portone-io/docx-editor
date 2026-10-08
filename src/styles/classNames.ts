@@ -57,6 +57,8 @@ export const editorClassNames = {
   commentMarker: `${PREFIX}-comment-marker`,
   /** A superscript footnote or endnote reference */
   noteReference: `${PREFIX}-note-reference`,
+  /** A run holding no characters, which takes width only where its own properties paint a background */
+  emptyRun: `${PREFIX}-empty-run`,
   rawInline: `${PREFIX}-raw-inline`,
   /** A preserved child of a run, drawn by the `display` its policy gave it */
   rawRunContent: `${PREFIX}-raw-run`,
@@ -245,6 +247,8 @@ export const editorAttributes = {
   containerPageSpace: "data-container-page-space",
   /** A display-only copy of a table header row on a continued page */
   tableRepeatedHeader: "data-table-repeated-header",
+  /** Put on a run whose own properties paint a background, so a run holding no characters inside it is drawn wide */
+  paintsBackground: "data-paints",
   /**
    * The tooltip a control shows on hover, drawn by the CSS straight from this attribute.
    * It is the one mark here whose selector is the attribute on its own rather than a

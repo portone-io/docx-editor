@@ -19,6 +19,7 @@ import { rangeOfText } from "../__testing__/editing";
 import { addComment, updateComment } from "../editor/commands/commentCommands";
 import { createEditorState } from "../editor/createEditor";
 import { docxSchema } from "../schema";
+import { onlyCommentsChangedBy } from "./commentOnlyChange";
 import { BLOCK_KINDS, compareDocx } from "./compareDocx";
 import { exportDocx } from "./exportDocx";
 import { importDocx } from "./importDocx";
@@ -397,6 +398,62 @@ describe("compareDocx over comments", () => {
         text: "note",
       },
     ]);
+  });
+
+  describe("in a paragraph holding a run with no characters", () => {
+    const slot =
+      '<w:r><w:rPr><w:highlight w:val="yellow"/></w:rPr><w:t xml:space="preserve"></w:t></w:r>';
+    const withSlot = withContentTypes(
+      body(
+        `<w:p><w:r><w:t xml:space="preserve">Alpha beta </w:t></w:r>${slot}</w:p>`,
+        paragraph("Gamma")
+      )
+    );
+
+    function commentedOver(
+      state: EditorState,
+      range: (state: EditorState) => { from: number; to: number }
+    ): EditorState {
+      const { from, to } = range(state);
+      let next = state.apply(
+        state.tr.setSelection(TextSelection.create(state.doc, from, to))
+      );
+      addComment({ text: "note", author: "Me", authorId: "me" })(
+        next,
+        (tr) => (next = next.apply(tr))
+      );
+      return next;
+    }
+
+    it.each([
+      [
+        "a word beside it",
+        (state: EditorState) => rangeOfText(state.doc, "beta"),
+      ],
+      [
+        "the run itself",
+        (state: EditorState) => {
+          let at = -1;
+          state.doc.descendants((node, pos) => {
+            if (node.type.name === "emptyRun") at = pos;
+          });
+          return { from: at, to: at + 1 };
+        },
+      ],
+    ])(
+      "reports a comment over %s and no block, and passes as comments alone",
+      (_, range) => {
+        const submitted = edited(withSlot, (state) =>
+          commentedOver(state, range)
+        );
+        const comparison = compareDocx(withSlot, submitted);
+        expect(comparison.blocks).toEqual([]);
+        expect(comparison.comments).toHaveLength(1);
+        expect(onlyCommentsChangedBy(withSlot, submitted, "me")).toEqual({
+          ok: true,
+        });
+      }
+    );
   });
 
   it("reports a comment removed, and no block", () => {

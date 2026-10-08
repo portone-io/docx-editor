@@ -29,7 +29,7 @@ import {
 } from "../editor/createEditor";
 import { deleteColumn, deleteRow } from "../table";
 import { editShut } from "./guards";
-import { carriesLock, unlockAllowed } from "./locks";
+import { carriesLock, controlsWrittenInto, unlockAllowed } from "./locks";
 
 const run = (text: string) =>
   `<w:r><w:t xml:space="preserve">${text}</w:t></w:r>`;
@@ -760,4 +760,28 @@ describe("the locks content-controls.docx carries", () => {
     ).toBe(true);
     expect(documentHasLocked(state.doc)).toBe(true);
   });
+});
+
+describe("a run holding no characters past an inline control", () => {
+  it.each([
+    ["painted", '<w:rPr><w:highlight w:val="yellow"/></w:rPr>'],
+    ["unpainted", '<w:rPr><w:rtl w:val="0"/></w:rPr>'],
+  ])(
+    "is set aside when it is %s, so the stretch still writes into the control",
+    (_, rPr) => {
+      const doc = createEditorState(
+        importDocx(
+          makeDocx(
+            `<w:p>${inlineSdt(run("[  ]"))}<w:r>${rPr}<w:t xml:space="preserve"></w:t></w:r></w:p>`
+          )
+        ).doc
+      ).doc;
+      const paragraph = doc.child(0);
+      expect(paragraph.lastChild?.type.name).toBe("emptyRun");
+
+      expect(
+        controlsWrittenInto(doc, 1, 1 + paragraph.content.size)
+      ).toHaveLength(1);
+    }
+  );
 });

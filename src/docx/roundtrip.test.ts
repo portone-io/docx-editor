@@ -290,6 +290,34 @@ describe("regenerating a paragraph", () => {
     expect(documentXml).toContain("edited text");
   });
 
+  it("a highlighted run with no text in another cell of an edited table comes back as it was", () => {
+    const slot =
+      '<w:r><w:rPr><w:highlight w:val="yellow"/></w:rPr><w:t xml:space="preserve"></w:t></w:r>';
+    const body =
+      "<w:tbl>" +
+      '<w:tblGrid><w:gridCol w:w="1000"/><w:gridCol w:w="1000"/></w:tblGrid>' +
+      "<w:tr><w:tc><w:p><w:r><w:t>a</w:t></w:r></w:p></w:tc>" +
+      `<w:tc><w:p>${slot}</w:p></w:tc></w:tr></w:tbl><w:p/>`;
+    const bytes = makeDocx(body);
+    const { doc, session } = importDocx(bytes);
+    expectEveryPartIdentical(
+      bytes,
+      exportDocx(doc, session),
+      session.mainPartPath
+    );
+
+    const state = createEditorState(doc);
+    const edited = state.apply(
+      state.tr.insertText("edited", posOfText(state.doc, "a"))
+    );
+    const out = documentXmlOf(edited.doc, session);
+    expect(out).toContain("edited");
+    expect(out).toContain(
+      '<w:tc><w:p><w:r><w:rPr><w:highlight w:val="yellow"/></w:rPr>' +
+        '<w:t xml:space="preserve"/></w:r></w:p></w:tc>'
+    );
+  });
+
   it("leaves a bookmark right where it was", () => {
     const bookmarkStart = '<w:bookmarkStart w:id="0" w:name="here"/>';
     const bookmarkEnd = '<w:bookmarkEnd w:id="0"/>';

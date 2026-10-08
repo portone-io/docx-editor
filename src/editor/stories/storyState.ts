@@ -24,6 +24,7 @@ import type { EditingProtection } from "../../schema/protection";
 import type { SliceNormalizer } from "../clipboard/normalizers";
 import { docxClipboard } from "../clipboard/plugin";
 import { type EditorDocument, editorDocument } from "../editorDocument";
+import { caretFormat } from "../plugins/caretFormat";
 import { compositionSelection } from "../plugins/compositionSelection";
 import { controlContents } from "../plugins/controlContents";
 import { controlLifecycle } from "../plugins/controlLifecycle";
@@ -32,13 +33,10 @@ import {
   withDerivedDisplay,
 } from "../plugins/displayDerivation";
 import { documentProtection } from "../plugins/documentProtection";
+import { inlinePlugins } from "../plugins/inlinePlugins";
 import { docxKeymap, NOTE_KEYS } from "../plugins/keymap";
 import { lockedContent } from "../plugins/lockedContent";
 import { numberingMarkers } from "../plugins/numberingDecorations";
-import { tabCaret } from "../plugins/tabCaret";
-import { tabDecorations } from "../plugins/tabDecorations";
-import { tabLayout } from "../plugins/tabLayout";
-import { tabPointer } from "../plugins/tabPointer";
 import type { SurfaceCapabilities, SurfaceCapability } from "./storyView";
 
 /**
@@ -100,6 +98,7 @@ export function storyEditorState({
       documentProtection({ protection, author: null, editableComments: "own" }),
       compositionSelection(),
       controlContents(),
+      caretFormat(),
       // A kind's own key rule stands ahead of the keymaps below: the base keymap answers
       // Backspace and Enter for every document, so a rule about an empty story would never be
       // asked behind it
@@ -110,10 +109,7 @@ export function storyEditorState({
       dropCursor(),
       docxClipboard({ normalizers }),
       tableEditing(),
-      tabDecorations(),
-      tabPointer(),
-      tabLayout(),
-      tabCaret(),
+      ...inlinePlugins(),
       controlLifecycle(),
       displayDerivation(),
       numberingMarkers(),

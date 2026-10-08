@@ -9,6 +9,21 @@ Edit bold, italic, strikethrough, underline, palette or custom HEX colors, highl
 font size.
 Document defaults and paragraph or character styles are reflected in the text and the controls.
 
+A run that carries formatting but no text, such as a highlighted blank a form leaves to be filled
+in, is drawn as a short box in its own highlight or shading.
+Clicking the box and typing, composing, or pasting fills it: the text takes the blank's formatting,
+whatever formatting pasted text carried, and the box goes.
+A blank of other formatting beside it stays.
+A blank nobody filled goes back out in the file as it came.
+A formatted run with no text and no highlight or shading of its own takes no room on the page.
+[Content controls](/docs/features/preserved-content#content-controls) covers a blank inside a
+control.
+
+Typed text takes the formatting of the nearest text in its paragraph, before the caret or else
+after it, passing over what is not drawn, such as a bookmark or a formatted run with no text and no
+highlight or shading of its own.
+In a paragraph with no text, it takes the formatting of a formatted run with no text.
+
 ## Paragraphs
 
 Apply paragraph styles, alignment, indentation, line spacing, line breaks, and page breaks.
@@ -45,6 +60,12 @@ A list counting in any other format is shown with decimal numbers, and a picture
 character written beside it.
 
 Tab leaders and bar tabs are kept in the file but not drawn.
+
+Word draws nothing for a highlighted run with no text, so the box shown for one does not appear
+when the file is opened in Word.
+A blank inside a hyperlink is not filled by typing; the text goes beside it, in the formatting of the
+text around it rather than the blank's.
+Deleting everything typed into a blank does not bring the blank back.
 
 [Text and paragraphs](/docs/editor-api/text-and-paragraphs) in the Editor API lists the commands
 and queries behind these controls.

@@ -150,14 +150,13 @@ describe("a stretch of text wrapped in a content control", () => {
     ]);
   });
 
-  it("a run with no text inside the control is preserved wearing the mark too", () => {
+  it("a run with no text inside the control wears the mark too", () => {
     const empty = '<w:r><w:rPr><w:rtl w:val="0"/></w:rPr></w:r>';
     const node = requireParagraph(`<w:p>${sdt(empty + run("value"))}</w:p>`);
 
-    expect(node.child(0).type.name).toBe("rawInline");
-    expect(node.child(0).attrs.xml).toBe(empty);
-    // The control has to close around this XML again on export
-    expect(markNames(node.child(0))).toEqual(["sdt"]);
+    expect(node.child(0).type.name).toBe("emptyRun");
+    // The control has to close around this run again on export
+    expect(markNames(node.child(0))).toEqual(["sdt", "run"]);
   });
 
   it("a break and a tab inside the control wear the mark as well", () => {
@@ -607,14 +606,70 @@ describe("paragraph children the editor does not model", () => {
     expect(preserved.attrs.display).toBe("hidden");
     expect(preserved.attrs.guarded).toBe(false);
   });
+});
 
-  it("a run with nothing in it is still kept whole and says so", () => {
-    const preserved = lonePreserved(
-      "<w:p><w:r><w:rPr><w:b/></w:rPr></w:r></w:p>"
+describe("a run holding no characters", () => {
+  const HIGHLIGHT = '<w:rPr><w:highlight w:val="yellow"/></w:rPr>';
+
+  /** The one node a paragraph holding nothing but this run came out as */
+  function emptyRunOf(inner: string): PMNode {
+    const node = requireParagraph(`<w:p>${inner}</w:p>`);
+    expect(node.childCount).toBe(1);
+    return node.child(0);
+  }
+
+  it("is a node of its own wearing the run's formatting", () => {
+    const node = emptyRunOf(
+      `<w:r>${HIGHLIGHT}<w:t xml:space="preserve"></w:t></w:r>`
     );
 
-    expect(preserved.type.name).toBe("rawInline");
-    expect(preserved.attrs.element).toBe("r");
-    expect(preserved.attrs.display).toBe("hidden");
+    expect(node.type.name).toBe("emptyRun");
+    expect(markNames(node)).toEqual(["run"]);
+    expect(node.marks[0].attrs.rPr).toBe(HIGHLIGHT);
+    expect(node.marks[0].attrs.format).toEqual({ highlight: "yellow" });
+    expect(node.attrs.xml).toBe(
+      `<w:r>${HIGHLIGHT}<w:t xml:space="preserve"/></w:r>`
+    );
+  });
+
+  it.each([
+    ["holds no w:t", `<w:r>${HIGHLIGHT}</w:r>`],
+    ["holds a bare w:t", `<w:r>${HIGHLIGHT}<w:t/></w:r>`],
+    ["holds several empty w:t", `<w:r>${HIGHLIGHT}<w:t/><w:t/></w:r>`],
+    ["holds nothing at all", "<w:r/>"],
+  ])("is the same node where the run %s, keeping the run", (_, xml) => {
+    const node = emptyRunOf(xml);
+    expect(node.type.name).toBe("emptyRun");
+    expect(node.attrs.xml).toBe(xml);
+  });
+
+  it("is text where its w:t holds only spaces", () => {
+    const node = emptyRunOf(
+      `<w:r>${HIGHLIGHT}<w:t xml:space="preserve"> </w:t></w:r>`
+    );
+    expect(node.isText).toBe(true);
+  });
+
+  it("stays the hidden run content it held beside anything else", () => {
+    const node = requireParagraph(
+      `<w:p><w:r>${HIGHLIGHT}<w:lastRenderedPageBreak/><w:t/></w:r></w:p>`
+    );
+    expect(node.children.map((child) => child.type.name)).toEqual([
+      "rawRunContent",
+    ]);
+  });
+
+  it("wears a hyperlink and nested controls around it, outermost first", () => {
+    const empty = `<w:r>${HIGHLIGHT}<w:t xml:space="preserve"></w:t></w:r>`;
+    const inner = '<w:sdtPr><w:id w:val="8"/></w:sdtPr>';
+    const inControls = emptyRunOf(sdt(sdt(empty, inner)));
+    expect(inControls.type.name).toBe("emptyRun");
+    expect(wrappersOf(inControls, docxSchema.marks.sdt)).toHaveLength(2);
+    expect(markNames(inControls)).toEqual(["sdt", "sdt", "run"]);
+
+    const inLink = emptyRunOf(
+      `<w:hyperlink w:anchor="here">${empty}</w:hyperlink>`
+    );
+    expect(markNames(inLink)).toEqual(["link", "run"]);
   });
 });
