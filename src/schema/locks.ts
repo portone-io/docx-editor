@@ -340,8 +340,7 @@ function overlaps(range: StepRange, span: StepRange): boolean {
  * Whether this inline node puts nothing on the page: a control holding nothing, a comment's range
  * marker, a run holding no characters, or a preserved element drawn as nothing, such as a bookmark.
  *
- * A run holding no characters counts even where its highlight is drawn: it holds no text, and a
- * selection running over it past a control still shows the user the control's text alone.
+ * A run holding no characters counts even where its highlight is drawn, since it holds no text.
  */
 export function drawsNothing(node: PMNode): boolean {
   switch (node.type.name) {

@@ -17,13 +17,10 @@
  * the control rather than beside it, until the caret moves. A caret the user places against the
  * edge of a control still stands outside it.
  *
- * It also owns where what is written at a caret takes its formatting from (`../formatSource`).
- * A caret beside something that draws nothing writes with the formatting of the character the rule
- * finds, and what is written where a run holding no characters gave the formatting takes that
- * run's formatting and fills it, a paste included: the run goes, and where it stood inside open
- * controls, the controls are laid over what was written, so a caret placed in a control's blank
- * writes into the control. A blank standing in any other wrapper, a control whose lock shuts its
- * contents or a link among them, stays, and the text stands beside it.
+ * What is written where a run holding no characters gave the formatting (`../formatSource`) takes
+ * that run's formatting and fills it, a paste included: the run goes, and where it stood inside
+ * open controls, the controls are laid over what was written, so a caret placed in a control's
+ * blank writes into the control.
  */
 
 import { Mark, type Node as PMNode, type Slice } from "prosemirror-model";
@@ -64,7 +61,7 @@ import {
   wrapperMarks,
   wrappersOf,
 } from "../../schema/wrappers";
-import { formatSourceAt } from "../formatSource";
+import { formatSourceAt, sameRun } from "../formatSource";
 
 /** Where the caret keeps writing into the controls it wrote into, while it stays there */
 type Continuing = number | null;
@@ -293,13 +290,9 @@ function pasted(tr: Transaction): boolean {
 }
 
 /**
- * The runs holding no characters an insertion at a caret fills, the formatting they give, the
- * controls around them it writes into, and the first of the runs. null where it fills none.
- *
- * Inserted text never takes a wrapper on, so filling a run would take a wrapper that stood on
- * nothing else away with it. Only a control can be laid over the text again, where it is open; one
- * going with any edit (`w:temporary`) goes with the run. Any other wrapper keeps its run, and the
- * text stands beside it.
+ * The runs holding no characters an insertion at a caret fills (`../formatSource`), the formatting
+ * they give, the controls around them it writes into, and the first of the runs. null where it
+ * fills none. A control going with any edit (`w:temporary`) goes with the runs.
  */
 function stepFill(
   doc: PMNode,
@@ -317,15 +310,6 @@ function stepFill(
   const runs = source?.fills ?? null;
   const first = runs === null ? null : doc.nodeAt(runs.from);
   if (source === null || runs === null || first === null) return null;
-  const open = controlsWrittenInto(doc, runs.from, runs.to).map(
-    (span) => span.mark
-  );
-  const laidAgain = wrapperMarks(first).every(
-    (wrapper) =>
-      wrapper.type === docxSchema.marks.sdt &&
-      open.some((control) => control.eq(wrapper))
-  );
-  if (!laidAgain) return null;
   return {
     runs,
     run: source.run,
@@ -483,10 +467,6 @@ function dropRefilled(tr: Transaction, written: readonly Written[]): void {
   for (const { from, to } of refilled.reverse()) tr.delete(from, to);
 }
 
-function sameRun(a: Mark | null, b: Mark | null): boolean {
-  return a === null || b === null ? a === b : a.eq(b);
-}
-
 /** Gives what was written into runs holding no characters the formatting they gave */
 function restyleFilled(tr: Transaction, filled: readonly Fill[]): void {
   const runType = docxSchema.marks.run;
@@ -539,22 +519,6 @@ function dropFilled(tr: Transaction, filled: readonly Fill[]): void {
  * Where the caret keeps writing into a control after this change: where an edit that wrote into a
  * control left it, or where it already continued, as long as a control still ends there.
  */
-/**
- * The marks the caret writes with where the formatting rule (`../formatSource`) parts from those
- * ProseMirror reads off the node beside it. null where the two agree.
- */
-function caretMarks(tr: Transaction): readonly Mark[] | null {
-  const caret =
-    tr.selection instanceof TextSelection ? tr.selection.$cursor : null;
-  const source = caret ? formatSourceAt(tr.doc, caret.pos) : null;
-  if (!caret || source === null) return null;
-  const own = caret.marks();
-  const runType = docxSchema.marks.run;
-  if (sameRun(runType.isInSet(own) ?? null, source.run)) return null;
-  const others = runType.removeFromSet(own);
-  return source.run === null ? others : source.run.addToSet(others);
-}
-
 function continuingAfter(
   tr: Transaction,
   written: readonly Written[],
@@ -594,15 +558,12 @@ export function controlContents(): Plugin<Continuing> {
       };
     },
     appendTransaction(transactions, oldState, newState) {
-      const edited = transactions.some(userEdit);
-      if (!edited && !transactions.some((tr) => tr.selectionSet)) return null;
-      const { written, filled }: Writes = edited
-        ? writtenStretches(
-            transactions,
-            controlContentsKey.getState(oldState) ?? null,
-            oldState.storedMarks
-          )
-        : { written: [], filled: [] };
+      if (!transactions.some(userEdit)) return null;
+      const { written, filled } = writtenStretches(
+        transactions,
+        controlContentsKey.getState(oldState) ?? null,
+        oldState.storedMarks
+      );
       const previous = controlContentsKey.getState(newState) ?? null;
       const tr = newState.tr.setMeta(controlKept, true);
       // The controls go on before the runs come off, so a control never stands on nothing in
@@ -612,10 +573,8 @@ export function controlContents(): Plugin<Continuing> {
       restyleFilled(tr, filled);
       dropFilled(tr, filled);
       // Stored marks are how ProseMirror ends a composition, so none are set under an open one
-      if (live?.composing !== true) {
-        const marks =
-          stored ?? (tr.storedMarks === null ? caretMarks(tr) : null);
-        if (marks !== null) tr.setStoredMarks(marks);
+      if (stored !== null && live?.composing !== true) {
+        tr.setStoredMarks(stored);
       }
       const continuing = continuingAfter(tr, written, previous);
       if (!tr.docChanged && !tr.storedMarksSet && continuing === previous) {

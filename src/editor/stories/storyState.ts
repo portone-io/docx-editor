@@ -24,6 +24,7 @@ import type { EditingProtection } from "../../schema/protection";
 import type { SliceNormalizer } from "../clipboard/normalizers";
 import { docxClipboard } from "../clipboard/plugin";
 import { type EditorDocument, editorDocument } from "../editorDocument";
+import { caretFormat } from "../plugins/caretFormat";
 import { compositionSelection } from "../plugins/compositionSelection";
 import { controlContents } from "../plugins/controlContents";
 import { controlLifecycle } from "../plugins/controlLifecycle";
@@ -97,6 +98,7 @@ export function storyEditorState({
       documentProtection({ protection, author: null, editableComments: "own" }),
       compositionSelection(),
       controlContents(),
+      caretFormat(),
       // A kind's own key rule stands ahead of the keymaps below: the base keymap answers
       // Backspace and Enter for every document, so a rule about an empty story would never be
       // asked behind it

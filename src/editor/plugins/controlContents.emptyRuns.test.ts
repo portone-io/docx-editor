@@ -292,6 +292,16 @@ describe("a blank that is all an inline control holds", () => {
     expect(typed.doc.textContent).toBe("Signer: K");
   });
 
+  it("gives the text beside it no formatting where the lock keeps it from being filled", () => {
+    const opened = open(IN_CONTROL(lock("sdtContentLocked")));
+    const typed = type(afterSlot(opened.state), "K");
+
+    expect(highlightOf(textNode(typed.doc, "K"))).toBeUndefined();
+    expect(documentXmlOf(typed.doc, opened.session)).toContain(
+      `</w:sdt>${run("K")}`
+    );
+  });
+
   it("stops claiming to show its placeholder once it is filled", () => {
     const opened = open(IN_CONTROL("<w:showingPlcHdr/>"));
     const typed = type(afterSlot(opened.state), "K");
@@ -324,6 +334,22 @@ describe("a temporary control locked against deletion holding a blank", () => {
   });
 });
 
+describe("a blank beside a blank of other formatting", () => {
+  const GREEN_SLOT = SLOT.replace("yellow", "green");
+
+  it("stays where the blank beside it is filled", () => {
+    const opened = open(`<w:p>${GREEN_SLOT}${SLOT}</w:p>`);
+    const pos = (emptyRuns(opened.state.doc)[1] ?? 0) + 1;
+    const typed = type(select(opened.state, pos, pos), "K");
+
+    expect(emptyRuns(typed.doc)).toHaveLength(1);
+    expect(highlightOf(textNode(typed.doc, "K"))).toBe("yellow");
+    expect(documentXmlOf(typed.doc, opened.session)).toContain(
+      '<w:highlight w:val="green"/>'
+    );
+  });
+});
+
 describe("a blank beside a control", () => {
   it("stays where the control's placeholder is typed over", () => {
     const placeholder = "[    ]";
@@ -349,6 +375,16 @@ describe("a blank beside a control", () => {
 });
 
 describe("a blank inside a hyperlink", () => {
+  it("gives its formatting to none of the text typed beside it", () => {
+    const opened = open(
+      `<w:p>${run("See ")}<w:hyperlink w:anchor="here">${SLOT}</w:hyperlink></w:p>`
+    );
+    const typed = type(afterSlot(opened.state), "K");
+
+    expect(emptyRuns(typed.doc)).toHaveLength(1);
+    expect(highlightOf(textNode(typed.doc, "K"))).toBeUndefined();
+  });
+
   it("keeps its blank, and the link goes out around it", () => {
     const opened = open(
       `<w:p><w:hyperlink w:anchor="here">${SLOT}</w:hyperlink></w:p>`

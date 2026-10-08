@@ -34,6 +34,7 @@ import {
 } from "./editorDocument";
 import { type EditRefusal, editRefusal } from "./editRefusal";
 import { imageFiles } from "./imageFiles";
+import { caretFormat } from "./plugins/caretFormat";
 import { columnResize } from "./plugins/columnResize";
 import { commentComposer } from "./plugins/commentComposer";
 import { commentDecorations } from "./plugins/commentDecorations";
@@ -133,6 +134,9 @@ export function createEditorState(
       // plugin appending to an edit, which then sees the control it kept, and behind the one above,
       // whose deletion it keeps the control through before a composition opens
       controlContents(),
+      // What the caret writes with, behind the one above so the marks it gives a caret it keeps
+      // inside a control win
+      caretFormat(),
       history(),
       keymap(docxKeymap),
       historyKeys(),
