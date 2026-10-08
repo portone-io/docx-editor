@@ -9,7 +9,7 @@
     ".": "./DocxEditorDemo.tsx"
   },
   "dependencies": {
-    "@portone/docx-editor": "workspace:*",
+    "@portone/docx-editor": "0.6.7",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   },
