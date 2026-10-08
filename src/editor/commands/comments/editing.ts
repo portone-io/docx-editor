@@ -22,6 +22,7 @@ import {
 } from "../../../docx/story";
 import { docxSchema } from "../../../schema";
 import { guardedCommand } from "../../../schema/guards";
+import { isCommentNode } from "../../../schema/protection";
 import { isWrapperType } from "../../../schema/wrappers";
 import {
   reservedCommentDurableIds,
@@ -90,11 +91,7 @@ function nextCommentId(state: EditorState): string {
     reserve(id);
   }
   state.doc.descendants((node) => {
-    if (
-      node.type.name === "commentStart" ||
-      node.type.name === "commentEnd" ||
-      node.type.name === "commentReference"
-    ) {
+    if (isCommentNode(node)) {
       const id = stringAttr(node.attrs.id);
       if (id !== null) reserve(id);
     }
@@ -558,12 +555,7 @@ export function removeComment(id: string): Command {
     const positions: Array<{ pos: number; size: number }> = [];
     const bodies = new Set([id]);
     state.doc.descendants((node, pos) => {
-      if (
-        (node.type.name === "commentStart" ||
-          node.type.name === "commentEnd" ||
-          node.type.name === "commentReference") &&
-        stringAttr(node.attrs.id) === id
-      ) {
+      if (isCommentNode(node) && stringAttr(node.attrs.id) === id) {
         positions.push({ pos, size: node.nodeSize });
       }
       if (

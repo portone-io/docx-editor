@@ -93,7 +93,7 @@ describe("a content control around a stretch of text", () => {
     );
   });
 
-  it("a preserved run inside the control goes back inside it", () => {
+  it("a run holding no characters inside the control goes back inside it", () => {
     const empty = '<w:r><w:rPr><w:rtl w:val="0"/></w:rPr></w:r>';
     const xml = `<w:p>${content(empty + wr("value"))}</w:p>`;
     expect(serializeParagraph(open(xml))).toBe(xml);
@@ -108,6 +108,74 @@ describe("a content control around a stretch of text", () => {
     );
     expect(exportErrorCode(() => serializeParagraph(node))).toBe(
       "lost-original"
+    );
+  });
+});
+
+describe("a run holding no characters", () => {
+  const HIGHLIGHT = '<w:rPr><w:highlight w:val="yellow"/></w:rPr>';
+
+  // Each is written as `serializeXml` writes the run it was read from, which is what an earlier
+  // version kept and what a verifier on either version projects
+  it.each([
+    ["<w:r/>", "<w:r/>"],
+    ["<w:r><w:rPr/></w:r>", "<w:r><w:rPr/></w:r>"],
+    [`<w:r>${HIGHLIGHT}<w:t/></w:r>`, `<w:r>${HIGHLIGHT}<w:t/></w:r>`],
+    [
+      `<w:r w:rsidR="00A1">${HIGHLIGHT}<w:t xml:space="preserve"></w:t></w:r>`,
+      `<w:r w:rsidR="00A1">${HIGHLIGHT}<w:t xml:space="preserve"/></w:r>`,
+    ],
+    [
+      `<w:r>${HIGHLIGHT}<w:t/><w:t/></w:r>`,
+      `<w:r>${HIGHLIGHT}<w:t/><w:t/></w:r>`,
+    ],
+    [
+      `<w:r>\n  ${HIGHLIGHT}\n  <w:t/>\n</w:r>`,
+      `<w:r>\n  ${HIGHLIGHT}\n  <w:t/>\n</w:r>`,
+    ],
+    [
+      `<w:r>${HIGHLIGHT}<!-- slot --><w:t/></w:r>`,
+      `<w:r>${HIGHLIGHT}<!-- slot --><w:t/></w:r>`,
+    ],
+    [`<w:r><w:t/>${HIGHLIGHT}</w:r>`, `<w:r><w:t/>${HIGHLIGHT}</w:r>`],
+  ])("%s goes back out as %s", (run, written) => {
+    expect(serializeParagraph(open(`<w:p>${run}</w:p>`))).toBe(
+      `<w:p>${written}</w:p>`
+    );
+  });
+
+  it("stays a run of its own beside text wearing the same formatting", () => {
+    const empty = `<w:r>${HIGHLIGHT}<w:t/></w:r>`;
+    const node = open(
+      `<w:p>${wr("a", HIGHLIGHT)}${empty}${wr("b", HIGHLIGHT)}</w:p>`
+    );
+    expect(serializeParagraph(node)).toBe(
+      `<w:p>${wr("a", HIGHLIGHT)}${empty}${wr("b", HIGHLIGHT)}</w:p>`
+    );
+  });
+
+  it("closes the wrappers around it", () => {
+    const empty = `<w:r>${HIGHLIGHT}<w:t/></w:r>`;
+    const inControl = `<w:p>${content(empty)}</w:p>`;
+    expect(serializeParagraph(open(inControl))).toBe(inControl);
+    const inLink = `<w:p><w:hyperlink w:anchor="here">${empty}</w:hyperlink></w:p>`;
+    expect(serializeParagraph(open(inLink))).toBe(inLink);
+  });
+
+  it("writes the formatting its run mark holds now", () => {
+    const node = open(`<w:p><w:r>${HIGHLIGHT}<w:t/></w:r></w:p>`);
+    const bold = "<w:rPr><w:b/></w:rPr>";
+    const edited = paragraph(
+      node
+        .child(0)
+        .mark(
+          [...node.child(0).marks].map((mark) =>
+            mark.type === docxSchema.marks.run ? runMark(bold) : mark
+          )
+        )
+    );
+    expect(serializeParagraph(edited)).toBe(
+      `<w:p><w:r>${bold}<w:t/></w:r></w:p>`
     );
   });
 });

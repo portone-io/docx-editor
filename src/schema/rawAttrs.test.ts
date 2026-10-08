@@ -290,6 +290,14 @@ const NODE_FRAGMENTS: RawAttrTable = {
         inline(docxSchema.nodes.hardBreak.create({ brAttrs: xml })),
     },
   },
+  emptyRun: {
+    xml: {
+      attribute: "data-xml",
+      sound: '<w:r><w:rPr><w:highlight w:val="yellow"/></w:rPr><w:t/></w:r>',
+      adversarial: withSibling("<w:r/>"),
+      draw: (xml) => inline(docxSchema.nodes.emptyRun.create({ xml })),
+    },
+  },
   image: {
     xml: {
       attribute: "data-xml",

@@ -205,7 +205,7 @@ describe("the notes a document opens with", () => {
     ]);
   });
 
-  it("reports nothing for an empty run kept whole", () => {
+  it("reports nothing for a run holding no characters", () => {
     expect(
       notesOf(`<w:p>${run("a")}<w:r><w:rPr><w:b/></w:rPr></w:r></w:p>`)
     ).toEqual([]);

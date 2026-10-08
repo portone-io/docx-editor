@@ -213,15 +213,11 @@ function buildRunNodes(
       buildPreservedRunContent(child, marks, preservationOf(policy, "r"))
     );
   }
-  // A run with no characters at all has nowhere to attach formatting, so we hold on to its original XML as is
+  // Nothing but empty `w:t` (or nothing at all) stood beside the properties. The run is kept as a
+  // node of its own, so its formatting stays a place text can be written into
   if (nodes.length === 0) {
     return [
-      docxSchema.nodes.rawInline.create(
-        { xml: serializeXml(run), element: run.localName },
-        null,
-        // The wrappers have to close again around this XML on export, so their marks ride along here too
-        wrappers
-      ),
+      docxSchema.nodes.emptyRun.create({ xml: serializeXml(run) }, null, marks),
     ];
   }
   return nodes;

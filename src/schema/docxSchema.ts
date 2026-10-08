@@ -1217,6 +1217,47 @@ export const docxSchema = new Schema({
         },
       ],
     },
+    /**
+     * A run holding no characters (`<w:r>` with nothing but its properties and empty `w:t`).
+     *
+     * It wears the run mark, so its formatting stays in the model as a place text can be written
+     * into (`editor/formatSource`). Where its own properties paint a background it is drawn as a
+     * short blank in that colour, which Word does not draw (`spec/notes/formattingHierarchy.md`);
+     * any other takes no width.
+     */
+    emptyRun: {
+      group: "inline",
+      inline: true,
+      atom: true,
+      marks: "run wrapper",
+      // It holds nothing to select: a click puts the caret beside it, where text written fills it
+      selectable: false,
+      attrs: {
+        /**
+         * The run as it came, written back as it stands while the run mark is the one it was read
+         * with. null for one the file did not hold
+         */
+        xml: { default: null },
+      },
+      toDOM(node) {
+        return [
+          "span",
+          {
+            class: editorClassNames.emptyRun,
+            "data-xml": text(node.attrs.xml),
+          },
+        ];
+      },
+      parseDOM: [
+        {
+          tag: `span.${editorClassNames.emptyRun}`,
+          getAttrs: (dom) => {
+            const xml = rawXml(dom, "data-xml", ELEMENT("r"));
+            return xml === false ? false : { xml };
+          },
+        },
+      ],
+    },
     /** The node that carries a non-run element inside a paragraph (a bookmark, for instance) exactly as it came */
     rawInline: {
       group: "inline",
@@ -1225,7 +1266,7 @@ export const docxSchema = new Schema({
       marks: "wrapper",
       attrs: {
         xml: { default: null },
-        /** The local name of the element; `r` for a run with no content, kept whole */
+        /** The local name of the element */
         element: { default: null },
         display: { default: "hidden" },
         text: { default: null },

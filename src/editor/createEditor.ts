@@ -47,6 +47,7 @@ import {
 } from "./plugins/displayDerivation";
 import { documentProtection } from "./plugins/documentProtection";
 import { imagePaste } from "./plugins/imagePaste";
+import { inlinePlugins } from "./plugins/inlinePlugins";
 import { docxKeymap, historyKeys } from "./plugins/keymap";
 import { linkPanel } from "./plugins/linkPanel";
 import { listInputRules } from "./plugins/listInputRules";
@@ -56,11 +57,7 @@ import { noteNavigation } from "./plugins/noteNavigation";
 import { noteNumbering } from "./plugins/noteNumbering";
 import { numberingMarkers } from "./plugins/numberingDecorations";
 import { rowResize } from "./plugins/rowResize";
-import { tabCaret } from "./plugins/tabCaret";
-import { tabDecorations } from "./plugins/tabDecorations";
-import { tabLayout } from "./plugins/tabLayout";
 import { tableContextMenu } from "./plugins/tableContextMenu";
-import { tabPointer } from "./plugins/tabPointer";
 import { textContextMenu } from "./plugins/textContextMenu";
 import { ImageNodeView } from "./views/imageResize";
 import { runMarkView } from "./views/runMarkView";
@@ -173,11 +170,7 @@ export function createEditorState(
       // What the notes under the page are, worked out from the document the same way
       noteProjection.plugin,
       noteNavigation(),
-      // Adjacent text tabs still need separate DOM ranges for layout and pointer selection.
-      tabDecorations(),
-      tabPointer(),
-      tabLayout(),
-      tabCaret(),
+      ...inlinePlugins(),
       // Works the display values out again after every edit: the lines of a table's cells, and
       // the style values of the paragraphs the edit built or rewrote
       displayDerivation(),

@@ -32,13 +32,10 @@ import {
   withDerivedDisplay,
 } from "../plugins/displayDerivation";
 import { documentProtection } from "../plugins/documentProtection";
+import { inlinePlugins } from "../plugins/inlinePlugins";
 import { docxKeymap, NOTE_KEYS } from "../plugins/keymap";
 import { lockedContent } from "../plugins/lockedContent";
 import { numberingMarkers } from "../plugins/numberingDecorations";
-import { tabCaret } from "../plugins/tabCaret";
-import { tabDecorations } from "../plugins/tabDecorations";
-import { tabLayout } from "../plugins/tabLayout";
-import { tabPointer } from "../plugins/tabPointer";
 import type { SurfaceCapabilities, SurfaceCapability } from "./storyView";
 
 /**
@@ -110,10 +107,7 @@ export function storyEditorState({
       dropCursor(),
       docxClipboard({ normalizers }),
       tableEditing(),
-      tabDecorations(),
-      tabPointer(),
-      tabLayout(),
-      tabCaret(),
+      ...inlinePlugins(),
       controlLifecycle(),
       displayDerivation(),
       numberingMarkers(),
