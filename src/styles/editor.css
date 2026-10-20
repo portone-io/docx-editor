@@ -10,6 +10,16 @@
 
 @import "prosemirror-view/style/prosemirror.css";
 
+/*
+ * prosemirror-view 1.42.6 puts a buffer image in front of inline atoms on every browser.
+ * On Chrome that breaks IME composition over note marks and bookmark markers, and it
+ * opens an empty line in front of block-level page spaces.
+ */
+.ProseMirror
+img.ProseMirror-separator:has(+ :not(br.ProseMirror-trailingBreak)) {
+  display: none !important;
+}
+
 /* The height is usually decided by the host UI, so this is written to let the app's own class win */
 :where(.docx-editor-frame) {
   height: 100%;
