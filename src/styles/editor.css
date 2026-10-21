@@ -11,12 +11,15 @@
 @import "prosemirror-view/style/prosemirror.css";
 
 /*
- * prosemirror-view 1.42.6 puts a buffer image in front of inline atoms on every browser.
- * On Chrome that breaks IME composition over note marks and bookmark markers, and it
- * opens an empty line in front of block-level page spaces.
+ * prosemirror-view 1.42.6 puts a buffer image in front of inline atoms. It opens an empty line
+ * in front of block-level page spaces, and on Chrome it breaks IME composition over note marks
+ * and bookmark markers. The end-of-line separator before the trailing break and the cursor
+ * wrapper (mark-placeholder) stay.
  */
-.ProseMirror
-img.ProseMirror-separator:has(+ :not(br.ProseMirror-trailingBreak)) {
+:is(.docx-editor-sheet, .docx-editor-story-body)
+img.ProseMirror-separator:not([mark-placeholder]):has(
+  + :not(br.ProseMirror-trailingBreak)
+) {
   display: none !important;
 }
 
