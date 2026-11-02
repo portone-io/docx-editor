@@ -101,7 +101,7 @@ Neither package command is part of `pnpm test`. `verify:package` is kept separat
 The `workflows` job audits the GitHub Actions configuration, `.github/workflows/` and `dependabot.yml` alike, with [zizmor](https://docs.zizmor.sh) under its default `regular` persona. Any finding fails the job and is reported as an annotation on the diff.
 Every action is pinned to a commit SHA with the version in a trailing comment, and Dependabot's `github-actions` entry bumps those pins, including the zizmor action that fixes the analyzer version.
 
-Run the same audit locally with `docker run --rm -v "$PWD:/workspace:ro" -w /workspace ghcr.io/zizmorcore/zizmor:1.29.0 .`, matching the version the action pins.
+Run the same audit locally with `docker run --rm -v "$PWD:/workspace:ro" -w /workspace ghcr.io/zizmorcore/zizmor:1.31.1 .`, matching the version the action pins.
 
 ## Keeping the suite honest
 
