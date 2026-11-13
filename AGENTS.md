@@ -23,7 +23,7 @@ Keep one source of truth for each concern and link to it instead of repeating it
   - Read [site/content/docs/props.mdx](./site/content/docs/props.mdx) for the `mode` union.
 - Read [site/README.md](./site/README.md) for how the documentation and landing site is built and run.
 - Read [e2e/README.md](./e2e/README.md) only for a real-browser, IME, focus, or keyboard task.
-- Read [__fixtures__/README.md](./__fixtures__/README.md) only when adding, replacing, or interpreting a fixture document.
+- Read [`__fixtures__/README.md`](./__fixtures__/README.md) only when adding, replacing, or interpreting a fixture document.
 
 ## Conventions
 
