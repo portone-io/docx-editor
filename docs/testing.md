@@ -23,6 +23,9 @@ The whole suite takes minutes, so running it after every edit slows the work dow
 
 The unit suite requires `xmllint` for OOXML schema validation. `verify:package` also needs network access to install the packed package and its peer dependencies in a temporary project.
 
+`biome.json` switches Biome's Markdown and YAML formatters off, so `pnpm lint` does not format those files.
+The Markdown formatter pads every table to its widest row and, with its default parser, rewrites the front matter a changeset file opens with, and the YAML formatter's double quotes disagree with the single quotes pnpm writes into `pnpm-workspace.yaml`.
+
 `check:demo-library` is offline. `test:site-release` uses Node's test runner to check release preparation, failures, and safe production branch rebuilds in temporary workspaces. It runs the actual Changesets version command; registry, installation, and GitHub responses are substituted.
 
 `pnpm spec 17.5.2.23` looks up an OOXML specification section. It is a utility, not a test.
@@ -41,6 +44,10 @@ Do not set `process.env.TZ` inside a test: the worker threads share one process,
 Build a state for an opened document with `editorStateForSession`, because an option bag copied from the session by hand is how a test comes to hold values the editor itself never builds.
 
 Shared helpers belong under `src/__testing__/` or a feature's `__testing__/` directory. The declaration build excludes those directories, and the package test ensures they are not published.
+
+A component that one test renders can be declared inside that test.
+`biome.json` turns `noComponentHookFactories` off in `*.test.ts` and `*.test.tsx`, because a test callback runs once, so nothing declared in it is remounted, and the rule never checks what a function returns, so it also reports capitalized helpers such as `CELL`.
+`noNestedComponentDefinitions` runs there instead and reports a component declared inside another component.
 
 The clipboard HTML each application writes is committed under `src/editor/clipboard/__testing__/html/`, since a paste is handed markup by the browser rather than a package. Those files follow the same content rules as [the fixture guide](../__fixtures__/README.md): no real organizations, people, or contact details, one language per file, and ASCII file names. They are written to the shape an application puts on the clipboard rather than captured from it, and each says so in its first line. Biome does not read them - the `files.includes` entry in `biome.json` is that exclusion - because Word's clipboard markup is deliberately not well-formed HTML and would otherwise fail the lint.
 

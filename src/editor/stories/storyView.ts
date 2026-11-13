@@ -186,14 +186,16 @@ export function createStoryView({
 
   let protection = standing();
 
+  const leaveStory: Command = () => {
+    host.leave(key);
+    return true;
+  };
+
   const keys: Record<string, Command> = {
     "Mod-z": () => host.undo(),
     "Mod-y": () => host.redo(),
     "Shift-Mod-z": () => host.redo(),
-    Escape: () => {
-      host.leave(key);
-      return true;
-    },
+    Escape: leaveStory,
   };
 
   const built = (story: PMNode): EditorState =>
