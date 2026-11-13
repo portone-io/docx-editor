@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.5.9/schema.json",
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
   "assist": { "actions": { "source": { "organizeImports": "on" } } },
   "vcs": {
     "enabled": true,
@@ -7,8 +7,10 @@
     "useIgnoreFile": true
   },
   "json": { "formatter": { "enabled": false } },
+  "markdown": { "formatter": { "enabled": false } },
+  "yaml": { "formatter": { "enabled": false } },
   "files": {
-    "includes": ["**", "!src/editor/clipboard/__testing__/html/**"]
+    "includes": ["**", "!src/editor/clipboard/__testing__/html"]
   },
   "javascript": {
     "globals": [
@@ -86,5 +88,18 @@
   "formatter": {
     "enabled": true,
     "indentStyle": "space"
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["**/*.test.ts", "**/*.test.tsx"],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "noComponentHookFactories": "off",
+            "noNestedComponentDefinitions": "error"
+          }
+        }
+      }
+    }
+  ]
 }

@@ -17,9 +17,9 @@
  * wrapper (mark-placeholder) stay.
  */
 :is(.docx-editor-sheet, .docx-editor-story-body)
-img.ProseMirror-separator:not([mark-placeholder]):has(
-  + :not(br.ProseMirror-trailingBreak)
-) {
+  img.ProseMirror-separator:not([mark-placeholder]):has(
+    + :not(br.ProseMirror-trailingBreak)
+  ) {
   display: none !important;
 }
 
