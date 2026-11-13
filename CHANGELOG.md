@@ -1,5 +1,11 @@
 # @portone/docx-editor
 
+## 0.6.8
+
+### Patch Changes
+
+- [#219](https://github.com/portone-io/docx-editor/pull/219) [`7271f4b`](https://github.com/portone-io/docx-editor/commit/7271f4b5ce80b0acbad84f28ae04b24d2807e57d) Thanks [@Deea222](https://github.com/Deea222)! - With prosemirror-view 1.42.6, typing with an IME at the start of a footnote or endnote (in front of its number) or over a bookmark broke, and a page break opened an empty line in front of itself; both behave as before again.
+
 ## 0.6.7
 
 ### Patch Changes
