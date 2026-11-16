@@ -1,8 +1,14 @@
-import { existsSync } from "node:fs";
-import { cp, readdir, readFile, rm } from "node:fs/promises";
-import { dirname, join, relative, resolve } from "node:path";
+import { spawnSync } from "node:child_process";
+import { cp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
+import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
+import {
+  emittedPath,
+  RELATIVE_SPECIFIER,
+  rewriteDeclarationSpecifiers,
+} from "./module-specifiers.mjs";
 
 const packageRoot = fileURLToPath(new URL("..", import.meta.url));
 const srcDir = join(packageRoot, "src");
@@ -33,17 +39,11 @@ async function moduleFiles(dir) {
   return files;
 }
 
-const SOURCE_SUFFIXES = [".ts", ".tsx", "/index.ts", "/index.tsx"];
-
-/** The path an emitted file uses to import another one, or null when nothing answers to it */
-function emittedPath(importer, specifier) {
-  const base = resolve(dirname(importer), specifier);
-  const source = SOURCE_SUFFIXES.map((suffix) => `${base}${suffix}`).find(
-    (candidate) => existsSync(candidate)
-  );
-  if (source === undefined) return null;
-  const path = relative(dirname(importer), source).replace(/\.tsx?$/, ".js");
-  return path.startsWith(".") ? path : `./${path}`;
+async function declarationFiles(dir) {
+  const entries = await readdir(dir, { withFileTypes: true, recursive: true });
+  return entries
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".d.ts"))
+    .map((entry) => join(entry.parentPath, entry.name));
 }
 
 /**
@@ -61,7 +61,7 @@ function emittedPath(importer, specifier) {
 const keepModules = {
   name: "keep-modules",
   setup(builder) {
-    builder.onResolve({ filter: /^\.\.?\// }, (args) => {
+    builder.onResolve({ filter: RELATIVE_SPECIFIER }, (args) => {
       if (args.kind === "entry-point") return null;
       const path = emittedPath(args.importer, args.path);
       if (path === null) {
@@ -94,6 +94,42 @@ await build({
   plugins: [keepModules],
   logLevel: "warning",
 });
+
+const tsc = join(
+  dirname(createRequire(import.meta.url).resolve("typescript/package.json")),
+  "bin/tsc"
+);
+const declarations = spawnSync(
+  process.execPath,
+  [tsc, "-p", "tsconfig.build.json"],
+  { cwd: packageRoot, stdio: "inherit" }
+);
+if (declarations.status !== 0)
+  throw new Error("tsc could not emit the declarations");
+
+/**
+ * Declarations name each other the way the sources do, which TypeScript's `node16` and
+ * `nodenext` resolution reject, so they are given the same paths the `.js` output imports through.
+ */
+const rewrites = [];
+const problems = [];
+for (const file of await declarationFiles(distDir)) {
+  const importer = join(srcDir, relative(distDir, file));
+  try {
+    const text = rewriteDeclarationSpecifiers(
+      await readFile(file, "utf8"),
+      (specifier) => emittedPath(importer, specifier)
+    );
+    rewrites.push({ file, text });
+  } catch (error) {
+    problems.push(`${relative(distDir, file)}: ${error.message}`);
+  }
+}
+if (problems.length > 0)
+  throw new Error(
+    `the declarations could not be given emitted paths:\n${problems.join("\n")}`
+  );
+for (const { file, text } of rewrites) await writeFile(file, text);
 
 await cp(
   join(packageRoot, "src/styles/editor.css"),

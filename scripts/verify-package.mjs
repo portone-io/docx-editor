@@ -47,12 +47,21 @@ async function step(what, action) {
   }
 }
 
-const consumerTsconfig = {
+/**
+ * The module settings a consumer may typecheck under, each named for the project file it is
+ * written to. Node's own resolution searches no extensions, so a relative import in the
+ * declarations that leaves its extension off resolves only under the bundler settings.
+ */
+const consumerResolutions = {
+  bundler: { module: "preserve", moduleResolution: "bundler" },
+  nodenext: { module: "nodenext", moduleResolution: "nodenext" },
+};
+
+const consumerTsconfig = (resolution) => ({
   compilerOptions: {
     target: "es2022",
     lib: ["dom", "dom.iterable", "esnext"],
-    module: "preserve",
-    moduleResolution: "bundler",
+    ...resolution,
     jsx: "react-jsx",
     strict: true,
     noEmit: true,
@@ -60,7 +69,7 @@ const consumerTsconfig = {
     types: [],
   },
   include: ["app.tsx", "env.d.ts"],
-};
+});
 
 const consumerApp = `import "@portone/docx-editor/styles.css";
 import {
@@ -317,10 +326,11 @@ async function verify() {
         2
       )}\n`
     );
-    await writeFile(
-      join(consumerDir, "tsconfig.json"),
-      `${JSON.stringify(consumerTsconfig, null, 2)}\n`
-    );
+    for (const [name, resolution] of Object.entries(consumerResolutions))
+      await writeFile(
+        join(consumerDir, `tsconfig.${name}.json`),
+        `${JSON.stringify(consumerTsconfig(resolution), null, 2)}\n`
+      );
     /** esbuild unpacks its binary in an install script, which pnpm runs only where it is allowed */
     await writeFile(
       join(consumerDir, "pnpm-workspace.yaml"),
@@ -340,11 +350,16 @@ async function verify() {
     run("pnpm", ["install"], { cwd: consumerDir })
   );
 
-  await step("typechecking against the shipped declarations", () =>
-    run(join(consumerDir, "node_modules/.bin/tsc"), ["-p", "tsconfig.json"], {
-      cwd: consumerDir,
-    })
-  );
+  for (const name of Object.keys(consumerResolutions))
+    await step(
+      `typechecking against the shipped declarations under ${name} resolution`,
+      () =>
+        run(
+          join(consumerDir, "node_modules/.bin/tsc"),
+          ["-p", `tsconfig.${name}.json`],
+          { cwd: consumerDir }
+        )
+    );
 
   await step("bundling the consumer", () =>
     run(
@@ -352,6 +367,7 @@ async function verify() {
       [
         "app.tsx",
         "--bundle",
+        "--tsconfig=tsconfig.bundler.json",
         "--format=esm",
         "--outdir=out",
         '--define:process.env.NODE_ENV="production"',

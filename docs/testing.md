@@ -9,17 +9,18 @@ The whole suite takes minutes, so running it after every edit slows the work dow
 
 | Command | Scope |
 | --- | --- |
-| `pnpm check` | Lint, typecheck, unit and integration tests, fixture sanitizer tests, site release and release command tests, and demo dependency agreement |
+| `pnpm check` | Lint, typecheck, unit and integration tests, fixture sanitizer tests, build script tests, site release and release command tests, and demo dependency agreement |
 | `pnpm test` | Vitest tests under `src/` |
 | `pnpm typecheck` | TypeScript checks for the package, E2E project, demo, and documentation site |
 | `pnpm lint` | Biome checks |
 | `pnpm test:package` | Published tarball contents, leaf-import size, declaration reports, and the core entry in a Node runtime with no DOM |
-| `pnpm verify:package` | Fresh installation, declarations, entries, bundle, and stylesheet |
+| `pnpm verify:package` | Fresh installation, declarations under bundler and `nodenext` resolution, entries, bundle, and stylesheet |
 | `pnpm test:e2e` | Playwright tests against a locally installed Chrome |
 | `pnpm bench` | Local import, state creation, edit, and export scaling measurements |
 | `pnpm check:demo-library` | The site and demo both run the library from the sources, or both pin the same published release and have it installed |
 | `pnpm test:site-release` | Offline Node tests for released-demo preparation and the production branch rebuild |
 | `pnpm test:release` | Offline Node tests for the release pull request command |
+| `pnpm test:build` | Offline Node tests for the paths the build gives relative imports in the JavaScript and the declarations |
 
 The unit suite requires `xmllint` for OOXML schema validation. `verify:package` also needs network access to install the packed package and its peer dependencies in a temporary project.
 
@@ -93,7 +94,7 @@ Parts with no committed validation schema, including relationships, content type
 - `packaging/apiReport.test.ts` rebuilds the declarations and fails when a committed report in `etc/` no longer matches them.
 - `packaging/coreRuntime.test.ts` loads the built core entry in a Node environment with no DOM globals, which is the runtime a server verifying a returned file actually has. The rest of the suite runs under jsdom, so this is the only place a global reached for by accident shows up as a failure.
 
-`pnpm verify:package` installs the tarball and its peers in a temporary project outside the repository. It typechecks and bundles a consumer, loads every JavaScript entry, mounts `DocxEditor` over a fixture document in jsdom, and verifies the published stylesheet. It packs that tarball itself unless `DOCX_EDITOR_TARBALL` points it at one. This is the check that catches declarations or imports that work only inside the source workspace.
+`pnpm verify:package` installs the tarball and its peers in a temporary project outside the repository. It typechecks a consumer twice, under bundler and under `nodenext` module resolution, each as its own step, bundles it, loads every JavaScript entry, mounts `DocxEditor` over a fixture document in jsdom, and verifies the published stylesheet. It packs that tarball itself unless `DOCX_EDITOR_TARBALL` points it at one. This is the check that catches declarations or imports that work only inside the source workspace.
 
 The mount reads `DOCX_EDITOR_REACT_RANGE` to install a different React range in the consumer project, and asserts that a consumer's own ref reaches the handle by exporting the opened document through `downloadDocx`. The `package` job verifies every supported React major on one runner, in parallel, over a tarball it packs once, so the suite reads as a single check.
 
