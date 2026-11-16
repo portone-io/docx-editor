@@ -1,5 +1,13 @@
 # @portone/docx-editor
 
+## 0.6.9
+
+### Patch Changes
+
+- [#240](https://github.com/portone-io/docx-editor/pull/240) [`f452989`](https://github.com/portone-io/docx-editor/commit/f452989ef7871fe0885273104dc570a6f15a9856) Thanks [@Deea222](https://github.com/Deea222)! - The type declarations now resolve in projects that use TypeScript's `node16` or `nodenext` module resolution.
+  Their relative imports left the file extension off, which those settings do not accept, so such a project got `any` for almost every export, or errors inside the package with `skipLibCheck` off.
+  Heads-up: code in such a project that was going unchecked is now typechecked against the package and may report type errors it had all along.
+
 ## 0.6.8
 
 ### Patch Changes
