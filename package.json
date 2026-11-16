@@ -65,18 +65,19 @@
     "assets"
   ],
   "scripts": {
-    "build": "node scripts/build.mjs && tsc -p tsconfig.build.json",
+    "build": "node scripts/build.mjs",
     "prepack": "pnpm build",
     "dev": "vite --config demo/vite.config.ts --open",
     "build:demo": "vite build --config demo/vite.config.ts",
     "dev:site": "pnpm --filter @portone/docx-editor-site dev",
     "build:site": "pnpm --filter @portone/docx-editor-site build",
     "bench": "vitest run --config vitest.bench.config.ts --disableConsoleIntercept",
-    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm test:fixtures && pnpm test:site-release && pnpm test:release && pnpm check:demo-library",
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm test:fixtures && pnpm test:build && pnpm test:site-release && pnpm test:release && pnpm check:demo-library",
     "typecheck": "tsc --noEmit && tsc --noEmit -p e2e && tsc --noEmit -p demo && pnpm --filter @portone/docx-editor-site typecheck",
     "lint": "pnpm biome check . --diagnostic-level=error",
     "test": "vitest run",
     "test:fixtures": "node --test scripts/sanitize-fixture.test.mjs",
+    "test:build": "node --test scripts/module-specifiers.test.mjs",
     "test:package": "vitest run --dir packaging --no-file-parallelism",
     "verify:package": "node scripts/verify-package.mjs",
     "check:demo-library": "node scripts/demo-library-pin.mjs",
@@ -107,6 +108,7 @@
     "react": ">=18"
   },
   "devDependencies": {
+    "@babel/parser": "^8.1.2",
     "@biomejs/biome": "2.6.6",
     "@changesets/changelog-github": "^1.0.0",
     "@changesets/cli": "^3.0.1",

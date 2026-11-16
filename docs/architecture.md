@@ -98,7 +98,7 @@ Both pin the library to an exact released version rather than depending on it as
 
 ## Build and package
 
-`pnpm build` uses esbuild to emit one ESM file per source module and TypeScript to emit declarations beside them. Dependencies and peers remain external, and the stylesheet is copied to `dist/styles.css`. A committed report under `etc/` for each entry point records that declared surface, and `pnpm api:update` regenerates it.
+`pnpm build` uses esbuild to emit one ESM file per source module and TypeScript to emit declarations beside them. Both name a relative import by the file it was emitted as, such as `./x.js` or `./x/index.js`, from one rule in `scripts/module-specifiers.mjs`, so the declarations resolve under TypeScript's `node16` and `nodenext` resolution as well as a bundler's; a relative import that names no source module fails the build. Dependencies and peers remain external, and the stylesheet is copied to `dist/styles.css`. A committed report under `etc/` for each entry point records that declared surface, and `pnpm api:update` regenerates it.
 
 Development exports point to `src/`, while `publishConfig` maps the same subpaths to `dist/`. `prepack` builds from a clean source tree before packing or publishing.
 

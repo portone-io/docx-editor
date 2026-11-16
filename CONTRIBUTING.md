@@ -56,9 +56,9 @@ A command added to `./commands` or `./table` needs a writer probe in `src/docx/_
 
 ## Changesets
 
-If you changed production code under `src/`, run `pnpm changeset` and commit the file it writes.
+If you changed production code under `src/`, or anything else that changes what the build puts in `dist/`, such as the build scripts, run `pnpm changeset` and commit the file it writes.
 It becomes the CHANGELOG entry, so write it for someone reading release notes rather than the diff.
-Changes limited to tests, fixtures, scripts, or documentation do not need a changeset.
+Other changes limited to tests, fixtures, scripts, or documentation do not need a changeset.
 
 The public API is the exported names and types of the four entry points - `.`, `./core`, `./commands`, and `./table` - together with the parts of the document model that [What a plugin may rely on](https://docx-editor.portone.io/docs/editor-api/plugins-and-presets#what-a-plugin-may-rely-on) calls stable.
 An attr that page calls internal is not part of it, and neither is anything under `src/` that no entry point reaches.
