@@ -22,6 +22,7 @@ permissions: {}
 
 jobs:
   publish:
+    name: Stage on npm, then release once public
     # Only main can stage or continue a release.
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest

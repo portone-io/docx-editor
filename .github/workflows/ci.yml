@@ -14,8 +14,11 @@ concurrency:
 permissions:
   contents: read
 
+# Job names stay equal to their ids: the main branch ruleset requires these
+# four checks by name.
 jobs:
   check:
+    name: check
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -35,6 +38,7 @@ jobs:
       - run: pnpm build:site
 
   package:
+    name: package
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -78,6 +82,7 @@ jobs:
           exit "${status}"
 
   e2e:
+    name: e2e
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -93,6 +98,7 @@ jobs:
       - run: pnpm test:e2e
 
   workflows:
+    name: workflows
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
