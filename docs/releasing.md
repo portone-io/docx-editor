@@ -1,7 +1,7 @@
 # Releasing
 
 `@portone/docx-editor` is published by [the release workflow](../.github/workflows/release.yml) when a release pull request merges.
-A release is one command and one merge.
+A release starts with one command and one merge, and requires npm approval before it goes live.
 
 ## How a change becomes a release
 
@@ -9,10 +9,10 @@ A pull request that changes the published package carries a changeset, as [CONTR
 Changesets accumulate on `main` until someone cuts a release:
 
 1. `pnpm release:pr` turns every changeset pending on `main` into a version bump and a CHANGELOG entry on a pull request from `release/next`.
-   Its title names the version merging it publishes, and its description opens with that and carries the CHANGELOG entry.
+   Its title names the version it stages on merge, and its description opens with that and carries the CHANGELOG entry.
    You open it, so its checks start at once.
    If more changesets land before it merges, run the command again and the same pull request is rewritten.
-2. Review and merge it.
+2. Review and merge it to stage the package.
    Everything on `main` ships with it: a fix cannot go out alone while unreleased work sits ahead of it.
 
 The command needs a signed-in `gh` and refuses a working tree with uncommitted changes or a `main` with no changeset pending.
@@ -22,17 +22,20 @@ The changelog writer looks each pull request up on GitHub, so the command passes
 ## What the workflow checks before publishing
 
 The merge changes `CHANGELOG.md`, which only `pnpm release:pr` writes, so that change is what starts the workflow and nothing else on `main` does.
-It publishes the version `package.json` declares unless npm already has it.
-Before publishing it waits for that commit's CI run to pass, because nothing downstream can catch a bad tarball once the registry has it.
+It stages the version `package.json` declares unless npm already has it.
+Before staging it waits for that commit's CI run to pass, because nothing downstream can catch a bad tarball once the registry has it.
 Every check a pull request gets guards a release too, the package verification, the real-browser suite, and the workflow audit included.
 
-Only then does it publish, tag the commit, open the GitHub release from the CHANGELOG entry, and rebuild the site.
+A maintainer reviews and approves the staged version on npmjs.com or with `npm stage approve <stage-id>` (2FA required).
+After approval, rerun all jobs of that exact **Release** run. The workflow verifies the version on the public registry before tagging the commit, opening the GitHub release from the CHANGELOG entry, and rebuilding the site.
+The subsequent site build installs that public version, never a pending one.
 
 ## Retrying
 
-Rerun the failed run from GitHub Actions, or start **Release** by hand on `main`.
-It publishes only what npm lacks and opens the release only when it is missing, so a rerun after a failure further down publishes nothing twice.
-If CI failed on the commit itself, re-run CI first; the workflow waits on its result.
+A rerun before approval never stages a second copy. Check npm if a staging attempt failed or its result is ambiguous.
+If it is pending, approve it and rerun that exact release run. If CI failed, rerun CI first.
+If npm shows no pending copy and the failed release commit is still `main`, start **Release** manually on `main` with **Retry staging** enabled.
+After npm approval, rerun the exact originating run to retain the release commit even if `main` has advanced.
 
 ## The version the site's demo runs
 
@@ -47,5 +50,5 @@ The tag is `@portone/docx-editor@<version>`, the name Changesets builds for a pa
 
 ## npm
 
-Publishing authenticates through npm [trusted publishing](https://docs.npmjs.com/trusted-publishers), so there is no npm token here to look for.
-It needs a trusted publisher configured for the package on npmjs.com, pointing at this repository and `release.yml`, and it only works from a GitHub-hosted runner.
+Staging authenticates through npm [trusted publishing](https://docs.npmjs.com/trusted-publishers), so there is no npm token here to look for.
+It needs a trusted publisher configured for the package on npmjs.com, pointing at this repository and `release.yml` with permission to stage publishes, and it only works from a GitHub-hosted runner.

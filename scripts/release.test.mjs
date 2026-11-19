@@ -78,7 +78,7 @@ const proposal = {
 const env = { PATH: "/usr/bin" };
 const title = "chore: release 0.6.0";
 const body = [
-  `Merging this publishes \`${library}@0.6.0\`.`,
+  `Merging this stages \`${library}@0.6.0\` on npm for approval.`,
   "",
   "### Minor Changes",
   "",

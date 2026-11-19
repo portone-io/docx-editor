@@ -1,13 +1,17 @@
 name: Release
 
-# Merging the release pull request is the publish command. CHANGELOG.md changes
-# only through `pnpm release:pr`, so nothing else starts this workflow, and
-# nothing publishes until that commit's CI run has passed.
+# The release merge stages the tarball after CI. After npm approval, rerun
+# this exact run to create the GitHub release and rebuild the demo.
 on:
   push:
     branches: [main]
     paths: [CHANGELOG.md]
   workflow_dispatch:
+    inputs:
+      retry_unstaged:
+        description: Retry staging only after confirming no pending version exists on npm
+        type: boolean
+        default: false
 
 # Two runs would race to claim the same version.
 concurrency:
@@ -18,7 +22,7 @@ permissions: {}
 
 jobs:
   publish:
-    # A run started by hand publishes main or nothing.
+    # Only main can stage or continue a release.
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -28,6 +32,7 @@ jobs:
       id-token: write # OIDC, which is how npm authenticates the publish
     outputs:
       version: ${{ steps.version.outputs.version }}
+      public: ${{ steps.version.outputs.published }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -37,10 +42,19 @@ jobs:
       # safe to repeat run.
       - id: version
         name: the version main declares, unless npm already has it
+        env:
+          EVENT: ${{ github.event_name }}
+          ATTEMPT: ${{ github.run_attempt }}
+          RETRY_UNSTAGED: ${{ inputs.retry_unstaged }}
         run: |
           version="$(node -p 'require("./package.json").version')"
           spec="@portone/docx-editor@${version}"
-          if npm view "${spec}" version >"${RUNNER_TEMP}/view.log" 2>&1; then
+          if npm view "${spec}" version --registry https://registry.npmjs.org >"${RUNNER_TEMP}/view.log" 2>&1; then
+            if [ "$(cat "${RUNNER_TEMP}/view.log")" != "${version}" ]; then
+              cat "${RUNNER_TEMP}/view.log"
+              echo "npm did not return the exact version ${spec}"
+              exit 1
+            fi
             echo "${spec} is already published"
             published=true
           elif grep -q E404 "${RUNNER_TEMP}/view.log"; then
@@ -52,11 +66,19 @@ jobs:
           fi
           echo "version=${version}" >>"${GITHUB_OUTPUT}"
           echo "published=${published}" >>"${GITHUB_OUTPUT}"
+          stage=false
+          if [ "${published}" = false ] && {
+            { [ "${EVENT}" = push ] && [ "${ATTEMPT}" = 1 ]; } ||
+            { [ "${EVENT}" = workflow_dispatch ] && [ "${ATTEMPT}" = 1 ] && [ "${RETRY_UNSTAGED}" = true ]; }
+          }; then
+            stage=true
+          fi
+          echo "stage=${stage}" >>"${GITHUB_OUTPUT}"
       # Nothing downstream can catch a bad tarball once npm has it, so publishing
       # waits for this commit's whole CI run, package verification and real-browser
       # suite included.
       - name: wait for this commit's CI run
-        if: steps.version.outputs.published == 'false'
+        if: steps.version.outputs.stage == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -75,19 +97,40 @@ jobs:
             exit 1
           fi
           gh run watch "${run_id}" --exit-status --interval 15
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - if: steps.version.outputs.stage == 'true'
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
       # Deliberately uncached: a cache entry written by an earlier run is
       # attacker-reachable input, and this job's output is what gets signed.
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - if: steps.version.outputs.stage == 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
-      - run: pnpm install --frozen-lockfile
-      # The tag is made with the GitHub release below, once npm has the version,
-      # so a failed publish leaves no tag behind.
-      - if: steps.version.outputs.published == 'false'
-        run: pnpm changeset publish --no-git-tag
+      - if: steps.version.outputs.stage == 'true'
+        run: pnpm install --frozen-lockfile
+      - name: Stage the package on npm with provenance
+        if: steps.version.outputs.stage == 'true'
+        run: |
+          pack_dir="$(mktemp -d)"
+          pnpm pack --pack-destination "${pack_dir}"
+          shopt -s nullglob
+          tarballs=("${pack_dir}"/*.tgz)
+          if [ "${#tarballs[@]}" -ne 1 ]; then
+            echo "Expected exactly one package tarball"
+            exit 1
+          fi
+          npm exec --yes --package=npm@11.21.2 -- npm stage publish "${tarballs[0]}" --tag latest --access public --provenance
+      - name: Show the npm approval and continuation steps
+        if: steps.version.outputs.published == 'false'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          {
+            echo "### @portone/docx-editor@${VERSION} is not public yet"
+            echo "Review staging on npmjs.com or with npm stage list. Approve with 2FA, then rerun this exact release run to create the GitHub release and update the site."
+          } >>"${GITHUB_STEP_SUMMARY}"
       - name: tag the commit and open the GitHub release from the CHANGELOG entry
+        if: steps.version.outputs.published == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           SHA: ${{ github.sha }}
@@ -104,6 +147,7 @@ jobs:
 
   site:
     needs: publish
+    if: needs.publish.outputs.public == 'true'
     permissions:
       contents: write # the verified demo version commit; no npm publishing permission
     uses: $/.github/workflows/site-release.yml
