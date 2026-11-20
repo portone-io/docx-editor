@@ -125,11 +125,20 @@ jobs:
         if: steps.version.outputs.published == 'false'
         env:
           VERSION: ${{ steps.version.outputs.version }}
+          STAGED: ${{ steps.version.outputs.stage }}
         run: |
-          {
-            echo "### @portone/docx-editor@${VERSION} is not public yet"
-            echo "Review staging on npmjs.com or with npm stage list. Approve with 2FA, then rerun this exact release run to create the GitHub release and update the site."
-          } >>"${GITHUB_STEP_SUMMARY}"
+          if [ "${STAGED}" = true ]; then
+            {
+              echo "### @portone/docx-editor@${VERSION} is staged on npm and not public yet"
+              echo 'Review it on npmjs.com or with `npm stage list`. Approve with 2FA, then rerun this exact release run to create the GitHub release and update the site.'
+            } >>"${GITHUB_STEP_SUMMARY}"
+          else
+            {
+              echo "### @portone/docx-editor@${VERSION} is not public yet, and this run did not stage it"
+              echo '- If npmjs.com or `npm stage list` shows it pending, approve with 2FA, then rerun this exact release run.'
+              echo '- If npm shows nothing pending and this commit is still the head of `main`, start **Release** manually on `main` with **Retry staging** enabled.'
+            } >>"${GITHUB_STEP_SUMMARY}"
+          fi
       - name: tag the commit and open the GitHub release from the CHANGELOG entry
         if: steps.version.outputs.published == 'true'
         env:
