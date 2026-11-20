@@ -73,8 +73,7 @@ const features: { title: string; description: string; icon: LucideIcon }[] = [
   },
 ];
 
-const navLinkClassName =
-  "font-medium text-[14px] text-[var(--brand-text-muted)] transition-colors hover:text-[var(--brand-text)]";
+const navLinkClassName = `${buttonVariants({ variant: "ghost" })} h-9 px-1 text-[var(--brand-text-muted)] sm:px-3`;
 
 export default function LandingPage() {
   return (
@@ -104,7 +103,7 @@ export default function LandingPage() {
               v{libraryVersion}
             </a>
           </div>
-          <nav className="flex items-center gap-3.5 sm:gap-6">
+          <nav className="flex items-center gap-1.5 sm:gap-2">
             <Link className={navLinkClassName} href={docsRoute}>
               Docs
             </Link>

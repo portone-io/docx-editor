@@ -91,10 +91,12 @@
 }
 
 /* The landing stays light whatever theme the docs are in, so it pins the docs
-   tokens its button reads instead of following .dark. */
+   tokens its buttons read instead of following .dark. */
 .landing {
   --color-fd-primary: var(--brand-primary);
   --color-fd-primary-foreground: #ffffff;
+  --color-fd-accent: var(--brand-purple-10);
+  --color-fd-accent-foreground: var(--brand-primary);
   --color-fd-ring: var(--brand-accent);
 }
 
