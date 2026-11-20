@@ -4,7 +4,7 @@
   "description": "A simple DOCX editor for React, built directly on OOXML.",
   "license": "Apache-2.0",
   "type": "module",
-  "packageManager": "pnpm@11.1.3",
+  "packageManager": "pnpm@12.21.0",
   "engines": {
     "node": ">=22"
   },

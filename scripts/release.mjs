@@ -48,10 +48,10 @@ async function signedIn(sh) {
 /**
  * Turns the changesets pending on main into a version bump and CHANGELOG entry on
  * a pull request opened as the person running this, so its checks start at once.
- * Its title and body both name the version merging it publishes. The branch name
+ * Its title and body both name the version merging it stages on npm. The branch name
  * is fixed, so running this again rewrites the same pull request, title included,
  * because a rerun can arrive at a different version.
- * Merging the pull request is what publishes.
+ * Merging the pull request stages the npm package for maintainer approval.
  */
 export async function proposeRelease(
   directory,
@@ -99,7 +99,7 @@ export async function proposeRelease(
     branch,
   ]);
   const body = [
-    `Merging this publishes \`${tag}\`.`,
+    `Merging this stages \`${tag}\` on npm for approval.`,
     releaseNotes(
       await readFile(join(directory, "CHANGELOG.md"), "utf8"),
       version
@@ -161,7 +161,7 @@ if (
     if (command === "pr") {
       const { version, url } = await proposeRelease(root);
       process.stdout.write(
-        `${url}\nMerging this pull request publishes ${tagOf(version)}.\n`
+        `${url}\nMerging this pull request stages ${tagOf(version)} on npm for approval.\n`
       );
     } else if (command === "notes" && argument) {
       process.stdout.write(

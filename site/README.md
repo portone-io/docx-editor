@@ -43,7 +43,7 @@ On `main` that number is the last release, so a preview can run sources newer th
 
 ### Automatic updates after publishing
 
-After npm publishing succeeds, [Update site release](../.github/workflows/site-release.yml) checks out the release commit, installs the published version into the site and the demo, builds the site, and writes the result to the `production` branch as the release commit plus one commit updating the two manifests and lockfile. Vercel's production deployment must track `production`; `main` deploys as a preview. The live site therefore changes only at a release, and a docs-only fix reaches it with the next one. Failed updates leave the previous release in place.
+Once the staged version is approved on npm and its **Release** run is rerun, as [Releasing](../docs/releasing.md) describes, [Update site release](../.github/workflows/site-release.yml) checks out the release commit, installs the published version into the site and the demo, builds the site, and writes the result to the `production` branch as the release commit plus one commit updating the two manifests and lockfile. Vercel's production deployment must track `production`; `main` deploys as a preview. The live site therefore changes only at a release, and a docs-only fix reaches it with the next one. Failed updates leave the previous release in place.
 The update waits up to ten minutes for npm to list the new release, and as long again for it to install, before failing.
 
 Nothing moves on `main` after a release: its site keeps running the sources.
