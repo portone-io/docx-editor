@@ -32,7 +32,7 @@
   gap: 16px;
   padding: 6px 14px;
   background: #ffffff;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid #e2e4e9;
 }
 
 /* The host may load JetBrains Mono and publish it as --font-mono; standalone
@@ -67,7 +67,7 @@
   color: #111827;
   background: #ffffff;
   border: 1px solid #d1d5db;
-  border-radius: 8px;
+  border-radius: 6px;
   cursor: pointer;
   font-size: 13px;
   font-weight: 500;
@@ -75,17 +75,17 @@
 
 .demo-actions button:hover:not(:disabled),
 .demo-button:hover {
-  background: #f9fafb;
+  background: #f7f8fa;
 }
 
 .demo-actions button.demo-button-primary {
   color: #ffffff;
-  background: #f2673c;
+  background: #4e0299;
   border-color: transparent;
 }
 
 .demo-actions button.demo-button-primary:hover:not(:disabled) {
-  background: #e1552b;
+  background: color-mix(in srgb, #4e0299 50%, #280054);
 }
 
 .demo-actions button:disabled {
@@ -121,7 +121,7 @@
   justify-content: center;
   color: #6b7280;
   background: #ffffff;
-  border: 1px solid #e5e7eb;
+  border: 1px solid #e2e4e9;
   border-radius: 8px;
 }
 

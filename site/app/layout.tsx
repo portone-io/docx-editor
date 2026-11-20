@@ -58,6 +58,20 @@ export const metadata: Metadata = {
     description: libraryDescription,
     images: [openGraphImage],
   },
+  icons: {
+    icon: [
+      {
+        url: "/favicon-light.png",
+        type: "image/png",
+        media: "(prefers-color-scheme: light)",
+      },
+      {
+        url: "/favicon-dark.png",
+        type: "image/png",
+        media: "(prefers-color-scheme: dark)",
+      },
+    ],
+  },
   verification: { google: googleSiteVerification },
 };
 

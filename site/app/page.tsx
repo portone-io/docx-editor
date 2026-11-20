@@ -1,3 +1,4 @@
+import { buttonVariants } from "fumadocs-ui/components/ui/button";
 import {
   Languages,
   Lock,
@@ -7,11 +8,11 @@ import {
   Type,
 } from "lucide-react";
 import type { Metadata } from "next";
-import NextImage from "next/image";
 import Link from "next/link";
 import { InstallCommand } from "@/components/InstallCommand";
 import { LiveDemo } from "@/components/LiveDemo";
-import { PortOneWordmark } from "@/components/PortOneWordmark";
+import { PortOneLogo } from "@/components/PortOneLogo";
+import { PortOneSymbol } from "@/components/PortOneSymbol";
 import {
   docsRoute,
   libraryDescription,
@@ -72,24 +73,11 @@ const features: { title: string; description: string; icon: LucideIcon }[] = [
   },
 ];
 
-const navLinkClassName =
-  "font-medium text-[14px] text-[var(--brand-text-muted)] transition-colors hover:text-[var(--brand-text)]";
-
-function BrandMark() {
-  return (
-    <NextImage
-      alt=""
-      className="flex-none"
-      height={20}
-      src="/icon.png"
-      width={20}
-    />
-  );
-}
+const navLinkClassName = `${buttonVariants({ variant: "ghost" })} h-8 px-1 text-[var(--brand-text-muted)] max-sm:text-[13px] sm:h-9 sm:px-3`;
 
 export default function LandingPage() {
   return (
-    <div className="flex flex-1 flex-col bg-[var(--brand-surface)] text-[var(--brand-text)]">
+    <div className="landing flex flex-1 flex-col bg-[var(--brand-surface)] text-[var(--brand-text)]">
       <script
         // biome-ignore lint/security/noDangerouslySetInnerHtml: the only way to emit JSON-LD
         dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteSchema) }}
@@ -99,7 +87,7 @@ export default function LandingPage() {
         <div className="mx-auto flex w-full max-w-[1280px] items-center justify-between gap-4 px-4 py-3 sm:px-6">
           <div className="flex items-center gap-2.5">
             <Link className="flex items-center gap-2.5" href="/">
-              <BrandMark />
+              <PortOneSymbol className="size-5 flex-none text-[var(--brand-portone)]" />
               {/* The nav items and the wordmark together do not fit a phone, so
                   the mark carries the brand until there is room for both */}
               <span className="hidden font-bold text-[17px] min-[375px]:inline">
@@ -107,7 +95,7 @@ export default function LandingPage() {
               </span>
             </Link>
             <a
-              className="hidden rounded-full bg-[#f2673c1a] px-2 py-0.5 font-mono text-[11px] text-[var(--brand-primary)] leading-[1.6] transition-colors hover:bg-[#f2673c2e] sm:inline-block"
+              className="hidden rounded-full bg-[var(--brand-purple-10)] px-2 py-0.5 font-mono text-[11px] text-[var(--brand-primary)] leading-[1.6] transition-colors hover:bg-[var(--brand-purple-20)] sm:inline-block"
               href={npmUrl}
               rel="noreferrer"
               target="_blank"
@@ -115,7 +103,7 @@ export default function LandingPage() {
               v{libraryVersion}
             </a>
           </div>
-          <nav className="flex items-center gap-3.5 sm:gap-6">
+          <nav className="flex items-center gap-1.5 sm:gap-2">
             <Link className={navLinkClassName} href={docsRoute}>
               Docs
             </Link>
@@ -128,7 +116,7 @@ export default function LandingPage() {
               GitHub
             </a>
             <Link
-              className="whitespace-nowrap rounded-[8px] bg-[var(--brand-primary)] px-3.5 py-2 font-medium text-[14px] text-white transition-colors hover:bg-[var(--brand-primary-hover)] sm:px-[18px] sm:py-[9px]"
+              className={`${buttonVariants({ variant: "primary" })} h-8 whitespace-nowrap px-2.5 max-sm:text-[13px] sm:h-9 sm:px-4`}
               href={`${docsRoute}/getting-started`}
             >
               Get started
@@ -211,7 +199,7 @@ export default function LandingPage() {
       <footer className="border-[var(--brand-border)] border-t">
         <div className="mx-auto flex w-full max-w-[1280px] flex-col items-center justify-between gap-6 px-4 py-10 sm:flex-row sm:gap-4 sm:px-6">
           <div className="flex flex-col items-center gap-2 sm:items-start">
-            <PortOneWordmark />
+            <PortOneLogo />
             <p className="text-[12px] text-[var(--brand-text-subtle)]">
               Copyright © 2026 PortOne Korea Corp. All rights reserved.
             </p>

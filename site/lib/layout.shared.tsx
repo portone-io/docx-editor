@@ -1,5 +1,5 @@
 import type { BaseLayoutProps } from "fumadocs-ui/layouts/shared";
-import Image from "next/image";
+import { PortOneSymbol } from "@/components/PortOneSymbol";
 import { repositoryUrl } from "./library";
 
 export function baseOptions(): BaseLayoutProps {
@@ -7,7 +7,7 @@ export function baseOptions(): BaseLayoutProps {
     nav: {
       title: (
         <span className="flex items-center gap-2">
-          <Image alt="" height={18} src="/icon.png" width={18} />
+          <PortOneSymbol className="size-[18px] text-[var(--brand-portone)] dark:text-white" />
           docx-editor
         </span>
       ),
