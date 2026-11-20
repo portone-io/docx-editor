@@ -95,7 +95,7 @@ export default function LandingPage() {
               </span>
             </Link>
             <a
-              className="hidden rounded-full bg-[#f2673c1a] px-2 py-0.5 font-mono text-[11px] text-[var(--brand-primary)] leading-[1.6] transition-colors hover:bg-[#f2673c2e] sm:inline-block"
+              className="hidden rounded-full bg-[var(--brand-purple-10)] px-2 py-0.5 font-mono text-[11px] text-[var(--brand-primary)] leading-[1.6] transition-colors hover:bg-[var(--brand-purple-20)] sm:inline-block"
               href={npmUrl}
               rel="noreferrer"
               target="_blank"
@@ -116,7 +116,7 @@ export default function LandingPage() {
               GitHub
             </a>
             <Link
-              className="whitespace-nowrap rounded-[8px] bg-[var(--brand-primary)] px-3.5 py-2 font-medium text-[14px] text-white transition-colors hover:bg-[var(--brand-primary-hover)] sm:px-[18px] sm:py-[9px]"
+              className="inline-flex h-9 items-center whitespace-nowrap rounded-[8px] bg-[var(--brand-primary)] px-3.5 font-medium text-[14px] text-white transition-colors hover:bg-[var(--brand-primary-hover)] sm:px-4"
               href={`${docsRoute}/getting-started`}
             >
               Get started
