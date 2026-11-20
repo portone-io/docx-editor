@@ -73,7 +73,7 @@ const features: { title: string; description: string; icon: LucideIcon }[] = [
   },
 ];
 
-const navLinkClassName = `${buttonVariants({ variant: "ghost" })} h-9 px-1 text-[var(--brand-text-muted)] sm:px-3`;
+const navLinkClassName = `${buttonVariants({ variant: "ghost" })} h-8 px-1 text-[var(--brand-text-muted)] max-sm:text-[13px] sm:h-9 sm:px-3`;
 
 export default function LandingPage() {
   return (
@@ -116,7 +116,7 @@ export default function LandingPage() {
               GitHub
             </a>
             <Link
-              className={`${buttonVariants({ variant: "primary" })} h-9 whitespace-nowrap px-3.5 sm:px-4`}
+              className={`${buttonVariants({ variant: "primary" })} h-8 whitespace-nowrap px-2.5 max-sm:text-[13px] sm:h-9 sm:px-4`}
               href={`${docsRoute}/getting-started`}
             >
               Get started
