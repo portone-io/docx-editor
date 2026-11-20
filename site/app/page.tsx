@@ -7,11 +7,11 @@ import {
   Type,
 } from "lucide-react";
 import type { Metadata } from "next";
-import NextImage from "next/image";
 import Link from "next/link";
 import { InstallCommand } from "@/components/InstallCommand";
 import { LiveDemo } from "@/components/LiveDemo";
-import { PortOneWordmark } from "@/components/PortOneWordmark";
+import { PortOneLogo } from "@/components/PortOneLogo";
+import { PortOneSymbol } from "@/components/PortOneSymbol";
 import {
   docsRoute,
   libraryDescription,
@@ -75,18 +75,6 @@ const features: { title: string; description: string; icon: LucideIcon }[] = [
 const navLinkClassName =
   "font-medium text-[14px] text-[var(--brand-text-muted)] transition-colors hover:text-[var(--brand-text)]";
 
-function BrandMark() {
-  return (
-    <NextImage
-      alt=""
-      className="flex-none"
-      height={20}
-      src="/icon.png"
-      width={20}
-    />
-  );
-}
-
 export default function LandingPage() {
   return (
     <div className="flex flex-1 flex-col bg-[var(--brand-surface)] text-[var(--brand-text)]">
@@ -99,7 +87,7 @@ export default function LandingPage() {
         <div className="mx-auto flex w-full max-w-[1280px] items-center justify-between gap-4 px-4 py-3 sm:px-6">
           <div className="flex items-center gap-2.5">
             <Link className="flex items-center gap-2.5" href="/">
-              <BrandMark />
+              <PortOneSymbol className="size-5 flex-none text-[var(--brand-portone)]" />
               {/* The nav items and the wordmark together do not fit a phone, so
                   the mark carries the brand until there is room for both */}
               <span className="hidden font-bold text-[17px] min-[375px]:inline">
@@ -211,7 +199,7 @@ export default function LandingPage() {
       <footer className="border-[var(--brand-border)] border-t">
         <div className="mx-auto flex w-full max-w-[1280px] flex-col items-center justify-between gap-6 px-4 py-10 sm:flex-row sm:gap-4 sm:px-6">
           <div className="flex flex-col items-center gap-2 sm:items-start">
-            <PortOneWordmark />
+            <PortOneLogo />
             <p className="text-[12px] text-[var(--brand-text-subtle)]">
               Copyright © 2026 PortOne Korea Corp. All rights reserved.
             </p>

@@ -49,6 +49,7 @@
   --brand-text-muted: #4b5563;
   --brand-text-subtle: #6b7280;
   --brand-border: #e5e7eb;
+  --brand-portone: #031221;
 }
 
 /* Unlayered, so it overrides Tailwind's theme default for the mono utility */
