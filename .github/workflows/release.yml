@@ -75,9 +75,9 @@ jobs:
             stage=true
           fi
           echo "stage=${stage}" >>"${GITHUB_OUTPUT}"
-      # Nothing downstream can catch a bad tarball once npm has it, so publishing
-      # waits for this commit's whole CI run, package verification and real-browser
-      # suite included.
+      # Approval on npm is a maintainer's review, not a test run, so staging waits
+      # for this commit's whole CI run, package verification and real-browser suite
+      # included.
       - name: wait for this commit's CI run
         if: steps.version.outputs.stage == 'true'
         env:

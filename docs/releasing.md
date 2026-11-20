@@ -23,17 +23,20 @@ The changelog writer looks each pull request up on GitHub, so the command passes
 
 The merge changes `CHANGELOG.md`, which only `pnpm release:pr` writes, so that change is what starts the workflow and nothing else on `main` does.
 It stages the version `package.json` declares unless npm already has it.
-Before staging it waits for that commit's CI run to pass, because nothing downstream can catch a bad tarball once the registry has it.
+Before staging it waits for that commit's CI run to pass, because approval on npm is a maintainer's review, not a test run.
 Every check a pull request gets guards a release too, the package verification, the real-browser suite, and the workflow audit included.
 
 A maintainer reviews and approves the staged version on npmjs.com or with `npm stage approve <stage-id>` (2FA required).
-After approval, rerun all jobs of that exact **Release** run. The workflow verifies the version on the public registry before tagging the commit, opening the GitHub release from the CHANGELOG entry, and rebuilding the site.
+After approval, rerun all jobs of that exact **Release** run.
+The workflow verifies the version on the public registry before tagging the commit, opening the GitHub release from the CHANGELOG entry, and rebuilding the site.
 The subsequent site build installs that public version, never a pending one.
 
 ## Retrying
 
-A rerun before approval never stages a second copy. Check npm if a staging attempt failed or its result is ambiguous.
-If it is pending, approve it and rerun that exact release run. If CI failed, rerun CI first.
+A rerun before approval never stages a second copy.
+Check npm if a staging attempt failed or its result is ambiguous.
+If it is pending, approve it and rerun that exact release run.
+If CI failed, rerun CI first.
 If npm shows no pending copy and the failed release commit is still `main`, start **Release** manually on `main` with **Retry staging** enabled.
 After npm approval, rerun the exact originating run to retain the release commit even if `main` has advanced.
 
