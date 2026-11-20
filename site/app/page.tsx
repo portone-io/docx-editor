@@ -1,3 +1,4 @@
+import { buttonVariants } from "fumadocs-ui/components/ui/button";
 import {
   Languages,
   Lock,
@@ -77,7 +78,7 @@ const navLinkClassName =
 
 export default function LandingPage() {
   return (
-    <div className="flex flex-1 flex-col bg-[var(--brand-surface)] text-[var(--brand-text)]">
+    <div className="landing flex flex-1 flex-col bg-[var(--brand-surface)] text-[var(--brand-text)]">
       <script
         // biome-ignore lint/security/noDangerouslySetInnerHtml: the only way to emit JSON-LD
         dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteSchema) }}
@@ -116,7 +117,7 @@ export default function LandingPage() {
               GitHub
             </a>
             <Link
-              className="inline-flex h-9 items-center whitespace-nowrap rounded-[8px] bg-[var(--brand-primary)] px-3.5 font-medium text-[14px] text-white transition-colors hover:bg-[var(--brand-primary-hover)] sm:px-4"
+              className={`${buttonVariants({ variant: "primary" })} h-9 whitespace-nowrap px-3.5 sm:px-4`}
               href={`${docsRoute}/getting-started`}
             >
               Get started

@@ -80,11 +80,6 @@
   --brand-slate-800: #1f2937;
   --brand-slate-900: #111827;
   --brand-primary: var(--brand-purple-80);
-  --brand-primary-hover: color-mix(
-    in srgb,
-    var(--brand-purple-80) 50%,
-    var(--brand-purple-90)
-  );
   --brand-accent: var(--brand-purple-60);
   --brand-secondary: var(--brand-purple-40);
   --brand-surface: #ffffff;
@@ -93,6 +88,14 @@
   --brand-text-subtle: var(--brand-slate-500);
   --brand-border: var(--brand-slate-200);
   --brand-portone: #031221;
+}
+
+/* The landing stays light whatever theme the docs are in, so it pins the docs
+   tokens its button reads instead of following .dark. */
+.landing {
+  --color-fd-primary: var(--brand-primary);
+  --color-fd-primary-foreground: #ffffff;
+  --color-fd-ring: var(--brand-accent);
 }
 
 /* Unlayered, so it overrides Tailwind's theme default for the mono utility */
